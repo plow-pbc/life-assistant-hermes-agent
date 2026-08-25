@@ -104,6 +104,11 @@ def test_uid_and_gid_have_no_default(compose):
 
 
 def test_container_and_image_are_this_agents_own(compose):
+    # The project name, set rather than derived from the checkout directory.
+    # Under the numbered-slot workflow a second clone yields a different compose
+    # project against this same ~/.hermes-rowan mount, so `docker compose down`
+    # run from the other directory reports success having stopped nothing.
+    assert compose["name"] == "hermes-rowan"
     service = compose["services"]["hermes"]
     assert service["container_name"] == "hermes-rowan"
     # Pinned by digest: a tag re-resolves on every pull, changing a large
@@ -118,15 +123,19 @@ def test_container_and_image_are_this_agents_own(compose):
 def test_no_credential_is_passed_through_compose(compose):
     """The mounted dotenv is the only path in.
 
-    Passing PLOW_CHAT_* through compose interpolates from the shell or a
-    repo-root .env that no recipe writes, so the documented bring-up would
-    inject empty strings — which can shadow the real values the gateway loads
-    from /opt/data/.env.
+    An allowlist, not a PLOW_ prefix ban. The failure documented here — compose
+    interpolating from a shell or a repo-root .env that no recipe writes, so the
+    bring-up injects empty strings that shadow the real values — is a property of
+    any credential passed through `environment:`, not of one prefix. An added
+    OPENAI_API_KEY=${OPENAI_API_KEY} passed the prefix version, and passed
+    test_no_secret_is_committed too because an interpolated value starts with $.
+    Naming the three keys that belong here covers the general case in fewer
+    lines.
     """
-    env = compose["services"]["hermes"]["environment"]
-    assert not [e for e in env if e.startswith("PLOW_")], (
-        "credentials must come from ~/.hermes-rowan/.env through the mount, "
-        "not from compose interpolation"
+    names = {e.split("=", 1)[0] for e in compose["services"]["hermes"]["environment"]}
+    assert names == {"HERMES_UID", "HERMES_GID", "TZ"}, (
+        "credentials must come from ~/.hermes-rowan/.env through the mount, not "
+        f"from compose interpolation; unexpected keys: {names - {'HERMES_UID', 'HERMES_GID', 'TZ'}}"
     )
 
 
@@ -167,11 +176,18 @@ def test_no_secret_is_committed():
                 value = bearer.group(1).rstrip("\"'")
                 assert reference.match(value), f"{where} carries a literal bearer"
 
-            assigned = re.match(
-                r"\s*-?\s*([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH|_UID))=(.*)$",
-                line,
-            )
-            if assigned:
+            # Two spellings, because this repo tracks both. The KEY=value form
+            # is how a dotenv and a compose environment entry carry one; the
+            # `key: value` form is how runtime/config.yaml would, and that file
+            # is lowercase YAML — exactly where a provider API key lands, and
+            # invisible to a scanner that only knows SHOUTY assignments.
+            for pattern, flags in (
+                (r"\s*-?\s*([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH|_UID))=(.*)$", 0),
+                (r"\s*-?\s*([A-Za-z][\w-]*(?:token|secret|key|password|credential|auth))\s*:\s*(.*)$", re.I),
+            ):
+                assigned = re.match(pattern, line, flags)
+                if not assigned:
+                    continue
                 value = assigned.group(2).strip().strip("\"'")
                 # Empty, or an interpolation of any form — bare ${VAR}, $var,
                 # and compose's ${VAR:?message} with its spaces and prose. A
@@ -231,21 +247,33 @@ def test_the_dotenv_contract_carries_no_values():
         assert line.endswith("="), f".env.example:{lineno} carries a value: {line!r}"
 
 
-@pytest.mark.parametrize("name", ["activate", "install-plugin", "install-connectors", "restore"])
-def test_no_recipe_can_target_another_agents_home(name):
+def test_no_recipe_can_target_another_agents_home():
     """`--data-dir` is the only thing deciding which agent these rewrite.
 
     Upstream's activation script does not honour HERMES_DOTENV, and it
     *replaces* PLOW_CHAT_CHAT_UID and PLOW_CHAT_TOKEN rather than shadowing
     them — so a recipe pointed at another agent's home takes it off its chat
     until /sethome is re-sent, and spends a one-time activation to do it.
-    Asserted for all four writers because a copy-paste from a sibling repo is
-    exactly how that happens.
+
+    Scanned whole-file rather than over an enumerated list of recipes. The list
+    version went green on any recipe added after it — a backup, a migrate, a
+    second install — which is the "green on the commit that adds the thing it
+    does not know about" shape this module's docstring warns against. The
+    justfile names sibling agents only descriptively ("another agent's home"),
+    never as literal paths, so a whole-file scan needs no allowlist.
     """
-    recipe = _recipe(name)
-    assert ".hermes-rowan" in recipe, f"{name} must name this agent's own home"
     for path in FORBIDDEN_PATHS:
-        assert not _names_path(recipe, path), f"{name} must not reach {path}"
+        assert not _names_path((ROOT / "justfile").read_text(), path), (
+            f"no recipe may reach {path}"
+        )
+
+
+@pytest.mark.parametrize("name", ["activate", "install-plugin", "install-connectors", "restore"])
+def test_every_writer_names_this_agents_home(name):
+    # The other half of the scan above: these four write to a host path, and
+    # each must say which. A whole-file absence check cannot see a recipe that
+    # names no home at all and defaults to upstream's.
+    assert ".hermes-rowan" in _recipe(name), f"{name} must name this agent's own home"
 
 
 def test_activation_refuses_a_home_it_was_edited_to_point_elsewhere():
@@ -325,3 +353,27 @@ def test_every_recipe_has_a_real_description():
         elif not doc[0].isupper():
             bad[name] = f"reads as a sentence fragment: {doc!r}"
     assert bad == {}, f"recipes whose `just --list` text is not a description: {bad}"
+
+
+def test_the_signed_in_provider_is_the_configured_one(config):
+    """One fact, two copies, and nothing tying them together.
+
+    `hermes auth add <provider>` in sign-in and model.provider in config.yaml are
+    the same choice written twice. If either is edited — a copy-paste from a
+    sibling agent's justfile or config — `just sign-in` reports success, the
+    restart runs, and the gateway then answers texts unauthenticated against a
+    provider nobody logged into. sign-in's own comment calls that failure mode
+    "silent in the worst way" and then hard-codes the value that allows it.
+    """
+    assert config["model"] == {"default": "gpt-5.5", "provider": "openai-codex"}
+    assert f"hermes auth add {config['model']['provider']}" in _recipe("sign-in")
+
+
+@pytest.mark.parametrize("name", ["sign-in", "activate"])
+def test_every_recipe_that_rewrites_a_credential_reloads_the_gateway(name):
+    # The gateway reads auth.json and .env at boot. sign-in writes the first,
+    # activate replaces PLOW_CHAT_TOKEN in the second, and a gateway left
+    # running holds the previous value while the recipe prints success.
+    assert "docker compose restart hermes" in _recipe(name), (
+        f"{name} rewrites a credential the gateway only reads at boot"
+    )

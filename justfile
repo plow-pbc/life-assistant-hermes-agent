@@ -101,6 +101,16 @@ activate:
     tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
     curl -fsSL "https://raw.githubusercontent.com/plow-pbc/seed-hermes-plow/$ref/ref/scripts/create_plow_chat_curl.sh" -o "$tmp"
     bash "$tmp" --data-dir "$target"
+    # The gateway reads its dotenv at boot, and the script above just replaced
+    # PLOW_CHAT_CHAT_UID and PLOW_CHAT_TOKEN inside it. Same invariant sign-in
+    # restarts for. On the documented first run nothing is up and this is a
+    # no-op; on a re-activation it is the difference between the gateway holding
+    # the token this recipe minted and the one it replaced — while the recipe
+    # prints success either way.
+    if docker compose ps --status running --quiet hermes | grep -q .; then
+      echo "restarting the gateway so it loads the credential just written..."
+      docker compose restart hermes
+    fi
 
 # A separate Codex sign-in for this agent, not a copy of another agent's
 # auth.json — that file is guarded by auth.lock, and this one is a different

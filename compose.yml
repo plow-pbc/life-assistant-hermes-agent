@@ -10,6 +10,13 @@
 #   just activate            # Rowan texts the code, from his phone
 #   just up
 #   just sign-in             # Rowan completes the device flow, in his browser
+# The compose project name, set rather than derived. Without it the project is
+# named after the checkout directory, so a numbered-slot clone
+# (rowans-life-hermes-agent0) is a DIFFERENT project bound to this same
+# ~/.hermes-rowan mount: `docker compose down` run from the other directory
+# reports success having stopped nothing.
+name: hermes-rowan
+
 services:
   hermes:
     # The upstream image directly, pinned by digest rather than tag. No derived
