@@ -25,6 +25,20 @@ SIBLING_HOMES = ("~/.hermes", "~/.hermes-admin", "~/.hermes-property")
 FORBIDDEN_PATHS = SIBLING_HOMES + ("~/hermes-vault",)
 
 
+def _names_path(text: str, path: str) -> bool:
+    """Does `text` name `path`, in any spelling of the prefix?
+
+    Matched on the bare tail, so `$HOME/`, `${HOME}/` and an absolute
+    `/home/<user>/` are the same finding as `~/`. Anchoring on the `~/` spelling
+    left a hole one character wide: `- HERMES_VAULT=$HOME/hermes-vault` reaches
+    the gateway exactly as well and was invisible.
+
+    The lookahead is what keeps `.hermes` from matching inside `.hermes-rowan`,
+    which is the one path these files must name.
+    """
+    return bool(re.search(rf"{re.escape(path.removeprefix('~/'))}(?![\w-])", text))
+
+
 def _recipe(name: str) -> str:
     """One recipe's body, from the justfile. Read as text rather than run.
 
@@ -73,15 +87,11 @@ def test_no_forbidden_path_appears_anywhere_in_compose():
 
     The trailing-colon version only matched a short-form mount, so
     `- HERMES_VAULT=~/hermes-vault` — an env var handing the same path to the
-    gateway by another route — passed clean. Word-boundary instead, which also
-    keeps `~/.hermes` from matching inside `~/.hermes-rowan`, the one path this
-    file must name.
+    gateway by another route — passed clean.
     """
     text = (ROOT / "compose.yml").read_text()
     for path in FORBIDDEN_PATHS:
-        assert not re.search(rf"{re.escape(path)}(?![\w-])", text), (
-            f"compose.yml must not name {path}"
-        )
+        assert not _names_path(text, path), f"compose.yml must not name {path}"
 
 
 def test_uid_and_gid_have_no_default(compose):
@@ -235,12 +245,7 @@ def test_no_recipe_can_target_another_agents_home(name):
     recipe = _recipe(name)
     assert ".hermes-rowan" in recipe, f"{name} must name this agent's own home"
     for path in FORBIDDEN_PATHS:
-        bare = path.removeprefix("~/")
-        # Word-boundary match: a plain substring test would flag ".hermes-rowan"
-        # as containing ".hermes", which is the one path these recipes must name.
-        assert not re.search(rf"{re.escape(bare)}(?![\w-])", recipe), (
-            f"{name} must not reach {path}"
-        )
+        assert not _names_path(recipe, path), f"{name} must not reach {path}"
 
 
 def test_activation_refuses_a_home_it_was_edited_to_point_elsewhere():
