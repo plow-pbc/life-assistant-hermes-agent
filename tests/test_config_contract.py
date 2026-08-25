@@ -187,6 +187,16 @@ def test_the_timezone_is_the_agents_owner_not_the_host(compose):
         "TZ must be Rowan's zone, not the operator's — the three sibling agents "
         "run America/Los_Angeles and are the copy-paste source"
     )
+    # The comment beside it has to keep naming the sibling zone, because the
+    # comment is what someone reads at the moment they are copy-pasting. A
+    # global find-and-replace of the zone caught that sentence once and left it
+    # saying the siblings run Chicago too — which reads as "the sibling default
+    # is already correct", the exact opposite of the warning, and no assertion
+    # about the value alone could see it.
+    assert "America/Los_Angeles" in (ROOT / "compose.yml").read_text(), (
+        "the TZ comment must still name the siblings' zone; without the contrast "
+        "it tells the next reader the sibling default needs no change"
+    )
 
 
 def test_no_credential_is_passed_through_compose(compose):

@@ -55,7 +55,7 @@ services:
       - HERMES_UID=${HERMES_UID:?set it to the host uid, or run via just}
       - HERMES_GID=${HERMES_GID:?set it to the host gid, or run via just}
       # Rowan's zone, NOT the host's. This is the one setting here that differs
-      # from all three siblings, and deliberately: they run America/Chicago
+      # from all three siblings, and deliberately: they run America/Los_Angeles
       # because that is where their operator is, and inheriting it here would be
       # inheriting the wrong person. A life assistant resolves "tomorrow
       # morning" and every scheduled thing against this, so on a two-hour offset
