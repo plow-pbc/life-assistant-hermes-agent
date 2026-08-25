@@ -7,6 +7,7 @@ person. A defaulted uid/gid re-owns live state in place. A branch ref in a pin
 silently re-points a running agent at whatever landed upstream. A literal
 credential ships a secret.
 """
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -22,6 +23,22 @@ SIBLING_HOMES = ("~/.hermes", "~/.hermes-admin", "~/.hermes-property")
 # rentals agent's operations vault holds compiled guest conversations and
 # property access facts, door and keypad codes among them.
 FORBIDDEN_PATHS = SIBLING_HOMES + ("~/hermes-vault",)
+
+
+def _recipe(name: str) -> str:
+    """One recipe's body, from the justfile. Read as text rather than run.
+
+    These assertions are about which paths a recipe may name, and running one to
+    find out would activate a phone line or install a skill.
+    """
+    lines = (ROOT / "justfile").read_text().splitlines()
+    start = next(i for i, l in enumerate(lines) if re.match(rf"^{re.escape(name)}( [A-Z]+)*:$", l))
+    body = []
+    for line in lines[start + 1:]:
+        if line and not line[0].isspace():
+            break
+        body.append(line)
+    return "\n".join(body)
 
 
 @pytest.fixture
@@ -184,3 +201,104 @@ def test_the_dotenv_contract_carries_no_values():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         assert line.endswith("="), f".env.example:{lineno} carries a value: {line!r}"
+
+
+@pytest.mark.parametrize("name", ["activate", "install-plugin", "install-connectors", "restore"])
+def test_no_recipe_can_target_another_agents_home(name):
+    """`--data-dir` is the only thing deciding which agent these rewrite.
+
+    Upstream's activation script does not honour HERMES_DOTENV, and it
+    *replaces* PLOW_CHAT_CHAT_UID and PLOW_CHAT_TOKEN rather than shadowing
+    them — so a recipe pointed at another agent's home takes it off its chat
+    until /sethome is re-sent, and spends a one-time activation to do it.
+    Asserted for all four writers because a copy-paste from a sibling repo is
+    exactly how that happens.
+    """
+    recipe = _recipe(name)
+    assert ".hermes-rowan" in recipe, f"{name} must name this agent's own home"
+    for path in FORBIDDEN_PATHS:
+        bare = path.removeprefix("~/")
+        # Word-boundary match: a plain substring test would flag ".hermes-rowan"
+        # as containing ".hermes", which is the one path these recipes must name.
+        assert not re.search(rf"{re.escape(bare)}(?![\w-])", recipe), (
+            f"{name} must not reach {path}"
+        )
+
+
+def test_activation_refuses_a_home_it_was_edited_to_point_elsewhere():
+    # The guard, not just the literal: the assertion above reads the recipe as
+    # committed, and this is what stops an edited copy at runtime.
+    recipe = _recipe("activate")
+    assert "*/.hermes-rowan)" in recipe, (
+        "activate needs its runtime guard on $HOME/.hermes-rowan — the string "
+        "check above only sees the recipe as written"
+    )
+
+
+def test_the_connector_skill_is_installed_where_it_is_invoked():
+    """The install destination and the invoked path must be the same directory.
+
+    SKILL.md's allowed-tools line names
+    /opt/data/skills/plow-connectors/plow_connector.py literally, so a skill
+    installed one directory deeper — the way the property agent nests its skill
+    under skills/productivity/ — loads and is then refused permission to run its
+    own helper, while check-connectors probes a path nothing wrote. These two
+    recipes are the pair that can drift.
+    """
+    assert '"$HOME/.hermes-rowan/skills/plow-connectors"' in _recipe("install-connectors")
+    assert "/opt/data/skills/plow-connectors/plow_connector.py" in _recipe("check-connectors")
+
+
+def test_both_installs_read_the_same_pin():
+    # One upstream SHA covers the plugin and the connector skill. Two pins that
+    # can drift would mean the skill reading the mail and the plugin holding the
+    # token came from different upstream trees.
+    for name in ("install-plugin", "install-connectors", "activate"):
+        assert "runtime/plow-chat-plugin.ref" in _recipe(name)
+
+
+def test_no_recipe_starts_a_second_gateway():
+    """No recipe may `docker compose run`.
+
+    The image's s6 entrypoint starts a gateway whatever command it is given, so
+    `run` brings up a second one against this same /opt/data. With a chat
+    activated both connect to it and answer every message, so every text gets
+    two replies. `exec` uses the gateway that is already there.
+
+    Comments may name `run` — that is where the reasoning lives.
+    """
+    offenders = []
+    for i, line in enumerate((ROOT / "justfile").read_text().splitlines(), 1):
+        if line.lstrip().startswith("#"):
+            continue
+        if "docker compose run" in line:
+            offenders.append(f"justfile:{i}")
+    assert offenders == [], f"these start a rival gateway: {offenders}"
+
+
+def test_every_recipe_has_a_real_description():
+    """Every recipe's `just --list` text must read as a description.
+
+    `just` takes the LAST comment line before a recipe as its doc, so a
+    reasoning block ending in prose donates its tail: the property agent's
+    justfile really did advertise "hunting for a key." as a recipe's purpose.
+
+    Recipes come from `just --dump` rather than a regex over the file, which
+    silently exempted dependencies, default parameters and attributes. The
+    property asserted is that the doc starts with a capital: a description
+    written for the reader does, the tail of a sentence does not.
+    """
+    dump = json.loads(
+        subprocess.run(
+            ["just", "--dump", "--dump-format", "json"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout
+    )
+    bad = {}
+    for name, recipe in dump["recipes"].items():
+        doc = (recipe.get("doc") or "").strip()
+        if not doc:
+            bad[name] = "no description"
+        elif not doc[0].isupper():
+            bad[name] = f"reads as a sentence fragment: {doc!r}"
+    assert bad == {}, f"recipes whose `just --list` text is not a description: {bad}"
