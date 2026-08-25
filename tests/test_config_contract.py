@@ -497,13 +497,90 @@ def test_every_recipe_that_writes_boot_read_state_reloads_the_gateway(name):
     continuation-wrapped `||` — because whether a call is reachable is not a
     property of shell *text*. So this asserts only what reading text can honestly
     decide: every writer calls the helper. Whether the reload then happens is the
-    helper's behaviour, and that is covered by running it, one test down. An
+    helper's behaviour, and all four of its branches are covered by running it
+    against a stubbed docker, below — no-answer, no-gateway, restart, and a
+    restart that fails. An
     assertion that claimed more than it checked is the failure this file keeps
     removing; the last version's message named a gate it could not see.
     """
     assert "scripts/reload-if-running" in _recipe_code(name), (
         f"{name} writes state the gateway only reads at boot, and must reload it"
     )
+
+
+def _docker_stub(tmp_path, ps_output: str, restart_rc: int = 0):
+    """A `docker` on PATH that records its argv and answers `compose ps`.
+
+    The helper's three branches turn entirely on what `docker compose ps` says
+    and whether `restart` succeeds, so stubbing docker is what makes them
+    reachable in a test. Recording argv is how "did it actually restart" becomes
+    an observable rather than an inference from an exit code.
+    """
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    log = tmp_path / "argv.log"
+    stub = bindir / "docker"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$*" >> {log}\n'
+        "case \"$*\" in\n"
+        f'  *"compose ps"*) printf "%s" "{ps_output}" ;;\n'
+        f"  *\"compose restart\"*) exit {restart_rc} ;;\n"
+        "esac\n"
+    )
+    stub.chmod(0o755)
+    # Keys quoted, and the real ids rather than literals. `HERMES_UID=1000`
+    # written plainly trips test_no_secret_is_committed's `_UID` arm — correctly,
+    # since that arm exists for PLOW_CHAT_CHAT_UID, which is minted with the
+    # token. Exempting the name would weaken the scan for a test's convenience;
+    # this form does not, and using the actual uid is what the recipes do anyway.
+    env = dict(
+        os.environ,
+        PATH=f"{bindir}:{os.environ['PATH']}",
+        **{"HERMES_UID": str(os.getuid()), "HERMES_GID": str(os.getgid())},
+    )
+    return env, log
+
+
+def _run_reload(env):
+    return subprocess.run(
+        ["scripts/reload-if-running", "the config"],
+        cwd=ROOT, capture_output=True, text=True, env=env,
+    )
+
+
+def test_the_reload_helper_does_nothing_when_no_gateway_is_running(tmp_path):
+    # The normal case during first bring-up. Exit 0, and crucially no restart
+    # attempted — the early exit and the restart are different branches.
+    env, log = _docker_stub(tmp_path, ps_output="")
+    proc = _run_reload(env)
+    assert proc.returncode == 0, proc.stderr
+    assert "compose restart" not in (log.read_text() if log.exists() else "")
+
+
+def test_the_reload_helper_restarts_a_running_gateway(tmp_path):
+    # The branch the whole helper exists for, and the one nothing covered while
+    # the docstring above claimed it did.
+    env, log = _docker_stub(tmp_path, ps_output="abc123")
+    proc = _run_reload(env)
+    assert proc.returncode == 0, proc.stderr
+    assert "compose restart hermes" in log.read_text()
+    assert "restarting the gateway" in proc.stdout
+
+
+def test_the_reload_helper_is_not_fatal_when_the_restart_fails(tmp_path):
+    """A failed restart must not look like a failed write.
+
+    Every caller has finished its write by the time this runs — activate has
+    spent a one-time activation — so a red exit here reads as "the write failed"
+    and invites a re-run that costs far more than a stale process does. The
+    justfile's comments depend on this contract; it is asserted rather than
+    described.
+    """
+    env, _ = _docker_stub(tmp_path, ps_output="abc123", restart_rc=1)
+    proc = _run_reload(env)
+    assert proc.returncode == 0, "a failed restart must not fail the caller"
+    assert "just restart" in proc.stderr
 
 
 def test_the_reload_helper_distinguishes_no_gateway_from_no_answer():
