@@ -484,13 +484,17 @@ def test_every_recipe_that_writes_boot_read_state_reloads_the_gateway(name):
     )
     if name in CONDITIONAL_RELOAD:
         return
-    # Anchored at the recipe body's base indentation — `just` indents a body
-    # four spaces, so anything nested is deeper. `^\s*` matched any leading
-    # whitespace, which rejected a same-line `|| scripts/reload-if-running` but
-    # let a block-form `if false; then … fi` through on the indented line — the
-    # same condition-invisible gap this whole rewrite exists to close, and a
-    # weaker property than the message below claims.
-    assert re.search(r"^ {4}scripts/reload-if-running ", code, re.M), (
+    # Anchored at the recipe body's own base indentation, read off its first
+    # line rather than named. `^\s*` matched any leading whitespace, which let a
+    # block-form `if false; then … fi` through on the indented line; `^ {4}`
+    # fixed that but made the justfile's current whitespace the contract, so a
+    # behaviour-preserving reindent to tabs would fail all four writers with a
+    # nesting message that is simply false — trading a false negative for a
+    # lying false positive. `\b` rather than a literal space, because the helper
+    # defaults its argument and an argless call is legal.
+    body = [l for l in code.splitlines() if l.strip()]
+    indent = body[0][: len(body[0]) - len(body[0].lstrip())]
+    assert re.search(rf"^{re.escape(indent)}scripts/reload-if-running\b", code, re.M), (
         f"{name}'s reload must be a statement in the recipe body, not nested in a "
         f"condition — only {sorted(CONDITIONAL_RELOAD)} may reload conditionally, "
         "and adding to that set is a deliberate decision to write down, not a "
