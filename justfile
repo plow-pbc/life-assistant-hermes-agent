@@ -19,6 +19,17 @@ restore:
     [ -f ~/.hermes-rowan/.env ] || install -m 600 .env.example ~/.hermes-rowan/.env
     install -m 600 runtime/config.yaml ~/.hermes-rowan/config.yaml
     echo "restored config.yaml to ~/.hermes-rowan"
+    # config.yaml is boot-read, the same as auth.json and .env. Without this the
+    # installed file says one thing and the running gateway holds another from
+    # its own boot — so `just restore && just sign-in` against a live gateway
+    # mints a credential for a provider it is not using, which is the failure
+    # sign-in reads the installed copy to avoid, narrowed to file vs process.
+    # Non-fatal for the same reason activate's is: the install already happened.
+    if docker compose ps --status running --quiet hermes | grep -q .; then
+      echo "restarting the gateway so it loads the config just installed..."
+      docker compose restart hermes \
+        || echo "config.yaml is installed, but the gateway did not restart — run 'just restart'." >&2
+    fi
 
 # The Plow Chat plugin, from the pinned upstream SHA. Refuses a non-SHA ref: a
 # branch would silently re-point a running agent on the next upstream push, and

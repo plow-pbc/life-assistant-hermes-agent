@@ -420,11 +420,18 @@ def test_sign_in_authenticates_against_the_configured_provider(config):
     assert "scripts/model-provider runtime/config.yaml" not in recipe
 
 
-@pytest.mark.parametrize("name", ["sign-in", "activate"])
-def test_every_recipe_that_rewrites_a_credential_reloads_the_gateway(name):
-    # The gateway reads auth.json and .env at boot. sign-in writes the first,
-    # activate replaces PLOW_CHAT_TOKEN in the second, and a gateway left
-    # running holds the previous value while the recipe prints success.
+@pytest.mark.parametrize("name", ["sign-in", "activate", "restore"])
+def test_every_recipe_that_rewrites_boot_read_state_reloads_the_gateway(name):
+    """auth.json, .env and config.yaml are all read once, at boot.
+
+    sign-in writes the first, activate replaces PLOW_CHAT_TOKEN in the second,
+    restore overwrites the third — and a gateway left running holds the previous
+    value while the recipe prints success. restore was the one missing: it is
+    not a *credential* writer, which is what the earlier name and list scoped
+    this to, but config.yaml is boot-read exactly the same way, so
+    `just restore && just sign-in` against a live gateway signed in against a
+    provider the running process was not using.
+    """
     assert "docker compose restart hermes" in _recipe(name), (
-        f"{name} rewrites a credential the gateway only reads at boot"
+        f"{name} rewrites state the gateway only reads at boot"
     )
