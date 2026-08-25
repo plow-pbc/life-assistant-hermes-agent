@@ -484,10 +484,17 @@ def test_every_recipe_that_writes_boot_read_state_reloads_the_gateway(name):
     )
     if name in CONDITIONAL_RELOAD:
         return
-    assert re.search(r"^\s*scripts/reload-if-running ", code, re.M), (
-        f"{name}'s reload must not sit behind a condition — only "
-        f"{sorted(CONDITIONAL_RELOAD)} may reload conditionally, and adding to that "
-        "set is a deliberate decision to write down, not a gate to slip in"
+    # Anchored at the recipe body's base indentation — `just` indents a body
+    # four spaces, so anything nested is deeper. `^\s*` matched any leading
+    # whitespace, which rejected a same-line `|| scripts/reload-if-running` but
+    # let a block-form `if false; then … fi` through on the indented line — the
+    # same condition-invisible gap this whole rewrite exists to close, and a
+    # weaker property than the message below claims.
+    assert re.search(r"^ {4}scripts/reload-if-running ", code, re.M), (
+        f"{name}'s reload must be a statement in the recipe body, not nested in a "
+        f"condition — only {sorted(CONDITIONAL_RELOAD)} may reload conditionally, "
+        "and adding to that set is a deliberate decision to write down, not a "
+        "gate to slip in"
     )
 
 
