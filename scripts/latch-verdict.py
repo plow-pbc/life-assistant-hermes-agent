@@ -34,6 +34,50 @@ def split_probe(text: str) -> tuple[str, str]:
     return code.strip(), body if sep else ""
 
 
+def _frames(raw: str):
+    """Every JSON payload in the body, newest parsing rules first.
+
+    streamable-HTTP frames the JSON on `data:` lines and the space after the
+    colon is optional, so both `data: {...}` and `data:{...}` are legal. A plain
+    JSON body (no SSE envelope) is also legal, which is the trailing fallback.
+    """
+    seen = False
+    for line in raw.splitlines():
+        if line.startswith("data:"):
+            seen = True
+            payload = line[5:]
+            if payload.startswith(" "):
+                payload = payload[1:]
+            try:
+                yield json.loads(payload)
+            except ValueError:
+                continue
+    if not seen:
+        try:
+            yield json.loads(raw)
+        except ValueError:
+            return
+
+
+def _response_frame(raw: str):
+    """The frame carrying the answer, or None if nothing parsed.
+
+    The server may emit notifications or requests on the stream before the
+    response, so joining every `data:` line into one string produces `{..}{..}`
+    and reports a healthy Mac as unparseable. Each frame is parsed on its own
+    and the one answering our id (or the first carrying result/error) wins.
+    """
+    fallback = None
+    for d in _frames(raw):
+        if not isinstance(d, dict):
+            continue
+        if d.get("id") == 1 and ("result" in d or "error" in d):
+            return d
+        if fallback is None and ("result" in d or "error" in d):
+            fallback = d
+    return fallback
+
+
 def verdict(code: str, raw: str) -> str:
     """Return the success line, or raise SystemExit with the reason it failed."""
     if code == "401":
@@ -52,11 +96,8 @@ def verdict(code: str, raw: str) -> str:
     if not code.startswith("2"):
         raise SystemExit("relay returned HTTP %s: %s" % (code, raw[:200]))
 
-    # streamable-HTTP frames the JSON on `data:` lines; a plain JSON body also works.
-    payload = "".join(l[6:] for l in raw.splitlines() if l.startswith("data: ")) or raw
-    try:
-        d = json.loads(payload)
-    except ValueError:
+    d = _response_frame(raw)
+    if d is None:
         raise SystemExit(
             "relay returned HTTP %s but an unparseable body: %s" % (code, raw[:200])
         )

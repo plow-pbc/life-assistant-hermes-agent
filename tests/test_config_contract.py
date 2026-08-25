@@ -801,3 +801,31 @@ def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
         "curl already writes 000 via -w on a failed transfer; a fallback printf "
         "doubles it and the transport-failure verdict becomes unreachable"
     )
+
+
+def test_latch_verdict_reads_every_legal_sse_shape():
+    """A working Mac must not be reported unparseable because of framing.
+
+    streamable-HTTP lets the server emit notifications before the response, and
+    the space after `data:` is optional. Joining every data line into one string
+    turned a two-frame answer into `{..}{..}` and a spaceless frame into a raw
+    SSE envelope — both reported as "unparseable body" from a Mac that answered
+    correctly.
+    """
+    v = _verdict()
+    answer = '{"id":1,"result":{"tools":[{"name":"plow_vault"}]}}'
+    cases = {
+        "single spaced frame": "data: " + answer,
+        "spaceless frame": "data:" + answer,
+        "notification first": 'data: {"method":"notifications/message"}\n\ndata: ' + answer,
+        "bare json, no envelope": answer,
+        "response before a trailing notification":
+            "data: " + answer + '\n\ndata: {"method":"notifications/progress"}',
+    }
+    for label, body in cases.items():
+        assert "1 tools" in v("200", body), f"{label} should parse"
+
+    # An error frame still wins over surrounding noise.
+    with pytest.raises(SystemExit) as e:
+        v("200", 'data: {"method":"notifications/message"}\n\ndata: {"id":1,"error":{"code":-32001,"message":"device offline"}}')
+    assert "device offline" in str(e.value)
