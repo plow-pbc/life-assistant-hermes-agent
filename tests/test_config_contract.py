@@ -364,8 +364,16 @@ def test_the_signed_in_provider_is_the_configured_one(config):
     restart runs, and the gateway then answers texts unauthenticated against a
     provider nobody logged into. sign-in's own comment calls that failure mode
     "silent in the worst way" and then hard-codes the value that allows it.
+
+    The cross-check alone, not an equality on the whole `model` mapping. Pinning
+    the dict froze `model.default` and forbade any key added later — which
+    config.yaml's own header invites, since keys equal to the image's defaults
+    are deliberately absent and the block grows as choices are made. A routine
+    model bump would then fail a test named for providers, with a message about
+    providers, which is the misleading-failure shape this module exists to avoid.
+    It also made the drift check degenerate: the second assert could only ever
+    run with the one provider the first had already pinned.
     """
-    assert config["model"] == {"default": "gpt-5.5", "provider": "openai-codex"}
     assert f"hermes auth add {config['model']['provider']}" in _recipe("sign-in")
 
 

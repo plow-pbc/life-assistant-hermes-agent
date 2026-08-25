@@ -107,9 +107,17 @@ activate:
     # no-op; on a re-activation it is the difference between the gateway holding
     # the token this recipe minted and the one it replaced — while the recipe
     # prints success either way.
+    #
+    # Non-fatal, and the message matters more than the restart. By this line the
+    # one-time activation is already spent and Rowan's token is already written;
+    # a red exit here would read as "activation failed", and the natural response
+    # to that is to run it again — spending a second activation and re-minting
+    # his token to recover from a docker hiccup. Same shape `up` uses for
+    # check-connectors, and for the same reason.
     if docker compose ps --status running --quiet hermes | grep -q .; then
       echo "restarting the gateway so it loads the credential just written..."
-      docker compose restart hermes
+      docker compose restart hermes \
+        || echo "activation SUCCEEDED and the credential is written — but the gateway did not restart. Do NOT re-run 'just activate'; run 'docker compose restart hermes' by hand." >&2
     fi
 
 # A separate Codex sign-in for this agent, not a copy of another agent's
