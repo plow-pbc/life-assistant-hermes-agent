@@ -39,6 +39,28 @@ def _names_path(text: str, path: str) -> bool:
     return bool(re.search(rf"{re.escape(path.removeprefix('~/'))}(?![\w-])", text))
 
 
+def _executable_files() -> list[Path]:
+    """Every tracked file this repo executes: the justfile, and scripts/.
+
+    Enumerated from `git ls-files` rather than a fixed filename. The scans below
+    used to read `justfile` alone, which was right until executable logic moved
+    into scripts/ — at which point a `scripts/backup` naming a sibling home, or
+    shelling out to `docker compose run`, would have shipped green. That is the
+    "green on the commit that adds the thing it does not know about" shape these
+    scans exist to avoid, and it reopened one directory over the moment the
+    first script landed.
+    """
+    listing = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout
+    names = [n for n in listing.split("\0") if n]
+    return [
+        ROOT / n
+        for n in names
+        if (n == "justfile" or n.startswith("scripts/")) and (ROOT / n).is_file()
+    ]
+
+
 def _recipe(name: str) -> str:
     """One recipe's body, from the justfile. Read as text rather than run.
 
@@ -262,10 +284,12 @@ def test_no_recipe_can_target_another_agents_home():
     justfile names sibling agents only descriptively ("another agent's home"),
     never as literal paths, so a whole-file scan needs no allowlist.
     """
-    for path in FORBIDDEN_PATHS:
-        assert not _names_path((ROOT / "justfile").read_text(), path), (
-            f"no recipe may reach {path}"
-        )
+    for f in _executable_files():
+        text = f.read_text()
+        for path in FORBIDDEN_PATHS:
+            assert not _names_path(text, path), (
+                f"{f.relative_to(ROOT)} must not reach {path}"
+            )
 
 
 @pytest.mark.parametrize("name", ["activate", "install-plugin", "install-connectors", "restore"])
@@ -319,11 +343,12 @@ def test_no_recipe_starts_a_second_gateway():
     Comments may name `run` — that is where the reasoning lives.
     """
     offenders = []
-    for i, line in enumerate((ROOT / "justfile").read_text().splitlines(), 1):
-        if line.lstrip().startswith("#"):
-            continue
-        if "docker compose run" in line:
-            offenders.append(f"justfile:{i}")
+    for f in _executable_files():
+        for i, line in enumerate(f.read_text().splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            if "docker compose run" in line:
+                offenders.append(f"{f.relative_to(ROOT)}:{i}")
     assert offenders == [], f"these start a rival gateway: {offenders}"
 
 
@@ -379,11 +404,20 @@ def test_sign_in_authenticates_against_the_configured_provider(config):
         f"sign-in would authenticate against {derived!r}, but the gateway is "
         f"configured for {config['model']['provider']!r}"
     )
-    # And that the recipe still uses it, rather than having drifted back to a
-    # literal that this test would then never see.
+    # And that the recipe reads the copy the GATEWAY loads. `restore` installs
+    # the repo file at ~/.hermes-rowan/config.yaml in a separate step, and the
+    # running gateway resolved model.provider from the installed one at boot —
+    # so extracting from runtime/config.yaml here mints a credential for a
+    # provider the gateway is not using the moment the two differ. Same failure
+    # this test is named for, one file over.
     recipe = _recipe("sign-in")
     assert "scripts/model-provider" in recipe
     assert 'hermes auth add "$provider"' in recipe
+    assert ".hermes-rowan/config.yaml" in recipe, (
+        "sign-in must read the installed config the gateway loaded, not the "
+        "repo copy that `restore` has not necessarily pushed to it yet"
+    )
+    assert "scripts/model-provider runtime/config.yaml" not in recipe
 
 
 @pytest.mark.parametrize("name", ["sign-in", "activate"])

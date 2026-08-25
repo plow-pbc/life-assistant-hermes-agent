@@ -145,13 +145,23 @@ sign-in:
     set -euo pipefail
     docker compose ps --status running --quiet hermes | grep -q . \
       || { echo "the gateway is not running — start it first: just up" >&2; exit 1; }
-    # Read out of config.yaml rather than written here. This used to be a second
-    # copy of model.provider, and a test asserted the two agreed — but the test
-    # matched the recipe's text, and every way of matching text is either too
-    # loose (provider "openai" is a substring of "openai-codex") or too tight.
-    # One copy has neither problem: there is no drift to detect. The extraction
-    # lives in a script so the contract test can run this exact command.
-    provider="$(scripts/model-provider runtime/config.yaml)"
+    # Read out of the config the GATEWAY loads, not the repo's copy. This used to
+    # be a second copy of model.provider written here, and a test asserted the
+    # two agreed — but the test matched the recipe's text, and every way of
+    # matching text is either too loose (provider "openai" is a substring of
+    # "openai-codex") or too tight. The extraction lives in a script so the
+    # contract test can run this exact command.
+    #
+    # ~/.hermes-rowan/config.yaml, NOT runtime/config.yaml: `restore` installs
+    # the repo's copy there in a separate, manually-invoked step, and the
+    # gateway resolved model.provider from the installed one at boot. Reading
+    # the repo copy here would mint a credential for a provider the running
+    # gateway is not using the moment the two differ — which is the same
+    # authenticated-as-one-named-another failure this was changed to remove,
+    # just moved one file over.
+    installed=~/.hermes-rowan/config.yaml
+    [ -f "$installed" ] || { echo "no $installed — run \`just restore\` first" >&2; exit 1; }
+    provider="$(scripts/model-provider "$installed")"
     docker compose exec --user "$HERMES_UID:$HERMES_GID" hermes hermes auth add "$provider"
     echo "restarting the gateway so it loads the credential just written..."
     docker compose restart hermes
