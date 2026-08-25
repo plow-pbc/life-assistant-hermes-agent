@@ -12,10 +12,26 @@ relay that cannot forward all come back as **HTTP 200 carrying an `error`
 object**. Asserting on the status would report "reachable" for a machine nobody
 is home at.
 
-Usage: latch-verdict.py <http_code> <body_file>   → prints a line, exits 0 on ok
+Usage: latch-verdict.py <probe_file>   → prints a line, exits 0 on ok
+
+The probe file is the container's combined output: the HTTP status on the first
+line, the response body (if any) after it. Splitting here rather than in shell
+is deliberate — the no-body case has no newline to split on, and getting that
+wrong in shell echoed the status back as the body.
 """
 import json
 import sys
+
+
+def split_probe(text: str) -> tuple[str, str]:
+    """First line is the status, the rest is the body.
+
+    A transport failure writes no body and therefore no newline, so a shell
+    `${x#*\n}` split does not strip and hands the status back as the body —
+    turning the operator's one actionable line into "HTTP 000: 000".
+    """
+    code, sep, body = text.partition("\n")
+    return code.strip(), body if sep else ""
 
 
 def verdict(code: str, raw: str) -> str:
@@ -62,6 +78,6 @@ def verdict(code: str, raw: str) -> str:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         raise SystemExit(__doc__)
-    print(verdict(sys.argv[1], open(sys.argv[2]).read()))
+    print(verdict(*split_probe(open(sys.argv[1]).read())))

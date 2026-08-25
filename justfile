@@ -236,21 +236,26 @@ check-latch:
     set -euo pipefail
     docker compose ps --status running --quiet hermes | grep -q . \
       || { echo "the gateway is not running — start it first: just up" >&2; exit 1; }
-    body="$(mktemp)"; trap 'rm -f "$body"' EXIT
-    code="$(docker compose exec -T --user "$HERMES_UID:$HERMES_GID" hermes sh -c '
+    raw="$(mktemp)"; trap 'rm -f "$raw"' EXIT
+    # Status on line one, body after. No `|| printf 000`: curl already writes
+    # 000 via -w on a failed transfer AND exits non-zero, so the fallback
+    # appended a second one and the verdict saw "000000" — missing the very
+    # branch that explains a transport failure. Measured in the container.
+    docker compose exec -T --user "$HERMES_UID:$HERMES_GID" hermes sh -c '
       set -a; . /opt/data/.env; set +a
-      : "${DOMO_DEVICE_UID:?empty in the dotenv — mint a credential on Rowan Mac}"
-      : "${DOMO_MCP_TOKEN:?empty in the dotenv — mint a credential on Rowan Mac}"
-      curl -sS --max-time 30 -o /tmp/latch-body -w "%{http_code}" \
+      : "${DOMO_DEVICE_UID:?empty in the dotenv — mint a credential on Rowans Mac}"
+      : "${DOMO_MCP_TOKEN:?empty in the dotenv — mint a credential on Rowans Mac}"
+      code=$(curl -sS --max-time 30 -o /tmp/latch-body -w "%{http_code}" \
         -X POST "https://api.plow.co/v1/relay/devices/$DOMO_DEVICE_UID/mcp" \
         -H "Authorization: Bearer $DOMO_MCP_TOKEN" \
         -H "Content-Type: application/json" \
         -H "Accept: application/json, text/event-stream" \
-        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" || printf 000
-      echo
-      cat /tmp/latch-body' )" || { echo "the probe did not run in the container" >&2; exit 1; }
-    printf '%s' "${code#*$'\n'}" > "$body"
-    scripts/latch-verdict.py "${code%%$'\n'*}" "$body"
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}") || true
+      [ -n "$code" ] || code=000
+      printf "%s\n" "$code"
+      cat /tmp/latch-body 2>/dev/null || true
+      rm -f /tmp/latch-body' > "$raw"
+    scripts/latch-verdict.py "$raw"
 
 # Follow the gateway's logs.
 logs:

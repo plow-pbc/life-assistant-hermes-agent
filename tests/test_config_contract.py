@@ -762,3 +762,42 @@ def test_check_latch_actually_runs_the_verdict_script():
     assert "200)" not in code, (
         "check-latch must not re-implement a status verdict next to the script"
     )
+
+
+def test_a_transport_failure_reports_as_untested_not_as_a_status():
+    """The no-body case has no newline, and both halves used to get it wrong.
+
+    curl writes `000` via -w on a failed transfer AND exits non-zero, so a
+    `|| printf 000` fallback appended a second one — measured in the container as
+    `000000`, which missed the 000 branch entirely and printed "relay returned
+    HTTP 000000". With no body there is also no newline, so a shell split handed
+    the status back as the body: "HTTP 000000: 000000". The one line that should
+    have said the credential was never tested said nothing usable.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "latch_verdict_split", ROOT / "scripts" / "latch-verdict.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # No body, no newline: the body must come back empty, not echo the status.
+    code, body = mod.split_probe("000")
+    assert (code, body) == ("000", "")
+    with pytest.raises(SystemExit) as e:
+        mod.verdict(code, body)
+    assert "NOT tested" in str(e.value)
+
+    # With a body, the split keeps them apart.
+    code, body = mod.split_probe('200\ndata: {"result":{"tools":[{"name":"t"}]}}')
+    assert code == "200" and body.startswith("data: ")
+    assert "1 tools" in mod.verdict(code, body)
+
+
+def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
+    # curl's own -w already emits 000 on a failed transfer; a `|| printf 000`
+    # next to it is what produced "000000".
+    code = _recipe_code("check-latch")
+    assert "printf 000" not in code, (
+        "curl already writes 000 via -w on a failed transfer; a fallback printf "
+        "doubles it and the transport-failure verdict becomes unreachable"
+    )
