@@ -7,6 +7,7 @@ person. A defaulted uid/gid re-owns live state in place. A branch ref in a pin
 silently re-points a running agent at whatever landed upstream. A literal
 credential ships a secret.
 """
+import ast
 import json
 import os
 import re
@@ -636,9 +637,16 @@ def test_no_name_in_this_file_is_defined_twice():
     Nothing failed either time: the suite was green, the count looked right, and
     the tests were real. Only the collected names disagreed with the file.
     """
-    names = [
-        m.group(1)
-        for m in re.finditer(r"^def (\w+)", (ROOT / __file__).read_text(), re.M)
-    ]
+    # Parsed, not grepped: the contract is "no name", and a `^def ` regex sees
+    # neither a class nor a module-level constant — either of which shadows the
+    # same way. Path(__file__) rather than ROOT / __file__, which discards ROOT
+    # because __file__ is absolute.
+    tree = ast.parse(Path(__file__).read_text())
+    names = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.append(node.name)
+        elif isinstance(node, ast.Assign):
+            names += [x.id for x in node.targets if isinstance(x, ast.Name)]
     dupes = sorted({n for n in names if names.count(n) > 1})
     assert dupes == [], f"defined more than once, so only the last one runs: {dupes}"
