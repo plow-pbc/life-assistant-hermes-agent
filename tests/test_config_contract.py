@@ -7,6 +7,7 @@ person. A defaulted uid/gid re-owns live state in place. A branch ref in a pin
 silently re-points a running agent at whatever landed upstream. A literal
 credential ships a secret.
 """
+import ast
 import json
 import os
 import re
@@ -518,13 +519,13 @@ def test_every_recipe_that_writes_boot_read_state_reloads_the_gateway(name):
     )
 
 
-def _docker_stub(tmp_path, ps_output: str, restart_rc: int = 0):
+def _docker_stub(tmp_path, ps_output: str, restart_rc: int = 0, ps_rc: int = 0):
     """A `docker` on PATH that records its argv and answers `compose ps`.
 
-    The helper's three branches turn entirely on what `docker compose ps` says
-    and whether `restart` succeeds, so stubbing docker is what makes them
-    reachable in a test. Recording argv is how "did it actually restart" becomes
-    an observable rather than an inference from an exit code.
+    All four branches turn on what `docker compose ps` says, whether it runs at
+    all (`ps_rc`), and whether `restart` succeeds — so stubbing docker is what
+    makes them reachable. Recording argv is how "did it actually restart"
+    becomes an observable rather than an inference from an exit code.
     """
     bindir = tmp_path / "bin"
     bindir.mkdir()
@@ -532,9 +533,9 @@ def _docker_stub(tmp_path, ps_output: str, restart_rc: int = 0):
     stub = bindir / "docker"
     stub.write_text(
         "#!/usr/bin/env bash\n"
-        f'printf "%s\\n" "$*" >> {log}\n'
+        f'printf "%s\\n" "$*" >> "{log}"\n'
         "case \"$*\" in\n"
-        f'  *"compose ps"*) printf "%s" "{ps_output}" ;;\n'
+        f'  *"compose ps"*) printf "%s" "{ps_output}"; exit {ps_rc} ;;\n'
         f"  *\"compose restart\"*) exit {restart_rc} ;;\n"
         "esac\n"
     )
@@ -565,7 +566,13 @@ def test_the_reload_helper_does_nothing_when_no_gateway_is_running(tmp_path):
     env, log = _docker_stub(tmp_path, ps_output="")
     proc = _run_reload(env)
     assert proc.returncode == 0, proc.stderr
-    assert "compose restart" not in (log.read_text() if log.exists() else "")
+    # Read unconditionally, and pin the positive first. Falling back to "" on a
+    # missing log sourced the negative claim from a surface that is ambiguous
+    # when empty: a stub that was never invoked would have read as "nothing was
+    # restarted" — the exact shape of absence this repo does not accept.
+    argv = log.read_text()
+    assert "compose ps" in argv, "the stub was never consulted"
+    assert "compose restart" not in argv
 
 
 def test_the_reload_helper_restarts_a_running_gateway(tmp_path):
@@ -593,22 +600,53 @@ def test_the_reload_helper_is_not_fatal_when_the_restart_fails(tmp_path):
     assert "just restart" in proc.stderr
 
 
-def test_the_reload_helper_distinguishes_no_gateway_from_no_answer():
-    """A compose that refused to run must not read as "no gateway is running".
+def test_the_reload_helper_distinguishes_no_gateway_from_no_answer(tmp_path):
+    """A docker that could not answer must not read as "no gateway is running".
 
-    Piping `docker compose ps` straight into `grep -q .` conflates them: without
-    HERMES_UID/GID exported, compose fails on compose.yml's own guards, prints
-    nothing, and the pipeline says there is nothing to reload — so the reload
-    silently never happens and every caller reports success. Run here rather
-    than read, in the one environment that reproduces it: no HERMES_UID.
+    Piping `docker compose ps` straight into `grep -q .` conflates them: compose
+    failing on compose.yml's own ${HERMES_UID:?} guards prints nothing, and the
+    pipeline says there is nothing to reload — so the reload silently never
+    happens and every caller reports success.
+
+    Driven through the stub rather than by stripping HERMES_UID from a real
+    docker. That version went green for the wrong reason on any machine without
+    docker installed: `docker` not found exits 127, the same `if !` fires, and
+    the assertion passes without ever reaching the guards it names.
     """
-    env = {k: v for k, v in os.environ.items() if k not in ("HERMES_UID", "HERMES_GID")}
-    proc = subprocess.run(
-        ["scripts/reload-if-running", "the config"],
-        cwd=ROOT, capture_output=True, text=True, env=env,
-    )
+    env, log = _docker_stub(tmp_path, ps_output="", ps_rc=1)
+    proc = _run_reload(env)
     assert proc.returncode != 0, (
         "the helper reported success without being able to ask whether a gateway "
         "was running"
     )
     assert "could not ask docker" in proc.stderr
+    argv = log.read_text()
+    assert "compose ps" in argv, "the stub was never consulted"
+    assert "compose restart" not in argv, "nothing may be restarted on an unknown state"
+
+
+
+def test_no_name_in_this_file_is_defined_twice():
+    """A redefinition silently shadows the earlier one, and pytest collects only
+    the last.
+
+    Twice on this branch an edit appended a block instead of replacing it, and
+    both times the *shadowing* copy was the older version — so a fix shipped as
+    dead code while the defect it fixed stayed live, and the mutation runs that
+    were supposed to prove the fix were exercising the copy that no longer ran.
+    Nothing failed either time: the suite was green, the count looked right, and
+    the tests were real. Only the collected names disagreed with the file.
+    """
+    # Parsed, not grepped: the contract is "no name", and a `^def ` regex sees
+    # neither a class nor a module-level constant — either of which shadows the
+    # same way. Path(__file__) rather than ROOT / __file__, which discards ROOT
+    # because __file__ is absolute.
+    tree = ast.parse(Path(__file__).read_text())
+    names = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.append(node.name)
+        elif isinstance(node, ast.Assign):
+            names += [x.id for x in node.targets if isinstance(x, ast.Name)]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert dupes == [], f"defined more than once, so only the last one runs: {dupes}"
