@@ -292,17 +292,29 @@ def test_the_pin_is_a_sha():
     )
 
 
-def test_this_agent_has_no_mcp_servers(config):
-    """No first-party servers, and that is the capability boundary.
+def test_latch_is_the_only_mcp_server(config):
+    """One server, and it reaches Rowan's Mac — nothing else.
 
-    Gmail, Calendar and Slack are reached through the plow-connectors skill,
-    which calls the Plow connector REST API with the gateway's own
-    PLOW_CHAT_TOKEN. An mcp_servers block appearing here would mean a second
-    credential arrived from somewhere — and the realistic somewhere is a
-    copy-paste from the rentals agent (Hostex, Seam) or the property agent
-    (Latch), none of which this agent may reach.
+    This used to assert *no* mcp_servers at all. Latch changed that deliberately,
+    so the contract narrows rather than disappears: the realistic copy-paste is
+    still a sibling's block arriving here, and hostex/seam are what that would
+    bring — the rentals agent's PMS access and its door locks. Naming the
+    allowed set, rather than banning two names, keeps the next one covered too.
     """
-    assert "mcp_servers" not in config
+    assert set(config["mcp_servers"]) == {"latch"}, (
+        "latch is the only server this agent may run; Hostex and Seam belong to "
+        "the rentals agent and reach a different person's property"
+    )
+
+
+def test_latch_is_configured_from_the_environment(config):
+    latch = config["mcp_servers"]["latch"]
+    assert latch["enabled"] is True
+    # The credential travels in a header, never in the URL — the relay's own
+    # rule, and a URL is logged in places a header is not.
+    assert "${DOMO_DEVICE_UID}" in latch["url"]
+    assert "${DOMO_MCP_TOKEN}" in latch["headers"]["Authorization"]
+    assert "DOMO_MCP_TOKEN" not in latch["url"]
 
 
 def test_the_phone_line_is_enabled(config):

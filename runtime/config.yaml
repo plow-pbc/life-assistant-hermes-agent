@@ -3,14 +3,29 @@
 # deliberately absent, so the pinned image supplies its current defaults rather
 # than a frozen snapshot of them.
 #
-# No mcp_servers, and that is the capability boundary rather than an omission:
-# Gmail, Google Calendar and Slack are reached through the plow-connectors
-# skill, which calls the Plow connector REST API with the gateway's own
-# PLOW_CHAT_TOKEN. There is no second credential to configure and no stdio
-# server to launch — `just install-connectors` is the whole delivery.
+# Gmail, Google Calendar and Slack are NOT here: they are reached through the
+# plow-connectors skill, which calls the Plow connector REST API with the
+# gateway's own PLOW_CHAT_TOKEN. No second credential, no stdio server —
+# `just install-connectors` is the whole delivery for those.
 model:
   default: gpt-5.5
   provider: openai-codex
+mcp_servers:
+  # Plow Latch, reached over the Plow relay: the browser and the filesystem this
+  # agent drives are ROWAN's Mac, not this container. The relay authorises the
+  # connection and tells the Mac who is asking; the Mac authorises each action.
+  #
+  # Same shape the property agent uses, and the same reason: a URL and a bearer
+  # header, both from the dotenv. The credential never appears in the URL — a
+  # URL is logged in places a header is not.
+  #
+  # This is the ONLY mcp_server here. Hostex and Seam stay absent: no PMS
+  # access, no lock control. The device this reaches is Rowan's own.
+  latch:
+    url: https://api.plow.co/v1/relay/devices/${DOMO_DEVICE_UID}/mcp
+    headers:
+      Authorization: Bearer ${DOMO_MCP_TOKEN}
+    enabled: true
 plugins:
   enabled:
   - plow-chat-platform
