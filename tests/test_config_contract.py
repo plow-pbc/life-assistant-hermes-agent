@@ -624,62 +624,21 @@ def test_the_reload_helper_distinguishes_no_gateway_from_no_answer(tmp_path):
     assert "compose restart" not in argv, "nothing may be restarted on an unknown state"
 
 
-def test_the_reload_helper_does_nothing_when_no_gateway_is_running(tmp_path):
-    # The normal case during first bring-up. Exit 0, and crucially no restart
-    # attempted — the early exit and the restart are different branches.
-    env, log = _docker_stub(tmp_path, ps_output="")
-    proc = _run_reload(env)
-    assert proc.returncode == 0, proc.stderr
-    # Read unconditionally, and pin the positive first. Falling back to "" on a
-    # missing log sourced the negative claim from a surface that is ambiguous
-    # when empty: a stub that was never invoked would have read as "nothing was
-    # restarted" — the exact shape of absence this repo does not accept.
-    argv = log.read_text()
-    assert "compose ps" in argv, "the stub was never consulted"
-    assert "compose restart" not in argv
 
+def test_no_name_in_this_file_is_defined_twice():
+    """A redefinition silently shadows the earlier one, and pytest collects only
+    the last.
 
-def test_the_reload_helper_restarts_a_running_gateway(tmp_path):
-    # The branch the whole helper exists for, and the one nothing covered while
-    # the docstring above claimed it did.
-    env, log = _docker_stub(tmp_path, ps_output="abc123")
-    proc = _run_reload(env)
-    assert proc.returncode == 0, proc.stderr
-    assert "compose restart hermes" in log.read_text()
-    assert "restarting the gateway" in proc.stdout
-
-
-def test_the_reload_helper_is_not_fatal_when_the_restart_fails(tmp_path):
-    """A failed restart must not look like a failed write.
-
-    Every caller has finished its write by the time this runs — activate has
-    spent a one-time activation — so a red exit here reads as "the write failed"
-    and invites a re-run that costs far more than a stale process does. The
-    justfile's comments depend on this contract; it is asserted rather than
-    described.
+    Twice on this branch an edit appended a block instead of replacing it, and
+    both times the *shadowing* copy was the older version — so a fix shipped as
+    dead code while the defect it fixed stayed live, and the mutation runs that
+    were supposed to prove the fix were exercising the copy that no longer ran.
+    Nothing failed either time: the suite was green, the count looked right, and
+    the tests were real. Only the collected names disagreed with the file.
     """
-    env, _ = _docker_stub(tmp_path, ps_output="abc123", restart_rc=1)
-    proc = _run_reload(env)
-    assert proc.returncode == 0, "a failed restart must not fail the caller"
-    assert "just restart" in proc.stderr
-
-
-def test_the_reload_helper_distinguishes_no_gateway_from_no_answer():
-    """A compose that refused to run must not read as "no gateway is running".
-
-    Piping `docker compose ps` straight into `grep -q .` conflates them: without
-    HERMES_UID/GID exported, compose fails on compose.yml's own guards, prints
-    nothing, and the pipeline says there is nothing to reload — so the reload
-    silently never happens and every caller reports success. Run here rather
-    than read, in the one environment that reproduces it: no HERMES_UID.
-    """
-    env = {k: v for k, v in os.environ.items() if k not in ("HERMES_UID", "HERMES_GID")}
-    proc = subprocess.run(
-        ["scripts/reload-if-running", "the config"],
-        cwd=ROOT, capture_output=True, text=True, env=env,
-    )
-    assert proc.returncode != 0, (
-        "the helper reported success without being able to ask whether a gateway "
-        "was running"
-    )
-    assert "could not ask docker" in proc.stderr
+    names = [
+        m.group(1)
+        for m in re.finditer(r"^def (\w+)", (ROOT / __file__).read_text(), re.M)
+    ]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert dupes == [], f"defined more than once, so only the last one runs: {dupes}"
