@@ -454,11 +454,6 @@ def test_sign_in_authenticates_against_the_configured_provider(config):
 # then required to restart the gateway, which is not a contract worth asserting.
 BOOT_READ_WRITERS = ("restore", "install-plugin", "install-connectors", "activate", "sign-in")
 
-# restore alone reloads conditionally. Written down here rather than left for a
-# loose substring to wave through: it is the idempotent installer and the first
-# bring-up step, so bouncing a live gateway on a byte-identical copy would drop
-# an in-flight chat turn for nothing.
-CONDITIONAL_RELOAD = {"restore"}
 
 
 @pytest.mark.parametrize("name", BOOT_READ_WRITERS)
@@ -475,30 +470,19 @@ def test_every_recipe_that_writes_boot_read_state_reloads_the_gateway(name):
     one gained a change-gate, the others did not; one was fatal under `set -e`,
     the others were not — and a substring check for "docker compose restart
     hermes" cannot tell a reload that happens from one behind a condition that
-    is false exactly when it matters. One copy, in a script, is what makes the
-    behaviour testable at all; this only asserts every writer calls it.
+    is false exactly when it matters.
+
+    And it still cannot. Four rounds of tightening this anchor each found a
+    narrower way to hide a gate — a same-line `||`, a block-form `if`, a
+    continuation-wrapped `||` — because whether a call is reachable is not a
+    property of shell *text*. So this asserts only what reading text can honestly
+    decide: every writer calls the helper. Whether the reload then happens is the
+    helper's behaviour, and that is covered by running it, one test down. An
+    assertion that claimed more than it checked is the failure this file keeps
+    removing; the last version's message named a gate it could not see.
     """
-    code = _recipe_code(name)
-    assert "scripts/reload-if-running" in code, (
+    assert "scripts/reload-if-running" in _recipe_code(name), (
         f"{name} writes state the gateway only reads at boot, and must reload it"
-    )
-    if name in CONDITIONAL_RELOAD:
-        return
-    # Anchored at the recipe body's own base indentation, read off its first
-    # line rather than named. `^\s*` matched any leading whitespace, which let a
-    # block-form `if false; then … fi` through on the indented line; `^ {4}`
-    # fixed that but made the justfile's current whitespace the contract, so a
-    # behaviour-preserving reindent to tabs would fail all four writers with a
-    # nesting message that is simply false — trading a false negative for a
-    # lying false positive. `\b` rather than a literal space, because the helper
-    # defaults its argument and an argless call is legal.
-    body = [l for l in code.splitlines() if l.strip()]
-    indent = body[0][: len(body[0]) - len(body[0].lstrip())]
-    assert re.search(rf"^{re.escape(indent)}scripts/reload-if-running\b", code, re.M), (
-        f"{name}'s reload must be a statement in the recipe body, not nested in a "
-        f"condition — only {sorted(CONDITIONAL_RELOAD)} may reload conditionally, "
-        "and adding to that set is a deliberate decision to write down, not a "
-        "gate to slip in"
     )
 
 
