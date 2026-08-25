@@ -1,0 +1,29 @@
+# The declarative half of ~/.hermes-rowan — everything that is a deliberate
+# choice for this deployment. Keys equal to the image's own defaults are
+# deliberately absent, so the pinned image supplies its current defaults rather
+# than a frozen snapshot of them.
+#
+# No mcp_servers, and that is the capability boundary rather than an omission:
+# Gmail, Google Calendar and Slack are reached through the plow-connectors
+# skill, which calls the Plow connector REST API with the gateway's own
+# PLOW_CHAT_TOKEN. There is no second credential to configure and no stdio
+# server to launch — `just install-connectors` is the whole delivery.
+model:
+  default: gpt-5.5
+  provider: openai-codex
+plugins:
+  enabled:
+  - plow-chat-platform
+  entries:
+    plow-chat-platform:
+      # The plugin registers one platform and no tools. Denying overrides keeps
+      # a future plugin change from silently shadowing an image tool of the
+      # same name, which would be invisible from this file.
+      allow_tool_override: false
+platforms:
+  plow_chat:
+    enabled: true
+    # No extra.group_prompts: this agent has one private chat and no groups.
+    # The plugin keys group prompts by display name from PLOW_CHAT_GROUP_UIDS,
+    # so a prompt naming no configured group is logged and skipped rather than
+    # fatal — adding one here before the group exists is a silent no-op.
