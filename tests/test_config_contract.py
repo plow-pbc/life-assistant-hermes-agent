@@ -46,24 +46,42 @@ def compose():
     return yaml.safe_load((ROOT / "compose.yml").read_text())
 
 
-def test_mounts_only_this_agents_home(compose):
-    volumes = compose["services"]["hermes"]["volumes"]
-    assert volumes == ["~/.hermes-rowan:/opt/data"], (
-        "this agent needs exactly one mount: it reaches Gmail, Calendar and "
-        "Slack over the Plow connector API, not through the filesystem. A "
-        "copy-paste from a sibling's compose file is the realistic way this "
-        "breaks, and every path it would bring reaches another agent's live "
-        "state — belonging to a different operator than this one."
+def test_every_service_mounts_only_this_agents_home(compose):
+    """Every service, not just `hermes`.
+
+    Scoping this to compose["services"]["hermes"] missed the realistic shape of
+    the mistake: a whole service block pasted in from a sibling repo arrives
+    under its own key, carrying its own six mounts, and a check that reads one
+    key by name never looks at it.
+    """
+    assert list(compose["services"]) == ["hermes"], (
+        "this repo runs one gateway; a second service is the copy-paste this "
+        "file exists to catch, not a configuration to extend"
     )
+    for name, service in compose["services"].items():
+        assert service.get("volumes") == ["~/.hermes-rowan:/opt/data"], (
+            f"service {name!r} needs exactly one mount: this agent reaches "
+            "Gmail, Calendar and Slack over the Plow connector API, not through "
+            "the filesystem. Every path a sibling's compose file would bring "
+            "reaches another agent's live state — belonging to a different "
+            "operator than this one."
+        )
 
 
 def test_no_forbidden_path_appears_anywhere_in_compose():
-    # Substring, not the parsed mount list: one of these reaching this file as a
-    # long-form mount mapping, or in an env var, is the same mistake and the
-    # parsed-volumes assertion above would not see either.
+    """Any mention, not just a mount.
+
+    The trailing-colon version only matched a short-form mount, so
+    `- HERMES_VAULT=~/hermes-vault` — an env var handing the same path to the
+    gateway by another route — passed clean. Word-boundary instead, which also
+    keeps `~/.hermes` from matching inside `~/.hermes-rowan`, the one path this
+    file must name.
+    """
     text = (ROOT / "compose.yml").read_text()
     for path in FORBIDDEN_PATHS:
-        assert f"{path}:" not in text, f"compose.yml must not mount {path}"
+        assert not re.search(rf"{re.escape(path)}(?![\w-])", text), (
+            f"compose.yml must not name {path}"
+        )
 
 
 def test_uid_and_gid_have_no_default(compose):

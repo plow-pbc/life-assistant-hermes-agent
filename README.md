@@ -67,9 +67,15 @@ just install-connectors  # Gmail / Calendar / Slack, from the same pinned SHA
 just activate            # prints a code — Rowan texts it from his phone
 just up                  # must precede sign-in: that runs inside this container
 just sign-in             # one-time Codex device flow — Rowan completes it
-just check-connectors     # which of his connectors are linked and reachable
+just check-connectors    # which of his connectors are linked and reachable
 just agent 'what is on my calendar tomorrow?'   # a turn without the phone
 ```
+
+Google Calendar has no connector of its own — upstream puts it **under the
+`gmail` connector**, as a `calendar.*` action namespace. So `gmail status` is
+the Google connector's status and covers both mail and calendar, and
+`check-connectors` probing `gmail` and `slack` is the complete set. There is no
+third name to add.
 
 ## What only Rowan can do
 
@@ -147,5 +153,7 @@ own helper.
   host and its three siblings. A life assistant reads "tomorrow morning" off
   this, so a wrong value is wrong in the one place this agent is for.
 - **Connectors are linked on Rowan's side, not here.** `just check-connectors`
-  reports `connected:false` for anything he has not linked to his Plow account
-  yet. That is a real answer, not a failure.
+  reports `connected:false` for either connector he has not linked to his Plow
+  account yet. That is a real answer, not a failure — and because Calendar rides
+  on the `gmail` connector, linking Google is what turns on the calendar
+  questions this agent is mostly for.
