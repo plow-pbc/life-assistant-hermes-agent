@@ -25,17 +25,10 @@ restore:
     cmp -s runtime/config.yaml ~/.hermes-rowan/config.yaml && changed= || changed=1
     install -m 600 runtime/config.yaml ~/.hermes-rowan/config.yaml
     echo "restored config.yaml to ~/.hermes-rowan"
-    # config.yaml is boot-read, the same as auth.json and .env. Without this the
-    # installed file says one thing and the running gateway holds another from
-    # its own boot — so `just restore && just sign-in` against a live gateway
-    # mints a credential for a provider it is not using, which is the failure
-    # sign-in reads the installed copy to avoid, narrowed to file vs process.
-    # Non-fatal for the same reason activate's is: the install already happened.
-    if [ -n "$changed" ] && docker compose ps --status running --quiet hermes | grep -q .; then
-      echo "restarting the gateway so it loads the config just installed..."
-      docker compose restart hermes \
-        || echo "config.yaml is installed, but the gateway did not restart — run 'just restart'." >&2
-    fi
+    # Only when it actually changed: restore is the idempotent installer and
+    # the first bring-up step, so bouncing a live gateway on a byte-identical
+    # copy drops an in-flight chat turn for nothing.
+    [ -z "$changed" ] || scripts/reload-if-running "the config just installed"
 
 # The Plow Chat plugin, from the pinned upstream SHA. Refuses a non-SHA ref: a
 # branch would silently re-point a running agent on the next upstream push, and
@@ -49,14 +42,7 @@ install-plugin:
     tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
     curl -fsSL "https://raw.githubusercontent.com/plow-pbc/seed-hermes-plow/$ref/ref/scripts/install_direct_mount.sh" -o "$tmp"
     PLOW_CHAT_PLUGIN_REF="$ref" bash "$tmp" --data-dir "$HOME/.hermes-rowan"
-    # Boot-read, so a live gateway keeps running the previous one until it is
-    # reloaded. Non-fatal for the same reason activate's is: the install has
-    # already happened by this line.
-    if docker compose ps --status running --quiet hermes | grep -q .; then
-      echo "restarting the gateway so it loads what was just installed..."
-      docker compose restart hermes \
-        || echo "installed, but the gateway did not restart — run 'just restart'." >&2
-    fi
+    scripts/reload-if-running "the plugin"
 
 # Gmail, Google Calendar and Slack, from the same pinned SHA as the plugin. The
 # skill calls the Plow connector REST API with the gateway's existing
@@ -93,14 +79,7 @@ install-connectors:
     install -m 644 "$tmp/SKILL.md" "$dest/SKILL.md"
     install -m 755 "$tmp/plow_connector.py" "$dest/plow_connector.py"
     printf 'installed plow-connectors at %s (from %s)\n' "$dest" "${ref:0:7}"
-    # Boot-read, so a live gateway keeps running the previous one until it is
-    # reloaded. Non-fatal for the same reason activate's is: the install has
-    # already happened by this line.
-    if docker compose ps --status running --quiet hermes | grep -q .; then
-      echo "restarting the gateway so it loads what was just installed..."
-      docker compose restart hermes \
-        || echo "installed, but the gateway did not restart — run 'just restart'." >&2
-    fi
+    scripts/reload-if-running "the connector skill"
 
 # Activate this agent's Plow number. Prints a code; ROWAN texts it from his
 # phone, and the script polls until Plow confirms.
@@ -140,18 +119,10 @@ activate:
     # no-op; on a re-activation it is the difference between the gateway holding
     # the token this recipe minted and the one it replaced — while the recipe
     # prints success either way.
-    #
-    # Non-fatal, and the message matters more than the restart. By this line the
-    # one-time activation is already spent and Rowan's token is already written;
-    # a red exit here would read as "activation failed", and the natural response
-    # to that is to run it again — spending a second activation and re-minting
-    # his token to recover from a docker hiccup. Same shape `up` uses for
-    # check-connectors, and for the same reason.
-    if docker compose ps --status running --quiet hermes | grep -q .; then
-      echo "restarting the gateway so it loads the credential just written..."
-      docker compose restart hermes \
-        || echo "activation SUCCEEDED and the credential is written — but the gateway did not restart. Do NOT re-run 'just activate'; run 'just restart'." >&2
-    fi
+    # Non-fatal, and by this line the one-time activation is already spent:
+    # a red exit would read as "activation failed" and invite a re-run that
+    # costs a second activation. The script owns that behaviour.
+    scripts/reload-if-running "the credential just written"
 
 # A separate Codex sign-in for this agent, not a copy of another agent's
 # auth.json — that file is guarded by auth.lock, and this one is a different
@@ -196,8 +167,7 @@ sign-in:
     [ -f "$installed" ] || { echo "no $installed — run \`just restore\` first" >&2; exit 1; }
     provider="$(scripts/model-provider "$installed")"
     docker compose exec --user "$HERMES_UID:$HERMES_GID" hermes hermes auth add "$provider"
-    echo "restarting the gateway so it loads the credential just written..."
-    docker compose restart hermes
+    scripts/reload-if-running "the credential just written"
 
 # Start the gateway, then say which of Rowan's connectors it can actually reach.
 up:

@@ -8,6 +8,7 @@ silently re-points a running agent at whatever landed upstream. A literal
 credential ships a secret.
 """
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -445,35 +446,67 @@ def test_sign_in_authenticates_against_the_configured_provider(config):
     )
 
 
-def test_every_recipe_that_rewrites_boot_read_state_reloads_the_gateway():
-    """Derived from which recipes touch the agent's home, not an enumerated list.
+# The recipes that write into ~/.hermes-rowan, listed rather than derived — and
+# said plainly, because the previous version's docstring claimed a derivation
+# that a hard-coded set-equality was actually performing. Deriving it by "names
+# the home in its code" was also the wrong criterion: it is *writing* that
+# obliges a reload, so a future read-only recipe would have been swept in and
+# then required to restart the gateway, which is not a contract worth asserting.
+BOOT_READ_WRITERS = ("restore", "install-plugin", "install-connectors", "activate", "sign-in")
 
-    auth.json, .env, config.yaml and the plugin are all read once, at process
-    start — upstream's installer says so outright ("Hermes boots once with the
-    Plow Chat environment already populated"). So any recipe that writes into
+# restore alone reloads conditionally. Written down here rather than left for a
+# loose substring to wave through: it is the idempotent installer and the first
+# bring-up step, so bouncing a live gateway on a byte-identical copy would drop
+# an in-flight chat turn for nothing.
+CONDITIONAL_RELOAD = {"restore"}
+
+
+@pytest.mark.parametrize("name", BOOT_READ_WRITERS)
+def test_every_recipe_that_writes_boot_read_state_reloads_the_gateway(name):
+    """auth.json, .env, config.yaml and the plugin are all read once, at boot.
+
+    Upstream says so outright — "Hermes boots once with the Plow Chat
+    environment already populated" — so any recipe that writes into
     ~/.hermes-rowan leaves a live gateway running the previous value while the
     recipe prints success.
 
-    The list version grew by exactly one name each time that was noticed —
-    credential writers, then restore, and install-plugin still outside it. The
-    set is derived here instead: a recipe qualifies by naming the agent's home
-    in its *code*, so the next writer added is covered on the commit that adds
-    it. `down` names the home only in prose, which is why this reads
-    _recipe_code.
-
-    install-connectors is included deliberately. Upstream documents the plugin's
-    boot-read timing and says nothing about skills, and an unnecessary reload
-    costs one bounce while a missing one costs the capability silently — so this
-    errs toward reloading rather than toward a load timing nobody verified.
+    Asserted on the call to scripts/reload-if-running rather than on the restart
+    command. Four inline copies of that block drifted the moment they existed —
+    one gained a change-gate, the others did not; one was fatal under `set -e`,
+    the others were not — and a substring check for "docker compose restart
+    hermes" cannot tell a reload that happens from one behind a condition that
+    is false exactly when it matters. One copy, in a script, is what makes the
+    behaviour testable at all; this only asserts every writer calls it.
     """
-    writers = [n for n in _recipe_names() if ".hermes-rowan" in _recipe_code(n)]
-    # A guard on the derivation itself: if this ever comes back empty the loop
-    # below passes vacuously and asserts nothing at all.
-    assert set(writers) == {
-        "restore", "install-plugin", "install-connectors", "activate", "sign-in"
-    }, f"unexpected set of recipes writing to the agent's home: {writers}"
-    for name in writers:
-        assert "docker compose restart hermes" in _recipe_code(name), (
-            f"{name} writes state the gateway only reads at boot"
-        )
+    code = _recipe_code(name)
+    assert "scripts/reload-if-running" in code, (
+        f"{name} writes state the gateway only reads at boot, and must reload it"
+    )
+    if name in CONDITIONAL_RELOAD:
+        return
+    assert re.search(r"^\s*scripts/reload-if-running ", code, re.M), (
+        f"{name}'s reload must not sit behind a condition — only "
+        f"{sorted(CONDITIONAL_RELOAD)} may reload conditionally, and adding to that "
+        "set is a deliberate decision to write down, not a gate to slip in"
+    )
 
+
+def test_the_reload_helper_distinguishes_no_gateway_from_no_answer():
+    """A compose that refused to run must not read as "no gateway is running".
+
+    Piping `docker compose ps` straight into `grep -q .` conflates them: without
+    HERMES_UID/GID exported, compose fails on compose.yml's own guards, prints
+    nothing, and the pipeline says there is nothing to reload — so the reload
+    silently never happens and every caller reports success. Run here rather
+    than read, in the one environment that reproduces it: no HERMES_UID.
+    """
+    env = {k: v for k, v in os.environ.items() if k not in ("HERMES_UID", "HERMES_GID")}
+    proc = subprocess.run(
+        ["scripts/reload-if-running", "the config"],
+        cwd=ROOT, capture_output=True, text=True, env=env,
+    )
+    assert proc.returncode != 0, (
+        "the helper reported success without being able to ask whether a gateway "
+        "was running"
+    )
+    assert "could not ask docker" in proc.stderr
