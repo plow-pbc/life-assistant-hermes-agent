@@ -77,6 +77,32 @@ def _recipe(name: str) -> str:
     return "\n".join(body)
 
 
+def _recipe_code(name: str) -> str:
+    """One recipe's body with comment lines removed.
+
+    Every assertion about what a recipe *does* has to read this, not _recipe().
+    The reasoning blocks in this justfile quote the paths they warn against —
+    sign-in's says "~/.hermes-rowan/config.yaml, NOT runtime/config.yaml" — so a
+    substring check against the full body passes on the warning while the code
+    below it does the opposite. Verified: reverting sign-in's `installed=` to the
+    repo copy left the whole suite green.
+    """
+    return "\n".join(
+        l for l in _recipe(name).splitlines() if not l.lstrip().startswith("#")
+    )
+
+
+def _recipe_names() -> list[str]:
+    """Every recipe `just` knows about."""
+    dump = json.loads(
+        subprocess.run(
+            ["just", "--dump", "--dump-format", "json"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout
+    )
+    return sorted(dump["recipes"])
+
+
 @pytest.fixture
 def compose():
     return yaml.safe_load((ROOT / "compose.yml").read_text())
@@ -297,13 +323,13 @@ def test_every_writer_names_this_agents_home(name):
     # The other half of the scan above: these four write to a host path, and
     # each must say which. A whole-file absence check cannot see a recipe that
     # names no home at all and defaults to upstream's.
-    assert ".hermes-rowan" in _recipe(name), f"{name} must name this agent's own home"
+    assert ".hermes-rowan" in _recipe_code(name), f"{name} must name this agent's own home"
 
 
 def test_activation_refuses_a_home_it_was_edited_to_point_elsewhere():
     # The guard, not just the literal: the assertion above reads the recipe as
     # committed, and this is what stops an edited copy at runtime.
-    recipe = _recipe("activate")
+    recipe = _recipe_code("activate")
     assert "*/.hermes-rowan)" in recipe, (
         "activate needs its runtime guard on $HOME/.hermes-rowan — the string "
         "check above only sees the recipe as written"
@@ -320,8 +346,8 @@ def test_the_connector_skill_is_installed_where_it_is_invoked():
     own helper, while check-connectors probes a path nothing wrote. These two
     recipes are the pair that can drift.
     """
-    assert '"$HOME/.hermes-rowan/skills/plow-connectors"' in _recipe("install-connectors")
-    assert "/opt/data/skills/plow-connectors/plow_connector.py" in _recipe("check-connectors")
+    assert '"$HOME/.hermes-rowan/skills/plow-connectors"' in _recipe_code("install-connectors")
+    assert "/opt/data/skills/plow-connectors/plow_connector.py" in _recipe_code("check-connectors")
 
 
 def test_both_installs_read_the_same_pin():
@@ -329,7 +355,7 @@ def test_both_installs_read_the_same_pin():
     # can drift would mean the skill reading the mail and the plugin holding the
     # token came from different upstream trees.
     for name in ("install-plugin", "install-connectors", "activate"):
-        assert "runtime/plow-chat-plugin.ref" in _recipe(name)
+        assert "runtime/plow-chat-plugin.ref" in _recipe_code(name)
 
 
 def test_no_recipe_starts_a_second_gateway():
@@ -410,28 +436,44 @@ def test_sign_in_authenticates_against_the_configured_provider(config):
     # so extracting from runtime/config.yaml here mints a credential for a
     # provider the gateway is not using the moment the two differ. Same failure
     # this test is named for, one file over.
-    recipe = _recipe("sign-in")
+    recipe = _recipe_code("sign-in")
     assert "scripts/model-provider" in recipe
     assert 'hermes auth add "$provider"' in recipe
-    assert ".hermes-rowan/config.yaml" in recipe, (
+    assert re.search(r"^\s*installed=~/\.hermes-rowan/config\.yaml\s*$", recipe, re.M), (
         "sign-in must read the installed config the gateway loaded, not the "
         "repo copy that `restore` has not necessarily pushed to it yet"
     )
-    assert "scripts/model-provider runtime/config.yaml" not in recipe
 
 
-@pytest.mark.parametrize("name", ["sign-in", "activate", "restore"])
-def test_every_recipe_that_rewrites_boot_read_state_reloads_the_gateway(name):
-    """auth.json, .env and config.yaml are all read once, at boot.
+def test_every_recipe_that_rewrites_boot_read_state_reloads_the_gateway():
+    """Derived from which recipes touch the agent's home, not an enumerated list.
 
-    sign-in writes the first, activate replaces PLOW_CHAT_TOKEN in the second,
-    restore overwrites the third — and a gateway left running holds the previous
-    value while the recipe prints success. restore was the one missing: it is
-    not a *credential* writer, which is what the earlier name and list scoped
-    this to, but config.yaml is boot-read exactly the same way, so
-    `just restore && just sign-in` against a live gateway signed in against a
-    provider the running process was not using.
+    auth.json, .env, config.yaml and the plugin are all read once, at process
+    start — upstream's installer says so outright ("Hermes boots once with the
+    Plow Chat environment already populated"). So any recipe that writes into
+    ~/.hermes-rowan leaves a live gateway running the previous value while the
+    recipe prints success.
+
+    The list version grew by exactly one name each time that was noticed —
+    credential writers, then restore, and install-plugin still outside it. The
+    set is derived here instead: a recipe qualifies by naming the agent's home
+    in its *code*, so the next writer added is covered on the commit that adds
+    it. `down` names the home only in prose, which is why this reads
+    _recipe_code.
+
+    install-connectors is included deliberately. Upstream documents the plugin's
+    boot-read timing and says nothing about skills, and an unnecessary reload
+    costs one bounce while a missing one costs the capability silently — so this
+    errs toward reloading rather than toward a load timing nobody verified.
     """
-    assert "docker compose restart hermes" in _recipe(name), (
-        f"{name} rewrites state the gateway only reads at boot"
-    )
+    writers = [n for n in _recipe_names() if ".hermes-rowan" in _recipe_code(n)]
+    # A guard on the derivation itself: if this ever comes back empty the loop
+    # below passes vacuously and asserts nothing at all.
+    assert set(writers) == {
+        "restore", "install-plugin", "install-connectors", "activate", "sign-in"
+    }, f"unexpected set of recipes writing to the agent's home: {writers}"
+    for name in writers:
+        assert "docker compose restart hermes" in _recipe_code(name), (
+            f"{name} writes state the gateway only reads at boot"
+        )
+

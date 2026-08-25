@@ -17,6 +17,12 @@ restore:
     mkdir -p ~/.hermes-rowan
     umask 077
     [ -f ~/.hermes-rowan/.env ] || install -m 600 .env.example ~/.hermes-rowan/.env
+    # Compared before the copy, because after it they are always identical.
+    # restore is the idempotent installer and the first line of the documented
+    # bring-up — the recipe you re-run to be sure state is in place — so
+    # bouncing a live gateway on a byte-identical copy drops an in-flight chat
+    # turn for nothing. The staleness below only exists when the two differ.
+    cmp -s runtime/config.yaml ~/.hermes-rowan/config.yaml && changed= || changed=1
     install -m 600 runtime/config.yaml ~/.hermes-rowan/config.yaml
     echo "restored config.yaml to ~/.hermes-rowan"
     # config.yaml is boot-read, the same as auth.json and .env. Without this the
@@ -25,7 +31,7 @@ restore:
     # mints a credential for a provider it is not using, which is the failure
     # sign-in reads the installed copy to avoid, narrowed to file vs process.
     # Non-fatal for the same reason activate's is: the install already happened.
-    if docker compose ps --status running --quiet hermes | grep -q .; then
+    if [ -n "$changed" ] && docker compose ps --status running --quiet hermes | grep -q .; then
       echo "restarting the gateway so it loads the config just installed..."
       docker compose restart hermes \
         || echo "config.yaml is installed, but the gateway did not restart — run 'just restart'." >&2
@@ -43,6 +49,14 @@ install-plugin:
     tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
     curl -fsSL "https://raw.githubusercontent.com/plow-pbc/seed-hermes-plow/$ref/ref/scripts/install_direct_mount.sh" -o "$tmp"
     PLOW_CHAT_PLUGIN_REF="$ref" bash "$tmp" --data-dir "$HOME/.hermes-rowan"
+    # Boot-read, so a live gateway keeps running the previous one until it is
+    # reloaded. Non-fatal for the same reason activate's is: the install has
+    # already happened by this line.
+    if docker compose ps --status running --quiet hermes | grep -q .; then
+      echo "restarting the gateway so it loads what was just installed..."
+      docker compose restart hermes \
+        || echo "installed, but the gateway did not restart — run 'just restart'." >&2
+    fi
 
 # Gmail, Google Calendar and Slack, from the same pinned SHA as the plugin. The
 # skill calls the Plow connector REST API with the gateway's existing
@@ -79,6 +93,14 @@ install-connectors:
     install -m 644 "$tmp/SKILL.md" "$dest/SKILL.md"
     install -m 755 "$tmp/plow_connector.py" "$dest/plow_connector.py"
     printf 'installed plow-connectors at %s (from %s)\n' "$dest" "${ref:0:7}"
+    # Boot-read, so a live gateway keeps running the previous one until it is
+    # reloaded. Non-fatal for the same reason activate's is: the install has
+    # already happened by this line.
+    if docker compose ps --status running --quiet hermes | grep -q .; then
+      echo "restarting the gateway so it loads what was just installed..."
+      docker compose restart hermes \
+        || echo "installed, but the gateway did not restart — run 'just restart'." >&2
+    fi
 
 # Activate this agent's Plow number. Prints a code; ROWAN texts it from his
 # phone, and the script polls until Plow confirms.
