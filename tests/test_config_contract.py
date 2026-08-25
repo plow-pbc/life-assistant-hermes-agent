@@ -355,29 +355,35 @@ def test_every_recipe_has_a_real_description():
     assert bad == {}, f"recipes whose `just --list` text is not a description: {bad}"
 
 
-def test_sign_in_derives_its_provider_from_the_config(config):
-    """One copy of the provider, not two that a test has to keep in sync.
+def test_sign_in_authenticates_against_the_configured_provider(config):
+    """Run the real extraction, and compare what it produces to the config.
 
-    `hermes auth add <provider>` used to hard-code the value that
-    runtime/config.yaml also declares, and this test asserted the two agreed by
-    matching the recipe's text. Every text match was wrong in one direction or
-    the other: exact-equality on the whole `model` mapping froze `model.default`
-    and forbade keys the config's own header invites, and a bare substring let
-    `provider: openai` pass against `hermes auth add openai-codex` — authenticating
-    as one provider while the config named another, which is the exact silent
-    failure the assertion existed to prevent.
+    End-to-end rather than a text match on the recipe. Three review rounds went
+    into comparing sign-in's hard-coded provider against config.yaml by matching
+    the recipe's text, and every match was wrong in one direction: equality on
+    the whole `model` mapping froze `model.default` and forbade keys the config
+    header invites; a bare substring let `provider: openai` pass against
+    `auth add openai-codex`, authenticating as one provider while the config
+    named another.
 
-    So the recipe reads the config instead. With one copy there is no drift to
-    detect, and what is left to assert is that it stayed that way.
+    Deriving the value fixed the drift, but the first version of this test then
+    only asserted the recipe *mentioned* the config file — so a wrong indent, a
+    renamed key, or a block picked in the wrong order would all have shipped
+    green. Executing the same command the recipe runs is what actually covers it.
     """
+    derived = subprocess.run(
+        ["scripts/model-provider", "runtime/config.yaml"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert derived == config["model"]["provider"], (
+        f"sign-in would authenticate against {derived!r}, but the gateway is "
+        f"configured for {config['model']['provider']!r}"
+    )
+    # And that the recipe still uses it, rather than having drifted back to a
+    # literal that this test would then never see.
     recipe = _recipe("sign-in")
-    assert "runtime/config.yaml" in recipe, (
-        "sign-in must read model.provider from the config, not restate it"
-    )
-    assert f"hermes auth add {config['model']['provider']}" not in recipe, (
-        "the provider is hard-coded again — that is the second copy this "
-        "recipe was changed to remove"
-    )
+    assert "scripts/model-provider" in recipe
+    assert 'hermes auth add "$provider"' in recipe
 
 
 @pytest.mark.parametrize("name", ["sign-in", "activate"])

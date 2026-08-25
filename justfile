@@ -149,9 +149,9 @@ sign-in:
     # copy of model.provider, and a test asserted the two agreed — but the test
     # matched the recipe's text, and every way of matching text is either too
     # loose (provider "openai" is a substring of "openai-codex") or too tight.
-    # One copy has neither problem: there is no drift to detect.
-    provider="$(sed -n 's/^  provider:[[:space:]]*//p' runtime/config.yaml | head -1)"
-    [ -n "$provider" ] || { echo "no model.provider in runtime/config.yaml" >&2; exit 1; }
+    # One copy has neither problem: there is no drift to detect. The extraction
+    # lives in a script so the contract test can run this exact command.
+    provider="$(scripts/model-provider runtime/config.yaml)"
     docker compose exec --user "$HERMES_UID:$HERMES_GID" hermes hermes auth add "$provider"
     echo "restarting the gateway so it loads the credential just written..."
     docker compose restart hermes
