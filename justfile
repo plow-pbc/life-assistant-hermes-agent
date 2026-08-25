@@ -195,8 +195,12 @@ check-connectors:
       || { echo "the gateway is not running — start it first: just up" >&2; exit 1; }
     rc=0
     for c in gmail slack; do
+      # `set -a; . /opt/data/.env` because the gateway loads that dotenv into its
+      # own process and the skill inherits it — but a `docker compose exec` does
+      # not, so without this the probe reported "token required" against a
+      # perfectly good token. A check that can only ever fail is worse than none.
       if out="$(docker compose exec -T --user "$HERMES_UID:$HERMES_GID" hermes \
-          python3 /opt/data/skills/plow-connectors/plow_connector.py "$c" status 2>&1)"; then
+          sh -c 'set -a; . /opt/data/.env; set +a; exec python3 /opt/data/skills/plow-connectors/plow_connector.py "$1" status' _ "$c" 2>&1)"; then
         printf '%s: %s\n' "$c" "$out"
       else
         printf '%s: probe did not run — %s\n' "$c" "$(printf '%s' "$out" | tr '\n' ' ')" >&2
@@ -212,6 +216,46 @@ check-connectors:
 # Restart the gateway so it re-reads its credentials.
 restart:
     docker compose restart hermes
+
+# Does Rowan's Latch credential work, AND is his Mac answering? The probe runs
+# INSIDE the container, because the container is what has to reach the relay —
+# egress, DNS and CA config all differ between this shell and that network
+# namespace, and every one of those failures is invisible to a host-side probe.
+#
+# The Accept header is not optional: Plow's relay speaks MCP streamable-HTTP and
+# answers 406 without it, which reads as a dead credential when the credential
+# is fine. Measured: 200 with it, 406 without.
+#
+# The verdict lives in scripts/latch-verdict.py, on the host, because the HTTP
+# status alone is not the answer — a Mac that is off comes back as HTTP 200 with
+# a JSON-RPC error object — and a verdict nobody can test is how a health check
+# ends up able only to lie.
+# Ask the relay whether this agent can reach Rowan's Mac.
+check-latch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker compose ps --status running --quiet hermes | grep -q . \
+      || { echo "the gateway is not running — start it first: just up" >&2; exit 1; }
+    raw="$(mktemp)"; trap 'rm -f "$raw"' EXIT
+    # Status on line one, body after. No `|| printf 000`: curl already writes
+    # 000 via -w on a failed transfer AND exits non-zero, so the fallback
+    # appended a second one and the verdict saw "000000" — missing the very
+    # branch that explains a transport failure. Measured in the container.
+    docker compose exec -T --user "$HERMES_UID:$HERMES_GID" hermes sh -c '
+      set -a; . /opt/data/.env; set +a
+      : "${DOMO_DEVICE_UID:?empty in the dotenv — mint a credential on Rowans Mac}"
+      : "${DOMO_MCP_TOKEN:?empty in the dotenv — mint a credential on Rowans Mac}"
+      code=$(curl -sS --max-time 30 -o /tmp/latch-body -w "%{http_code}" \
+        -X POST "https://api.plow.co/v1/relay/devices/$DOMO_DEVICE_UID/mcp" \
+        -H "Authorization: Bearer $DOMO_MCP_TOKEN" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json, text/event-stream" \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}") || true
+      [ -n "$code" ] || code=000
+      printf "%s\n" "$code"
+      cat /tmp/latch-body 2>/dev/null || true
+      rm -f /tmp/latch-body' > "$raw"
+    scripts/latch-verdict.py "$raw"
 
 # Follow the gateway's logs.
 logs:

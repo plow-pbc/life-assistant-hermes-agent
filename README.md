@@ -54,8 +54,11 @@ which is why these are tests rather than review notes:
   started last would own the chat.
 - **The operations vault** (`~/hermes-vault`) — compiled guest conversations and
   property access facts, door and keypad codes among them.
-- **Hostex, Seam and Latch.** No `mcp_servers` at all: no PMS access, no lock
-  control, no reach into the operator's Mac.
+- **Hostex and Seam.** No PMS access, no lock control — those belong to the
+  rentals agent and reach a different person's property.
+- **The operator's Mac.** Latch here points at *Rowan's* device uid, minted on
+  his machine. `tests/` asserts `latch` is the only `mcp_servers` entry, so a
+  sibling's block arriving by copy-paste fails loudly.
 
 One mount here against the rentals agent's six. That asymmetry is the design,
 not an omission to be tidied up later.
@@ -69,6 +72,7 @@ just install-connectors  # Gmail / Calendar / Slack, from the same pinned SHA
 just activate            # prints a code — Rowan texts it from his phone
 just up                  # must precede sign-in: that runs inside this container
 just sign-in             # one-time Codex device flow — Rowan completes it
+just check-latch         # can this container reach Rowan's Mac?
 just check-connectors    # which of his connectors are linked and reachable
 just agent 'what is on my calendar tomorrow?'   # a turn without the phone
 ```
@@ -155,11 +159,35 @@ own helper.
 |---|---|
 | `compose.yml` | The gateway service. One mount, no ports, no build. |
 | `justfile` | Every recipe, and the homes none of them may reach |
-| `runtime/config.yaml` | The declarative half of `~/.hermes-rowan` |
+| `runtime/config.yaml` | The declarative half of `~/.hermes-rowan` — model, plugin, and the Latch MCP server |
 | `runtime/plow-chat-plugin.ref` | The one pinned upstream SHA |
 | `scripts/` | The two things a recipe shells out to, so tests can run them |
 | `.env.example` | The environment-key contract, with no values |
 | `tests/` | What this agent must not reach, asserted |
+
+## Latch — the Mac this reaches is Rowan's
+
+`mcp_servers.latch` points at the Plow relay, which forwards to Plow Latch on
+**Rowan's** Mac: `plow_read_file`, `plow_write_file`, `plow_run_command`,
+`plow_browser_*`, `plow_vault` and friends. The relay authorises the connection
+and tells the Mac who is asking; the Mac authorises each action, so the approval
+surface stays on his machine rather than here.
+
+Credentials live in `~/.hermes-rowan/.env` as `DOMO_DEVICE_UID` +
+`DOMO_MCP_TOKEN`, minted from his Mac (`POST /v1/relay/agents`, which needs the
+`relay:device` scope only that machine holds). The token travels in a header,
+never in the URL.
+
+`just check-latch` probes it from **inside** the container. It sends
+`Accept: application/json, text/event-stream` — not optional: Plow's relay
+speaks MCP streamable-HTTP and answers `406 Client must accept both
+application/json and text/event-stream` without it, which reads as a dead
+credential when the credential is fine. Measured: 200 with the header, 406
+without.
+
+**Editing `runtime/config.yaml` is not enough** — the gateway reads the
+*installed* copy at `~/.hermes-rowan/config.yaml`. Run `just restore`, which
+installs it and reloads the gateway only if the file actually changed.
 
 ## Open
 

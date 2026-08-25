@@ -8,6 +8,7 @@ silently re-points a running agent at whatever landed upstream. A literal
 credential ships a secret.
 """
 import ast
+import importlib.util
 import json
 import os
 import re
@@ -292,17 +293,29 @@ def test_the_pin_is_a_sha():
     )
 
 
-def test_this_agent_has_no_mcp_servers(config):
-    """No first-party servers, and that is the capability boundary.
+def test_latch_is_the_only_mcp_server(config):
+    """One server, and it reaches Rowan's Mac — nothing else.
 
-    Gmail, Calendar and Slack are reached through the plow-connectors skill,
-    which calls the Plow connector REST API with the gateway's own
-    PLOW_CHAT_TOKEN. An mcp_servers block appearing here would mean a second
-    credential arrived from somewhere — and the realistic somewhere is a
-    copy-paste from the rentals agent (Hostex, Seam) or the property agent
-    (Latch), none of which this agent may reach.
+    This used to assert *no* mcp_servers at all. Latch changed that deliberately,
+    so the contract narrows rather than disappears: the realistic copy-paste is
+    still a sibling's block arriving here, and hostex/seam are what that would
+    bring — the rentals agent's PMS access and its door locks. Naming the
+    allowed set, rather than banning two names, keeps the next one covered too.
     """
-    assert "mcp_servers" not in config
+    assert set(config["mcp_servers"]) == {"latch"}, (
+        "latch is the only server this agent may run; Hostex and Seam belong to "
+        "the rentals agent and reach a different person's property"
+    )
+
+
+def test_latch_is_configured_from_the_environment(config):
+    latch = config["mcp_servers"]["latch"]
+    assert latch["enabled"] is True
+    # The credential travels in a header, never in the URL — the relay's own
+    # rule, and a URL is logged in places a header is not.
+    assert "${DOMO_DEVICE_UID}" in latch["url"]
+    assert "${DOMO_MCP_TOKEN}" in latch["headers"]["Authorization"]
+    assert "DOMO_MCP_TOKEN" not in latch["url"]
 
 
 def test_the_phone_line_is_enabled(config):
@@ -650,3 +663,192 @@ def test_no_name_in_this_file_is_defined_twice():
             names += [x.id for x in node.targets if isinstance(x, ast.Name)]
     dupes = sorted({n for n in names if names.count(n) > 1})
     assert dupes == [], f"defined more than once, so only the last one runs: {dupes}"
+
+
+def _verdict():
+    """The latch verdict function, loaded from the script the recipe runs."""
+    spec = importlib.util.spec_from_file_location(
+        "latch_verdict", ROOT / "scripts" / "latch-verdict.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.verdict
+
+
+OK_BODY = 'data: {"result":{"tools":[{"name":"plow_read_file"},{"name":"plow_vault"}]}}'
+
+
+def test_latch_probe_calls_a_mac_that_is_off_unreachable():
+    """HTTP 200 is not the answer — a Mac that is off answers 200 with an error.
+
+    This endpoint is JSON-RPC over MCP streamable-HTTP, so a switched-off Mac, a
+    Latch that is not running, and a relay that cannot forward all come back
+    2xx. A probe asserting on the status would call every one of those
+    "reachable" — the same can-only-lie shape check-connectors had, inverted
+    from always-fails to always-passes.
+    """
+    v = _verdict()
+    with pytest.raises(SystemExit) as e:
+        v("200", 'data: {"error":{"code":-32001,"message":"device offline"}}')
+    assert "did not answer" in str(e.value) and "device offline" in str(e.value)
+
+    # 200 with an empty tool list is also not reachability.
+    with pytest.raises(SystemExit) as e:
+        v("200", 'data: {"result":{"tools":[]}}')
+    assert "listed no tools" in str(e.value)
+
+
+def test_latch_probe_reports_the_real_reason_it_failed():
+    """Each failure has to send the operator to the right place.
+
+    A 401 means mint a new credential on Rowan's Mac; a 406 means the probe was
+    edited (it sends the Accept header) and the token is fine. Conflating them
+    sends someone to another person's machine to fix a repo-side bug.
+    """
+    v = _verdict()
+    for code, body, expected in [
+        ("401", "", "REVOKED"),
+        ("406", "", "probe was edited"),
+        ("000", "", "NOT tested"),
+        ("500", "boom", "HTTP 500"),
+        ("200", "not json at all", "unparseable"),
+    ]:
+        with pytest.raises(SystemExit) as e:
+            v(code, body)
+        assert expected in str(e.value), f"{code} should mention {expected!r}"
+
+
+def test_latch_probe_accepts_a_real_answer():
+    # Both framings the relay uses: SSE `data:` lines, and a bare JSON body.
+    v = _verdict()
+    for body in (OK_BODY, OK_BODY.removeprefix("data: ")):
+        line = v("200", body)
+        assert "2 tools" in line and "plow_read_file" in line
+
+
+def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
+    """A ${NAME} with no matching key ships a literal, unexpanded string.
+
+    The gateway would send `Bearer ${DOMO_MCP_TOKEN}` verbatim, the relay would
+    answer 401, and check-latch would report the token REVOKED — sending the
+    operator to Rowan's Mac to re-mint a credential that was never wrong. A
+    rename on either side is silent otherwise: the config test only checks the
+    ${...} spellings, and the dotenv test only checks lines carry no value.
+    """
+    referenced = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", (ROOT / "runtime" / "config.yaml").read_text()))
+    declared = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", (ROOT / ".env.example").read_text(), re.M))
+    missing = referenced - declared
+    assert missing == set(), (
+        f"runtime/config.yaml interpolates {sorted(missing)}, which .env.example "
+        "does not declare — the gateway would send the literal ${...} text"
+    )
+
+
+def test_check_latch_actually_runs_the_verdict_script():
+    """The verdict tests are worthless if the recipe stops calling it.
+
+    Same contract this file already holds for scripts/model-provider and
+    scripts/reload-if-running, and for the same reason: if check-latch drifts
+    back to an HTTP-status-only `case`, every verdict test above keeps passing
+    against a script nobody runs, and the suite goes green on the exact
+    regression that script exists to prevent.
+    """
+    code = _recipe_code("check-latch")
+    assert "scripts/latch-verdict.py" in code, (
+        "check-latch must delegate its pass/fail decision to the tested script"
+    )
+    # And that it is not deciding for itself alongside it: a status-code case
+    # statement here is how the two would diverge.
+    assert "200)" not in code, (
+        "check-latch must not re-implement a status verdict next to the script"
+    )
+
+
+def test_a_transport_failure_reports_as_untested_not_as_a_status():
+    """The no-body case has no newline, and both halves used to get it wrong.
+
+    curl writes `000` via -w on a failed transfer AND exits non-zero, so a
+    `|| printf 000` fallback appended a second one — measured in the container as
+    `000000`, which missed the 000 branch entirely and printed "relay returned
+    HTTP 000000". With no body there is also no newline, so a shell split handed
+    the status back as the body: "HTTP 000000: 000000". The one line that should
+    have said the credential was never tested said nothing usable.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "latch_verdict_split", ROOT / "scripts" / "latch-verdict.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # No body, no newline: the body must come back empty, not echo the status.
+    code, body = mod.split_probe("000")
+    assert (code, body) == ("000", "")
+    with pytest.raises(SystemExit) as e:
+        mod.verdict(code, body)
+    assert "NOT tested" in str(e.value)
+
+    # With a body, the split keeps them apart.
+    code, body = mod.split_probe('200\ndata: {"result":{"tools":[{"name":"t"}]}}')
+    assert code == "200" and body.startswith("data: ")
+    assert "1 tools" in mod.verdict(code, body)
+
+
+def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
+    # curl's own -w already emits 000 on a failed transfer; a `|| printf 000`
+    # next to it is what produced "000000".
+    code = _recipe_code("check-latch")
+    assert "printf 000" not in code, (
+        "curl already writes 000 via -w on a failed transfer; a fallback printf "
+        "doubles it and the transport-failure verdict becomes unreachable"
+    )
+
+
+def test_latch_verdict_reads_every_legal_sse_shape():
+    """A working Mac must not be reported unparseable because of framing.
+
+    streamable-HTTP lets the server emit notifications before the response, and
+    the space after `data:` is optional. Joining every data line into one string
+    turned a two-frame answer into `{..}{..}` and a spaceless frame into a raw
+    SSE envelope — both reported as "unparseable body" from a Mac that answered
+    correctly.
+    """
+    v = _verdict()
+    answer = '{"id":1,"result":{"tools":[{"name":"plow_vault"}]}}'
+    cases = {
+        "single spaced frame": "data: " + answer,
+        "spaceless frame": "data:" + answer,
+        "notification first": 'data: {"method":"notifications/message"}\n\ndata: ' + answer,
+        "bare json, no envelope": answer,
+        "response before a trailing notification":
+            "data: " + answer + '\n\ndata: {"method":"notifications/progress"}',
+    }
+    for label, body in cases.items():
+        assert "1 tools" in v("200", body), f"{label} should parse"
+
+    # An error frame still wins over surrounding noise.
+    with pytest.raises(SystemExit) as e:
+        v("200", 'data: {"method":"notifications/message"}\n\ndata: {"id":1,"error":{"code":-32001,"message":"device offline"}}')
+    assert "device offline" in str(e.value)
+
+
+def test_valid_json_with_no_response_frame_is_not_called_unparseable():
+    """Two different failures, two different places to go.
+
+    A proxy's `{"detail": ...}`, an empty array, or a bare `{"jsonrpc","id"}`
+    parse perfectly well and simply carry no answer. Reporting them as
+    "unparseable body" points the operator at the wrong layer — the same
+    misdiagnosis the 406 branch exists to prevent.
+    """
+    v = _verdict()
+    for body in ('{"jsonrpc":"2.0","id":1}', "[]", '{"detail":"upstream timeout"}',
+                 'data: {"method":"notifications/message"}'):
+        with pytest.raises(SystemExit) as e:
+            v("200", body)
+        msg = str(e.value)
+        assert "no JSON-RPC response frame" in msg, f"{body!r} -> {msg}"
+        assert "unparseable" not in msg
+
+    # Genuinely not JSON still says unparseable.
+    with pytest.raises(SystemExit) as e:
+        v("200", "<html>502 Bad Gateway</html>")
+    assert "unparseable" in str(e.value)
