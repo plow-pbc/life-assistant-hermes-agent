@@ -246,7 +246,7 @@ check-latch:
         -H "Authorization: Bearer $DOMO_MCP_TOKEN" \
         -H "Content-Type: application/json" \
         -H "Accept: application/json, text/event-stream" \
-        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" 2>/dev/null || printf 000
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" || printf 000
       echo
       cat /tmp/latch-body' )" || { echo "the probe did not run in the container" >&2; exit 1; }
     printf '%s' "${code#*$'\n'}" > "$body"

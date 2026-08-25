@@ -742,3 +742,23 @@ def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
         f"runtime/config.yaml interpolates {sorted(missing)}, which .env.example "
         "does not declare — the gateway would send the literal ${...} text"
     )
+
+
+def test_check_latch_actually_runs_the_verdict_script():
+    """The verdict tests are worthless if the recipe stops calling it.
+
+    Same contract this file already holds for scripts/model-provider and
+    scripts/reload-if-running, and for the same reason: if check-latch drifts
+    back to an HTTP-status-only `case`, every verdict test above keeps passing
+    against a script nobody runs, and the suite goes green on the exact
+    regression that script exists to prevent.
+    """
+    code = _recipe_code("check-latch")
+    assert "scripts/latch-verdict.py" in code, (
+        "check-latch must delegate its pass/fail decision to the tested script"
+    )
+    # And that it is not deciding for itself alongside it: a status-code case
+    # statement here is how the two would diverge.
+    assert "200)" not in code, (
+        "check-latch must not re-implement a status verdict next to the script"
+    )
