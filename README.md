@@ -18,9 +18,11 @@ person's agent.** They are all keyed by purpose on one operator's Plow account.
 This one is keyed by a different person, on his own account — which is the fact
 every other decision here follows from.
 
-Runs the upstream `nousresearch/hermes-agent` image directly, pinned by digest,
-with no derived layer. All state lives in `~/.hermes-rowan` on the host, mounted
-at `/opt/data`. The image is stateless.
+It runs the upstream `nousresearch/hermes-agent` image directly, pinned by
+digest, with no derived layer. All state lives in `~/.hermes-rowan` on the host,
+mounted at `/opt/data`; the image is stateless. Its clock is `America/Chicago` —
+Rowan's zone, and the one setting deliberately unlike all three siblings, which
+run the operator's Pacific.
 
 ## The account boundary
 
@@ -83,10 +85,21 @@ Everything else is automated. These two are not — and neither can be done for
 him, for different reasons:
 
 **1. Texting the activation code.** `just activate` does everything up to the
-text itself: it prints a `Text Plow Activate: …` line and polls until Plow
-confirms. Only Rowan can send it, from his phone, and that text *is* the account
-binding — a code texted by anyone else binds this agent to the wrong account and
-spends a one-time activation doing it.
+text itself: it prints a `Text Plow Activate: <code>` line naming the number to
+send it to, then polls until Plow confirms. Only Rowan can send it, from his
+phone, and that text *is* the account binding — a code texted by anyone else
+binds this agent to the wrong account and spends a one-time activation doing it.
+
+**Neither the code nor the number can be shared ahead of time.** Both come back
+from `POST /v1/auth/activate` when the recipe runs: Plow assigns the line — you
+cannot request a specific number — and the code is single-use and time-limited,
+with the poll giving up after 15 minutes. So this is a two-person moment rather
+than a step to hand off: run the recipe while Rowan is at his phone, read him
+the code and the number, and wait for `Verified: chat is active.`
+
+If it expires, re-running is safe *before* a successful redeem — it just issues a
+fresh code. After one succeeds, re-running spends another activation and strands
+the previous chat.
 
 **2. The Codex sign-in.** `just sign-in` runs a device-code flow. It is not a
 copy of a sibling's `auth.json`: that file is guarded by `auth.lock`, two live
@@ -144,16 +157,12 @@ own helper.
 | `justfile` | Every recipe, and the homes none of them may reach |
 | `runtime/config.yaml` | The declarative half of `~/.hermes-rowan` |
 | `runtime/plow-chat-plugin.ref` | The one pinned upstream SHA |
+| `scripts/` | The two things a recipe shells out to, so tests can run them |
 | `.env.example` | The environment-key contract, with no values |
 | `tests/` | What this agent must not reach, asserted |
 
 ## Open
 
-- **Confirm Rowan's timezone.** `TZ=America/Los_Angeles` is inherited from the
-  host and its three siblings. A life assistant reads "tomorrow morning" off
-  this, so a wrong value is wrong in the one place this agent is for.
-- **Connectors are linked on Rowan's side, not here.** `just check-connectors`
-  reports `connected:false` for either connector he has not linked to his Plow
-  account yet. That is a real answer, not a failure — and because Calendar rides
-  on the `gmail` connector, linking Google is what turns on the calendar
-  questions this agent is mostly for.
+- **Connectors are Rowan's to link.** Google and Slack are linked on his Plow
+  account, not here. `just check-connectors` reports `connected:false` until he
+  does, which is a real answer rather than a failure.

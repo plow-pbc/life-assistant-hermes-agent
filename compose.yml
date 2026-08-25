@@ -54,10 +54,13 @@ services:
       # is the point.
       - HERMES_UID=${HERMES_UID:?set it to the host uid, or run via just}
       - HERMES_GID=${HERMES_GID:?set it to the host gid, or run via just}
-      # The host's zone, matching the three siblings. Confirm Rowan's actual
-      # timezone: a life assistant reads "tomorrow morning" off this, so a wrong
-      # value is wrong in the one place this agent is for.
-      - TZ=America/Los_Angeles
+      # Rowan's zone, NOT the host's. This is the one setting here that differs
+      # from all three siblings, and deliberately: they run America/Chicago
+      # because that is where their operator is, and inheriting it here would be
+      # inheriting the wrong person. A life assistant resolves "tomorrow
+      # morning" and every scheduled thing against this, so on a two-hour offset
+      # it is wrong in exactly the place this agent exists for.
+      - TZ=America/Chicago
       # No credentials here, deliberately, and this is the whole contract for
       # them: the gateway reads /opt/data/.env — which is ~/.hermes-rowan/.env
       # through the mount above. Passing them here instead would interpolate

@@ -169,6 +169,26 @@ def test_container_and_image_are_this_agents_own(compose):
     assert "build" not in service
 
 
+def test_the_timezone_is_the_agents_owner_not_the_host(compose):
+    """The one setting here that must NOT match the siblings.
+
+    All three sibling agents run America/Los_Angeles because that is where their
+    operator is. This agent belongs to someone in Chicago, and a life assistant
+    resolves "tomorrow morning" and every scheduled thing against this value — so
+    inheriting the sibling default is a two-hour error in precisely the place
+    this agent exists for, and silent, because nothing else in the container
+    compares its clock to anything.
+
+    Asserted because the realistic way it breaks is the same copy-paste this
+    whole file guards: the siblings are the template.
+    """
+    env = dict(e.split("=", 1) for e in compose["services"]["hermes"]["environment"])
+    assert env["TZ"] == "America/Chicago", (
+        "TZ must be Rowan's zone, not the operator's — the three sibling agents "
+        "run America/Los_Angeles and are the copy-paste source"
+    )
+
+
 def test_no_credential_is_passed_through_compose(compose):
     """The mounted dotenv is the only path in.
 
