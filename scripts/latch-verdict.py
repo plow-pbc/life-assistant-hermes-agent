@@ -60,7 +60,13 @@ def _frames(raw: str):
 
 
 def _response_frame(raw: str):
-    """The frame carrying the answer, or None if nothing parsed.
+    """(frame, parsed_anything) — the frame carrying the answer, if there is one.
+
+    Two different failures live here and they send the operator to different
+    places: a body that is not JSON at all, and a body that is perfectly good
+    JSON carrying no response frame (a proxy's `{"detail": ...}`, an empty
+    array, a bare `{"jsonrpc":"2.0","id":1}`). Reporting the second as
+    "unparseable" is the same misdiagnosis the 406 branch exists to prevent.
 
     The server may emit notifications or requests on the stream before the
     response, so joining every `data:` line into one string produces `{..}{..}`
@@ -68,14 +74,16 @@ def _response_frame(raw: str):
     and the one answering our id (or the first carrying result/error) wins.
     """
     fallback = None
+    parsed_anything = False
     for d in _frames(raw):
+        parsed_anything = True
         if not isinstance(d, dict):
             continue
         if d.get("id") == 1 and ("result" in d or "error" in d):
-            return d
+            return d, True
         if fallback is None and ("result" in d or "error" in d):
             fallback = d
-    return fallback
+    return fallback, parsed_anything
 
 
 def verdict(code: str, raw: str) -> str:
@@ -96,10 +104,12 @@ def verdict(code: str, raw: str) -> str:
     if not code.startswith("2"):
         raise SystemExit("relay returned HTTP %s: %s" % (code, raw[:200]))
 
-    d = _response_frame(raw)
+    d, parsed_anything = _response_frame(raw)
     if d is None:
         raise SystemExit(
-            "relay returned HTTP %s but an unparseable body: %s" % (code, raw[:200])
+            "relay returned HTTP %s with no JSON-RPC response frame: %s" % (code, raw[:200])
+            if parsed_anything
+            else "relay returned HTTP %s but an unparseable body: %s" % (code, raw[:200])
         )
     if "error" in d:
         e = d["error"] or {}

@@ -829,3 +829,26 @@ def test_latch_verdict_reads_every_legal_sse_shape():
     with pytest.raises(SystemExit) as e:
         v("200", 'data: {"method":"notifications/message"}\n\ndata: {"id":1,"error":{"code":-32001,"message":"device offline"}}')
     assert "device offline" in str(e.value)
+
+
+def test_valid_json_with_no_response_frame_is_not_called_unparseable():
+    """Two different failures, two different places to go.
+
+    A proxy's `{"detail": ...}`, an empty array, or a bare `{"jsonrpc","id"}`
+    parse perfectly well and simply carry no answer. Reporting them as
+    "unparseable body" points the operator at the wrong layer — the same
+    misdiagnosis the 406 branch exists to prevent.
+    """
+    v = _verdict()
+    for body in ('{"jsonrpc":"2.0","id":1}', "[]", '{"detail":"upstream timeout"}',
+                 'data: {"method":"notifications/message"}'):
+        with pytest.raises(SystemExit) as e:
+            v("200", body)
+        msg = str(e.value)
+        assert "no JSON-RPC response frame" in msg, f"{body!r} -> {msg}"
+        assert "unparseable" not in msg
+
+    # Genuinely not JSON still says unparseable.
+    with pytest.raises(SystemExit) as e:
+        v("200", "<html>502 Bad Gateway</html>")
+    assert "unparseable" in str(e.value)
