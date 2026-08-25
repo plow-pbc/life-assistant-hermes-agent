@@ -117,7 +117,7 @@ activate:
     if docker compose ps --status running --quiet hermes | grep -q .; then
       echo "restarting the gateway so it loads the credential just written..."
       docker compose restart hermes \
-        || echo "activation SUCCEEDED and the credential is written — but the gateway did not restart. Do NOT re-run 'just activate'; run 'docker compose restart hermes' by hand." >&2
+        || echo "activation SUCCEEDED and the credential is written — but the gateway did not restart. Do NOT re-run 'just activate'; run 'just restart'." >&2
     fi
 
 # A separate Codex sign-in for this agent, not a copy of another agent's
@@ -145,7 +145,14 @@ sign-in:
     set -euo pipefail
     docker compose ps --status running --quiet hermes | grep -q . \
       || { echo "the gateway is not running — start it first: just up" >&2; exit 1; }
-    docker compose exec --user "$HERMES_UID:$HERMES_GID" hermes hermes auth add openai-codex
+    # Read out of config.yaml rather than written here. This used to be a second
+    # copy of model.provider, and a test asserted the two agreed — but the test
+    # matched the recipe's text, and every way of matching text is either too
+    # loose (provider "openai" is a substring of "openai-codex") or too tight.
+    # One copy has neither problem: there is no drift to detect.
+    provider="$(sed -n 's/^  provider:[[:space:]]*//p' runtime/config.yaml | head -1)"
+    [ -n "$provider" ] || { echo "no model.provider in runtime/config.yaml" >&2; exit 1; }
+    docker compose exec --user "$HERMES_UID:$HERMES_GID" hermes hermes auth add "$provider"
     echo "restarting the gateway so it loads the credential just written..."
     docker compose restart hermes
 
@@ -184,6 +191,14 @@ check-connectors:
       fi
     done
     exit "$rc"
+
+# Reload the gateway. It reads auth.json and .env at boot, so anything that
+# rewrites a credential needs this — and it exists as a recipe because
+# `docker compose restart` by hand fails on compose.yml's HERMES_UID/GID guards
+# unless they are exported, which is what activate's failure message points at.
+# Restart the gateway so it re-reads its credentials.
+restart:
+    docker compose restart hermes
 
 # Follow the gateway's logs.
 logs:

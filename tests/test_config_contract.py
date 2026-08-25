@@ -355,26 +355,29 @@ def test_every_recipe_has_a_real_description():
     assert bad == {}, f"recipes whose `just --list` text is not a description: {bad}"
 
 
-def test_the_signed_in_provider_is_the_configured_one(config):
-    """One fact, two copies, and nothing tying them together.
+def test_sign_in_derives_its_provider_from_the_config(config):
+    """One copy of the provider, not two that a test has to keep in sync.
 
-    `hermes auth add <provider>` in sign-in and model.provider in config.yaml are
-    the same choice written twice. If either is edited — a copy-paste from a
-    sibling agent's justfile or config — `just sign-in` reports success, the
-    restart runs, and the gateway then answers texts unauthenticated against a
-    provider nobody logged into. sign-in's own comment calls that failure mode
-    "silent in the worst way" and then hard-codes the value that allows it.
+    `hermes auth add <provider>` used to hard-code the value that
+    runtime/config.yaml also declares, and this test asserted the two agreed by
+    matching the recipe's text. Every text match was wrong in one direction or
+    the other: exact-equality on the whole `model` mapping froze `model.default`
+    and forbade keys the config's own header invites, and a bare substring let
+    `provider: openai` pass against `hermes auth add openai-codex` — authenticating
+    as one provider while the config named another, which is the exact silent
+    failure the assertion existed to prevent.
 
-    The cross-check alone, not an equality on the whole `model` mapping. Pinning
-    the dict froze `model.default` and forbade any key added later — which
-    config.yaml's own header invites, since keys equal to the image's defaults
-    are deliberately absent and the block grows as choices are made. A routine
-    model bump would then fail a test named for providers, with a message about
-    providers, which is the misleading-failure shape this module exists to avoid.
-    It also made the drift check degenerate: the second assert could only ever
-    run with the one provider the first had already pinned.
+    So the recipe reads the config instead. With one copy there is no drift to
+    detect, and what is left to assert is that it stayed that way.
     """
-    assert f"hermes auth add {config['model']['provider']}" in _recipe("sign-in")
+    recipe = _recipe("sign-in")
+    assert "runtime/config.yaml" in recipe, (
+        "sign-in must read model.provider from the config, not restate it"
+    )
+    assert f"hermes auth add {config['model']['provider']}" not in recipe, (
+        "the provider is hard-coded again — that is the second copy this "
+        "recipe was changed to remove"
+    )
 
 
 @pytest.mark.parametrize("name", ["sign-in", "activate"])
