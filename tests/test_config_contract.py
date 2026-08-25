@@ -18,6 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 SIBLING_HOMES = ("~/.hermes", "~/.hermes-admin", "~/.hermes-property")
 
+# Not a home, and the one path here that is worth naming separately: the
+# rentals agent's operations vault holds compiled guest conversations and
+# property access facts, door and keypad codes among them.
+FORBIDDEN_PATHS = SIBLING_HOMES + ("~/hermes-vault",)
+
 
 @pytest.fixture
 def compose():
@@ -35,13 +40,13 @@ def test_mounts_only_this_agents_home(compose):
     )
 
 
-def test_no_sibling_home_appears_anywhere_in_compose():
-    # Substring, not the parsed mount list: a sibling home reaching this file as
-    # a long-form mount mapping, or in an env var, is the same mistake and the
+def test_no_forbidden_path_appears_anywhere_in_compose():
+    # Substring, not the parsed mount list: one of these reaching this file as a
+    # long-form mount mapping, or in an env var, is the same mistake and the
     # parsed-volumes assertion above would not see either.
     text = (ROOT / "compose.yml").read_text()
-    for home in SIBLING_HOMES:
-        assert f"{home}:" not in text, f"compose.yml must not mount {home}"
+    for path in FORBIDDEN_PATHS:
+        assert f"{path}:" not in text, f"compose.yml must not mount {path}"
 
 
 def test_uid_and_gid_have_no_default(compose):
@@ -129,3 +134,53 @@ def test_no_secret_is_committed():
                 assert value == "" or value.startswith("$") or reference.match(value), (
                     f"{where} assigns a literal value to {assigned.group(1)}"
                 )
+
+
+@pytest.fixture
+def config():
+    return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
+
+
+def test_the_pin_is_a_sha():
+    ref = (ROOT / "runtime" / "plow-chat-plugin.ref").read_text().strip()
+    assert re.fullmatch(r"[0-9a-f]{40}", ref), (
+        f"plow-chat-plugin.ref must be a 40-char SHA, got {ref!r} — a branch "
+        "would re-point a running agent on the next upstream push, and this pin "
+        "carries both the plugin holding the chat token and the skill that "
+        "reads Rowan's mail"
+    )
+
+
+def test_this_agent_has_no_mcp_servers(config):
+    """No first-party servers, and that is the capability boundary.
+
+    Gmail, Calendar and Slack are reached through the plow-connectors skill,
+    which calls the Plow connector REST API with the gateway's own
+    PLOW_CHAT_TOKEN. An mcp_servers block appearing here would mean a second
+    credential arrived from somewhere — and the realistic somewhere is a
+    copy-paste from the rentals agent (Hostex, Seam) or the property agent
+    (Latch), none of which this agent may reach.
+    """
+    assert "mcp_servers" not in config
+
+
+def test_the_phone_line_is_enabled(config):
+    assert config["plugins"]["enabled"] == ["plow-chat-platform"]
+    assert config["platforms"]["plow_chat"]["enabled"] is True
+    # No group prompts: this agent has one private chat. The plugin keys them by
+    # display name from PLOW_CHAT_GROUP_UIDS, so a prompt naming no configured
+    # group is a silent no-op rather than an error.
+    assert "extra" not in config["platforms"]["plow_chat"]
+
+
+def test_the_dotenv_contract_carries_no_values():
+    """.env.example is the key contract, and must never carry a value.
+
+    Narrower than test_no_secret_is_committed on purpose: this asserts every
+    line is a bare `KEY=`, which catches a placeholder like `PLOW_CHAT_TOKEN=xxx`
+    that the credential-shaped scan would wave through.
+    """
+    for lineno, line in enumerate((ROOT / ".env.example").read_text().splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        assert line.endswith("="), f".env.example:{lineno} carries a value: {line!r}"
