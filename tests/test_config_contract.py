@@ -8,6 +8,7 @@ silently re-points a running agent at whatever landed upstream. A literal
 credential ships a secret.
 """
 import ast
+import importlib.util
 import json
 import os
 import re
@@ -662,3 +663,82 @@ def test_no_name_in_this_file_is_defined_twice():
             names += [x.id for x in node.targets if isinstance(x, ast.Name)]
     dupes = sorted({n for n in names if names.count(n) > 1})
     assert dupes == [], f"defined more than once, so only the last one runs: {dupes}"
+
+
+def _verdict():
+    """The latch verdict function, loaded from the script the recipe runs."""
+    spec = importlib.util.spec_from_file_location(
+        "latch_verdict", ROOT / "scripts" / "latch-verdict.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.verdict
+
+
+OK_BODY = 'data: {"result":{"tools":[{"name":"plow_read_file"},{"name":"plow_vault"}]}}'
+
+
+def test_latch_probe_calls_a_mac_that_is_off_unreachable():
+    """HTTP 200 is not the answer — a Mac that is off answers 200 with an error.
+
+    This endpoint is JSON-RPC over MCP streamable-HTTP, so a switched-off Mac, a
+    Latch that is not running, and a relay that cannot forward all come back
+    2xx. A probe asserting on the status would call every one of those
+    "reachable" — the same can-only-lie shape check-connectors had, inverted
+    from always-fails to always-passes.
+    """
+    v = _verdict()
+    with pytest.raises(SystemExit) as e:
+        v("200", 'data: {"error":{"code":-32001,"message":"device offline"}}')
+    assert "did not answer" in str(e.value) and "device offline" in str(e.value)
+
+    # 200 with an empty tool list is also not reachability.
+    with pytest.raises(SystemExit) as e:
+        v("200", 'data: {"result":{"tools":[]}}')
+    assert "listed no tools" in str(e.value)
+
+
+def test_latch_probe_reports_the_real_reason_it_failed():
+    """Each failure has to send the operator to the right place.
+
+    A 401 means mint a new credential on Rowan's Mac; a 406 means the probe was
+    edited (it sends the Accept header) and the token is fine. Conflating them
+    sends someone to another person's machine to fix a repo-side bug.
+    """
+    v = _verdict()
+    for code, body, expected in [
+        ("401", "", "REVOKED"),
+        ("406", "", "probe was edited"),
+        ("000", "", "NOT tested"),
+        ("500", "boom", "HTTP 500"),
+        ("200", "not json at all", "unparseable"),
+    ]:
+        with pytest.raises(SystemExit) as e:
+            v(code, body)
+        assert expected in str(e.value), f"{code} should mention {expected!r}"
+
+
+def test_latch_probe_accepts_a_real_answer():
+    # Both framings the relay uses: SSE `data:` lines, and a bare JSON body.
+    v = _verdict()
+    for body in (OK_BODY, OK_BODY.removeprefix("data: ")):
+        line = v("200", body)
+        assert "2 tools" in line and "plow_read_file" in line
+
+
+def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
+    """A ${NAME} with no matching key ships a literal, unexpanded string.
+
+    The gateway would send `Bearer ${DOMO_MCP_TOKEN}` verbatim, the relay would
+    answer 401, and check-latch would report the token REVOKED — sending the
+    operator to Rowan's Mac to re-mint a credential that was never wrong. A
+    rename on either side is silent otherwise: the config test only checks the
+    ${...} spellings, and the dotenv test only checks lines carry no value.
+    """
+    referenced = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", (ROOT / "runtime" / "config.yaml").read_text()))
+    declared = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", (ROOT / ".env.example").read_text(), re.M))
+    missing = referenced - declared
+    assert missing == set(), (
+        f"runtime/config.yaml interpolates {sorted(missing)}, which .env.example "
+        "does not declare — the gateway would send the literal ${...} text"
+    )

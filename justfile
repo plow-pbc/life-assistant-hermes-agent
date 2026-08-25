@@ -217,50 +217,40 @@ check-connectors:
 restart:
     docker compose restart hermes
 
-# Does Rowan's Latch credential actually work? Asked from INSIDE the container,
-# because the container is what has to reach the relay — egress, DNS and CA
-# config all differ between this shell and that network namespace, and every one
-# of those failures is invisible to a host-side probe.
+# Does Rowan's Latch credential work, AND is his Mac answering? The probe runs
+# INSIDE the container, because the container is what has to reach the relay —
+# egress, DNS and CA config all differ between this shell and that network
+# namespace, and every one of those failures is invisible to a host-side probe.
 #
-# The Accept header is not optional. Plow's relay speaks MCP streamable-HTTP and
-# answers 406 "Client must accept both application/json and text/event-stream"
-# without it — which reads as a broken credential when the credential is fine.
-# Measured: the same probe returns 200 with it and 406 without.
+# The Accept header is not optional: Plow's relay speaks MCP streamable-HTTP and
+# answers 406 without it, which reads as a dead credential when the credential
+# is fine. Measured: 200 with it, 406 without.
 #
-# A 401 means the token is REVOKED, not missing. Say which, so the fix is
-# minting a fresh one from Rowan's Mac rather than hunting for a key.
+# The verdict lives in scripts/latch-verdict.py, on the host, because the HTTP
+# status alone is not the answer — a Mac that is off comes back as HTTP 200 with
+# a JSON-RPC error object — and a verdict nobody can test is how a health check
+# ends up able only to lie.
 # Ask the relay whether this agent can reach Rowan's Mac.
 check-latch:
     #!/usr/bin/env bash
     set -euo pipefail
     docker compose ps --status running --quiet hermes | grep -q . \
       || { echo "the gateway is not running — start it first: just up" >&2; exit 1; }
-    err="$(mktemp)"; trap 'rm -f "$err"' EXIT
-    out="$(docker compose exec -T --user "$HERMES_UID:$HERMES_GID" hermes sh -c '
+    body="$(mktemp)"; trap 'rm -f "$body"' EXIT
+    code="$(docker compose exec -T --user "$HERMES_UID:$HERMES_GID" hermes sh -c '
       set -a; . /opt/data/.env; set +a
-      [ -n "${DOMO_DEVICE_UID:-}" ] || { echo "DOMO_DEVICE_UID is empty in the dotenv" >&2; exit 2; }
-      [ -n "${DOMO_MCP_TOKEN:-}" ] || { echo "DOMO_MCP_TOKEN is empty in the dotenv" >&2; exit 2; }
-      curl -sS --max-time 30 -o /dev/null -w "%{http_code}" \
+      : "${DOMO_DEVICE_UID:?empty in the dotenv — mint a credential on Rowan Mac}"
+      : "${DOMO_MCP_TOKEN:?empty in the dotenv — mint a credential on Rowan Mac}"
+      curl -sS --max-time 30 -o /tmp/latch-body -w "%{http_code}" \
         -X POST "https://api.plow.co/v1/relay/devices/$DOMO_DEVICE_UID/mcp" \
         -H "Authorization: Bearer $DOMO_MCP_TOKEN" \
         -H "Content-Type: application/json" \
         -H "Accept: application/json, text/event-stream" \
-        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}"
-    ' 2>"$err")" || true
-    # Read what the probe PRINTED, not what it exited with: curl that ran and got
-    # no answer prints 000; curl that got an answer prints the status; a probe
-    # that never ran prints nothing at all. Output alone separates those three.
-    case "$out" in
-      [0-9][0-9][0-9]) code="$out" ;;
-      *) echo "the probe did not run in the container: $(tr '\n' ' ' < "$err")" >&2; exit 1 ;;
-    esac
-    case "$code" in
-      200) echo "latch reachable from the container (HTTP 200)" ;;
-      401) echo "DOMO_MCP_TOKEN is REVOKED — mint a fresh agent credential from Rowan's Mac" >&2; exit 1 ;;
-      406) echo "relay refused the Accept header — this recipe sends it, so the probe was edited" >&2; exit 1 ;;
-      000) echo "no answer from api.plow.co, asked from the container — the credential was NOT tested: $(tr '\n' ' ' < "$err")" >&2; exit 1 ;;
-      *)   echo "relay returned HTTP $code from the container: $(tr '\n' ' ' < "$err")" >&2; exit 1 ;;
-    esac
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" 2>/dev/null || printf 000
+      echo
+      cat /tmp/latch-body' )" || { echo "the probe did not run in the container" >&2; exit 1; }
+    printf '%s' "${code#*$'\n'}" > "$body"
+    scripts/latch-verdict.py "${code%%$'\n'*}" "$body"
 
 # Follow the gateway's logs.
 logs:
