@@ -19,11 +19,12 @@ an instance.
 | instance | registry name | home | container | may be registered? |
 |---|---|---|---|---|
 | the operator's | `life` | `~/.hermes-life` | `hermes-life` | yes — command below |
-| Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` | **no** — blocked on `agent-mgr#14`, see below |
+| Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` | **no** — see [Migrating `rowan`](#migrating-rowan) |
 
-None of that is written down here: `agent-mgr` derives it from the **registry
-name**, so any number of instances run from one checkout with no per-person fork
-— two rows against the same directory resolve to separate homes and containers.
+None of it is declared in this repo. For a *registered* instance `agent-mgr`
+derives home and container from the **registry name**, so any number of them run
+from one checkout with no per-person fork — two rows against the same directory
+resolve to separate homes and containers.
 
 **Neither row is state.** Both are what `agent-mgr` *would* derive from the
 registry name; this table says what each instance is permitted, not what the
@@ -34,10 +35,7 @@ another repo, not by anything here.
 ```sh
 agent-mgr register life ~/services/life-assistant-hermes-agent
 # agent-mgr register rowan ~/services/life-assistant-hermes-agent   # same directory
-#   BLOCKED twice: on agent-mgr#14 for the zone, AND on tearing down rowan's
-#   pre-agent-mgr stack first -- it already holds ~/.hermes-rowan, and the
-#   collision guard only sees REGISTERED agents, so nothing would stop a
-#   second gateway from opening the same home.
+#   DO NOT RUN YET -- see README "Migrating rowan" for the preconditions.
 ```
 
 That is why `agent.env` declares no `AGENT_HOME`, `AGENT_CONTAINER` or
@@ -50,35 +48,40 @@ It runs the upstream `nousresearch/hermes-agent` image directly, pinned by
 digest, with no derived layer. State lives in the instance's own home on the
 host, mounted at `/opt/data`; the image is stateless.
 
-## Before a non-Pacific instance is registered
+## Migrating `rowan`
 
-This repo carries **no** user-specific values. The shared descriptor is a
-**closed set** holding only `AGENT_CONFIG`, and `tests/test_config_contract.py`
-fails on any other key — documenting one here does not make it shippable, because
-a person-valued key does not belong in a file every instance reads at all.
+`rowan` is the second instance and it is **not registered**. Everything blocking
+it lives here; nowhere else in this repo restates the list, so there is one place
+to correct when it changes.
 
-One consequence is load-bearing. `agent.env` cannot carry `AGENT_TZ`, because a
-shared descriptor has one value and every instance would read it. So instances
-inherit agent-mgr's fleet default, `America/Los_Angeles`.
+**Precondition 1 — the timezone.** This repo carries no user-specific values, so
+`agent.env` cannot carry `AGENT_TZ`: a shared descriptor holds one value and
+every instance would read it. Instances therefore inherit `agent-mgr`'s fleet
+default, `America/Los_Angeles`. `rowan` needs `America/Chicago`, so it cannot be
+registered until [`plow-pbc/agent-mgr#14`](https://github.com/plow-pbc/agent-mgr/issues/14)
+adds a per-instance overlay. This is not cosmetic — a life assistant resolves
+"tomorrow morning" and every scheduled thing against its clock, so a two-hour
+offset is wrong in exactly the place the agent exists for.
 
-**An instance whose owner is not Pacific must not be registered until
-[`plow-pbc/agent-mgr#14`](https://github.com/plow-pbc/agent-mgr/issues/14)
-lands.** `rowan` is that instance: it needs `America/Chicago`, and it is
-deliberately still on its pre-agent-mgr deployment, which supplies the zone from
-its own compose file. Registering it against this repo today would silently move
-it to Pacific -- and nothing here could catch that, because the value would be
-right for every other instance.
+**Precondition 2 — the home is already occupied, and nothing would stop you.**
+`rowan`'s live pre-agent-mgr stack owns `~/.hermes-rowan` right now, serving it
+from its own compose file in another repo. `agent-mgr`'s collision check compares
+*registered* agents, so an unregistered container holding that home is invisible
+to it. Registering and restoring while that stack runs opens a second gateway on
+one home, one `auth.json` and one `PLOW_CHAT_CHAT_UID` — and whichever started
+last owns the chat. That is the failure this whole tool exists to prevent, and
+precondition 1 does not imply it: #14 landing makes this *more* reachable, not
+less.
 
-When #14 lands, the zone goes in `~/.config/agent-mgr/rowan.env` and this
-section goes away.
+**The order, therefore:**
 
-**#14 is not the only precondition.** `rowan`'s live pre-agent-mgr stack already
-owns `~/.hermes-rowan`, and `agent-mgr`'s collision check compares *registered*
-agents — an unregistered container holding that home is invisible to it. So the
-migration is: land #14, write the overlay, **bring the old stack down**, then
-register and restore. Registering while it runs points a second gateway at one
-home, one `auth.json` and one `PLOW_CHAT_CHAT_UID`, and whichever started last
-owns the chat — the failure this whole tool exists to prevent.
+1. `agent-mgr#14` lands
+2. write `~/.config/agent-mgr/rowan.env` with `AGENT_TZ=America/Chicago`
+3. **bring the pre-agent-mgr stack down** and confirm `~/.hermes-rowan` is unowned
+4. `agent-mgr register rowan` → `restore` → `up`
+
+Step 1 retires precondition 1. Step 3 is the one that outlives it, so this
+section stays until `rowan` is actually migrated — not until #14 closes.
 
 ## The account boundary — how one repo serves two people
 
@@ -128,8 +131,7 @@ not an omission to be tidied up later.
 ## Bring-up
 
 `<agent>` is the registry name. `life` is the only instance that *may* be
-registered — `rowan` must not be until `agent-mgr#14` lands (see above), and is
-still served by its pre-agent-mgr deployment.
+registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 
 ```sh
 agent-mgr restore <agent>            # config.yaml, plugin and skills into its home
