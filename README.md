@@ -44,6 +44,11 @@ only ever name *one*, and `agent-mgr`'s ownership guard refuses a home that does
 not match the instance's own name, so a repo that declared one could not be
 shared at all. Silence is what makes this work.
 
+`agent.env` is a **closed set** holding only `AGENT_CONFIG`;
+`tests/test_config_contract.py` fails on any other key, of any kind. Every
+instance reads this one file, so a new key is given to all of them — adding one
+is a deliberate edit to `DESCRIPTOR_KEYS`, not something a comment can justify.
+
 It runs the upstream `nousresearch/hermes-agent` image directly, pinned by
 digest, with no derived layer. State lives in the instance's own home on the
 host, mounted at `/opt/data`; the image is stateless.
@@ -54,9 +59,9 @@ host, mounted at `/opt/data`; the image is stateless.
 it lives here; nowhere else in this repo restates the list, so there is one place
 to correct when it changes.
 
-**Precondition 1 — the timezone.** This repo carries no user-specific values, so
-`agent.env` cannot carry `AGENT_TZ`: a shared descriptor holds one value and
-every instance would read it. Instances therefore inherit `agent-mgr`'s fleet
+**Precondition 1 — the timezone.** `agent.env` is a closed set (above) and could
+not carry `AGENT_TZ` even if it were open: a shared descriptor holds one value
+and every instance would read it. Instances therefore inherit `agent-mgr`'s fleet
 default, `America/Los_Angeles`. `rowan` needs `America/Chicago`, so it cannot be
 registered until [`plow-pbc/agent-mgr#14`](https://github.com/plow-pbc/agent-mgr/issues/14)
 adds a per-instance overlay. This is not cosmetic — a life assistant resolves
@@ -113,10 +118,11 @@ allowlist and the interpolation contract -- and are marked below. The mount-leve
 ones left with the deployment and are `plow-pbc/agent-mgr`'s compose contract
 now; they are stated here as design, not as something this tree enforces:
 
-- **Another instance's state.** Two gateways sharing one home would share one
-  `auth.json` and one dotenv, including one `PLOW_CHAT_CHAT_UID`, so whichever
-  started last would own the chat. `agent-mgr`'s collision check refuses two
-  registered agents resolving to the same home.
+- **Another instance's state.** `agent-mgr`'s collision check refuses two
+  *registered* agents resolving to the same home — but an **unregistered**
+  container holding one is invisible to it, which is precondition 2 in
+  [Migrating `rowan`](#migrating-rowan). The failure it prevents is stated
+  there.
 - **The operations vault** (`~/hermes-vault`) *(agent-mgr's compose contract)* — compiled guest conversations and
   property access facts, door and keypad codes among them.
 - **Hostex and Seam** *(agent-mgr's compose contract)*. No PMS access, no lock control — those belong to the
