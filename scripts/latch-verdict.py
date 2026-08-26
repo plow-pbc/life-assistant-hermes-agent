@@ -62,27 +62,29 @@ def _payloads(raw: str):
 def verdict(code: str, raw: str) -> str:
     """The success line, or SystemExit carrying the response verbatim.
 
-    Every unwrap here checks its shape rather than its key. This module's whole
-    claim is that it cannot be wrong about a body nobody anticipated, and key
-    checks do not deliver that: `{"result": "ok"}` crashed on `.get`, and a
-    string-valued `tools` reported `len("nope")` — four tools — as a *success*,
-    which is worse than crashing. A non-conforming body is simply not an answer.
+    Success requires the canonical shape — a non-empty list of tool objects with
+    string names — which is what the relay is observed to return. Anything else
+    is simply not an answer and takes the failure path, where the body is shown.
+
+    That replaces a round of coercion (`str(... or "?")`, an `unnamed` fallback)
+    written to render malformed tool lists nobody has seen. Requiring the shape
+    is both shorter and safer than rendering degraded versions of it: the two
+    real defects here were an unchecked unwrap that crashed and a string-valued
+    `tools` reporting `len("nope")` — four tools — as a *success*, and falling
+    through prevents both without inventing a display contract for synthetic
+    input.
     """
     for frame in _payloads(raw):
         if not isinstance(frame, dict):
             continue
         result = frame.get("result")
         tools = result.get("tools") if isinstance(result, dict) else None
-        if isinstance(tools, list) and tools:
-            # str(), because `{"name": null}` and `{"name": 7}` both survive
-            # .get() and then blow up inside join() — the last unchecked unwrap
-            # on this path, and the same class as the two above it.
-            names = [
-                str(t.get("name") or "?") for t in tools[:3] if isinstance(t, dict)
-            ]
+        if isinstance(tools, list) and tools and all(
+            isinstance(t, dict) and isinstance(t.get("name"), str) for t in tools
+        ):
             return "latch reachable: Rowan's Mac answered with %d tools (%s…)" % (
                 len(tools),
-                ", ".join(names) if names else "unnamed",
+                ", ".join(t["name"] for t in tools[:3]),
             )
     # Whole body, not raw[:600]. The response IS the diagnosis here — that is
     # the entire trade this module makes in place of a cause taxonomy — and a

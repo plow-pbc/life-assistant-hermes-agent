@@ -760,16 +760,7 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     }.items():
         assert "1 tools" in v("200", body), f"{label} should be recognised"
 
-    # The count comes from `tools`, the names from entries that are objects —
-    # the two halves of the len("nope") defect. A list of non-objects is still
-    # an answer, reported honestly rather than crashing or inventing names.
-    assert "2 tools (unnamed…)" in v("200", '{"id":1,"result":{"tools":[1,2]}}')
-    # A present-but-non-string name survives .get() and used to blow up in
-    # join(). null and "" fall back to "?"; a number renders as itself, which is
-    # honest — that really is what the relay called it.
-    for name_json, shown in (("null", "?"), ('""', "?"), ("7", "7")):
-        line = v("200", '{"id":1,"result":{"tools":[{"name":%s}]}}' % name_json)
-        assert "1 tools (%s…)" % shown in line, line
+
 
 
 @pytest.mark.parametrize("code,body", [
@@ -790,6 +781,15 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     # len("nope") — four tools — as a SUCCESS, which is worse than crashing.
     ("200", '{"id":1,"result":"ok"}'),
     ("200", '{"id":1,"result":{"tools":"nope"}}'),
+    # Malformed tool lists are not an answer — they take the failure path and
+    # the body is shown. Kept as rows rather than deleted with the rendering
+    # they used to exercise: both of these CRASHED before the unwraps were
+    # shape-checked, so they pin a real regression, not a display contract.
+    ("200", '{"id":1,"result":{"tools":[1,2]}}'),
+    ("200", '{"id":1,"result":{"tools":[{"name":null}]}}'),
+    # >600 chars: the cap that used to truncate here dropped the explaining
+    # line exactly when the body was long enough to need reading.
+    ("502", '{"detail":"' + "x" * 900 + '","reason":"the-line-that-explains-it"}'),
 ])
 def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     """No taxonomy — the response is the diagnosis.
@@ -808,21 +808,6 @@ def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     assert (body in msg) if body.strip() else ("(empty body)" in msg)
 
 
-def test_a_long_failure_body_is_shown_whole():
-    """The response IS the diagnosis, so a cap drops the explaining line.
-
-    This module trades a cause taxonomy for showing the operator what came back.
-    Truncating at 600 characters broke that trade exactly when the body was
-    verbose enough to need reading — a proxy error page whose useful line sits
-    past the cap. Failure bodies are relay errors and proxy pages; the large
-    payload is the success path, which is never printed.
-    """
-    v = _verdict()
-    body = '{"detail":"' + "x" * 900 + '","reason":"the-line-that-explains-it"}'
-    with pytest.raises(SystemExit) as e:
-        v("502", body)
-    assert body in str(e.value), "the body must be shown whole, not capped"
-    assert "the-line-that-explains-it" in str(e.value)
 
 def test_split_probe_survives_a_body_that_never_arrived():
     """The bug this pins shipped twice, and the trim deleted its only guard.
