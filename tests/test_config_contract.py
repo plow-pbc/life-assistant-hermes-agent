@@ -665,14 +665,18 @@ def test_no_name_in_this_file_is_defined_twice():
     assert dupes == [], f"defined more than once, so only the last one runs: {dupes}"
 
 
-def _verdict():
-    """The latch verdict function, loaded from the script the recipe runs."""
+def _latch_module():
+    """The script the check-latch recipe runs, loaded once per call site."""
     spec = importlib.util.spec_from_file_location(
         "latch_verdict", ROOT / "scripts" / "latch-verdict.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.verdict
+    return mod
+
+
+def _verdict():
+    return _latch_module().verdict
 
 
 
@@ -748,7 +752,11 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
         "bare json": answer,
         # A malformed early frame must not shadow the real answer behind it:
         # selection is "the frame carrying tools", not "the first with a key".
-        "malformed frame first": 'data: {"error":"boom"}\n\ndata: ' + answer,
+        # id:1 is load-bearing — the removed classifier preferred the id-1
+        # frame, so a noise frame WITHOUT it was already handled correctly and
+        # this row would pass under both implementations, pinning nothing.
+        "malformed frame wearing the answer's id":
+            'data: {"id":1,"error":"boom"}\n\ndata: ' + answer,
     }.items():
         assert "1 tools" in v("200", body), f"{label} should be recognised"
 
@@ -785,16 +793,14 @@ def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
 def test_split_probe_survives_a_body_that_never_arrived():
     """The bug this pins shipped twice, and the trim deleted its only guard.
 
-    A transport failure writes no body and therefore no newline. `split("\\n", 1)`
-    returns a one-element list and raises; a `partition` without the separator
-    check hands the status straight back as the body, which is how the operator's
-    one actionable line became "HTTP 000: 000".
+    A transport failure writes no body and therefore no newline, and
+    `split("\\n", 1)` returns a one-element list that raises on unpack — the
+    mutation this catches. The status-as-body bug came from the shell version
+    (`${code#*$'\\n'}` does not strip when there is no newline); partition
+    cannot reproduce it, which is why the branch guarding against it was removed
+    as unreachable rather than kept.
     """
-    spec = importlib.util.spec_from_file_location(
-        "latch_split", ROOT / "scripts" / "latch-verdict.py"
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _latch_module()
 
     assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
     assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
