@@ -784,13 +784,12 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     # AttributeError — the recipe whose whole purpose is one actionable line
     # crashing instead of printing it. Nothing here reads `error` any more.
     ("200", '{"error":"unauthorized"}'),
-    # The same unguarded shape lived on `result` until it was checked too:
+    # The same unguarded shape lived on `result` until it was checked too — the
+    # truthy-scalar form is what a proxy in front of the relay returns:
     # `{"result":"ok"}` crashed on .get, and a string-valued `tools` reported
     # len("nope") — four tools — as a SUCCESS, which is worse than crashing.
     ("200", '{"id":1,"result":"ok"}'),
     ("200", '{"id":1,"result":{"tools":"nope"}}'),
-    # A truthy scalar result — the shape a proxy in front of the relay returns.
-    ("200", '{"result":"upstream unavailable"}'),
 ])
 def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     """No taxonomy — the response is the diagnosis.
