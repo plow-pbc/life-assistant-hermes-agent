@@ -746,6 +746,9 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
         "spaceless frame": "data:" + answer,
         "notification first": 'data: {"method":"notifications/message"}\n\ndata: ' + answer,
         "bare json": answer,
+        # A malformed early frame must not shadow the real answer behind it:
+        # selection is "the frame carrying tools", not "the first with a key".
+        "malformed frame first": 'data: {"error":"boom"}\n\ndata: ' + answer,
     }.items():
         assert "1 tools" in v("200", body), f"{label} should be recognised"
 
@@ -757,6 +760,11 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     ("200", 'data: {"id":1,"error":{"code":-32001,"message":"device offline"}}'),
     ("200", '{"jsonrpc":"2.0","id":1}'),
     ("502", "<html>Bad Gateway</html>"),
+    # A non-JSON-RPC proxy in front of the relay answers with a string-valued
+    # `error`. The classifier version did `d["error"].get(...)` and died with
+    # AttributeError — the recipe whose whole purpose is one actionable line
+    # crashing instead of printing it. Nothing here reads `error` any more.
+    ("200", '{"error":"unauthorized"}'),
 ])
 def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     """No taxonomy — the response is the diagnosis.
