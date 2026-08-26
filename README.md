@@ -14,20 +14,20 @@ are the rentals agent (`srosro/str-hermes-agent`) and the house-hunting agent
 
 **One repo, one instance per person.** This is not one person's agent that
 someone else could copy; it is the common half, and each person who runs it gets
-an instance. Today that is two:
+an instance.
 
-| instance | registry name | home | container |
-|---|---|---|---|
-| the operator's | `life` | `~/.hermes-life` | `hermes-life` |
-| Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` |
+| instance | registry name | home | container | status |
+|---|---|---|---|---|
+| the operator's | `life` | `~/.hermes-life` | `hermes-life` | registered |
+| Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` | **not registered** — see below |
 
-Nothing in this table is written down here. `agent-mgr` derives all of it from
-the **registry name**, so both instances run from one checkout with no per-person
-fork:
+Nothing in that table is written down here. `agent-mgr` derives all of it from
+the **registry name**, so any number of instances run from one checkout with no
+per-person fork — two rows against the same directory resolve to separate homes
+and containers:
 
 ```sh
-agent-mgr register life  ~/services/life-assistant-hermes-agent
-agent-mgr register rowan ~/services/life-assistant-hermes-agent   # same directory
+agent-mgr register life ~/services/life-assistant-hermes-agent
 ```
 
 That is why `agent.env` declares no `AGENT_HOME`, `AGENT_CONTAINER` or
@@ -42,9 +42,10 @@ host, mounted at `/opt/data`; the image is stateless.
 
 ## Before a non-Pacific instance is registered
 
-This repo carries **no** user-specific values -- the shared descriptor holds only
-`AGENT_CONFIG`, and a test fails the build if a person-valued key is added
-without being disclosed here.
+This repo carries **no** user-specific values. The shared descriptor is a
+**closed set** holding only `AGENT_CONFIG`, and `tests/test_config_contract.py`
+fails on any other key — documenting one here does not make it shippable, because
+a person-valued key does not belong in a file every instance reads at all.
 
 One consequence is load-bearing. `agent.env` cannot carry `AGENT_TZ`, because a
 shared descriptor has one value and every instance would read it. So instances
@@ -108,7 +109,9 @@ not an omission to be tidied up later.
 
 ## Bring-up
 
-`<agent>` is the registry name — `life` or `rowan`.
+`<agent>` is the registry name. Today that is `life` only — `rowan` must not be
+registered until `agent-mgr#14` lands (see above), and is still served by its
+pre-agent-mgr deployment.
 
 ```sh
 agent-mgr restore <agent>            # config.yaml, plugin and skills into its home

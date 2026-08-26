@@ -65,10 +65,16 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
     right for whoever it was chosen for.
 
     Closing the set rather than listing what is forbidden does three jobs at
-    once: AGENT_HOME / AGENT_CONTAINER / AGENT_PROJECT are excluded as a
-    consequence rather than as a second list to keep in sync, a person-valued
-    key cannot arrive undisclosed, and a credential cannot be parked here under
-    an AGENT_* name."""
+    once. AGENT_HOME / AGENT_CONTAINER / AGENT_PROJECT are excluded as a
+    consequence rather than as a second list to keep in sync. A person-valued
+    key cannot arrive at all -- documenting one does not make it shippable,
+    because every instance reads this file.
+
+    And it is what backs agent.env's exemption from the credential guard: that
+    exemption has to rest on something checked, the way .env.example's
+    blank-value test backs its own. A key-shape rule was too weak for the job --
+    every AGENT_* name passed it, so AGENT_TOKEN=sk-... would have shipped green.
+    One exact key cannot."""
     assert set(descriptor()) == DESCRIPTOR_KEYS, (
         "agent.env is shared by every instance. A new key here is read by all "
         "of them -- if it belongs to one person it does not go in this file; "
@@ -356,17 +362,3 @@ def test_split_probe_survives_a_body_that_never_arrived():
     assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
     assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
     assert mod.split_probe("200\n") == ("200", ""), "a trailing newline is still no body"
-
-
-def test_the_descriptor_holds_only_descriptor_keys():
-    """agent.env is a tracked dotenv, exempted from the credential guard.
-
-    That exemption has to rest on something checked, the way .env.example's
-    blank-value test backs its own. Every key here is agent-mgr's AGENT_*
-    namespace, so a credential-shaped key added to this file -- DOMO_MCP_TOKEN,
-    PLOW_CHAT_TOKEN -- fails loudly rather than shipping with a green suite.
-    """
-    keys = list(descriptor())
-    assert keys, "agent.env declares nothing -- is this still the descriptor?"
-    for key in keys:
-        assert key.startswith("AGENT_"), f"agent.env carries a non-descriptor key: {key}"
