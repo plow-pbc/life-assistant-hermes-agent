@@ -34,8 +34,15 @@ def dotenv(path):
     views of the same file is the one thing a file whose job is asserting that
     file's contract cannot have.
     """
-    return [l for l in (x.strip() for x in path.read_text().splitlines())
-            if l and not l.startswith("#") and "=" in l]
+    lines = [l for l in (x.strip() for x in path.read_text().splitlines())
+             if l and not l.startswith("#")]
+    for l in lines:
+        # Loud, not skipped. An `"=" in l` filter here would drop a bare
+        # `sk-...` line silently -- and agent.env is exempted from the
+        # credential guard on the strength of a test that reads through this,
+        # so a line this reader cannot see is a line nothing checks.
+        assert "=" in l, f"{path.name}: not a KEY=VALUE line: {l!r}"
+    return lines
 
 
 def descriptor():
@@ -190,7 +197,7 @@ def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
     ${...} spellings, and the dotenv test only checks lines carry no value.
     """
     referenced = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", (ROOT / "runtime" / "config.yaml").read_text()))
-    declared = set(re.findall(r"^([A-Z][A-Z0-9_]*)=", (ROOT / ".env.example").read_text(), re.M))
+    declared = {l.split("=", 1)[0] for l in dotenv(ROOT / ".env.example")}
     missing = referenced - declared
     assert missing == set(), (
         f"runtime/config.yaml interpolates {sorted(missing)}, which .env.example "
