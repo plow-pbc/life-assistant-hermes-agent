@@ -56,8 +56,9 @@ host, mounted at `/opt/data`; the image is stateless.
 ## Migrating `rowan`
 
 `rowan` is the second instance and it is **not registered**. Everything blocking
-it lives here; nowhere else in this repo restates the list, so there is one place
-to correct when it changes.
+it lives here — the table, the register block, the bring-up line and the
+`justfile` all point at this section rather than carrying their own copy, so
+there is one place to correct when it changes.
 
 **Precondition 1 — the timezone.** `agent.env` is a closed set (above) and could
 not carry `AGENT_TZ` even if it were open: a shared descriptor holds one value
@@ -70,10 +71,10 @@ offset is wrong in exactly the place the agent exists for.
 
 **Precondition 2 — the home is already occupied, and nothing would stop you.**
 `rowan`'s live pre-agent-mgr stack owns `~/.hermes-rowan` right now, serving it
-from its own compose file in another repo. It is not registered, so the collision
-check cannot see it — see [What an instance cannot reach](#what-an-instance-cannot-reach),
-which states that guard's scope and the failure it does not cover. Registering
-and restoring while that stack runs is exactly that case. Precondition 1 does not
+from its own compose file in another repo — and it is not registered, which is
+precisely the gap described in
+[What an instance cannot reach](#what-an-instance-cannot-reach). Registering and
+restoring while that stack runs is that case. Precondition 1 does not
 imply this one: #14 landing makes it *more* reachable, not less.
 
 **The order, therefore:**
