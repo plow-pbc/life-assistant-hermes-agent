@@ -26,7 +26,7 @@ import sys
 
 
 def split_probe(text: str) -> tuple[str, str]:
-    """First line is the status, the rest is the body (empty when there is none).
+    r"""First line is the status, the rest is the body (empty when there is none).
 
     `partition`, not `split("\n", 1)`: a transport failure writes no body and so
     no newline, where split returns a one-element list and raises on unpack.
