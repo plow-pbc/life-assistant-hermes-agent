@@ -101,9 +101,13 @@ def test_no_credential_file_is_tracked():
                          capture_output=True, text=True, check=True)
     for name in out.stdout.split("\0")[:-1]:
         base = name.rsplit("/", 1)[-1]
-        # The descriptor, and the blank-key template whose values are asserted
-        # empty below. Nothing else named like a credential is allowed.
-        if base in ("agent.env", ".env.example"):
+        # Anchored to the full path git prints, not the basename. The two
+        # exemptions are excused because two other tests cover those exact
+        # files -- and those tests read ROOT/agent.env and ROOT/.env.example, so
+        # a `secrets/agent.env` or `runtime/.env.example` matched by basename
+        # would be excused by a promise nothing checks. Same reasoning as -z
+        # above, one level up: the allowlist must not be the weakest link.
+        if name in ("agent.env", ".env.example"):
             continue
         assert not base.endswith(".env"), f"{name} is tracked"
         assert not base.startswith(".env."), f"{name} is tracked"
@@ -316,3 +320,19 @@ def test_split_probe_survives_a_body_that_never_arrived():
     assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
     assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
     assert mod.split_probe("200\n") == ("200", ""), "a trailing newline is still no body"
+
+
+def test_the_descriptor_holds_only_descriptor_keys():
+    """agent.env is a tracked dotenv, exempted from the credential guard.
+
+    That exemption has to rest on something checked, the way .env.example's
+    blank-value test backs its own. Every key here is agent-mgr's AGENT_*
+    namespace, so a credential-shaped key added to this file -- DOMO_MCP_TOKEN,
+    PLOW_CHAT_TOKEN -- fails loudly rather than shipping with a green suite.
+    """
+    keys = [l.split("=", 1)[0] for l in (x.strip() for x in
+            (ROOT / "agent.env").read_text().splitlines())
+            if l and not l.startswith("#") and "=" in l]
+    assert keys, "agent.env declares nothing -- is this still the descriptor?"
+    for key in keys:
+        assert key.startswith("AGENT_"), f"agent.env carries a non-descriptor key: {key}"
