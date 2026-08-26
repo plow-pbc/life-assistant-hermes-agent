@@ -85,20 +85,40 @@ def test_every_pinned_skill_is_a_sha_not_a_branch():
 def test_no_credential_file_is_tracked():
     """Credentials live in this agent's home dotenv, which is outside the repo.
 
-    Matched on the credential-file SHAPE, not on a `.env` suffix. The suffix
-    version rejected `agent.env` -- this repo's descriptor, which is the one
-    file that must be tracked -- and would have rejected `.env.example`, whose
-    entire job is carrying blank keys. Both are the false positives that make a
-    guard get deleted rather than fixed.
+    Two named exemptions, and everything else keeps the broad shape rule. An
+    earlier pass swapped the suffix rule for exact basenames to stop `agent.env`
+    tripping it -- and quietly stopped catching `prod.env`, `secrets.env`,
+    `auth.json.bak` and `latch-auth.json` along the way. A false positive on one
+    known filename is an allowlist problem, not a reason to narrow the rule.
+
+    -z, because this is a security guard and a filename must not be able to
+    defeat it: git C-quotes paths with non-ASCII bytes, so `café/.env` arrives
+    as `"caf\303\251/.env"` and its basename computes to `.env"`, and
+    whitespace-splitting fragments any path containing a space.
     """
     import subprocess
-    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
-                             text=True, check=True).stdout.split()
-    for name in tracked:
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                         capture_output=True, text=True, check=True)
+    for name in out.stdout.split("\0")[:-1]:
         base = name.rsplit("/", 1)[-1]
-        assert not (base == ".env" or (base.startswith(".env.")
-                                       and base != ".env.example")), f"{name} is tracked"
-        assert base not in ("auth.json", "auth.lock"), f"{name} is tracked"
+        # The descriptor, and the blank-key template whose values are asserted
+        # empty below. Nothing else named like a credential is allowed.
+        if base in ("agent.env", ".env.example"):
+            continue
+        assert not base.endswith(".env"), f"{name} is tracked"
+        assert not base.startswith(".env."), f"{name} is tracked"
+        assert "auth.json" not in base and "auth.lock" not in base, f"{name} is tracked"
+
+
+def test_the_dotenv_example_carries_no_values():
+    """The exemption above rests on this: it is a shape, not a secret store."""
+    lines = (ROOT / ".env.example").read_text().splitlines()
+    keys = [l for l in (x.strip() for x in lines)
+            if l and not l.startswith("#") and "=" in l]
+    assert keys, ".env.example declares no keys -- is it still the skeleton?"
+    for line in keys:
+        key, value = line.split("=", 1)
+        assert value == "", f".env.example carries a value for {key}"
 
 def _recipe(name: str) -> str:
     """One recipe's body, from the justfile. Read as text rather than run.
