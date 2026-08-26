@@ -82,13 +82,23 @@ def test_every_pinned_skill_is_a_sha_not_a_branch():
         assert repo and dest
 
 
-def test_no_dotenv_or_credential_file_is_tracked():
+def test_no_credential_file_is_tracked():
+    """Credentials live in this agent's home dotenv, which is outside the repo.
+
+    Matched on the credential-file SHAPE, not on a `.env` suffix. The suffix
+    version rejected `agent.env` -- this repo's descriptor, which is the one
+    file that must be tracked -- and would have rejected `.env.example`, whose
+    entire job is carrying blank keys. Both are the false positives that make a
+    guard get deleted rather than fixed.
+    """
+    import subprocess
     tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
                              text=True, check=True).stdout.split()
     for name in tracked:
-        assert not name.endswith(".env"), f"{name} is tracked"
-        assert "auth.json" not in name, f"{name} is tracked"
-
+        base = name.rsplit("/", 1)[-1]
+        assert not (base == ".env" or (base.startswith(".env.")
+                                       and base != ".env.example")), f"{name} is tracked"
+        assert base not in ("auth.json", "auth.lock"), f"{name} is tracked"
 
 def _recipe(name: str) -> str:
     """One recipe's body, from the justfile. Read as text rather than run.
