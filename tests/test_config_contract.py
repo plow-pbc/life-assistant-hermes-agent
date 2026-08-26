@@ -760,6 +760,14 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     }.items():
         assert "1 tools" in v("200", body), f"{label} should be recognised"
 
+    # More tools than the preview shows — the shape actually observed live (12).
+    # One case pins three things a one-tool list cannot separate: the count
+    # comes from `tools` and not from the slice, the preview stops at three, and
+    # the separator is ", ". The row that used to carry this went out with the
+    # degraded rendering it also exercised.
+    four = '{"id":1,"result":{"tools":[{"name":"a"},{"name":"b"},{"name":"c"},{"name":"d"}]}}'
+    assert "4 tools (a, b, c…)" in v("200", four)
+
 
 
 
