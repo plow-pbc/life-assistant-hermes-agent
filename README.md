@@ -70,13 +70,11 @@ offset is wrong in exactly the place the agent exists for.
 
 **Precondition 2 — the home is already occupied, and nothing would stop you.**
 `rowan`'s live pre-agent-mgr stack owns `~/.hermes-rowan` right now, serving it
-from its own compose file in another repo. `agent-mgr`'s collision check compares
-*registered* agents, so an unregistered container holding that home is invisible
-to it. Registering and restoring while that stack runs opens a second gateway on
-one home, one `auth.json` and one `PLOW_CHAT_CHAT_UID` — and whichever started
-last owns the chat. That is the failure this whole tool exists to prevent, and
-precondition 1 does not imply it: #14 landing makes this *more* reachable, not
-less.
+from its own compose file in another repo. It is not registered, so the collision
+check cannot see it — see [What an instance cannot reach](#what-an-instance-cannot-reach),
+which states that guard's scope and the failure it does not cover. Registering
+and restoring while that stack runs is exactly that case. Precondition 1 does not
+imply this one: #14 landing makes it *more* reachable, not less.
 
 **The order, therefore:**
 
@@ -118,11 +116,12 @@ allowlist and the interpolation contract -- and are marked below. The mount-leve
 ones left with the deployment and are `plow-pbc/agent-mgr`'s compose contract
 now; they are stated here as design, not as something this tree enforces:
 
-- **Another instance's state.** `agent-mgr`'s collision check refuses two
-  *registered* agents resolving to the same home — but an **unregistered**
-  container holding one is invisible to it, which is precondition 2 in
-  [Migrating `rowan`](#migrating-rowan). The failure it prevents is stated
-  there.
+- **Another instance's state.** Two gateways sharing one home share one
+  `auth.json` and one dotenv, including one `PLOW_CHAT_CHAT_UID`, so whichever
+  started last owns the chat. `agent-mgr`'s collision check refuses two
+  *registered* agents resolving to the same home — but only registered ones: a
+  container running outside the registry holding that home is invisible to it,
+  and nothing here would stop a second gateway opening alongside it.
 - **The operations vault** (`~/hermes-vault`) *(agent-mgr's compose contract)* — compiled guest conversations and
   property access facts, door and keypad codes among them.
 - **Hostex and Seam** *(agent-mgr's compose contract)*. No PMS access, no lock control — those belong to the
