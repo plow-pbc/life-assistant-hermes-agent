@@ -16,7 +16,6 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
@@ -53,64 +52,35 @@ def config():
     return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
 
 
-USER_SPECIFIC_HEADING = "## user-specific — to be removed"
+DESCRIPTOR_KEYS = {"AGENT_CONFIG"}
 
 
-def _user_specific_section() -> str:
-    text = (ROOT / "README.md").read_text()
-    assert USER_SPECIFIC_HEADING in text, (
-        "README has no user-specific section; if this repo carries a value "
-        "belonging to one person, it must say so"
+def test_the_descriptor_carries_nothing_but_the_shared_config_path():
+    """Closed set, deliberately: every instance reads this one file, so a key
+    added here is given to ALL of them.
+
+    That is why AGENT_TZ is absent. A shared descriptor holds one value, and a
+    zone is per-person -- shipping one would boot every other instance on
+    someone else's clock, which no test could catch because the value would be
+    right for whoever it was chosen for.
+
+    Closing the set rather than listing what is forbidden does three jobs at
+    once: AGENT_HOME / AGENT_CONTAINER / AGENT_PROJECT are excluded as a
+    consequence rather than as a second list to keep in sync, a person-valued
+    key cannot arrive undisclosed, and a credential cannot be parked here under
+    an AGENT_* name."""
+    assert set(descriptor()) == DESCRIPTOR_KEYS, (
+        "agent.env is shared by every instance. A new key here is read by all "
+        "of them -- if it belongs to one person it does not go in this file; "
+        "see README 'Before a non-Pacific instance is registered'. Identity "
+        "(AGENT_HOME/AGENT_CONTAINER/AGENT_PROJECT) is agent-mgr's to derive "
+        "from the registry name, and must never be declared."
     )
-    return text.split(USER_SPECIFIC_HEADING, 1)[1].split("\n## ", 1)[0]
-
-
-def test_a_person_specific_value_is_documented_and_ticketed():
-    """This repo is shared. A declaration that belongs to ONE person is allowed
-    only while the README names it and links the issue that removes it.
-
-    Asserting the rule rather than the value: the zone may change, the
-    obligation to disclose it may not."""
-    tz = descriptor().get("AGENT_TZ")
-    if tz is None:
-        return  # moved to a per-instance overlay; nothing left to disclose
-    section = _user_specific_section()
-    assert "AGENT_TZ" in section, (
-        f"agent.env declares AGENT_TZ={tz}, which belongs to one instance's "
-        f"owner, but README's user-specific section does not name it"
-    )
-    assert re.search(r"agent-mgr(/issues/|#)\d+", section), (
-        "the user-specific section must link the issue that removes the entry"
-    )
-
-
-def test_a_declared_timezone_is_a_real_zone():
-    """A typo here is silent: the container takes the string, and every
-    scheduled thing resolves against a clock nobody checked."""
-    tz = descriptor().get("AGENT_TZ")
-    if tz is not None:
-        ZoneInfo(tz)
 
 
 def test_the_descriptor_names_where_this_agents_config_lives():
     assert descriptor()["AGENT_CONFIG"] == "runtime/config.yaml"
     assert (ROOT / "runtime" / "config.yaml").is_file()
-
-
-def test_the_descriptor_declares_no_per_instance_identity():
-    """Home, container and compose project are agent-mgr's to derive from the
-    REGISTRY NAME, which is what lets `life` and `rowan` run from this one
-    checkout. Declaring any here would pin every instance to one, and
-    agent-mgr's ownership guard would refuse every instance but that one.
-
-    Stricter than the rule it replaces, which permitted a declared home so long
-    as it named this agent -- in a shared repo that is exactly backwards."""
-    d = descriptor()
-    for key in ("AGENT_HOME", "AGENT_CONTAINER", "AGENT_PROJECT"):
-        assert key not in d, (
-            f"{key} is declared in agent.env; it must be derived from the "
-            f"registry name so one repo can serve more than one instance"
-        )
 
 
 def test_the_phone_line_is_enabled():

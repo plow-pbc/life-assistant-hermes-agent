@@ -40,19 +40,26 @@ It runs the upstream `nousresearch/hermes-agent` image directly, pinned by
 digest, with no derived layer. State lives in the instance's own home on the
 host, mounted at `/opt/data`; the image is stateless.
 
-## user-specific — to be removed
+## Before a non-Pacific instance is registered
 
-One value in this repo still belongs to a particular person, and it is here only
-because `agent-mgr` has nowhere else to put it yet:
+This repo carries **no** user-specific values -- the shared descriptor holds only
+`AGENT_CONFIG`, and a test fails the build if a person-valued key is added
+without being disclosed here.
 
-| what | where | why it is still here | tracked by |
-|---|---|---|---|
-| `AGENT_TZ=America/Chicago` | `agent.env` | Rowan's zone. `agent-mgr` has no per-instance descriptor overlay, so a shared `agent.env` cannot hold a different zone per instance; the fleet default is Pacific, which is the wrong person's. | [`plow-pbc/agent-mgr#14`](https://github.com/plow-pbc/agent-mgr/issues/14) |
+One consequence is load-bearing. `agent.env` cannot carry `AGENT_TZ`, because a
+shared descriptor has one value and every instance would read it. So instances
+inherit agent-mgr's fleet default, `America/Los_Angeles`.
 
-This is not cosmetic. A life assistant resolves "tomorrow morning" and every
-scheduled thing against its clock, so on a two-hour offset it is wrong in exactly
-the place the agent exists for. When #14 lands, this line moves to
-`~/.config/agent-mgr/rowan.env` and this section goes away.
+**An instance whose owner is not Pacific must not be registered until
+[`plow-pbc/agent-mgr#14`](https://github.com/plow-pbc/agent-mgr/issues/14)
+lands.** `rowan` is that instance: it needs `America/Chicago`, and it is
+deliberately still on its pre-agent-mgr deployment, which supplies the zone from
+its own compose file. Registering it against this repo today would silently move
+it to Pacific -- and nothing here could catch that, because the value would be
+right for every other instance.
+
+When #14 lands, the zone goes in `~/.config/agent-mgr/rowan.env` and this
+section goes away.
 
 ## The account boundary — how one repo serves two people
 
@@ -78,20 +85,21 @@ The config naming those variables is shared; the Mac they resolve to is not.
 
 ## What an instance cannot reach
 
-Asserted in `tests/test_config_contract.py`, so a copy-paste from a sibling's
-config fails loudly instead of quietly widening the blast radius. Here that
-copy-paste can cross an **account** boundary, not just an agent one, which is
-why these are tests rather than review notes:
+Here a copy-paste can cross an **account** boundary, not just an agent one. Two
+of these are asserted by `tests/test_config_contract.py` -- the `mcp_servers`
+allowlist and the interpolation contract -- and are marked below. The mount-level
+ones left with the deployment and are `plow-pbc/agent-mgr`'s compose contract
+now; they are stated here as design, not as something this tree enforces:
 
 - **Another instance's state.** Two gateways sharing one home would share one
   `auth.json` and one dotenv, including one `PLOW_CHAT_CHAT_UID`, so whichever
   started last would own the chat. `agent-mgr`'s collision check refuses two
   registered agents resolving to the same home.
-- **The operations vault** (`~/hermes-vault`) — compiled guest conversations and
+- **The operations vault** (`~/hermes-vault`) *(agent-mgr's compose contract)* — compiled guest conversations and
   property access facts, door and keypad codes among them.
-- **Hostex and Seam.** No PMS access, no lock control — those belong to the
+- **Hostex and Seam** *(agent-mgr's compose contract)*. No PMS access, no lock control — those belong to the
   rentals agent and reach a different person's property.
-- **Anyone else's Mac.** `tests/` asserts `latch` is the only `mcp_servers`
+- **Anyone else's Mac** *(asserted here)*. `tests/` asserts `latch` is the only `mcp_servers`
   entry, so a sibling's block arriving by copy-paste fails loudly. Which Mac
   `latch` reaches is the dotenv's business, not this tree's.
 
