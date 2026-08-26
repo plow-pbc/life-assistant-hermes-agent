@@ -84,9 +84,14 @@ def verdict(code: str, raw: str) -> str:
                 len(tools),
                 ", ".join(names) if names else "unnamed",
             )
+    # Whole body, not raw[:600]. The response IS the diagnosis here — that is
+    # the entire trade this module makes in place of a cause taxonomy — and a
+    # cap silently drops the line that explains the failure exactly when the
+    # body is verbose enough to need explaining. Failure bodies are relay errors
+    # and proxy pages, not the (unprinted) success payload.
     raise SystemExit(
         "latch did NOT answer with a tool list — HTTP %s. What came back:\n%s"
-        % (code, raw[:600] if raw.strip() else "(empty body)")
+        % (code, raw if raw.strip() else "(empty body)")
     )
 
 

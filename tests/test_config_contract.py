@@ -789,6 +789,8 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     # len("nope") — four tools — as a SUCCESS, which is worse than crashing.
     ("200", '{"id":1,"result":"ok"}'),
     ("200", '{"id":1,"result":{"tools":"nope"}}'),
+    # A truthy scalar result — the shape a proxy in front of the relay returns.
+    ("200", '{"result":"upstream unavailable"}'),
 ])
 def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     """No taxonomy — the response is the diagnosis.
@@ -804,7 +806,24 @@ def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     msg = str(e.value)
     assert "did NOT answer" in msg
     assert code in msg, "the status has to be in the message"
-    assert (body[:40] in msg) if body.strip() else ("(empty body)" in msg)
+    assert (body in msg) if body.strip() else ("(empty body)" in msg)
+
+
+def test_a_long_failure_body_is_shown_whole():
+    """The response IS the diagnosis, so a cap drops the explaining line.
+
+    This module trades a cause taxonomy for showing the operator what came back.
+    Truncating at 600 characters broke that trade exactly when the body was
+    verbose enough to need reading — a proxy error page whose useful line sits
+    past the cap. Failure bodies are relay errors and proxy pages; the large
+    payload is the success path, which is never printed.
+    """
+    v = _verdict()
+    body = '{"detail":"' + "x" * 900 + '","reason":"the-line-that-explains-it"}'
+    with pytest.raises(SystemExit) as e:
+        v("502", body)
+    assert body in str(e.value), "the body must be shown whole, not capped"
+    assert "the-line-that-explains-it" in str(e.value)
 
 def test_split_probe_survives_a_body_that_never_arrived():
     """The bug this pins shipped twice, and the trim deleted its only guard.
