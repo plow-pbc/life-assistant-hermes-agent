@@ -675,7 +675,6 @@ def _verdict():
     return mod.verdict
 
 
-OK_BODY = 'data: {"result":{"tools":[{"name":"plow_read_file"},{"name":"plow_vault"}]}}'
 
 
 
@@ -774,3 +773,21 @@ def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     assert "did NOT answer" in msg
     assert code in msg, "the status has to be in the message"
     assert (body[:40] in msg) if body.strip() else ("(empty body)" in msg)
+
+def test_split_probe_survives_a_body_that_never_arrived():
+    """The bug this pins shipped twice, and the trim deleted its only guard.
+
+    A transport failure writes no body and therefore no newline. `split("\\n", 1)`
+    returns a one-element list and raises; a `partition` without the separator
+    check hands the status straight back as the body, which is how the operator's
+    one actionable line became "HTTP 000: 000".
+    """
+    spec = importlib.util.spec_from_file_location(
+        "latch_split", ROOT / "scripts" / "latch-verdict.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
+    assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
+    assert mod.split_probe("200\n") == ("200", ""), "a trailing newline is still no body"

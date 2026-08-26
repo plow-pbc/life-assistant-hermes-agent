@@ -26,9 +26,15 @@ import sys
 
 
 def split_probe(text: str) -> tuple[str, str]:
-    """First line is the status, the rest is the body (empty when there is none)."""
-    code, sep, body = text.partition("\n")
-    return code.strip(), body if sep else ""
+    """First line is the status, the rest is the body (empty when there is none).
+
+    `partition`, not `split("\n", 1)`: a transport failure writes no body and so
+    no newline, where split returns a one-element list and raises on unpack.
+    partition yields an empty body instead — which is the whole point, and the
+    reason the shell version of this shipped the status back as the body twice.
+    """
+    code, _, body = text.partition("\n")
+    return code.strip(), body
 
 
 def _payloads(raw: str):
