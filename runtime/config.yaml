@@ -6,7 +6,8 @@
 # Gmail, Google Calendar and Slack are NOT here: they are reached through the
 # plow-connectors skill, which calls the Plow connector REST API with the
 # gateway's own PLOW_CHAT_TOKEN. No second credential, no stdio server —
-# `just install-connectors` is the whole delivery for those.
+# `agent-mgr restore rowan` replays `skills.tsv`, which is the whole delivery
+# for those.
 model:
   default: gpt-5.5
   provider: openai-codex

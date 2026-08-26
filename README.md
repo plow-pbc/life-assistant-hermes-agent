@@ -124,25 +124,30 @@ before he texts the activation code, not one to discover afterwards.
 
 ## The plugin and the skill are pinned, not vendored
 
-`runtime/plow-chat-plugin.ref` holds one 40-char SHA of
-[plow-pbc/seed-hermes-plow](https://github.com/plow-pbc/seed-hermes-plow), and
-it covers both installs:
+Two pins now, in two repos, and the split is the point:
 
-| Recipe | What it fetches at that SHA |
-|---|---|
-| `agent-mgr install-plugin rowan` | `ref/scripts/install_direct_mount.sh` — the Plow Chat plugin |
-| `agent-mgr restore rowan` | `ref/hermes-skill/plow-connectors/{SKILL.md,plow_connector.py}` |
-| `agent-mgr activate rowan` | `ref/scripts/create_plow_chat_curl.sh` |
+| Pin | Lives in | Covers |
+|---|---|---|
+| the Plow Chat plugin | `plow-pbc/agent-mgr`'s `runtime/plow-chat-plugin.ref` | every agent on the host — `agent-mgr install-plugin rowan`, and read again by `agent-mgr activate rowan` |
+| `plow-connectors` | this repo's `skills.tsv` | Gmail / Calendar / Slack for *this* agent, replayed by `agent-mgr restore rowan` |
 
-All three refuse a ref that is not a 40-char SHA. A branch would silently
-re-point a running agent on the next upstream push, and this pin carries both
-the plugin holding the chat token and the skill that reads Rowan's mail.
+The plugin pin left with the deployment, and had to: it is fleet mechanism, so
+one repo bumping it for every agent is the behaviour you want. The connector
+skill stays here because it is this agent's, reviewable beside the config it
+runs under.
 
-One pin, not two, deliberately: two that can drift would mean the skill reading
-the mail and the plugin holding the token came from different upstream trees.
+This repo used to hold one pin covering both, on the argument that two which can
+drift would mean the skill reading the mail and the plugin holding the token
+came from different upstream trees. That argument survives — it just belongs one
+layer up now. `agent-mgr` pins the plugin once for the fleet, which is a stronger
+guarantee than each agent pinning it and hoping the copies agree.
+
+Both refuse a ref that is not a 40-char SHA. A branch would silently re-point a
+running agent on the next upstream push, and these carry the plugin holding the
+chat token and the skill that reads Rowan's mail.
 
 Copying these into the repo instead would make it a fork of them, which is what
-`sams-str-hermes-agent#138` spent −1,311 LOC undoing after a vendored plugin
+`srosro/str-hermes-agent#138` spent −1,311 LOC undoing after a vendored plugin
 drifted until production was serving a working tree.
 
 `agent-mgr restore rowan` fetches the two skill files directly rather than
