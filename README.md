@@ -66,15 +66,15 @@ not an omission to be tidied up later.
 ## Bring-up
 
 ```sh
-just restore             # config.yaml + a .env skeleton into ~/.hermes-rowan
-just install-plugin      # the Plow Chat plugin, from the pinned SHA
-just install-connectors  # Gmail / Calendar / Slack, from the same pinned SHA
-just activate            # prints a code — Rowan texts it from his phone
-just up                  # must precede sign-in: that runs inside this container
-just sign-in             # one-time Codex device flow — Rowan completes it
+agent-mgr restore rowan             # config.yaml + a .env skeleton into ~/.hermes-rowan
+agent-mgr install-plugin rowan      # the Plow Chat plugin, from the pinned SHA
+agent-mgr restore rowan  # Gmail / Calendar / Slack, from the same pinned SHA
+agent-mgr activate rowan            # prints a code — Rowan texts it from his phone
+agent-mgr up rowan                  # must precede sign-in: that runs inside this container
+agent-mgr sign-in rowan             # one-time Codex device flow — Rowan completes it
 just check-latch         # can this container reach Rowan's Mac?
-just check-connectors    # which of his connectors are linked and reachable
-just agent 'what is on my calendar tomorrow?'   # a turn without the phone
+agent-mgr check-connectors rowan    # which of his connectors are linked and reachable
+agent-mgr agent rowan 'what is on my calendar tomorrow?'   # a turn without the phone
 ```
 
 Google Calendar has no connector of its own — upstream puts it **under the
@@ -88,7 +88,7 @@ third name to add.
 Everything else is automated. These two are not — and neither can be done for
 him, for different reasons:
 
-**1. Texting the activation code.** `just activate` does everything up to the
+**1. Texting the activation code.** `agent-mgr activate rowan` does everything up to the
 text itself: it prints a `Text Plow Activate: <code>` line naming the number to
 send it to, then polls until Plow confirms. Only Rowan can send it, from his
 phone, and that text *is* the account binding — a code texted by anyone else
@@ -105,7 +105,7 @@ If it expires, re-running is safe *before* a successful redeem — it just issue
 fresh code. After one succeeds, re-running spends another activation and strands
 the previous chat.
 
-**2. The Codex sign-in.** `just sign-in` runs a device-code flow. It is not a
+**2. The Codex sign-in.** `agent-mgr sign-in rowan` runs a device-code flow. It is not a
 copy of a sibling's `auth.json`: that file is guarded by `auth.lock`, two live
 gateways sharing one session is untested, and this is a different person's
 account and billing besides.
@@ -130,9 +130,9 @@ it covers both installs:
 
 | Recipe | What it fetches at that SHA |
 |---|---|
-| `just install-plugin` | `ref/scripts/install_direct_mount.sh` — the Plow Chat plugin |
-| `just install-connectors` | `ref/hermes-skill/plow-connectors/{SKILL.md,plow_connector.py}` |
-| `just activate` | `ref/scripts/create_plow_chat_curl.sh` |
+| `agent-mgr install-plugin rowan` | `ref/scripts/install_direct_mount.sh` — the Plow Chat plugin |
+| `agent-mgr restore rowan` | `ref/hermes-skill/plow-connectors/{SKILL.md,plow_connector.py}` |
+| `agent-mgr activate rowan` | `ref/scripts/create_plow_chat_curl.sh` |
 
 All three refuse a ref that is not a 40-char SHA. A branch would silently
 re-point a running agent on the next upstream push, and this pin carries both
@@ -145,7 +145,7 @@ Copying these into the repo instead would make it a fork of them, which is what
 `sams-str-hermes-agent#138` spent −1,311 LOC undoing after a vendored plugin
 drifted until production was serving a working tree.
 
-`just install-connectors` fetches the two skill files directly rather than
+`agent-mgr restore rowan` fetches the two skill files directly rather than
 running upstream's `install_connectors.sh`: that script copies from a path
 inside its own checkout, so curling the script alone finds no source to copy.
 The destination is not a preference either — `SKILL.md`'s `allowed-tools` line
@@ -155,15 +155,23 @@ own helper.
 
 ## Layout
 
-| Path | What |
-|---|---|
-| `compose.yml` | The gateway service. One mount, no ports, no build. |
-| `justfile` | Every recipe, and the homes none of them may reach |
-| `runtime/config.yaml` | The declarative half of `~/.hermes-rowan` — model, plugin, and the Latch MCP server |
-| `runtime/plow-chat-plugin.ref` | The one pinned upstream SHA |
-| `scripts/` | The two things a recipe shells out to, so tests can run them |
-| `.env.example` | The environment-key contract, with no values |
-| `tests/` | What this agent must not reach, asserted |
+```
+agent.env       which agent this is: Rowan's timezone, and where its config lives
+runtime/        config.yaml: model, plugins, mcp_servers
+skills.tsv      the pinned plow-connectors SHA, reviewable beside the config
+scripts/        latch-verdict.py -- the one thing this repo owns outright
+tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
+```
+
+Deployment is `plow-pbc/agent-mgr`'s. This repo carried its own `compose.yml`,
+verbatim copies of `model-provider` and `reload-if-running`, and eleven recipes
+re-implementing `restore`, `activate`, `up` and the rest.
+
+`check-latch` is the exception that stayed, because `agent-mgr check-latch`
+classifies the response and this one shows it — see the recipe's own comment,
+and `plow-pbc/agent-mgr#9` for graduating that shape upstream. It reaches the
+container through `agent-mgr compose`, the documented escape hatch, rather than
+a compose file this repo no longer owns.
 
 ## Latch — the Mac this reaches is Rowan's
 
@@ -186,11 +194,11 @@ credential when the credential is fine. Measured: 200 with the header, 406
 without.
 
 **Editing `runtime/config.yaml` is not enough** — the gateway reads the
-*installed* copy at `~/.hermes-rowan/config.yaml`. Run `just restore`, which
+*installed* copy at `~/.hermes-rowan/config.yaml`. Run `agent-mgr restore rowan`, which
 installs it and reloads the gateway only if the file actually changed.
 
 ## Open
 
 - **Connectors are Rowan's to link.** Google and Slack are linked on his Plow
-  account, not here. `just check-connectors` reports `connected:false` until he
+  account, not here. `agent-mgr check-connectors rowan` reports `connected:false` until he
   does, which is a real answer rather than a failure.
