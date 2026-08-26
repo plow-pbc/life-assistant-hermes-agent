@@ -10,7 +10,7 @@
 A [Hermes](https://howto.plow.co/hermes) agent — texted from iMessage over the
 Plow Chat platform — scoped to life and family logistics. Siblings on `wakeup`
 are the rentals agent (`srosro/str-hermes-agent`) and the house-hunting agent
-(`srosro/sams-property-hermes-agent`).
+(`plow-pbc/property-hunt-hermes-agent`).
 
 **One repo, one instance per person.** This is not one person's agent that
 someone else could copy; it is the common half, and each person who runs it gets
