@@ -665,65 +665,23 @@ def test_no_name_in_this_file_is_defined_twice():
     assert dupes == [], f"defined more than once, so only the last one runs: {dupes}"
 
 
-def _verdict():
-    """The latch verdict function, loaded from the script the recipe runs."""
+def _latch_module():
+    """The script the check-latch recipe runs, loaded once per call site."""
     spec = importlib.util.spec_from_file_location(
         "latch_verdict", ROOT / "scripts" / "latch-verdict.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.verdict
+    return mod
 
 
-OK_BODY = 'data: {"result":{"tools":[{"name":"plow_read_file"},{"name":"plow_vault"}]}}'
+def _verdict():
+    return _latch_module().verdict
 
 
-def test_latch_probe_calls_a_mac_that_is_off_unreachable():
-    """HTTP 200 is not the answer — a Mac that is off answers 200 with an error.
-
-    This endpoint is JSON-RPC over MCP streamable-HTTP, so a switched-off Mac, a
-    Latch that is not running, and a relay that cannot forward all come back
-    2xx. A probe asserting on the status would call every one of those
-    "reachable" — the same can-only-lie shape check-connectors had, inverted
-    from always-fails to always-passes.
-    """
-    v = _verdict()
-    with pytest.raises(SystemExit) as e:
-        v("200", 'data: {"error":{"code":-32001,"message":"device offline"}}')
-    assert "did not answer" in str(e.value) and "device offline" in str(e.value)
-
-    # 200 with an empty tool list is also not reachability.
-    with pytest.raises(SystemExit) as e:
-        v("200", 'data: {"result":{"tools":[]}}')
-    assert "listed no tools" in str(e.value)
 
 
-def test_latch_probe_reports_the_real_reason_it_failed():
-    """Each failure has to send the operator to the right place.
 
-    A 401 means mint a new credential on Rowan's Mac; a 406 means the probe was
-    edited (it sends the Accept header) and the token is fine. Conflating them
-    sends someone to another person's machine to fix a repo-side bug.
-    """
-    v = _verdict()
-    for code, body, expected in [
-        ("401", "", "REVOKED"),
-        ("406", "", "probe was edited"),
-        ("000", "", "NOT tested"),
-        ("500", "boom", "HTTP 500"),
-        ("200", "not json at all", "unparseable"),
-    ]:
-        with pytest.raises(SystemExit) as e:
-            v(code, body)
-        assert expected in str(e.value), f"{code} should mention {expected!r}"
-
-
-def test_latch_probe_accepts_a_real_answer():
-    # Both framings the relay uses: SSE `data:` lines, and a bare JSON body.
-    v = _verdict()
-    for body in (OK_BODY, OK_BODY.removeprefix("data: ")):
-        line = v("200", body)
-        assert "2 tools" in line and "plow_read_file" in line
 
 
 def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
@@ -764,34 +722,6 @@ def test_check_latch_actually_runs_the_verdict_script():
     )
 
 
-def test_a_transport_failure_reports_as_untested_not_as_a_status():
-    """The no-body case has no newline, and both halves used to get it wrong.
-
-    curl writes `000` via -w on a failed transfer AND exits non-zero, so a
-    `|| printf 000` fallback appended a second one — measured in the container as
-    `000000`, which missed the 000 branch entirely and printed "relay returned
-    HTTP 000000". With no body there is also no newline, so a shell split handed
-    the status back as the body: "HTTP 000000: 000000". The one line that should
-    have said the credential was never tested said nothing usable.
-    """
-    spec = importlib.util.spec_from_file_location(
-        "latch_verdict_split", ROOT / "scripts" / "latch-verdict.py"
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
-    # No body, no newline: the body must come back empty, not echo the status.
-    code, body = mod.split_probe("000")
-    assert (code, body) == ("000", "")
-    with pytest.raises(SystemExit) as e:
-        mod.verdict(code, body)
-    assert "NOT tested" in str(e.value)
-
-    # With a body, the split keeps them apart.
-    code, body = mod.split_probe('200\ndata: {"result":{"tools":[{"name":"t"}]}}')
-    assert code == "200" and body.startswith("data: ")
-    assert "1 tools" in mod.verdict(code, body)
-
 
 def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
     # curl's own -w already emits 000 on a failed transfer; a `|| printf 000`
@@ -803,52 +733,102 @@ def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
     )
 
 
-def test_latch_verdict_reads_every_legal_sse_shape():
-    """A working Mac must not be reported unparseable because of framing.
 
-    streamable-HTTP lets the server emit notifications before the response, and
-    the space after `data:` is optional. Joining every data line into one string
-    turned a two-frame answer into `{..}{..}` and a spaceless frame into a raw
-    SSE envelope — both reported as "unparseable body" from a Mac that answered
-    correctly.
+
+def test_latch_verdict_recognises_a_real_answer_in_any_framing():
+    """The one thing it must get right: a Mac that answered.
+
+    streamable-HTTP lets the server emit notifications before the response and
+    makes the space after `data:` optional, so all of these are the same
+    successful answer. Joining the frames instead of parsing each one is what
+    turned a legal two-frame reply into `{..}{..}`.
     """
     v = _verdict()
     answer = '{"id":1,"result":{"tools":[{"name":"plow_vault"}]}}'
-    cases = {
-        "single spaced frame": "data: " + answer,
+    for label, body in {
+        "spaced frame": "data: " + answer,
         "spaceless frame": "data:" + answer,
         "notification first": 'data: {"method":"notifications/message"}\n\ndata: ' + answer,
-        "bare json, no envelope": answer,
-        "response before a trailing notification":
-            "data: " + answer + '\n\ndata: {"method":"notifications/progress"}',
-    }
-    for label, body in cases.items():
-        assert "1 tools" in v("200", body), f"{label} should parse"
+        "bare json": answer,
+        # A malformed early frame must not shadow the real answer behind it:
+        # selection is "the frame carrying tools", not "the first with a key".
+        # id:1 is load-bearing — the removed classifier preferred the id-1
+        # frame, so a noise frame WITHOUT it was already handled correctly and
+        # this row would pass under both implementations, pinning nothing.
+        "malformed frame wearing the answer's id":
+            'data: {"id":1,"error":"boom"}\n\ndata: ' + answer,
+    }.items():
+        assert "1 tools" in v("200", body), f"{label} should be recognised"
 
-    # An error frame still wins over surrounding noise.
-    with pytest.raises(SystemExit) as e:
-        v("200", 'data: {"method":"notifications/message"}\n\ndata: {"id":1,"error":{"code":-32001,"message":"device offline"}}')
-    assert "device offline" in str(e.value)
+    # More tools than the preview shows — the shape actually observed live (12).
+    # One case pins three things a one-tool list cannot separate: the count
+    # comes from `tools` and not from the slice, the preview stops at three, and
+    # the separator is ", ". The row that used to carry this went out with the
+    # degraded rendering it also exercised.
+    four = '{"id":1,"result":{"tools":[{"name":"a"},{"name":"b"},{"name":"c"},{"name":"d"}]}}'
+    assert "4 tools (a, b, c…)" in v("200", four)
 
 
-def test_valid_json_with_no_response_frame_is_not_called_unparseable():
-    """Two different failures, two different places to go.
 
-    A proxy's `{"detail": ...}`, an empty array, or a bare `{"jsonrpc","id"}`
-    parse perfectly well and simply carry no answer. Reporting them as
-    "unparseable body" points the operator at the wrong layer — the same
-    misdiagnosis the 406 branch exists to prevent.
+
+@pytest.mark.parametrize("code,body", [
+    ("401", '{"error":"invalid token"}'),
+    ("406", "Client must accept both application/json and text/event-stream"),
+    ("000", ""),
+    ("200", 'data: {"id":1,"error":{"code":-32001,"message":"device offline"}}'),
+    ("200", '{"jsonrpc":"2.0","id":1}'),
+    ("502", "<html>Bad Gateway</html>"),
+    # A non-JSON-RPC proxy in front of the relay answers with a string-valued
+    # `error`. The classifier version did `d["error"].get(...)` and died with
+    # AttributeError — the recipe whose whole purpose is one actionable line
+    # crashing instead of printing it. Nothing here reads `error` any more.
+    ("200", '{"error":"unauthorized"}'),
+    # The same unguarded shape lived on `result` until it was checked too — the
+    # truthy-scalar form is what a proxy in front of the relay returns:
+    # `{"result":"ok"}` crashed on .get, and a string-valued `tools` reported
+    # len("nope") — four tools — as a SUCCESS, which is worse than crashing.
+    ("200", '{"id":1,"result":"ok"}'),
+    ("200", '{"id":1,"result":{"tools":"nope"}}'),
+    # Malformed tool lists are not an answer — they take the failure path and
+    # the body is shown. Kept as rows rather than deleted with the rendering
+    # they used to exercise: both of these CRASHED before the unwraps were
+    # shape-checked, so they pin a real regression, not a display contract.
+    ("200", '{"id":1,"result":{"tools":[1,2]}}'),
+    ("200", '{"id":1,"result":{"tools":[{"name":null}]}}'),
+    # >600 chars: the cap that used to truncate here dropped the explaining
+    # line exactly when the body was long enough to need reading.
+    ("502", '{"detail":"' + "x" * 900 + '","reason":"the-line-that-explains-it"}'),
+])
+def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
+    """No taxonomy — the response is the diagnosis.
+
+    Every one of these used to get a hand-written label, and each round of
+    review found another shape the labels got wrong. The contract now is only
+    that failure is loud and the evidence is verbatim, so an unanticipated shape
+    cannot be mislabelled — there is no label.
     """
     v = _verdict()
-    for body in ('{"jsonrpc":"2.0","id":1}', "[]", '{"detail":"upstream timeout"}',
-                 'data: {"method":"notifications/message"}'):
-        with pytest.raises(SystemExit) as e:
-            v("200", body)
-        msg = str(e.value)
-        assert "no JSON-RPC response frame" in msg, f"{body!r} -> {msg}"
-        assert "unparseable" not in msg
-
-    # Genuinely not JSON still says unparseable.
     with pytest.raises(SystemExit) as e:
-        v("200", "<html>502 Bad Gateway</html>")
-    assert "unparseable" in str(e.value)
+        v(code, body)
+    msg = str(e.value)
+    assert "did NOT answer" in msg
+    assert code in msg, "the status has to be in the message"
+    assert (body in msg) if body.strip() else ("(empty body)" in msg)
+
+
+
+def test_split_probe_survives_a_body_that_never_arrived():
+    """The bug this pins shipped twice, and the trim deleted its only guard.
+
+    A transport failure writes no body and therefore no newline, and
+    `split("\\n", 1)` returns a one-element list that raises on unpack — the
+    mutation this catches. The status-as-body bug came from the shell version
+    (`${code#*$'\\n'}` does not strip when there is no newline); partition
+    cannot reproduce it, which is why the branch guarding against it was removed
+    as unreachable rather than kept.
+    """
+    mod = _latch_module()
+
+    assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
+    assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
+    assert mod.split_probe("200\n") == ("200", ""), "a trailing newline is still no body"
