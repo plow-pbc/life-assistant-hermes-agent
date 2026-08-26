@@ -760,6 +760,17 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     }.items():
         assert "1 tools" in v("200", body), f"{label} should be recognised"
 
+    # The count comes from `tools`, the names from entries that are objects —
+    # the two halves of the len("nope") defect. A list of non-objects is still
+    # an answer, reported honestly rather than crashing or inventing names.
+    assert "2 tools (unnamed…)" in v("200", '{"id":1,"result":{"tools":[1,2]}}')
+    # A present-but-non-string name survives .get() and used to blow up in
+    # join(). null and "" fall back to "?"; a number renders as itself, which is
+    # honest — that really is what the relay called it.
+    for name_json, shown in (("null", "?"), ('""', "?"), ("7", "7")):
+        line = v("200", '{"id":1,"result":{"tools":[{"name":%s}]}}' % name_json)
+        assert "1 tools (%s…)" % shown in line, line
+
 
 @pytest.mark.parametrize("code,body", [
     ("401", '{"error":"invalid token"}'),

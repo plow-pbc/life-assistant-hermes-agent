@@ -74,7 +74,12 @@ def verdict(code: str, raw: str) -> str:
         result = frame.get("result")
         tools = result.get("tools") if isinstance(result, dict) else None
         if isinstance(tools, list) and tools:
-            names = [t.get("name", "?") for t in tools[:3] if isinstance(t, dict)]
+            # str(), because `{"name": null}` and `{"name": 7}` both survive
+            # .get() and then blow up inside join() — the last unchecked unwrap
+            # on this path, and the same class as the two above it.
+            names = [
+                str(t.get("name") or "?") for t in tools[:3] if isinstance(t, dict)
+            ]
             return "latch reachable: Rowan's Mac answered with %d tools (%s…)" % (
                 len(tools),
                 ", ".join(names) if names else "unnamed",
