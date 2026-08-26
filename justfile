@@ -2,8 +2,8 @@
 #
 # Deployment lives in plow-pbc/agent-mgr, which owns the compose service, the
 # bring-up, the pins and the contract tests for every agent on this host.
-# <agent> below is the registry name of a REGISTERED instance -- `life` today;
-# `rowan` is deliberately not registered yet, see README:
+# <agent> below is the registry name of a registered instance. `life` is the
+# only one that may be registered today; `rowan` is blocked on agent-mgr#14:
 #
 #   agent-mgr restore <agent>     # config, the Plow Chat plugin, and skills.tsv
 #   agent-mgr activate <agent>    # prints a code; its OWNER texts it, from their phone

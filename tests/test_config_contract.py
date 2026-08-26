@@ -76,11 +76,12 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
     every AGENT_* name passed it, so AGENT_TOKEN=sk-... would have shipped green.
     One exact key cannot."""
     assert set(descriptor()) == DESCRIPTOR_KEYS, (
-        "agent.env is shared by every instance. A new key here is read by all "
-        "of them -- if it belongs to one person it does not go in this file; "
-        "see README 'Before a non-Pacific instance is registered'. Identity "
+        "agent.env is a CLOSED SET: it holds AGENT_CONFIG and nothing else. "
+        "Every instance reads this one file, so adding a key means editing "
+        "DESCRIPTOR_KEYS deliberately -- see README.md. A person-valued key "
+        "(a timezone, a locale) does not belong here at all, and identity "
         "(AGENT_HOME/AGENT_CONTAINER/AGENT_PROJECT) is agent-mgr's to derive "
-        "from the registry name, and must never be declared."
+        "from the registry name."
     )
 
 

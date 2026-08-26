@@ -16,18 +16,24 @@ are the rentals agent (`srosro/str-hermes-agent`) and the house-hunting agent
 someone else could copy; it is the common half, and each person who runs it gets
 an instance.
 
-| instance | registry name | home | container | status |
+| instance | registry name | home | container | may be registered? |
 |---|---|---|---|---|
-| the operator's | `life` | `~/.hermes-life` | `hermes-life` | registered |
-| Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` | **not registered** — see below |
+| the operator's | `life` | `~/.hermes-life` | `hermes-life` | yes — command below |
+| Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` | **no** — blocked on `agent-mgr#14`, see below |
 
-Nothing in that table is written down here. `agent-mgr` derives all of it from
-the **registry name**, so any number of instances run from one checkout with no
-per-person fork — two rows against the same directory resolve to separate homes
-and containers:
+For a registered instance none of that is written down here: `agent-mgr` derives
+it from the **registry name**, so any number of instances run from one checkout
+with no per-person fork — two rows against the same directory resolve to
+separate homes and containers.
+
+`rowan`'s row is what it *would* resolve to. Today those values come from its own
+pre-agent-mgr compose file in another repo, so that row is a projection rather
+than state. This table says what each instance is *permitted*, not what the
+registry currently holds — nothing in this tree can check that.
 
 ```sh
 agent-mgr register life ~/services/life-assistant-hermes-agent
+# agent-mgr register rowan ~/services/life-assistant-hermes-agent   # same directory -- blocked on agent-mgr#14
 ```
 
 That is why `agent.env` declares no `AGENT_HOME`, `AGENT_CONTAINER` or
@@ -109,9 +115,9 @@ not an omission to be tidied up later.
 
 ## Bring-up
 
-`<agent>` is the registry name. Today that is `life` only — `rowan` must not be
-registered until `agent-mgr#14` lands (see above), and is still served by its
-pre-agent-mgr deployment.
+`<agent>` is the registry name. `life` is the only instance that *may* be
+registered — `rowan` must not be until `agent-mgr#14` lands (see above), and is
+still served by its pre-agent-mgr deployment.
 
 ```sh
 agent-mgr restore <agent>            # config.yaml, plugin and skills into its home
