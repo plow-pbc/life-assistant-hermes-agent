@@ -60,15 +60,24 @@ def _payloads(raw: str):
 
 
 def verdict(code: str, raw: str) -> str:
-    """The success line, or SystemExit carrying the response verbatim."""
+    """The success line, or SystemExit carrying the response verbatim.
+
+    Every unwrap here checks its shape rather than its key. This module's whole
+    claim is that it cannot be wrong about a body nobody anticipated, and key
+    checks do not deliver that: `{"result": "ok"}` crashed on `.get`, and a
+    string-valued `tools` reported `len("nope")` — four tools — as a *success*,
+    which is worse than crashing. A non-conforming body is simply not an answer.
+    """
     for frame in _payloads(raw):
         if not isinstance(frame, dict):
             continue
-        tools = (frame.get("result") or {}).get("tools") or []
-        if tools:
+        result = frame.get("result")
+        tools = result.get("tools") if isinstance(result, dict) else None
+        if isinstance(tools, list) and tools:
+            names = [t.get("name", "?") for t in tools[:3] if isinstance(t, dict)]
             return "latch reachable: Rowan's Mac answered with %d tools (%s…)" % (
                 len(tools),
-                ", ".join(t.get("name", "?") for t in tools[:3]),
+                ", ".join(names) if names else "unnamed",
             )
     raise SystemExit(
         "latch did NOT answer with a tool list — HTTP %s. What came back:\n%s"
