@@ -21,19 +21,23 @@ an instance.
 | the operator's | `life` | `~/.hermes-life` | `hermes-life` | yes — command below |
 | Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` | **no** — blocked on `agent-mgr#14`, see below |
 
-For a registered instance none of that is written down here: `agent-mgr` derives
-it from the **registry name**, so any number of instances run from one checkout
-with no per-person fork — two rows against the same directory resolve to
-separate homes and containers.
+None of that is written down here: `agent-mgr` derives it from the **registry
+name**, so any number of instances run from one checkout with no per-person fork
+— two rows against the same directory resolve to separate homes and containers.
 
-`rowan`'s row is what it *would* resolve to. Today those values come from its own
-pre-agent-mgr compose file in another repo, so that row is a projection rather
-than state. This table says what each instance is *permitted*, not what the
-registry currently holds — nothing in this tree can check that.
+**Neither row is state.** Both are what `agent-mgr` *would* derive from the
+registry name; this table says what each instance is permitted, not what the
+registry holds, because nothing in this tree can check that. `rowan`'s values
+happen to be live today — supplied by its own pre-agent-mgr compose file in
+another repo, not by anything here.
 
 ```sh
 agent-mgr register life ~/services/life-assistant-hermes-agent
-# agent-mgr register rowan ~/services/life-assistant-hermes-agent   # same directory -- blocked on agent-mgr#14
+# agent-mgr register rowan ~/services/life-assistant-hermes-agent   # same directory
+#   BLOCKED twice: on agent-mgr#14 for the zone, AND on tearing down rowan's
+#   pre-agent-mgr stack first -- it already holds ~/.hermes-rowan, and the
+#   collision guard only sees REGISTERED agents, so nothing would stop a
+#   second gateway from opening the same home.
 ```
 
 That is why `agent.env` declares no `AGENT_HOME`, `AGENT_CONTAINER` or
@@ -67,6 +71,14 @@ right for every other instance.
 
 When #14 lands, the zone goes in `~/.config/agent-mgr/rowan.env` and this
 section goes away.
+
+**#14 is not the only precondition.** `rowan`'s live pre-agent-mgr stack already
+owns `~/.hermes-rowan`, and `agent-mgr`'s collision check compares *registered*
+agents — an unregistered container holding that home is invisible to it. So the
+migration is: land #14, write the overlay, **bring the old stack down**, then
+register and restore. Registering while it runs points a second gateway at one
+home, one `auth.json` and one `PLOW_CHAT_CHAT_UID`, and whichever started last
+owns the chat — the failure this whole tool exists to prevent.
 
 ## The account boundary — how one repo serves two people
 
