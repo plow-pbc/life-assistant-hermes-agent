@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Did Rowan's Mac answer with tools? If not, show exactly what came back.
+"""Did the instance owner's Mac answer with tools? If not, show exactly what came back.
 
 Usage: latch-verdict.py <probe_file>   → prints a line, exits 0 on ok
 
@@ -82,7 +82,7 @@ def verdict(code: str, raw: str) -> str:
         if isinstance(tools, list) and tools and all(
             isinstance(t, dict) and isinstance(t.get("name"), str) for t in tools
         ):
-            return "latch reachable: Rowan's Mac answered with %d tools (%s…)" % (
+            return "latch reachable: the owner's Mac answered with %d tools (%s…)" % (
                 len(tools),
                 ", ".join(t["name"] for t in tools[:3]),
             )

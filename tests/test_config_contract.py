@@ -16,6 +16,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
@@ -52,11 +53,43 @@ def config():
     return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
 
 
-def test_the_timezone_is_this_agents_owner_not_the_fleets():
-    """The siblings run America/Los_Angeles because that is where THEIR operator
-    is. Inheriting the fleet default here would be inheriting the wrong person,
-    and a life assistant resolves "tomorrow morning" against it."""
-    assert descriptor()["AGENT_TZ"] == "America/Chicago"
+USER_SPECIFIC_HEADING = "## user-specific — to be removed"
+
+
+def _user_specific_section() -> str:
+    text = (ROOT / "README.md").read_text()
+    assert USER_SPECIFIC_HEADING in text, (
+        "README has no user-specific section; if this repo carries a value "
+        "belonging to one person, it must say so"
+    )
+    return text.split(USER_SPECIFIC_HEADING, 1)[1].split("\n## ", 1)[0]
+
+
+def test_a_person_specific_value_is_documented_and_ticketed():
+    """This repo is shared. A declaration that belongs to ONE person is allowed
+    only while the README names it and links the issue that removes it.
+
+    Asserting the rule rather than the value: the zone may change, the
+    obligation to disclose it may not."""
+    tz = descriptor().get("AGENT_TZ")
+    if tz is None:
+        return  # moved to a per-instance overlay; nothing left to disclose
+    section = _user_specific_section()
+    assert "AGENT_TZ" in section, (
+        f"agent.env declares AGENT_TZ={tz}, which belongs to one instance's "
+        f"owner, but README's user-specific section does not name it"
+    )
+    assert re.search(r"agent-mgr(/issues/|#)\d+", section), (
+        "the user-specific section must link the issue that removes the entry"
+    )
+
+
+def test_a_declared_timezone_is_a_real_zone():
+    """A typo here is silent: the container takes the string, and every
+    scheduled thing resolves against a clock nobody checked."""
+    tz = descriptor().get("AGENT_TZ")
+    if tz is not None:
+        ZoneInfo(tz)
 
 
 def test_the_descriptor_names_where_this_agents_config_lives():
@@ -64,12 +97,20 @@ def test_the_descriptor_names_where_this_agents_config_lives():
     assert (ROOT / "runtime" / "config.yaml").is_file()
 
 
-def test_the_descriptor_does_not_repoint_this_agent_at_a_siblings_home():
-    """A copy-paste from a sibling repo is the realistic way this goes wrong, and
-    the home on the other side holds a different person's Plow token."""
+def test_the_descriptor_declares_no_per_instance_identity():
+    """Home, container and compose project are agent-mgr's to derive from the
+    REGISTRY NAME, which is what lets `life` and `rowan` run from this one
+    checkout. Declaring any here would pin every instance to one, and
+    agent-mgr's ownership guard would refuse every instance but that one.
+
+    Stricter than the rule it replaces, which permitted a declared home so long
+    as it named this agent -- in a shared repo that is exactly backwards."""
     d = descriptor()
     for key in ("AGENT_HOME", "AGENT_CONTAINER", "AGENT_PROJECT"):
-        assert key not in d or "rowan" in d[key], f"{key} names another agent"
+        assert key not in d, (
+            f"{key} is declared in agent.env; it must be derived from the "
+            f"registry name so one repo can serve more than one instance"
+        )
 
 
 def test_the_phone_line_is_enabled():
@@ -83,7 +124,7 @@ def test_latch_is_the_only_mcp_server():
 
 
 def test_latch_is_configured_from_the_environment_not_from_git():
-    """DOMO_DEVICE_UID decides which Mac this agent can drive -- Rowan's, not
+    """DOMO_DEVICE_UID decides which Mac an instance can drive -- its owner's, not
     the operator's. It never appears in this repo."""
     latch = config()["mcp_servers"]["latch"]
     assert "${DOMO_DEVICE_UID}" in latch["url"]
@@ -92,7 +133,7 @@ def test_latch_is_configured_from_the_environment_not_from_git():
 
 def test_every_pinned_skill_is_a_sha_not_a_branch():
     rows = [r for r in (ROOT / "skills.tsv").read_text().splitlines() if r.strip()]
-    assert rows, "the connector skill is what lets this agent reach Rowan's mail"
+    assert rows, "the connector skill is what lets an instance reach its owner's mail"
     for row in rows:
         repo, ref, dest = row.split("\t")[:3]
         assert len(ref) == 40 and all(c in "0123456789abcdef" for c in ref), row
@@ -146,7 +187,17 @@ def _recipe(name: str) -> str:
     find out would reach a live container.
     """
     lines = (ROOT / "justfile").read_text().splitlines()
-    start = next(i for i, l in enumerate(lines) if re.match(rf"^{re.escape(name)}( [A-Z]+)*:$", l))
+    # Parameters may be any just identifier, not just uppercase: `check-latch`
+    # takes a lowercase `agent` so one shared repo can probe whichever instance
+    # is asked for. A regex admitting only [A-Z] silently found no recipe and
+    # raised StopIteration from `next`, which reads as "the test is broken"
+    # rather than "the recipe grew a parameter".
+    pattern = rf"^{re.escape(name)}( [A-Za-z_][A-Za-z0-9_-]*)*:$"
+    start = next(
+        (i for i, l in enumerate(lines) if re.match(pattern, l)),
+        None,
+    )
+    assert start is not None, f"no recipe named {name!r} in the justfile"
     body = []
     for line in lines[start + 1:]:
         if line and not line[0].isspace():
@@ -192,7 +243,7 @@ def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
 
     The gateway would send `Bearer ${DOMO_MCP_TOKEN}` verbatim, the relay would
     answer 401, and check-latch would report the token REVOKED — sending the
-    operator to Rowan's Mac to re-mint a credential that was never wrong. A
+    operator to the owner's Mac to re-mint a credential that was never wrong. A
     rename on either side is silent otherwise: the config test only checks the
     ${...} spellings, and the dotenv test only checks lines carry no value.
     """

@@ -1,14 +1,15 @@
-# Rowan's life + family Hermes agent -- what only this agent has.
+# life-assistant -- what only this agent has.
 #
 # Deployment lives in plow-pbc/agent-mgr, which owns the compose service, the
-# bring-up, the pins and the contract tests for every agent on this host:
+# bring-up, the pins and the contract tests for every agent on this host.
+# <agent> below is the registry name of an instance -- `life` or `rowan`:
 #
-#   agent-mgr restore rowan     # config, the Plow Chat plugin, and skills.tsv
-#   agent-mgr activate rowan    # prints a code; ROWAN texts it, from his phone
-#   agent-mgr up rowan          # down / restart / logs
-#   agent-mgr sign-in rowan     # device-code OAuth; hand the URL to Rowan
-#   agent-mgr check-connectors rowan
-#   agent-mgr agent rowan "what's on today?"
+#   agent-mgr restore <agent>     # config, the Plow Chat plugin, and skills.tsv
+#   agent-mgr activate <agent>    # prints a code; its OWNER texts it, from their phone
+#   agent-mgr up <agent>          # down / restart / logs
+#   agent-mgr sign-in <agent>     # device-code OAuth; hand the URL to its owner
+#   agent-mgr check-connectors <agent>
+#   agent-mgr agent <agent> "what's on today?"
 #
 # Eleven recipes here re-implemented those. What is left is one recipe that does
 # something agent-mgr does not yet do -- see below -- and `test`.
@@ -16,7 +17,7 @@
 test:
     uv run --no-project --python 3.13 --with pytest==8.4.2 --with pyyaml==6.0.2 pytest -q
 
-# Did Rowan's Mac answer with tools? Kept rather than replaced by
+# Did that instance's Mac answer with tools? Kept rather than replaced by
 # `agent-mgr check-latch`, which classifies the same response into a verdict.
 #
 # Classification is what this recipe already failed at: an earlier version
@@ -31,20 +32,29 @@ test:
 # stays, and it reaches the container through `agent-mgr compose` -- the
 # documented escape hatch for an agent's own recipes -- rather than a compose
 # file this repo no longer owns.
-check-latch:
+#
+# `agent` is REQUIRED and deliberately has no default. This repo is shared by
+# every instance, so a default would be one person's name, and a bare
+# `just check-latch` run from the wrong checkout would probe a DIFFERENT
+# owner's container and report its health as this one's. That is the same class
+# as plow-pbc/agent-mgr#13 -- an instance name resolving to a container someone
+# else is running -- and the cheapest place to close it is to refuse to guess.
+
+# Probe one instance's Latch reachability from inside its own container.
+check-latch agent:
     #!/usr/bin/env bash
     set -euo pipefail
-    agent-mgr compose rowan ps --status running --quiet hermes | grep -q . \
-      || { echo "the gateway is not running -- start it: agent-mgr up rowan" >&2; exit 1; }
+    agent-mgr compose "{{agent}}" ps --status running --quiet hermes | grep -q . \
+      || { echo "the gateway is not running -- start it: agent-mgr up {{agent}}" >&2; exit 1; }
     raw="$(mktemp)"; trap 'rm -f "$raw"' EXIT
     # Status on line one, body after. No `|| printf 000`: curl already writes
     # 000 via -w on a failed transfer AND exits non-zero, so the fallback
     # appended a second one and the verdict saw "000000" -- missing the very
     # branch that explains a transport failure. Measured in the container.
-    agent-mgr compose rowan exec -T --user "$(id -u):$(id -g)" hermes sh -c '
+    agent-mgr compose "{{agent}}" exec -T --user "$(id -u):$(id -g)" hermes sh -c '
       set -a; . /opt/data/.env; set +a
-      : "${DOMO_DEVICE_UID:?empty in the dotenv -- mint a credential on Rowans Mac}"
-      : "${DOMO_MCP_TOKEN:?empty in the dotenv -- mint a credential on Rowans Mac}"
+      : "${DOMO_DEVICE_UID:?empty in the dotenv -- mint a credential on this owners Mac}"
+      : "${DOMO_MCP_TOKEN:?empty in the dotenv -- mint a credential on this owners Mac}"
       code=$(curl -sS --max-time 30 -o /tmp/latch-body -w "%{http_code}" \
         -X POST "https://api.plow.co/v1/relay/devices/$DOMO_DEVICE_UID/mcp" \
         -H "Authorization: Bearer $DOMO_MCP_TOKEN" \
