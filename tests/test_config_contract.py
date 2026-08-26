@@ -23,13 +23,23 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def descriptor():
-    return dict(
-        line.split("=", 1)
-        for line in (ROOT / "agent.env").read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    )
+def dotenv(path):
+    """The KEY=VALUE lines of a dotenv, stripped, comments dropped.
 
+    One reader for every assertion this file makes about a dotenv. There were
+    three hand-rolled ones and they disagreed: this filters on the STRIPPED
+    line, where an earlier descriptor() tested `#` on the raw line -- so an
+    indented comment reached its dict(split) and raised ValueError, taking down
+    every test that called it, while the newer copies quietly skipped it. Two
+    views of the same file is the one thing a file whose job is asserting that
+    file's contract cannot have.
+    """
+    return [l for l in (x.strip() for x in path.read_text().splitlines())
+            if l and not l.startswith("#") and "=" in l]
+
+
+def descriptor():
+    return dict(line.split("=", 1) for line in dotenv(ROOT / "agent.env"))
 
 def config():
     return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
@@ -116,9 +126,7 @@ def test_no_credential_file_is_tracked():
 
 def test_the_dotenv_example_carries_no_values():
     """The exemption above rests on this: it is a shape, not a secret store."""
-    lines = (ROOT / ".env.example").read_text().splitlines()
-    keys = [l for l in (x.strip() for x in lines)
-            if l and not l.startswith("#") and "=" in l]
+    keys = dotenv(ROOT / ".env.example")
     assert keys, ".env.example declares no keys -- is it still the skeleton?"
     for line in keys:
         key, value = line.split("=", 1)
@@ -330,9 +338,7 @@ def test_the_descriptor_holds_only_descriptor_keys():
     namespace, so a credential-shaped key added to this file -- DOMO_MCP_TOKEN,
     PLOW_CHAT_TOKEN -- fails loudly rather than shipping with a green suite.
     """
-    keys = [l.split("=", 1)[0] for l in (x.strip() for x in
-            (ROOT / "agent.env").read_text().splitlines())
-            if l and not l.startswith("#") and "=" in l]
+    keys = list(descriptor())
     assert keys, "agent.env declares nothing -- is this still the descriptor?"
     for key in keys:
         assert key.startswith("AGENT_"), f"agent.env carries a non-descriptor key: {key}"
