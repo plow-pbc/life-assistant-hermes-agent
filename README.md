@@ -9,7 +9,7 @@
 
 A [Hermes](https://howto.plow.co/hermes) agent — texted from iMessage over the
 Plow Chat platform — scoped to life and family logistics for Rowan. One of a
-fleet on `wakeup`: the rentals agent is `sams-str-hermes-agent`, the mail and
+fleet on `wakeup`: the rentals agent is `str-hermes-agent`, the mail and
 calendar agent is `sams-admin-hermes-agent`, the house-hunting agent is
 `sams-property-hermes-agent`.
 
@@ -66,9 +66,7 @@ not an omission to be tidied up later.
 ## Bring-up
 
 ```sh
-agent-mgr restore rowan             # config.yaml + a .env skeleton into ~/.hermes-rowan
-agent-mgr install-plugin rowan      # the Plow Chat plugin, from the pinned SHA
-agent-mgr restore rowan  # Gmail / Calendar / Slack, from the same pinned SHA
+agent-mgr restore rowan             # config.yaml, a .env skeleton, the plugin, and skills.tsv
 agent-mgr activate rowan            # prints a code — Rowan texts it from his phone
 agent-mgr up rowan                  # must precede sign-in: that runs inside this container
 agent-mgr sign-in rowan             # one-time Codex device flow — Rowan completes it
@@ -142,9 +140,14 @@ came from different upstream trees. That argument survives — it just belongs o
 layer up now. `agent-mgr` pins the plugin once for the fleet, which is a stronger
 guarantee than each agent pinning it and hoping the copies agree.
 
-Both refuse a ref that is not a 40-char SHA. A branch would silently re-point a
-running agent on the next upstream push, and these carry the plugin holding the
-chat token and the skill that reads Rowan's mail.
+Neither may be a branch: one would silently re-point a running agent on the next
+upstream push, and these carry the plugin holding the chat token and the skill
+that reads Rowan's mail. The refusal that enforces it is `agent-mgr`'s, at three
+sites -- `agent-mgr:162` for the plugin ref, `agent-mgr:207` and
+`lib/fetch-skill:16` for each `skills.tsv` row -- and left this repo with the
+recipes that used to carry it. What this repo still asserts is the checked-in
+value: `test_every_pinned_skill_is_a_sha_not_a_branch` fails review if a row here
+is not 40 hex characters.
 
 Copying these into the repo instead would make it a fork of them, which is what
 `srosro/str-hermes-agent#138` spent −1,311 LOC undoing after a vendored plugin
