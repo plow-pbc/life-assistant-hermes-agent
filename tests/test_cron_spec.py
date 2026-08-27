@@ -309,8 +309,7 @@ def viewer_slots():
     # marker-delimited span; [\s>]* matches that parser's relaxation, since a
     # blockquote prefixes rows with "> " and `>` is not \s. Inert on today's
     # column-0 Card map, and half of what creates the residual below -- an
-    # indented or blockquoted row-shaped line anywhere in the doc, which is what
-    # the row-count message names.
+    # indented or blockquoted row-shaped line anywhere in the doc.
     #
     # Deliberately not marker-bounded the same way: that would mean editing
     # kiosk-protocol.md, which is vendored byte-identical to its pinned ref --
