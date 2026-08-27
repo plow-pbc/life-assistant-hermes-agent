@@ -18,11 +18,13 @@ reads from whichever fixed source is populated, none of them caller-redirectable
 via argv:
 
   message text
-    - MESSAGE_FILE set (containers that CAN write a /tmp handoff, e.g. Hermes):
-      read that fixed path, then consume it after a successful send so a later
-      run can't repost stale text.
+    - MESSAGE_FILE set (containers whose file tool CAN write a handoff, e.g.
+      Hermes): read that fixed path, then consume it after a successful send so
+      a later run can't repost stale text. Hermes confines its file tool to
+      HERMES_WRITE_SAFE_ROOT (/opt/data), so the path a wrapper picks has to
+      sit under it -- see the wrappers' /opt/data/ld/<bundle>-text.
     - MESSAGE_FILE None (read-only agent sandboxes, e.g. Plow — its file tool
-      cannot create a /tmp handoff): read stdin, fed by the caller's quoted
+      cannot create a handoff at all): read stdin, fed by the caller's quoted
       heredoc, so an injected body is inert data, never parsed as shell.
 
   endpoint URL + bearer token — file-first, env fallback:
@@ -42,7 +44,7 @@ kiosk slot (latest post per card wins). The eyebrow defaults to `type`; set the
 optional module var TITLE to "" to hide it or to a string to override it:
 
     import post_to_kiosk
-    post_to_kiosk.MESSAGE_FILE = "/tmp/ld-<bundle>-text"   # Hermes only; Plow leaves None
+    post_to_kiosk.MESSAGE_FILE = "/opt/data/ld/<bundle>-text"  # Hermes only; Plow leaves None
     post_to_kiosk.CARD = "1" | "2" | "3" | "4" | "5"
     post_to_kiosk.BODY_TYPE = "alert" | "affirmation" | "weather" | "digest" | "sports"
     post_to_kiosk.main()   # message text on stdin when MESSAGE_FILE is None

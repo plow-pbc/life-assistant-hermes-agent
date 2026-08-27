@@ -473,3 +473,88 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
         "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
         "style changed?"
     )
+
+
+# Hermes confines its file-writing tool to this root; a handoff outside it is
+# denied at 06:00, in front of nobody. The image sets it, not this repo.
+WRITE_SAFE_ROOT = "/opt/data"
+
+# Listed, not globbed: discovery needed a floor (an empty glob SKIPS a
+# parametrized test), a helper exclusion and a sheet-presence rule -- three
+# guards on the finder, none on the contract, and together bigger than it.
+PRODUCERS = [("ld-weather", "post_weather.py"), ("ld-sports", "post_sports.py")]
+# The helper ships no sheet; its constant is the docstring example the next
+# producer copies, so it is pinned for the write-safe check alone.
+HANDOFFS = PRODUCERS + [("ld-shared", "post_to_kiosk.py")]
+BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
+
+
+def _handoff(skill, wrapper):
+    source = (ROOT / skill / "scripts" / wrapper).read_text()
+    paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', source)
+    # ld-shared's only quoted assignment is its docstring EXAMPLE -- the real
+    # constant is `MESSAGE_FILE: str | None = None`, which this cannot see. So a
+    # reworded docstring lands here, and a bare unpack would blame neither the
+    # file nor the contract.
+    assert len(paths) == 1, (
+        f"{skill}/scripts/{wrapper} declares {len(paths)} quoted MESSAGE_FILE "
+        "assignments; expected exactly 1"
+    )
+    return paths[0]
+
+
+def test_the_handoff_table_lists_every_wrapper():
+    """The one guard the literal cannot encode: a wrapper with no row.
+
+    Four more producers are specified in ld-dashboard's JOBS table, and the row
+    nobody remembers to add is the one that ships on /tmp and logs the denial in
+    front of nobody. Set equality fails on an empty glob rather than skipping,
+    so it needs none of the machinery discovery did."""
+    listed = set(HANDOFFS)
+    found = {(w.parent.parent.name, w.name) for w in ROOT.glob("ld-*/scripts/post_*.py")}
+    assert found == listed, (
+        f"{sorted(found - listed)} exist with no row in HANDOFFS; "
+        f"{sorted(listed - found)} name a wrapper that is gone"
+    )
+
+
+@pytest.mark.parametrize(("skill", "wrapper"), HANDOFFS, ids=[s for s, _ in HANDOFFS])
+def test_every_handoff_path_is_inside_the_write_safe_root(skill, wrapper):
+    """The AGENT writes this file, so its file tool has to be able to create it.
+
+    Shipped on /tmp, which write_file refuses. Both producers logged the denial
+    on their first unattended run and the cards landed anyway -- the agent fell
+    back to the shell -- so the failure is invisible from the kiosk and recurs
+    as a coin flip. test_post_to_kiosk drives MESSAGE_FILE through tmp_path, so
+    it passes against any path at all; nothing else catches this."""
+    path = _handoff(skill, wrapper)
+    assert path.startswith(WRITE_SAFE_ROOT + "/"), (
+        f"{skill}/scripts/{wrapper} hands the agent {path}, which its file tool "
+        f"cannot create -- outside HERMES_WRITE_SAFE_ROOT ({WRITE_SAFE_ROOT})"
+    )
+
+
+@pytest.mark.parametrize(("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS])
+def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper):
+    """The wrapper is what runs; the SKILL.md is what the agent is TOLD.
+
+    Each sheet names the handoff twice -- to write, then to read back -- so a
+    half-applied change leaves one stale and the agent reads two files. Both
+    scans are whole-token: /mnt/opt/data/ld/weather-text and
+    /opt/data/ld/weather-text.tmp otherwise read as agreement. The stale scan
+    wants a PATH ending in -text, never a bare token, because "plain-text
+    cards" is the wording cards 1/2/4 use -- exactly the blocked producers;
+    anchoring to the handoff's directory instead fails a correct sheet, since
+    /opt/data/ld/config.json lives there too."""
+    path = _handoff(skill, wrapper)
+    sheet = (ROOT / skill / "SKILL.md").read_text()
+
+    assert re.search(BEFORE + re.escape(path) + AFTER, sheet), (
+        f"{skill}/SKILL.md never names {path}, the handoff its wrapper reads -- "
+        "the agent would write somewhere else entirely"
+    )
+    stale = set(re.findall(BEFORE + r"(/[\w./-]*-text)" + AFTER, sheet)) - {path}
+    assert not stale, (
+        f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
+        "half-applied path change, and the agent is told two different files"
+    )
