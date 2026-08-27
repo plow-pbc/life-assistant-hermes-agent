@@ -596,8 +596,8 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     ("run `/opt/hermes/bin/hermes cron list`", []),
     ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
     # The real ld-sports/SKILL.md line. Green by accident today -- it holds no
-    # tracked segment, so the pattern never matches it -- and the row below is
-    # the one that pins the exemption itself.
+    # tracked segment, so the pattern never matches it -- and the rows below pin
+    # the exemption itself.
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
     # The exemption on a real HOST head. `scripts` is tracked so the pattern
     # matches and the string is relative, so the heuristic is the only thing
