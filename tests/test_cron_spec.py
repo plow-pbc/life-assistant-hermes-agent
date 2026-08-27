@@ -306,7 +306,11 @@ def viewer_slots():
     test instead, which goes red alone."""
     table = (ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
     # Whole-document, unlike the dark-table parser, which matches inside a
-    # marker-delimited span. Deliberately not marker-bounded the same way: that
+    # marker-delimited span; [\s>]* matches that parser's relaxation, since a
+    # blockquote prefixes rows with "> " and `>` is not \s. Inert on today's
+    # column-0 Card map, and half of what creates the residual below -- an
+    # indented or blockquoted row-shaped line anywhere in the doc, which is what
+    # the row-count message names. Deliberately not marker-bounded the same way: that
     # would mean editing kiosk-protocol.md, which is vendored byte-identical to
     # its pinned ref -- the property that keeps this PR's provenance checkable
     # with a diff -- and a test scoping convenience does not buy a fork of it.
