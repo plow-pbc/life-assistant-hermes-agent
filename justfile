@@ -14,6 +14,11 @@
 #
 # Eleven recipes here re-implemented those. What is left is one recipe that does
 # something agent-mgr does not yet do -- see below -- and `test`.
+#
+# Requires just >= 1.27, for the [doc("...")] attributes below. An older just
+# does not degrade to a missing description -- it fails to parse the whole file,
+# so EVERY recipe stops working, `check-latch` included. This repo is shared by
+# every instance, so that lands on an owner's Mac whose just nobody checked.
 
 # `pytest -q tests/`, never a bare `pytest`. The vendored ld- suites under
 # ld-shared/ and test_wrappers.py are named test_*.py and define test_* functions,
