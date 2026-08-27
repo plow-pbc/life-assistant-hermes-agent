@@ -308,9 +308,10 @@ def viewer_slots():
     # Whole-document, unlike the dark-table parser, which matches inside a
     # marker-delimited span; [\s>]* matches that parser's relaxation, since a
     # blockquote prefixes rows with "> " and `>` is not \s. Inert on today's
-    # column-0 Card map, and half of what creates the residual below -- an
-    # indented or blockquoted row-shaped line anywhere in the doc. Both asserts
-    # below name the scope they actually have.
+    # column-0 Card map, and half of what creates the residual below: the
+    # whole-document scan admits a row-shaped line anywhere in the doc, and
+    # [\s>]* extends that to an indented or blockquoted one. Both asserts below
+    # name the scope they actually have.
     #
     # Deliberately not marker-bounded the same way: that would mean editing
     # kiosk-protocol.md, which is vendored byte-identical to its pinned ref --
