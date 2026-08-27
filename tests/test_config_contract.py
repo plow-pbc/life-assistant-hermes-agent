@@ -480,58 +480,52 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
 # read off the compose file -- the image sets it, not this repo.
 WRITE_SAFE_ROOT = "/opt/data"
 
+# Discovered, not hand-listed. Four more producers are already specified in
+# ld-dashboard's JOBS table, blocked on latch#183, and each arrives carrying a
+# wrapper that sets MESSAGE_FILE -- a table is silently green for the one whose
+# row nobody remembered to add, which is this check's entire failure mode. Two
+# lines buy that; the discovery this replaced cost twenty and a counter.
+HANDOFFS = sorted(
+    (p.parent.parent.name, p) for p in ROOT.glob("ld-*/scripts/post_*.py")
+)
+PRODUCERS = [(s, p) for s, p in HANDOFFS if (p.parent.parent / "SKILL.md").exists()]
 
-def test_every_producer_handoff_sits_inside_the_write_safe_root():
-    """The agent has to be able to WRITE the handoff, not just read it back.
 
-    The wrappers are thin: the agent composes the tile itself, writes it to
-    MESSAGE_FILE with its file tool, then runs the wrapper, which reads that
-    path and consumes it on a successful send. So MESSAGE_FILE is a path the
-    *agent's file tool* must be able to create -- and Hermes confines that tool
-    to HERMES_WRITE_SAFE_ROOT, which the image sets to /opt/data on every agent
-    in the fleet.
+def _handoff(wrapper):
+    [path] = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text())
+    return path
 
-    Shipped as /tmp/ld-<bundle>-text, inherited from the Plow seed where the
-    sandbox differed, and both producers logged
 
-        Write denied: '/tmp/ld-weather-text' is outside
-        HERMES_WRITE_SAFE_ROOT (/opt/data)
+@pytest.mark.parametrize(("skill", "wrapper"), HANDOFFS, ids=[s for s, _ in HANDOFFS])
+def test_every_handoff_path_is_inside_the_write_safe_root(skill, wrapper):
+    """The AGENT writes this file, so its file tool has to be able to create it.
 
-    on their first unattended run. The cards still landed, which is what makes
-    this worth pinning: the agent fell back to the shell, which the variable
-    does not gate, so the failure is invisible from the kiosk and recurs as a
-    coin flip every morning. Nothing else in the suite would have caught it --
-    test_post_to_kiosk drives MESSAGE_FILE through tmp_path, so it passes
-    against any path at all.
+    Shipped on /tmp, which Hermes' write_file refuses -- both producers logged
+    the denial on their first unattended run and the cards landed anyway,
+    because the agent fell back to the shell. So the failure is invisible from
+    the kiosk and recurs as a coin flip. Nothing else catches it:
+    test_post_to_kiosk drives MESSAGE_FILE through tmp_path and passes against
+    any path at all. ld-shared is included because its docstring example is how
+    the next wrapper gets written."""
+    path = _handoff(wrapper)
+    assert path.startswith(WRITE_SAFE_ROOT + "/"), (
+        f"{skill}/scripts/{wrapper.name} hands the agent {path}, which its file "
+        f"tool cannot create -- outside HERMES_WRITE_SAFE_ROOT ({WRITE_SAFE_ROOT})"
+    )
 
-    Both halves are checked because they drift apart: the wrapper is what runs,
-    the SKILL.md is what the agent is told, and an agent told the wrong path
-    writes the wrong file and posts nothing."""
-    seen = 0
-    producers = 0
-    for skill in SKILL_DIRS:
-        skill_md = ROOT / skill / "SKILL.md"
-        for wrapper in sorted((ROOT / skill / "scripts").glob("post_*.py")):
-            paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text())
-            for path in paths:
-                assert path.startswith(WRITE_SAFE_ROOT + "/"), (
-                    f"{skill}/scripts/{wrapper.name} hands the agent {path}, "
-                    f"which its file tool cannot create -- outside "
-                    f"HERMES_WRITE_SAFE_ROOT ({WRITE_SAFE_ROOT})"
-                )
-                seen += 1
-                # ld-shared carries the same constant as a docstring example and
-                # ships no SKILL.md; it is worth pinning, but only a producer has
-                # an instruction sheet that can disagree with its own wrapper.
-                if not skill_md.exists():
-                    continue
-                producers += 1
-                assert path in skill_md.read_text(), (
-                    f"{skill}/SKILL.md does not name {path}, the handoff its "
-                    f"wrapper actually reads -- the agent would write elsewhere"
-                )
 
-    assert producers >= 2, (
-        f"only {producers} producer handoff(s) checked -- ld-weather and "
-        "ld-sports both set MESSAGE_FILE, so this test has stopped finding them"
+@pytest.mark.parametrize(
+    ("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS]
+)
+def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper):
+    """The wrapper is what runs; the SKILL.md is what the agent is TOLD.
+
+    Set equality, not containment: each sheet names the handoff twice -- once to
+    write, once to read back -- so a half-applied path change leaves a substring
+    check green while the agent is looking at two different files."""
+    path = _handoff(wrapper)
+    named = set(re.findall(r"/[\w./-]*-text\b", (wrapper.parent.parent / "SKILL.md").read_text()))
+    assert named == {path}, (
+        f"{skill}/SKILL.md names {sorted(named)}, but its wrapper reads {path} "
+        "-- the agent would write the wrong file"
     )
