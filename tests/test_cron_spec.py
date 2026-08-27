@@ -450,8 +450,9 @@ def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
     # a fallback here would be semantics for a shape that does not occur, and
     # the wrong ones if it ever did: defaulting `enabled` to True reads a
     # DISABLED producer as runnable, silently, which is the failure the paused
-    # branch exists to prevent. These rows are what make that a refusal;
-    # restoring job.get("enabled", True) turns them red.
+    # branch exists to prevent. These rows are what make that a refusal, one
+    # each: restoring job.get("enabled", True) reds entry-without-enabled,
+    # and job.get("paused_at") reds entry-without-paused-at.
     '{"jobs": [{"name": "x", "paused_at": null}]}',
     '{"jobs": [{"name": "x", "enabled": true}]}',
 ], ids=["malformed", "wrong-shape", "empty", "entry-without-a-name",
