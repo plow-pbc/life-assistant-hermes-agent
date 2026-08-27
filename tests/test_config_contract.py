@@ -453,9 +453,11 @@ def _is_hostname_head(ref):
     `site.api.espn.com/apis/site/v2/sports/...` is a live line in
     ld-sports/SKILL.md. Without this exemption it would be green only by
     accident -- no tracked directory happens to be named apis, site, v2 or
-    sports, so the pattern finds nothing to match -- and it would go red the day
-    a tracked `ld-shared/references/sports/` appeared, telling the author to give
-    a URL a container path. This is what makes it green on purpose instead.
+    sports, so the pattern finds nothing in it to match and nothing here fires.
+    It would go red the day a tracked `ld-shared/references/sports/` appeared,
+    telling the author to give a URL a container path; this exemption is what
+    will keep it green then. The one row this decides TODAY is
+    `site.api.espn.com/scripts/scoreboard`, where `scripts` is tracked.
 
     A leading dot is a hidden DIRECTORY, not a host: `.github/workflows/ci.yml`
     resolves under /opt/hermes exactly like any other bare path, so exempting it
@@ -469,6 +471,14 @@ def _is_hostname_head(ref):
     catches it. Stated because a `"://" in ref` disjunct sat here unreachable --
     it can never see a colon -- while the docstring claimed it was what exempted
     them.
+
+    The cost, stated because an unstated hole is how the next round re-derives
+    it as a bug or quietly widens it: any dotted first segment is treated as a
+    host, so a genuine relative citation whose head holds a dot --
+    `config.d/scripts/x`, `ld-shared.old/scripts/y` -- is silently exempt even
+    though it resolves under /opt/hermes like every other bare path. No tracked
+    directory has a dot today, which is exactly the grow-with-the-tree exposure
+    to watch.
     """
     head = ref.split("/", 1)[0]
     return not head.startswith(".") and "." in head
@@ -601,7 +611,6 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     ("reads `/opt/data/ld/config.json`", []),
     ("run `/opt/hermes/bin/hermes cron list`", []),
     ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
-    # A URL is not a path citation.
     # The real ld-sports/SKILL.md line. Green by accident today -- it holds no
     # tracked segment, so the pattern never matches it -- and the row below is
     # the one that pins the exemption itself.
