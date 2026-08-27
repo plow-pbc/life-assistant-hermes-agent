@@ -599,9 +599,9 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     # tracked segment, so the pattern never matches it -- and the row below is
     # the one that pins the exemption itself.
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
-    # The row only the hostname heuristic can make green: `scripts` IS tracked,
-    # so the pattern matches and the string does not start with `/`. Without it
-    # the branch is inert and its verification lives in shell history.
+    # The exemption on a real HOST head. `scripts` is tracked so the pattern
+    # matches and the string is relative, so the heuristic is the only thing
+    # returning []. (The other row it decides is the dotted-relative head below.)
     ("site.api.espn.com/scripts/scoreboard", []),
     # Exempt via the absolute rule -- the match begins at the `//` -- not via the
     # heuristic. Pinned so that stays true.
@@ -612,12 +612,11 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     # untracked segment such as .github/workflows/ would assert nothing: the
     # pattern would not match it here at all.)
     ("see `.github/scripts/ci.yml`", [".github/scripts/ci.yml"]),
-    # The documented MISS, made executable: `scripts` is tracked so the pattern
-    # matches, the head has no leading dot and holds one, so the hostname
-    # exemption is the only thing returning []. This is a real relative citation
-    # the guard lets through -- the narrowing cost _is_hostname_head states. A
-    # future widening (a real host parse, a TLD check) flips it here rather than
-    # leaving the docstring quietly stale.
+    # The same exemption on a DOTTED RELATIVE head, which is the documented miss
+    # rather than a URL: a real relative citation the guard lets through, and the
+    # narrowing cost _is_hostname_head states. Executable so a future widening
+    # (a real host parse, a TLD check) flips a test rather than leaving the
+    # docstring quietly stale.
     ("see `config.d/scripts/x`", []),
     # A known name inside a longer token is not a citation. Without a boundary
     # before the segment these are flagged and reported verbatim as paths the
