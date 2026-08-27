@@ -3,11 +3,18 @@
 # deliberately absent, so the pinned image supplies its current defaults rather
 # than a frozen snapshot of them.
 #
-# Gmail, Google Calendar and Slack are NOT here: they are reached through the
-# plow-connectors skill, which calls the Plow connector REST API with the
-# gateway's own PLOW_CHAT_TOKEN. No second credential, no stdio server —
-# `agent-mgr restore <agent>` replays `skills.tsv`, which is the whole delivery
-# for those.
+# Gmail, Google Calendar and Slack are NOT reachable on this instance at all,
+# and their absence is no longer a routing detail. They used to arrive through
+# the plow-connectors skill, replayed from `skills.tsv`; that file is now empty,
+# so `agent-mgr restore <agent>` installs no skill and there is nothing here or
+# in the home that reaches a person's mail or calendar.
+#
+# plow-pbc/latch#183 is what brings Google back — a vendored `gog` driven
+# through Latch, i.e. through the mcp_server below rather than a connector
+# skill, which is why nothing is being held open for it here. THREE of the six
+# life-dashboard producers come back with it; the fourth, ld-morning-triage,
+# reads Gmail and Slack and needs its own rewrite onto the Mac's iMessage DB.
+# See the repo README, "No connectors, and what that costs".
 model:
   default: gpt-5.5
   provider: openai-codex

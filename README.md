@@ -82,7 +82,11 @@ imply this one: #14 landing makes it *more* reachable, not less.
 1. `agent-mgr#14` lands
 2. write `~/.config/agent-mgr/rowan.env` with `AGENT_TZ=America/Chicago`
 3. **bring the pre-agent-mgr stack down** and confirm `~/.hermes-rowan` is unowned
-4. `agent-mgr register rowan` → `restore` → `up`
+4. `agent-mgr register rowan`, then the ordinary [Bring-up](#bring-up) — a
+   pointer rather than a copy, deliberately: this section's whole premise is
+   that everything points here instead of carrying its own sequence, and the
+   abbreviated `restore` → `up` chain that used to sit on this line was already
+   missing the `mkdir` that keeps `skills/` from landing root-owned.
 
 Step 1 retires precondition 1. Step 3 is the one that outlives it, so this
 section stays until `rowan` is actually migrated — not until #14 closes.
@@ -96,8 +100,10 @@ tracked tree stay identical for everyone:
 
 - The `PLOW_CHAT_TOKEN` that lands in the instance's `.env` belongs to whoever
   texted.
-- The `plow-connectors` skill reuses that same token, so the Gmail, Google
-  Calendar and Slack it reaches are theirs.
+- The Plow Chat line is theirs, so the agent texts and is texted by them and
+  nobody else. (It used to reach their Gmail, Calendar and Slack too, through
+  the `plow-connectors` skill — see [No connectors, and what that
+  costs](#no-connectors-and-what-that-costs).)
 - Their phone line does not draw on anyone else's pool. Plow's five service-wide
   numbers collide on **(line, participant set)**, and a different handset is a
   different set — so activating one instance spends nothing the others use.
@@ -140,20 +146,85 @@ not an omission to be tidied up later.
 registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 
 ```sh
-agent-mgr restore <agent>            # config.yaml, plugin and skills into its home
+agent-mgr restore <agent>            # config.yaml and the plugin into its home
 agent-mgr activate <agent>           # prints a code — its owner texts it from their phone
+
+# BEFORE `up`, and not optional. compose.override.yml mounts each skill UNDER
+# /opt/data, which is already the home bind, so the runtime creates any missing
+# mountpoint inside that bind's source on the host -- as root. Create the parent
+# first, as the instance owner, or `skills/` lands root-owned and no later
+# `restore` can install into it. plow-pbc/agent-mgr#44 is the fleet-level fix;
+# until it lands this line is what stands in for it.
+mkdir -p ~/.hermes-<agent>/skills
+
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 just check-latch <agent>             # can this container reach that owner's Mac?
-agent-mgr check-connectors <agent>   # which of their connectors are linked and reachable
-agent-mgr agent <agent> 'what is on my calendar tomorrow?'   # a turn without the phone
+agent-mgr agent <agent> 'what is the weather today?'          # a turn without the phone
+
+# The dashboard crons. Not optional, and not replayed by restore --
+# `hermes cron` persists to /opt/data/cron/jobs.json, which agent-mgr does not
+# touch, so a rebuilt home comes up with a wall screen that never updates and
+# nothing to diff against. Create-if-missing, so re-running it is safe.
+agent-mgr agent <agent> 'set up the life dashboard crons; paste the output verbatim + exit code'
 ```
 
-Google Calendar has no connector of its own — upstream puts it **under the
-`gmail` connector**, as a `calendar.*` action namespace. So `gmail status` is
-the Google connector's status and covers both mail and calendar, and
-`check-connectors` probing `gmail` and `slack` is the complete set. There is no
-third name to add.
+That is a turn, not an exec, and deliberately: `ld-dashboard` is a skill, so the
+agent reads it and runs `register_crons.py` itself — inside the container, as
+the gateway's own uid, with no uid for anyone to choose. A plain
+`agent-mgr compose … exec` runs as **root** (measured: `id` in the `str`
+container returns `uid=0`, because the image's s6 entrypoint remaps its in-image
+`hermes` user to `HERMES_UID`/`HERMES_GID` and a bare exec bypasses that), and
+on a fresh instance `jobs.json` does not exist yet — so a root-run registration
+creates the schedule root-owned and the gateway can then never pause, resume or
+remove anything in it. `agent-mgr` pins the pair on every exec it makes
+(`agent-mgr:146`, `:194`, `:343`) for this reason; going through it is how this
+repo avoids restating a uid rule. The repo has been bitten by root-owned paths
+inside these nested binds before (`plow-pbc/agent-mgr#44`).
+
+**The turn costs you the exit code.** `register_crons.py` refuses loudly — a missing or
+unusable `ld-config.json`, a `family.timezone` that is not the container's zone,
+an empty `TZ`, a failed `cron create`, an unreadable `jobs.json`, a producer
+that is registered but PAUSED — but a turn returns the *turn's* status, so a
+non-zero exit reaches you only as whatever the agent chose to say about it. The
+skill therefore instructs the agent to paste the script's output verbatim and
+report its exit status, and to treat the run as unfinished until it has; ask for
+it explicitly if it does not appear, because a summary is exactly the thing that
+drops the words you would grep for. `refusing to register`, `WARNING` or
+`PAUSED` anywhere in that output means bring-up did not finish.
+
+If you are scripting this rather than running it by hand, take the exit code
+directly and pin the uid yourself:
+
+```sh
+agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
+  /opt/data/skills/ld-dashboard/scripts/register_crons.py
+```
+
+`$(id -u)` is right **only when the same host user who brought the instance up
+runs it** — `agent-mgr` sets `HERMES_UID="$(id -u)"` from the invoking user
+(`lib/common.sh:481`), so it is that user's uid that got baked in, not whoever
+runs this later. Measured on `wakeup`: host `uid=1000`, `HERMES_UID=1000`, live
+`jobs.json` owned `1000:1000`. A different operator or a root shell must read
+`HERMES_UID`/`HERMES_GID` off the running container instead of borrowing their
+own.
+
+Then check it landed and watch a card appear — see
+[Unattended runs](ld-dashboard/SKILL.md#unattended-runs), which carries both the
+host and in-container forms, and what a forced run does and does not prove.
+
+The dashboard also needs `/opt/data/ld/config.json` (the producers read
+`weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and
+`DASHBOARD_TOKEN` in the instance's dotenv. `ld-shared/scripts/ld_config_gate.py`
+is the single definition of a valid config — run it rather than eyeballing the
+JSON. Its `family.timezone` must match the container's `AGENT_TZ`, because
+`hermes cron create` takes no per-job zone and every producer fires in the
+container's; you do not have to check that by eye, though —
+`register_crons.py` refuses to register at all when they differ, so a mismatch
+stops bring-up rather than reaching the wall two hours late.
+
+There is no `check-connectors` step: this instance has no connectors. See
+[No connectors, and what that costs](#no-connectors-and-what-that-costs).
 
 ## What only the instance's owner can do
 
@@ -196,56 +267,52 @@ side of the mount. This is stated rather than left implied — it is a fact an
 owner should know before they text the activation code, not one to discover
 afterwards.
 
-## The plugin and the skill are pinned, not vendored
+## No connectors, and what that costs
 
-Two pins, in two repos, and the split is the point:
+`skills.tsv` is **empty**. `plow-connectors` — the skill that reached this
+owner's Gmail, Google Calendar and Slack with the gateway's own
+`PLOW_CHAT_TOKEN` — is no longer installed, and nothing here replaces it.
 
-| Pin | Lives in | Covers |
-|---|---|---|
-| the Plow Chat plugin | `plow-pbc/agent-mgr` | every agent on the host — installed by `agent-mgr restore <agent>`, read again by `agent-mgr activate <agent>` |
-| `plow-connectors` | this repo's `skills.tsv` | Gmail / Calendar / Slack for *this instance*, replayed by `agent-mgr restore <agent>` |
+That is a deliberate trade, not an oversight. It is what lets the life-dashboard
+producers arrive as this agent's own mounted skills instead of a fetched tree,
+and the two that need no account — `ld-weather` (NWS) and `ld-sports` (ESPN) —
+work immediately. The four that read a person's calendar or mail do not:
 
-The plugin pin left with the deployment, and had to: it is fleet mechanism, so
-one repo bumping it for every agent is the behaviour you want. The connector
-skill stays here because it is this agent's, reviewable beside the config it
-runs under.
+| producer | card | needs | tracked by |
+|---|---|---|---|
+| `ld-morning-updates` | 2 · affirmation | Google Calendar | `plow-pbc/latch#183` |
+| `ld-weekly-digest` | 4 · digest | Google Calendar | `plow-pbc/latch#183` |
+| `ld-calendar-nudge` | 1 · alert | Google Calendar | `plow-pbc/latch#183` |
+| `ld-morning-triage` | 1 · alert | Gmail + Slack | a rewrite onto the Mac's iMessage DB through Latch |
 
-This repo used to hold one pin covering both, on the argument that two which can
-drift would mean the skill reading the mail and the plugin holding the token
-came from different upstream trees. That argument survives; it belongs one layer
-up now. Pinning once for the fleet is a stronger guarantee than each agent
-pinning and hoping the copies agree.
+`ld-dashboard` carries all six schedules and registers only the two that can
+run, so the blocked ones are recorded rather than lost. `agent-mgr
+check-connectors` has nothing to report on this instance and asking a turn about
+tomorrow's calendar will not work until `latch#183` lands.
 
-Neither may be a branch: one would silently re-point a running agent on the next
-upstream push, and these carry the plugin holding the chat token and the skill
-that reads a person's mail. The refusal is `plow-pbc/agent-mgr`'s — its
-`install-plugin` path for the plugin ref, `lib/fetch-skill` for each `skills.tsv`
-row — and left this repo with the recipes that used to carry it. Cited by name
-rather than line, because a line number in another repo goes stale on its next
-edit and nothing here can detect that.
+**The one pin left is the plugin's, and it is not this repo's.** The Plow Chat
+plugin is pinned in `plow-pbc/agent-mgr`, installed by `agent-mgr restore
+<agent>` and read again by `agent-mgr activate <agent>`. It is fleet mechanism,
+so one repo bumping it for every agent is the behaviour you want; this repo used
+to carry a pin covering both, and that argument now belongs one layer up.
 
-What this repo still asserts is the checked-in value:
-`test_every_pinned_skill_is_a_sha_not_a_branch` fails review if a row in
-`skills.tsv` is not 40 hex characters.
-
-Copying these into the repo instead would make it a fork of them, which is what
-`srosro/str-hermes-agent#138` spent −1,311 LOC undoing after a vendored plugin
-drifted until production was serving a working tree.
-
-`restore` fetches the two skill files directly rather than running upstream's
-`install_connectors.sh`: that script copies from a path inside its own checkout,
-so curling the script alone finds no source to copy. The destination is not a
-preference either — `SKILL.md`'s `allowed-tools` line names
-`/opt/data/skills/plow-connectors/plow_connector.py` literally, so a skill
-installed one directory deeper loads and is then refused permission to run its
-own helper.
+`skills.tsv` stays as an empty file rather than being deleted or commented:
+`agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
+feeds every non-empty line to `lib/fetch-tree` as a repo name, so a `# see
+latch#183` line would kill `restore` at deploy time.
+`test_skills_tsv_carries_no_comment_lines` holds that, and
+`test_every_pinned_skill_is_a_sha_not_a_branch` still checks any row that
+latch#183 later puts back.
 
 ## Layout
 
 ```
 agent.env       what is true of every instance: where its config lives
 runtime/        config.yaml: model, plugins, mcp_servers
-skills.tsv      the pinned plow-connectors SHA, reviewable beside the config
+skills.tsv      empty -- no connectors on this instance (see above)
+ld-weather/     the NWS producer; ld-sports/ is the ESPN one
+ld-shared/      the POST helper, the ld-config gate and the wire protocol
+ld-dashboard/   the six cron schedules; two registered, four blocked
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 ```
@@ -286,6 +353,9 @@ installs it and reloads the gateway only if the file actually changed.
 
 ## Open
 
-- **Connectors are each owner's to link.** Google and Slack are linked on their
-  Plow account, not here. `agent-mgr check-connectors <agent>` reports
-  `connected:false` until they do, which is a real answer rather than a failure.
+- **Connectors are gone, not unlinked.** This instance installs no
+  `plow-connectors`, so Google and Slack are unreachable however linked the
+  owner's Plow account is, and `agent-mgr check-connectors <agent>` has nothing
+  to probe. `plow-pbc/latch#183` is what brings Google back — through a vendored
+  `gog` behind Latch rather than a connector skill. See [No connectors, and what
+  that costs](#no-connectors-and-what-that-costs).

@@ -12,7 +12,6 @@ and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
 import importlib.util
-import json
 import re
 import subprocess
 from pathlib import Path
@@ -109,12 +108,42 @@ def test_latch_is_configured_from_the_environment_not_from_git():
 
 
 def test_every_pinned_skill_is_a_sha_not_a_branch():
+    """Empty today, and the emptiness is the point.
+
+    plow-connectors was the only row, and it went out with the dashboard work:
+    the four producers that read Gmail, Google Calendar and Slack have no data
+    source on this agent, so nothing here reaches a connector. latch#183 is what
+    refills this file -- a vendored gog behind Latch -- and the per-row rule
+    below is what will check that row when it lands.
+
+    Deliberately NOT asserting the file is non-empty. It used to say the
+    connector skill is what lets an instance reach its owner's mail, which was
+    true while there was one; asserting it now would fail the suite for being
+    correct."""
     rows = [r for r in (ROOT / "skills.tsv").read_text().splitlines() if r.strip()]
-    assert rows, "the connector skill is what lets an instance reach its owner's mail"
     for row in rows:
         repo, ref, dest = row.split("\t")[:3]
         assert len(ref) == 40 and all(c in "0123456789abcdef" for c in ref), row
         assert repo and dest
+
+
+def test_skills_tsv_carries_no_comment_lines():
+    """A comment here breaks `agent-mgr restore`, and only at deploy time.
+
+    agent-mgr gates the replay on `[ -s skills.tsv ]` -- size, not content --
+    then feeds every line with a non-empty first tab-field to lib/fetch-tree. A
+    zero-byte file is skipped cleanly, but a file holding only `# see latch#183`
+    is non-empty, so the comment text becomes the repo argument and restore dies
+    on it. The explanation belongs in a docstring like this one, never in the
+    file itself, and this test is what keeps a well-meaning edit from putting it
+    there."""
+    text = (ROOT / "skills.tsv").read_text()
+    for line in text.splitlines():
+        assert not line.lstrip().startswith("#"), (
+            f"skills.tsv carries a comment line: {line!r} -- agent-mgr feeds it to "
+            "fetch-tree as a repo name and restore dies. Keep the file empty or "
+            "tab-separated rows only."
+        )
 
 
 def test_no_credential_file_is_tracked():
@@ -131,7 +160,6 @@ def test_no_credential_file_is_tracked():
     as `"caf\303\251/.env"` and its basename computes to `.env"`, and
     whitespace-splitting fragments any path containing a space.
     """
-    import subprocess
     out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
                          capture_output=True, text=True, check=True)
     for name in out.stdout.split("\0")[:-1]:
@@ -363,3 +391,85 @@ def test_split_probe_survives_a_body_that_never_arrived():
     assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
     assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
     assert mod.split_probe("200\n") == ("200", ""), "a trailing newline is still no body"
+
+
+def override():
+    """The parsed override, with a message that names the file when it is gone."""
+    path = ROOT / "compose.override.yml"
+    assert path.is_file(), (
+        "compose.override.yml is missing -- it is how the ld- skills reach the "
+        "container, and agent-mgr loads it only if it exists (lib/common.sh:577)"
+    )
+    return yaml.safe_load(path.read_text())
+
+
+SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
+
+
+def test_every_skill_is_mounted_flat_and_read_only():
+    """Four declarative strings, asserted exactly.
+
+    This replaces a brace-aware volume parser, its own unit test, and four
+    overlapping invariant paths -- read-only, strict-child, one-segment-deep,
+    ${AGENT_DIR}-rooted, not-an-ancestor-of-the-home -- with the strings those
+    invariants were describing. Every one of them is still enforced, because an
+    exact set cannot be satisfied by a mount that breaks any of them: drop `:ro`,
+    nest a level, mount the checkout root, make a source relative, or forget a
+    skill entirely and this fails with both sets printed.
+
+    Derived from the tree, so adding a producer without its mount fails here
+    rather than at 06:00 as a cron running a skill the container does not have.
+
+    Why these strings and not others -- why flat, why read-only, why
+    ${AGENT_DIR} and not `./` -- is compose.override.yml's own comment. It is the
+    file a reader opens; restating it here was a second copy to keep in step."""
+    assert set(override()["services"]["hermes"]["volumes"]) == {
+        f"${{AGENT_DIR:?set by agent-mgr from the registry}}/{name}"
+        f":/opt/data/skills/{name}:ro"
+        for name in SKILL_DIRS
+    }
+
+
+def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
+    """Every path a SKILL.md hands the agent, checked where the agent will use it.
+
+    Absolute, all of them, and that is the contract rather than a style
+    preference. The container's WorkingDir and the gateway's cwd are both
+    /opt/hermes (measured), and `hermes cron create` sets no --workdir, so a bare
+    `ld-shared/references/kiosk-protocol.md` resolves to
+    /opt/hermes/ld-shared/... and is simply not there. The producers compose
+    their tiles from that spec, so the failure lands at 06:00, inside the
+    container, as an agent that cannot find the contract it was told to read.
+
+    The check is only worth anything because the mapping is earned:
+    test_every_skill_is_mounted_flat_and_read_only pins
+    ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
+    ROOT really does mean the agent can open them.
+
+    It checks that the absolute paths RESOLVE; it does not check that a new
+    reference is written absolute. A linter for that was built and removed: at
+    three hand-authored files it cost more than the drift it fenced, and the
+    eight paths it found are fixed regardless. The convention is visible in the
+    files themselves -- every path in all three is absolute."""
+    prefix = "/opt/data/skills/"
+    leaves = set(SKILL_DIRS)
+    seen = 0
+    for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
+        text = skill_md.read_text()
+        for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
+            ref = ref.rstrip(".").rstrip("/")
+            head, _, rest = ref.partition("/")
+            assert head in leaves, (
+                f"{skill_md.name} names {prefix}{ref}, but {head} is not a skill "
+                "directory in this tree"
+            )
+            target = ROOT / head / rest if rest else ROOT / head
+            assert target.is_file() or target.is_dir(), (
+                f"{skill_md.name} names {prefix}{ref}, which is not in the tree"
+            )
+            seen += 1
+
+    assert seen, (
+        "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
+        "style changed?"
+    )
