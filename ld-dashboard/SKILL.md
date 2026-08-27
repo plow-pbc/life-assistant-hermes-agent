@@ -32,8 +32,10 @@ pause, resume or remove:
 
     /opt/data/skills/ld-dashboard/scripts/register_crons.py
 
-Then force one run (`hermes cron run <job-id>`) and check the kiosk, rather than
-assuming the already-running gateway picked the new job up.
+Then force one run (`hermes cron run <job-id>`) and check the kiosk. That proves
+the producer, not the scheduler: whether the already-running gateway loads a
+newly created job without a restart is unmeasured, so watch the first unforced
+fire before calling bring-up done.
 
 Preview without changing anything: `… register_crons.py --dry-run`.
 

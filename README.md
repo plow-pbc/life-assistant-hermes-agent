@@ -157,17 +157,24 @@ agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
   /opt/data/skills/ld-dashboard/scripts/register_crons.py
 ```
 
-`--user` is not optional, and is the same pin `just check-latch` uses.
-`agent-mgr compose … exec` lands as **root** — measured: `id` inside the `str`
-container returns `uid=0` — and on a fresh instance `jobs.json` does not exist
-yet, so an unpinned exec has `hermes cron create` write the schedule root-owned,
-after which the gateway, running as `HERMES_UID`, can never pause, resume or
-remove anything in it. This repo has already been bitten by root-owned paths
-created inside these nested binds (`plow-pbc/agent-mgr#44`).
+`--user` is not optional. `agent-mgr compose … exec` lands as **root** —
+measured: `id` inside the `str` container returns `uid=0` — because the image's
+s6 entrypoint remaps its in-image `hermes` user to `HERMES_UID`/`HERMES_GID` and
+a plain exec bypasses that. `agent-mgr` pins the pair on every exec it makes for
+this reason (`agent-mgr:143-146`, `:194`, `:343`); this one has to do the same,
+and unlike `check-latch` — which only curls and writes to `/tmp`, so a mismatch
+there is invisible — this exec *creates* `jobs.json` on a fresh instance, where
+it does not exist yet. Get it wrong and the gateway can never pause, resume or
+remove anything in its own schedule. The repo has been bitten by root-owned
+paths inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
-Then confirm a job actually fires **without restarting the gateway**. That is
-the whole point of the step, and a schedule the running gateway never picked up
-looks identical to a producer that runs and finds nothing:
+`$(id -u)` is the right value rather than a lucky one: `agent-mgr` sets
+`HERMES_UID="$(id -u)"` from the invoking user (`lib/common.sh:481`), so the
+host operator's uid *is* the gateway's uid by construction. Measured on
+`wakeup`: host `uid=1000`, `HERMES_UID=1000`, and the live `jobs.json` owned by
+`1000:1000`.
+
+Then confirm the producer runs end to end and posts its card:
 
 ```sh
 agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
@@ -175,6 +182,13 @@ agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
 agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
   /opt/hermes/bin/hermes cron runs              # then look for the card on the kiosk
 ```
+
+That is a **forced** run, so it proves the producer, the mount, the config and
+the kiosk POST — not that the already-running gateway loaded the new schedule.
+Whether it picks jobs up without a restart is **open**: if it caches at startup,
+this check passes and the wall screen is still dark at 06:00. Until it is
+measured, watch the first *unforced* fire (or set a job a couple of minutes out
+and wait for it) before calling bring-up done.
 
 The dashboard also needs `/opt/data/ld/config.json` (the producers read
 `weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and

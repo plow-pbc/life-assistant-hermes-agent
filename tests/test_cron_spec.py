@@ -338,19 +338,30 @@ def test_the_spec_uses_the_viewers_slot_map_and_shares_only_the_alert_card():
 
 
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
-def test_the_skill_table_still_agrees_with_the_spec(job):
-    """SKILL.md restates the schedules for a human reader, and a restatement
-    drifts. Name and schedule only -- mechanical enough not to break on prose."""
-    for doc in ("ld-dashboard/SKILL.md", "README.md"):
-        table = (ROOT / doc).read_text()
-        assert f"`{job['name']}`" in table, f"{doc} does not name {job['name']}"
-        if doc.endswith("SKILL.md"):
-            # Only the skill restates schedules; the README lists what is dark.
-            assert f"`{job['schedule']}`" in table
-    table = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    # The card/type column too -- names and schedules alone let the slot half
-    # drift, which is how the protocol map came to have four copies.
-    assert f"{job['card']} · {job['type']}" in table
+def test_both_restatements_of_the_spec_still_agree_with_it(job):
+    """Two documents restate JOBS for human readers, and a restatement drifts.
+
+    SKILL.md carries the full table — name, schedule, card and type. README.md
+    carries only the four dark producers, to say what an owner has lost, so it
+    is checked only for those rows and only for the fields it prints.
+
+    Asserting the ROW, not just the name: a bare backticked ld-weather appears in
+    prose anywhere in a 300-line README and passes while the table beside it is
+    wrong, which is exactly the drift this is for. The card map has been in four
+    hand-kept copies before; two of them are now pinned here and the third is
+    parsed straight out of kiosk-protocol.md."""
+    skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
+    assert f"`{job['name']}`" in skill
+    assert f"`{job['schedule']}`" in skill
+    assert f"{job['card']} · {job['type']}" in skill
+
+    if job["blocked"]:
+        readme = (ROOT / "README.md").read_text()
+        row = f"| `{job['name']}` | {job['card']} · {job['type']} |"
+        assert row in readme, (
+            f"README's dark-producer table has no row {row!r} -- it is the only "
+            "place an owner reads what they lost, and nothing else checks it"
+        )
 
 
 
