@@ -189,4 +189,5 @@ yours against the one it was measured on:
 
 If you ever need to re-settle it, the thing to know is that `source=builtin` is
 the one row you cannot force: it takes a real scheduled fire, so create a job a
-few minutes out against the running gateway and let it land.
+few minutes out against the running gateway, let it land, and remove it again
+-- a throwaway left behind keeps firing on the live agent.
