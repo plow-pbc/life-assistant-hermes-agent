@@ -23,7 +23,7 @@ Once per run:
 3. Compose the **self-contained** scoreboard tile HTML. The canonical `<style>`
    (the `.sp-*` rules, which reference the viewer's shared theme tokens) and the
    game-row markup/grid contract are defined in
-   `ld-shared/references/kiosk-protocol.md` § "Sports tile (card 5)" — the ONE
+   `/opt/data/skills/ld-shared/references/kiosk-protocol.md` § "Sports tile (card 5)" — the ONE
    source both agent seeds share. Read it and reproduce that tile exactly,
    one `.sp-game` row per shown game (up to 3). It ships its own `<style>`, so
    the viewer holds no sports CSS.
@@ -59,7 +59,7 @@ Preview without sending: `… post_sports.py --dry-run`.
 ## Config
 
 `sports.followed` in `/opt/data/ld/config.json` (template:
-`ld-shared/references/config.example.json`) — a list of teams, each an ESPN
+`/opt/data/skills/ld-shared/references/config.example.json`) — a list of teams, each an ESPN
 `{ abbr, sport, league }`:
 
     "sports": {
@@ -83,5 +83,5 @@ self-registers.
 
 The container's zone IS `family.timezone` — `hermes cron create` takes no
 per-job timezone, so jobs fire in whatever `AGENT_TZ` agent-mgr created the
-container with. `ld-shared/scripts/ld_config_gate.py` is what proves the two
+container with. `/opt/data/skills/ld-shared/scripts/ld_config_gate.py` is what proves the two
 agree.

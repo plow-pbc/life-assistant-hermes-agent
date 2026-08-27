@@ -432,51 +432,51 @@ def test_every_skill_is_mounted_flat_and_read_only():
 
 
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
-    """Both forms a SKILL.md uses to send the agent somewhere.
+    """Every path a SKILL.md hands the agent, checked where the agent will use it.
 
-    The absolute `/opt/data/skills/...` paths are the strings that decide whether
-    a producer runs at all, and the relative `ld-shared/...` ones are how it
-    finds the card-token spec and the config template. Nothing else asserts
-    either: test_wrappers.py proves the wrappers' own `../../ld-shared` import
-    hop by running them, which covers `scripts/`, and never touches
-    `references/`. A typo, a renamed skill directory, a moved script or a deleted
-    reference otherwise leaves the whole suite green and fails at 06:00, inside
-    the container, as an agent running a path that is not there."""
+    Absolute, all of them, and that is the contract rather than a style
+    preference. The container's WorkingDir and the gateway's cwd are both
+    /opt/hermes (measured), and `hermes cron create` sets no --workdir, so a bare
+    `ld-shared/references/kiosk-protocol.md` resolves to
+    /opt/hermes/ld-shared/... and is simply not there. The producers compose
+    their tiles from that spec, so the failure lands at 06:00, inside the
+    container, as an agent that cannot find the contract it was told to read.
+
+    The check is only worth anything because the mapping is earned:
+    test_every_skill_is_mounted_flat_and_read_only pins
+    ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
+    ROOT really does mean the agent can open them. A relative reference has no
+    such backing, which is why the rule below is that there are none."""
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
-    seen_absolute = seen_relative = 0
+    seen = 0
     for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
         text = skill_md.read_text()
         for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
-            ref = ref.rstrip(".")
+            ref = ref.rstrip("./")
             head, _, rest = ref.partition("/")
             assert head in leaves, (
                 f"{skill_md.name} names {prefix}{ref}, but {head} is not a skill "
                 "directory in this tree"
             )
-            assert (ROOT / head / rest).is_file() if rest else (ROOT / head).is_dir(), (
+            target = ROOT / head / rest if rest else ROOT / head
+            assert target.is_file() or target.is_dir(), (
                 f"{skill_md.name} names {prefix}{ref}, which is not in the tree"
             )
-            seen_absolute += 1
-        for ref in re.findall(r"(?<![\w/])(ld-shared/[\w./-]+)", text):
-            # A directory is a legitimate citation here -- `ld-shared/references/`
-            # in prose is natural in these files -- so this mirrors the sibling
-            # loop's bound rather than demanding a file and reporting "not in the
-            # tree" for something that is.
-            target = ROOT / ref.rstrip("./")
-            assert target.is_file() or target.is_dir(), (
-                f"{skill_md.name} points the agent at {ref}, which is not in the tree"
-            )
-            seen_relative += 1
+            seen += 1
 
-    # Counted separately. Sharing one counter let the relative matches mask the
-    # absolute ones' absence, so the canary stopped detecting the very event it
-    # is named for.
-    assert seen_absolute, (
-        "no absolute /opt/data/skills/ paths found in any SKILL.md -- has the "
-        "reference style changed?"
-    )
-    assert seen_relative, (
-        "no relative ld-shared/ references found in any SKILL.md -- has the "
-        "reference style changed?"
+        # No unanchored reference may creep back in. This is the rule the
+        # absolute check rests on, and it is invisible from the host: an
+        # unanchored path resolves fine when a reader clicks it in the repo and
+        # not at all for the agent, which is the only reader that matters.
+        bare = re.findall(r"(?<![\w/])(ld-(?:shared|weather|sports|dashboard)/[\w./-]+)", text)
+        assert not bare, (
+            f"{skill_md.name} hands the agent unanchored path(s) {bare} -- the "
+            "agent's cwd is /opt/hermes, not the skills directory, so these "
+            f"resolve to nothing. Prefix them with {prefix}"
+        )
+
+    assert seen, (
+        "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
+        "style changed?"
     )

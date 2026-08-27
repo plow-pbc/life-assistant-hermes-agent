@@ -122,7 +122,7 @@ when they land.
 **The timezone.** `hermes cron create` takes no per-job zone — every job fires in
 the container's zone, which is `agent-mgr`'s `AGENT_TZ`. `0 6 * * *` therefore
 means 06:00 wherever the container thinks it is, and
-`ld-shared/scripts/ld_config_gate.py` is what proves that zone equals
+`/opt/data/skills/ld-shared/scripts/ld_config_gate.py` is what proves that zone equals
 `family.timezone` in `/opt/data/ld/config.json`. A mismatch is not an error
 anywhere — it is a dashboard that updates at the wrong hour.
 

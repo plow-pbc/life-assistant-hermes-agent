@@ -21,7 +21,7 @@ Once per run:
    forecast. NWS reports °F for US points (Fahrenheit-only by contract).
 3. Compose the **self-contained** weather tile HTML. The canonical markup +
    `<style>` (the `.weather-*` rules, which reference the viewer's shared theme
-   tokens) is defined in `ld-shared/references/kiosk-protocol.md`
+   tokens) is defined in `/opt/data/skills/ld-shared/references/kiosk-protocol.md`
    § "Weather tile (card 3)" — the ONE source both agent seeds share. Read it
    and reproduce that tile exactly, filling in the current temp (big), the
    condition, and the location + H/L. It ships its own `<style>`, so the viewer
@@ -58,7 +58,7 @@ Preview without sending: `… post_weather.py --dry-run`.
 ## Config
 
 `weather` in `/opt/data/ld/config.json` (template:
-`ld-shared/references/config.example.json`):
+`/opt/data/skills/ld-shared/references/config.example.json`):
 
     "weather": { "location": "Mountain View", "lat": 37.386, "lon": -122.083 }
 
@@ -73,5 +73,5 @@ self-registers.
 
 The container's zone IS `family.timezone` — `hermes cron create` takes no
 per-job timezone, so jobs fire in whatever `AGENT_TZ` agent-mgr created the
-container with. `ld-shared/scripts/ld_config_gate.py` is what proves the two
+container with. `/opt/data/skills/ld-shared/scripts/ld_config_gate.py` is what proves the two
 agree.
