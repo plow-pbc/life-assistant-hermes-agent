@@ -305,16 +305,12 @@ def viewer_slots():
     rather than "the protocol table changed". The counts are checked by that
     test instead, which goes red alone."""
     table = (ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
-    # [\s>]* for the same indentation and blockquote coupling as the dark-table
-    # parser -- but NOT the same scope, and the difference is the residual. That
-    # one matches inside a marker-delimited span, so its relaxation is bounded to
-    # one table; this scans the whole document, so relaxing the anchor admits any
-    # row-shaped line anywhere in it -- an example in a nested list, an indented
-    # fence. Accepted because kiosk-protocol.md holds exactly one such table and
-    # the two count asserts below turn a surprise into a named red. Deliberately not
-    # marker-bounded like its sibling: that file is vendored byte-identical to
-    # its pinned ref, which is how this PR keeps provenance checkable, and a test
-    # scoping convenience is not worth forking it.
+    # Whole-document, unlike the dark-table parser, which matches inside a
+    # marker-delimited span. Deliberately not marker-bounded the same way: that
+    # would mean editing kiosk-protocol.md, which is vendored byte-identical to
+    # its pinned ref -- the property that keeps this PR's provenance checkable
+    # with a diff -- and a test scoping convenience does not buy a fork of it.
+    # Both asserts below name the scope they actually have.
     rows = re.findall(r"^[\s>]*\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
     return [(int(card), type_) for card, type_ in rows]
 
@@ -329,7 +325,8 @@ def test_the_protocol_card_map_still_parses():
     below vacuous."""
     assert len(VIEWER_SLOT_ROWS) == 5, (
         f"expected 5 card rows in kiosk-protocol.md's Card map, parsed "
-        f"{len(VIEWER_SLOT_ROWS)} -- the table was reformatted and this map is blind"
+        f"{len(VIEWER_SLOT_ROWS)} -- the table was reformatted, or a row-shaped "
+        f"line elsewhere in the doc parsed as one: {VIEWER_SLOT_ROWS}"
     )
     # Rows BEFORE the dict collapse, so a substituted row is caught here rather
     # than one test later. The map is built by comprehension, so last-wins: a row
