@@ -319,7 +319,8 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
     # other two.
     consequences = {
         "name": "registered_jobs() keys on it, so a re-capture without it makes "
-                "every read raise -- loud, but with nothing naming the field",
+                "every read raise KeyError('name') -- which names the field "
+                "itself, at 06:00, whether or not this test exists",
         "enabled": "registered_jobs() defaults it to True, so a re-capture "
                    "without it reads every job as runnable -- silently, "
                    "including a disabled one",
