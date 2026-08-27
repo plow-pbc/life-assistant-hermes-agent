@@ -147,7 +147,8 @@ registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 
 Land `/opt/data/ld/config.json` before you start, not after: the last step below
 registers the crons, and `register_crons.py` reads `family.timezone` from that
-file and refuses without it. It goes at `~/.hermes-<agent>/ld/config.json` on
+file and refuses without it. The producers read their location and teams from it
+too. It goes at `~/.hermes-<agent>/ld/config.json` on
 the host, landed as the instance owner rather than through a root `exec` — the
 producers read it as the agent, and the live one is mode-600. The dotenv needs
 `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN` alongside it.
@@ -207,7 +208,7 @@ repo avoids restating a uid rule. The repo has been bitten by root-owned paths
 inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
 **The turn costs you the exit code.** `register_crons.py` refuses loudly — a missing or
-unusable `ld-config.json`, a `family.timezone` that is not the container's zone,
+unusable `config.json`, a `family.timezone` that is not the container's zone,
 an empty `TZ`, a failed `cron create`, an unreadable `jobs.json`, a producer
 that is registered but PAUSED — but a turn returns the *turn's* status, so a
 non-zero exit reaches you only as whatever the agent chose to say about it. The
