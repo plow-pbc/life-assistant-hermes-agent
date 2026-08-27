@@ -14,7 +14,7 @@ to a different person.
 import importlib.util
 import re
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
@@ -533,6 +533,25 @@ def test_every_producer_handoff_sits_inside_the_write_safe_root():
                 assert named == {path}, (
                     f"{skill}/SKILL.md names {sorted(named)}, but its wrapper "
                     f"reads {path} -- the agent would write the wrong file"
+                )
+
+    # register_crons.py guards LD_CONFIG's directory, on the strength of it being
+    # the one the producers write into. True today only because both sit in
+    # /opt/data/ld; a handoff moved somewhere else would leave the guard proving
+    # a directory no producer touches -- green, while the real one is unwritable.
+    registrar = (ROOT / "ld-dashboard" / "scripts" / "register_crons.py").read_text()
+    ld_config = re.search(r'^LD_CONFIG = "([^"]+)"', registrar, re.M)
+    assert ld_config, "register_crons.py no longer declares LD_CONFIG"
+    guarded = PurePosixPath(ld_config.group(1)).parent
+    for skill in sorted(producers):
+        for wrapper in sorted((ROOT / skill / "scripts").glob("post_*.py")):
+            for path in re.findall(
+                r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text()
+            ):
+                assert PurePosixPath(path).parent == guarded, (
+                    f"{skill} writes its handoff into "
+                    f"{PurePosixPath(path).parent}, but register_crons.py "
+                    f"proves {guarded} is writable -- move the guard or the handoff"
                 )
 
     assert producers >= {"ld-weather", "ld-sports"}, (

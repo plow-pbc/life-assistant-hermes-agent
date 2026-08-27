@@ -226,11 +226,15 @@ stops bring-up rather than reaching the wall two hours late.
 That directory has to be **writable by the agent**, not merely present: the
 producers do not compose their tiles in the wrapper — the agent writes the
 composed HTML to `/opt/data/ld/<bundle>-text` with its file tool and the wrapper
-reads it back. So land `config.json` as the agent (`agent-mgr agent`, or
-`docker exec --user`), not through a root shell — `docker exec` without
-`--user` lands as uid 0 and leaves a directory the agent cannot write.
-`register_crons.py` refuses on that too, for the same reason it refuses on the
-timezone: silent is the one outcome worth spending a guard on.
+reads it back. So land `config.json` as the agent, not through a root shell:
+`docker exec` without `--user` lands as uid 0 and leaves a directory the agent
+cannot write, which is the `agent-mgr#44` shape again.
+
+`register_crons.py` proves it rather than trusting it — it writes a probe file
+into that directory and deletes it — and **refuses to run as root at all**,
+because root's probe succeeds on a directory the agent cannot write and would
+go green on the very setup the check exists to catch. Run it the documented
+way, as a turn (`agent-mgr agent <name>`), and that is already true.
 
 There is no `check-connectors` step: this instance has no connectors. See
 [No connectors, and what that costs](#no-connectors-and-what-that-costs).

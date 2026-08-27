@@ -32,7 +32,6 @@ import json
 import os
 import pathlib
 import shutil
-import stat
 import subprocess
 import sys
 
@@ -42,9 +41,6 @@ HERMES = "/opt/hermes/bin/hermes"
 JOBS_FILE = "/opt/data/cron/jobs.json"
 # The producers' own config. Read here for one reason: every schedule below is a
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
-# The agent's own home, and so the uid the agent runs as -- see
-# require_handoff_dir_writable(). The image sets HERMES_HOME to it.
-HERMES_HOME = "/opt/data"
 LD_CONFIG = "/opt/data/ld/config.json"
 
 # The spec. One row per producer, live or not.
@@ -202,45 +198,57 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
         )
 
 
-def require_handoff_dir_writable(config_path=LD_CONFIG, home=HERMES_HOME):
+def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid):
     """Refuse to register if the agent cannot write beside its own config.
 
     The producers do not compose their tiles in the wrapper: the AGENT writes
     the composed HTML to /opt/data/ld/<bundle>-text with its file tool, and the
     wrapper reads that path and unlinks it on a successful send. So this
     directory has to be writable BY THE AGENT, not merely present -- and unlike
-    the /tmp it replaced, nothing guarantees that.
+    the world-writable /tmp it replaced, nothing guarantees that. Root-owned
+    directories under the home bind are a measured hazard, not a hypothetical:
+    the runtime creates missing mountpoints inside the bind's source as root
+    (plow-pbc/agent-mgr#44).
 
-    Root-owned directories under the home bind are a measured hazard here, not a
-    hypothetical: the runtime creates missing mountpoints inside the bind's
-    source as root (plow-pbc/agent-mgr#44), and `docker exec` without --user
-    lands as uid 0, so an operator who drops config.json in through a root shell
-    produces exactly it.
+    Two steps, and the first is what makes the second mean anything. Refuse to
+    run as root, then just TRY THE WRITE. A probe answers the question the agent
+    will actually ask -- it covers the write bit, the execute bit a directory
+    needs before anything can be created in it, a read-only mount, a full disk
+    and an ACL, in one syscall and without enumerating any of them. Inspecting
+    uid and mode instead means re-deriving that list by hand and getting it
+    wrong; the version this replaced checked S_IWUSR without S_IXUSR, so an
+    agent-owned 0600 passed while nothing could be created.
 
-    Ownership, not os.access(). Root passes an access check on a hermes-owned
-    directory it cannot make the AGENT able to write, so a check run through a
-    root shell would go green on the very setup it exists to catch. /opt/data is
-    the agent's own home and is always agent-owned, so its uid is who the agent
-    is -- compared against the handoff directory's.
+    The root refusal is not incidental. Root's probe succeeds on a directory the
+    agent cannot write, so without it the check goes green on exactly the setup
+    it exists to catch. `docker exec` without --user lands as uid 0, which is
+    how an operator gets here; bring-up is documented through `agent-mgr agent`,
+    which runs as the agent. Refusing turns a silent wrong answer into a loud
+    one.
     """
-    home = pathlib.Path(home)
+    if geteuid() == 0:
+        raise SystemExit(
+            "refusing to register: this is running as root, and root can write "
+            "directories the agent cannot -- so every check below would pass on "
+            "the setup it exists to catch. Run it as the agent: `agent-mgr agent "
+            "<name>` (a turn, the documented path), or `docker exec --user`."
+        )
     handoff = pathlib.Path(config_path).parent
+    probe = handoff / ".ld-handoff-probe"
     try:
-        agent_uid = home.stat().st_uid
-        st = handoff.stat()
+        probe.touch()
+        probe.unlink()
     except OSError as exc:
         raise SystemExit(
-            f"refusing to register: could not stat {handoff} or {home} ({exc!r})."
+            f"refusing to register: the agent cannot create files in {handoff} "
+            f"({exc.strerror}). The producers write their composed tile there, "
+            "so every card would fail to post -- or worse, fall back to the "
+            "shell and post intermittently, which looks fine from the kiosk. "
+            f"Fix the directory so the agent owns it and can write it: as root "
+            f"(`docker exec --user root`, or the host against the bind source) "
+            f"`chown -R $HERMES_UID:$HERMES_GID {handoff}`, then `chmod u+wx "
+            f"{handoff}`."
         ) from exc
-    if st.st_uid != agent_uid or not st.st_mode & stat.S_IWUSR:
-        raise SystemExit(
-            f"refusing to register: {handoff} is uid {st.st_uid} mode "
-            f"{stat.S_IMODE(st.st_mode):04o}, and the agent runs as uid "
-            f"{agent_uid}. The producers write their composed tile there, so "
-            "every card would fail to post -- or worse, silently fall back and "
-            f"post intermittently. Fix it as the agent: chown -R {agent_uid} "
-            f"{handoff}"
-        )
 
 
 def registered_jobs(jobs_path=JOBS_FILE):
@@ -307,7 +315,7 @@ def main(
     jobs_path=JOBS_FILE,
     config_path=LD_CONFIG,
     env=None,
-    home=HERMES_HOME,
+    geteuid=os.geteuid,
 ):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.parse_args(argv)
@@ -319,7 +327,7 @@ def main(
         raise SystemExit(f"{HERMES} not found -- run this inside the agent container")
 
     require_timezone_agreement(config_path, env)
-    require_handoff_dir_writable(config_path, home)
+    require_handoff_dir_writable(config_path, geteuid)
     registered = registered_jobs(jobs_path)
     paused = []
 
