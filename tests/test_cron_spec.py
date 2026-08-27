@@ -623,25 +623,24 @@ def test_the_paste_instruction_survives_in_every_document_that_promises_it():
 
 
 def test_the_cross_document_pointers_still_land_somewhere():
-    """Two documents were deduplicated into pointers; nothing pinned the targets.
+    """Documents were deduplicated into pointers; nothing pinned the targets.
 
-    The justfile deliberately keeps no copy of the bring-up procedure and names
-    README's section as text; README and SKILL.md both link SKILL.md's section as
-    a rendered anchor. Retitle a heading or repoint a link and they dangle
+    The justfile keeps no copy of three README sections and names each by title;
+    README and SKILL.md both link SKILL.md's Unattended-runs section as a
+    rendered anchor. Retitle a heading or repoint a link and they dangle
     silently -- deleting a duplicate is only an improvement while the pointer
     that replaced it resolves.
 
-    LITERALS, deliberately, after five rounds of the alternative. Deriving the
-    anchor from the heading means modelling GitHub's slugifier, and every
-    refinement of that model found another divergence -- punctuation deleted
-    rather than collapsed, spaced em-dashes yielding two hyphens, `_` surviving,
-    an optional path prefix that let a README link drop `ld-dashboard/SKILL.md`
-    and still pass. The value being protected is two pointers. Four exact
-    strings cannot drift from GitHub's rules because they make no claim about
-    them: change a heading and the first assertion fails, change a link and its
-    own does, and whoever does either updates the literal here -- which is the
-    test doing its job, not friction. If a third pointer ever appears, add a
-    line; do not rebuild the deriver."""
+    LITERALS, deliberately, after five rounds of the alternative. Deriving an
+    anchor from a heading means modelling GitHub's slugifier, and every
+    refinement of that model found another divergence from it. Exact strings
+    make no claim about those rules, so they cannot drift from them: change a
+    heading and its assertion fails, change a pointer and its own does, and
+    whoever does either updates the literal here -- the test working, not
+    friction.
+
+    To add a justfile->README pointer, add a tuple to the loop. Do not rebuild
+    the deriver, and do not write a pair out by hand beside it."""
     readme = (ROOT / "README.md").read_text()
     skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
     # Comment continuations un-wrapped once, so the literals below pin the
