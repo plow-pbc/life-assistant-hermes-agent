@@ -296,10 +296,14 @@ def viewer_slots():
     `3 · weather` column -- which is the prose drift promoting `type` to data was
     meant to end, moved one file over. Renumber the protocol and this goes red.
 
+    Returns PAIRS, not a dict: the collapse to a mapping is last-wins, so a row
+    reusing an existing card number would vanish into it silently. Keeping the
+    rows lets test_the_protocol_card_map_still_parses see both counts.
+
     Parses without asserting: this runs at import, so a bare assert here would
     fail COLLECTION of the whole module and read as "the tests are broken"
-    rather than "the protocol table changed". The count is checked by
-    test_the_protocol_card_map_still_parses instead, which goes red alone."""
+    rather than "the protocol table changed". The counts are checked by that
+    test instead, which goes red alone."""
     table = (ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
     # [\s>]* for the same indentation and blockquote coupling as the dark-table
     # parser -- but NOT the same scope, and the difference is the residual. That
@@ -312,19 +316,30 @@ def viewer_slots():
     # its pinned ref, which is how this PR keeps provenance checkable, and a test
     # scoping convenience is not worth forking it.
     rows = re.findall(r"^[\s>]*\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
-    return {int(card): type_ for card, type_ in rows}
+    return [(int(card), type_) for card, type_ in rows]
 
 
-VIEWER_SLOTS = viewer_slots()
+VIEWER_SLOT_ROWS = viewer_slots()
+VIEWER_SLOTS = dict(VIEWER_SLOT_ROWS)
 
 
 def test_the_protocol_card_map_still_parses():
     """A reformatted table must fail loudly, not yield an empty map that agrees
     with everything -- an empty VIEWER_SLOTS makes every pinned-map assertion
     below vacuous."""
-    assert len(VIEWER_SLOTS) == 5, (
+    assert len(VIEWER_SLOT_ROWS) == 5, (
         f"expected 5 card rows in kiosk-protocol.md's Card map, parsed "
-        f"{len(VIEWER_SLOTS)} -- the table was reformatted and this map is blind"
+        f"{len(VIEWER_SLOT_ROWS)} -- the table was reformatted and this map is blind"
+    )
+    # Rows BEFORE the dict collapse, so a substituted row is caught here rather
+    # than one test later. The map is built by comprehension, so last-wins: a row
+    # reusing an existing card number with a different type keeps the dict at
+    # five and surfaces at the slot-map test as "ld-weather claims card 3 as
+    # 'weather', but the viewer renders that slot as X" -- blaming the spec when
+    # the protocol doc is what changed.
+    assert len(VIEWER_SLOTS) == len(VIEWER_SLOT_ROWS), (
+        f"kiosk-protocol.md's Card map reuses a card number: parsed "
+        f"{VIEWER_SLOT_ROWS} -- one row silently overrode another"
     )
 
 
