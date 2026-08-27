@@ -507,31 +507,35 @@ def test_every_producer_handoff_sits_inside_the_write_safe_root():
     Both halves are checked because they drift apart: the wrapper is what runs,
     the SKILL.md is what the agent is told, and an agent told the wrong path
     writes the wrong file and posts nothing."""
-    seen = 0
-    producers = 0
+    producers = set()
     for skill in SKILL_DIRS:
         skill_md = ROOT / skill / "SKILL.md"
         for wrapper in sorted((ROOT / skill / "scripts").glob("post_*.py")):
-            paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text())
-            for path in paths:
+            for path in re.findall(
+                r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text()
+            ):
                 assert path.startswith(WRITE_SAFE_ROOT + "/"), (
                     f"{skill}/scripts/{wrapper.name} hands the agent {path}, "
                     f"which its file tool cannot create -- outside "
                     f"HERMES_WRITE_SAFE_ROOT ({WRITE_SAFE_ROOT})"
                 )
-                seen += 1
                 # ld-shared carries the same constant as a docstring example and
                 # ships no SKILL.md; it is worth pinning, but only a producer has
                 # an instruction sheet that can disagree with its own wrapper.
                 if not skill_md.exists():
                     continue
-                producers += 1
-                assert path in skill_md.read_text(), (
-                    f"{skill}/SKILL.md does not name {path}, the handoff its "
-                    f"wrapper actually reads -- the agent would write elsewhere"
+                producers.add(skill)
+                # Set equality, not `path in text`. Each sheet names the handoff
+                # twice -- once to write, once to read back -- so a half-applied
+                # path change leaves the substring check green while the agent is
+                # told two different files.
+                named = set(re.findall(r"/[\w./-]*-text\b", skill_md.read_text()))
+                assert named == {path}, (
+                    f"{skill}/SKILL.md names {sorted(named)}, but its wrapper "
+                    f"reads {path} -- the agent would write the wrong file"
                 )
 
-    assert producers >= 2, (
-        f"only {producers} producer handoff(s) checked -- ld-weather and "
-        "ld-sports both set MESSAGE_FILE, so this test has stopped finding them"
+    assert producers >= {"ld-weather", "ld-sports"}, (
+        f"only {sorted(producers)} checked -- both producers set MESSAGE_FILE, "
+        "so this test has stopped finding them"
     )

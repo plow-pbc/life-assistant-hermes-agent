@@ -22,7 +22,13 @@ via argv:
       Hermes): read that fixed path, then consume it after a successful send so
       a later run can't repost stale text. Hermes confines its file tool to
       HERMES_WRITE_SAFE_ROOT (/opt/data), so the path a wrapper picks has to
-      sit under it -- see the wrappers' /opt/data/ld/<bundle>-text.
+      sit under it -- see the wrappers' /opt/data/ld/<bundle>-text. That path
+      is on the agent's home bind rather than the container-ephemeral /tmp it
+      replaced, so a file a FAILED send leaves behind now outlives a restart,
+      and its body sits durably in the operator's host home. Fine for the two
+      producers on this transport, which overwrite unconditionally every run
+      and post public feed data; worth deciding deliberately for a future
+      producer whose body paraphrases private mail or iMessage.
     - MESSAGE_FILE None (read-only agent sandboxes, e.g. Plow — its file tool
       cannot create a handoff at all): read stdin, fed by the caller's quoted
       heredoc, so an injected body is inert data, never parsed as shell.

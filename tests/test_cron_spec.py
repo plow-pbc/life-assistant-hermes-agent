@@ -208,7 +208,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
         {"name": "ld-weather", "enabled": True, "paused_at": None}
     ])
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"}, home=tmp_path)
     assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -229,7 +229,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     # but an unattended re-provision must not read this run as success -- the
     # exit code is the only signal that reaches one.
     with pytest.raises(SystemExit) as exit_:
-        mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
+        mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"}, home=tmp_path)
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
     out = capsys.readouterr().out
@@ -244,7 +244,7 @@ def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"}, home=tmp_path)
     assert set(fake.created) == LIVE_NAMES
     blocked = {j["name"] for j in mod.BLOCKED}
     assert not blocked & set(fake.created)
@@ -257,7 +257,7 @@ def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     with pytest.raises(SystemExit):
         mod.main([], runner=FakeHermes(tmp_path / "none.json", create_rc=1),
-                 jobs_path=tmp_path / "none.json", config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
+                 jobs_path=tmp_path / "none.json", config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"}, home=tmp_path)
 
 
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
@@ -421,7 +421,7 @@ def test_main_refuses_before_creating_anything_when_the_zones_disagree(
     with pytest.raises(SystemExit) as excinfo:
         mod.main([], runner=fake, jobs_path=path,
                  config_path=_cfg(tmp_path, "America/Chicago"),
-                 env={"TZ": "America/Los_Angeles"})
+                 env={"TZ": "America/Los_Angeles"}, home=tmp_path)
     assert "America/Chicago" in str(excinfo.value)
     assert fake.created == [], "nothing may be registered against a wrong clock"
 
@@ -481,3 +481,63 @@ def test_a_config_without_a_usable_timezone_refuses_by_name(tmp_path, config):
     with pytest.raises(SystemExit) as excinfo:
         spec().require_timezone_agreement(path, {"TZ": "America/Los_Angeles"})
     assert "family.timezone" in str(excinfo.value)
+
+
+def test_the_handoff_directory_must_be_writable_by_the_agent(tmp_path):
+    """Present is not enough -- the AGENT has to be able to write it.
+
+    The producers do not compose their tiles in the wrapper: the agent writes
+    the composed HTML beside its config and the wrapper reads it back. The /tmp
+    this replaced was world-writable and always there; a directory under the
+    home bind is neither, and the runtime creates missing mountpoints there as
+    root (plow-pbc/agent-mgr#44).
+    """
+    mod = spec()
+    cfg = _cfg(tmp_path)
+
+    # tmp_path is owned by whoever runs the suite, so it stands in for a
+    # correctly-owned handoff directory: same uid as the "home" beside it.
+    mod.require_handoff_dir_writable(cfg, home=tmp_path)
+
+    # "/" is root-owned on every platform this runs on, so it stands in for a
+    # home whose uid is not the handoff directory's -- the agent-mgr#44 shape.
+    with pytest.raises(SystemExit) as exc:
+        mod.require_handoff_dir_writable(cfg, home="/")
+    assert "the agent runs as uid" in str(exc.value)
+
+
+def test_an_unwritable_handoff_directory_is_refused_even_when_owned(tmp_path):
+    """Right owner, no write bit -- still nothing the agent can post through."""
+    mod = spec()
+    cfg = _cfg(tmp_path)
+    tmp_path.chmod(0o500)
+    try:
+        with pytest.raises(SystemExit) as exc:
+            mod.require_handoff_dir_writable(cfg, home=tmp_path)
+    finally:
+        tmp_path.chmod(0o700)
+    assert "would fail to post" in str(exc.value)
+
+
+def test_a_run_refuses_before_registering_anything_when_the_handoff_is_unwritable(
+    monkeypatch, tmp_path
+):
+    """Pins that main() actually calls the guard.
+
+    Every other main() test supplies a home that agrees, which only proves the
+    guard passes -- deleting the call leaves them all green and registration
+    goes back to scheduling producers that cannot post.
+    """
+    mod = spec()
+    # Without this, main() dies on the earlier "hermes not found" check -- which
+    # is a SystemExit too, so a bare pytest.raises here goes green with the
+    # guard deleted. Caught by mutating the call away; asserting on the message
+    # is what keeps it honest.
+    monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
+    fake = FakeHermes(tmp_path / "none.json")
+    with pytest.raises(SystemExit) as exc:
+        mod.main([], runner=fake, jobs_path=tmp_path / "none.json",
+                 config_path=_cfg(tmp_path),
+                 env={"TZ": "America/Los_Angeles"}, home="/")
+    assert "the agent runs as uid" in str(exc.value)
+    assert not fake.created, "refused, but only after creating jobs"
