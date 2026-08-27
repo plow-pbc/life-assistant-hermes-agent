@@ -169,8 +169,12 @@ class _Proc:
 # Injected rather than read from the process: the guard's whole point is that
 # root gets a different answer, so a suite run as root (a container, sudo)
 # would otherwise invert both tests below.
-IS_ROOT = lambda: 0  # noqa: E731
-NOT_ROOT = lambda: 1000  # noqa: E731
+def IS_ROOT():
+    return 0
+
+
+def NOT_ROOT():
+    return 1000
 
 
 class FakeHermes:
@@ -499,7 +503,7 @@ def test_the_handoff_probe_refuses_to_answer_as_root(tmp_path):
     """
     mod = spec()
     with pytest.raises(SystemExit) as exc:
-        mod.require_handoff_dir_writable(_cfg(tmp_path), geteuid=IS_ROOT)
+        mod.require_handoff_dir_writable(_cfg(tmp_path), geteuid=IS_ROOT, env={})
     assert "running as root" in str(exc.value)
 
 
@@ -514,16 +518,16 @@ def test_the_handoff_directory_is_proved_by_writing_not_by_inspection(tmp_path):
     """
     mod = spec()
     cfg = _cfg(tmp_path)
-    mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT)  # 0700, writable
+    mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT, env={})  # 0700, writable
 
     for mode in (0o500, 0o600):
         tmp_path.chmod(mode)
         try:
             with pytest.raises(SystemExit) as exc:
-                mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT)
+                mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT, env={})
         finally:
             tmp_path.chmod(0o700)
-        assert "cannot create files in" in str(exc.value), f"mode {mode:04o}"
+        assert "cannot create" in str(exc.value), f"mode {mode:04o}"
 
 
 def test_the_probe_leaves_nothing_behind(tmp_path):
@@ -531,7 +535,7 @@ def test_the_probe_leaves_nothing_behind(tmp_path):
     mod = spec()
     cfg = _cfg(tmp_path)          # writes the config first; the probe is what we watch
     before = set(tmp_path.iterdir())
-    mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT)
+    mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT, env={})
     assert set(tmp_path.iterdir()) == before
 
 
@@ -559,5 +563,58 @@ def test_a_run_refuses_before_registering_anything_when_the_handoff_is_unwritabl
                      geteuid=NOT_ROOT)
     finally:
         tmp_path.chmod(0o700)
-    assert "cannot create files in" in str(exc.value)
+    assert "cannot create" in str(exc.value)
     assert not fake.calls, "refused, but only after talking to hermes"
+
+
+def test_who_the_agent_is_comes_from_HERMES_UID_not_from_assuming_it_is_not_root(
+    tmp_path,
+):
+    """The obvious assumption -- the agent is never uid 0 -- is wrong.
+
+    agent-mgr sets HERMES_UID from the invoking user's `id -u`, so an instance
+    brought up from a root host shell runs the gateway AS uid 0. Refusing on
+    root alone would hard-block bring-up there while printing the exact command
+    the operator just ran. Refusing on a MISMATCH keeps the docker-exec catch
+    and lets that instance through.
+    """
+    mod = spec()
+    cfg = _cfg(tmp_path)
+
+    # A legitimately root-uid agent, running as itself: allowed.
+    mod.require_handoff_dir_writable(cfg, geteuid=IS_ROOT, env={"HERMES_UID": "0"})
+
+    # The docker-exec case: root, but the agent is someone else.
+    with pytest.raises(SystemExit) as exc:
+        mod.require_handoff_dir_writable(
+            cfg, geteuid=IS_ROOT, env={"HERMES_UID": "1000"}
+        )
+    assert "the agent is uid 1000" in str(exc.value)
+
+    # Not root, but still not the agent -- a second non-agent account.
+    with pytest.raises(SystemExit) as exc:
+        mod.require_handoff_dir_writable(
+            cfg, geteuid=NOT_ROOT, env={"HERMES_UID": "1001"}
+        )
+    assert "running as uid 1000" in str(exc.value)
+
+
+def test_a_stranded_probe_does_not_condemn_a_writable_directory(tmp_path):
+    """touch()'s default fast path is utime() on an existing file.
+
+    A run killed between touch and unlink leaves the probe behind; with
+    exist_ok=True a leftover the agent cannot utime would fail a directory that
+    is in fact fine. Cleared first, so the question stays create-or-fail.
+
+    What this pins is the clearing: drop the unlink and it reds on
+    FileExistsError. It does NOT reproduce the case that motivated the change --
+    a leftover owned by someone else, where utime returns EPERM -- because
+    creating one needs root, and utime by the owner succeeds whatever the mode.
+    So plain touch() passes this test; the finer mutation is the honest one.
+    """
+    mod = spec()
+    cfg = _cfg(tmp_path)
+    stranded = tmp_path / ".ld-handoff-probe"
+    stranded.write_text("left by a killed run")
+    mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT, env={})
+    assert not stranded.exists()

@@ -198,7 +198,7 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
         )
 
 
-def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid):
+def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid, env=None):
     """Refuse to register if the agent cannot write beside its own config.
 
     The producers do not compose their tiles in the wrapper: the AGENT writes
@@ -210,44 +210,63 @@ def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid):
     the runtime creates missing mountpoints inside the bind's source as root
     (plow-pbc/agent-mgr#44).
 
-    Two steps, and the first is what makes the second mean anything. Refuse to
-    run as root, then just TRY THE WRITE. A probe answers the question the agent
-    will actually ask -- it covers the write bit, the execute bit a directory
-    needs before anything can be created in it, a read-only mount, a full disk
-    and an ACL, in one syscall and without enumerating any of them. Inspecting
-    uid and mode instead means re-deriving that list by hand and getting it
-    wrong; the version this replaced checked S_IWUSR without S_IXUSR, so an
+    Two steps, and the first is what makes the second mean anything: establish
+    that this process IS the agent, then just try the write. A probe answers the
+    question the agent will actually ask -- the write bit, the execute bit a
+    directory needs before anything can be created in it, a read-only mount, a
+    full disk, an ACL -- in one syscall and without enumerating any of them.
+    Inspecting uid and mode instead means re-deriving that list by hand and
+    getting it wrong; an earlier version checked S_IWUSR without S_IXUSR, so an
     agent-owned 0600 passed while nothing could be created.
 
-    The root refusal is not incidental. Root's probe succeeds on a directory the
-    agent cannot write, so without it the check goes green on exactly the setup
-    it exists to catch. `docker exec` without --user lands as uid 0, which is
-    how an operator gets here; bring-up is documented through `agent-mgr agent`,
-    which runs as the agent. Refusing turns a silent wrong answer into a loud
-    one.
+    Who the agent is comes from HERMES_UID, which the image exports and
+    agent-mgr sets from the invoking user's `id -u`. Read it rather than
+    assuming, because the obvious assumption -- that the agent is never root --
+    is wrong on an instance brought up from a root host shell, and there the
+    refusal would hard-block the documented bring-up while naming the very
+    command the operator just ran. Absent the variable, uid 0 is still refused:
+    `docker exec` with no --user lands there, and root's probe succeeds on a
+    directory the agent cannot write, which is the one answer worse than none.
     """
-    if geteuid() == 0:
+    env = os.environ if env is None else env
+    declared = env.get("HERMES_UID")
+    euid = geteuid()
+    if declared is not None and declared.strip().isdigit():
+        if euid != int(declared):
+            raise SystemExit(
+                f"refusing to register: this is running as uid {euid}, but the "
+                f"agent is uid {declared}. A probe run as anyone else answers a "
+                "different question than the one that matters -- root can write "
+                "directories the agent cannot. Run it as a turn: `agent-mgr "
+                "agent <name>`."
+            )
+    elif euid == 0:
         raise SystemExit(
-            "refusing to register: this is running as root, and root can write "
-            "directories the agent cannot -- so every check below would pass on "
-            "the setup it exists to catch. Run it as the agent: `agent-mgr agent "
-            "<name>` (a turn, the documented path), or `docker exec --user`."
+            "refusing to register: this is running as root and HERMES_UID is "
+            "unset, so there is nothing to check against. Root can write "
+            "directories the agent cannot, so the check below would pass on the "
+            "setup it exists to catch. Run it as a turn: `agent-mgr agent <name>`."
         )
+
     handoff = pathlib.Path(config_path).parent
     probe = handoff / ".ld-handoff-probe"
     try:
-        probe.touch()
+        # exist_ok=False, after clearing a leftover: touch()'s default fast path
+        # is utime() on an existing file, so a probe stranded by a killed run --
+        # root-owned, say -- would fail EPERM and condemn a directory that is
+        # fine. Create-or-fail is the question being asked.
+        probe.unlink(missing_ok=True)
+        probe.touch(exist_ok=False)
         probe.unlink()
     except OSError as exc:
         raise SystemExit(
-            f"refusing to register: the agent cannot create files in {handoff} "
-            f"({exc.strerror}). The producers write their composed tile there, "
-            "so every card would fail to post -- or worse, fall back to the "
-            "shell and post intermittently, which looks fine from the kiosk. "
-            f"Fix the directory so the agent owns it and can write it: as root "
-            f"(`docker exec --user root`, or the host against the bind source) "
-            f"`chown -R $HERMES_UID:$HERMES_GID {handoff}`, then `chmod u+wx "
-            f"{handoff}`."
+            f"refusing to register: the agent cannot create {probe} "
+            f"({exc.strerror}). The producers write their composed tile into "
+            "that directory, so every card would fail to post -- or worse, fall "
+            "back to the shell and post intermittently, which looks fine from "
+            "the kiosk. From a root shell in the container, where HERMES_UID "
+            f"and HERMES_GID are set: `chown -R $HERMES_UID:$HERMES_GID "
+            f"{handoff} && chmod u+wx {handoff}`."
         ) from exc
 
 
@@ -327,7 +346,7 @@ def main(
         raise SystemExit(f"{HERMES} not found -- run this inside the agent container")
 
     require_timezone_agreement(config_path, env)
-    require_handoff_dir_writable(config_path, geteuid)
+    require_handoff_dir_writable(config_path, geteuid, env)
     registered = registered_jobs(jobs_path)
     paused = []
 
