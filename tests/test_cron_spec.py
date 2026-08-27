@@ -331,9 +331,17 @@ def test_a_paused_job_is_not_runnable(tmp_path):
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
         {"name": "by-enabled", "enabled": False, "paused_at": None},
         {"name": "running", "enabled": True, "paused_at": None, "state": "scheduled"},
+        # Neither field present. The claim is two-sided -- `name` raises,
+        # these two DEFAULT -- and only the raising half was pinned: no fixture
+        # anywhere omitted `enabled`, so job.get("enabled", True) was unasserted
+        # in both directions. Swap it for job["enabled"] and an entry hermes
+        # wrote without it aborts the 06:00 run; flip the default and a live
+        # producer reads as not-runnable. Both silently wrong answers.
+        {"name": "defaults-only"},
     ])
     assert mod.registered_jobs(path) == {
-        "by-paused-at": False, "by-enabled": False, "running": True
+        "by-paused-at": False, "by-enabled": False, "running": True,
+        "defaults-only": True,
     }
 
 
