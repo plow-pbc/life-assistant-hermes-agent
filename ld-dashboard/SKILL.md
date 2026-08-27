@@ -181,8 +181,10 @@ not, so the change came from the schedule and not from the earlier forced runs.
 A forced run is now enough for bring-up: the schedule-loading question is
 settled above, and you do not need the restart.
 
-If you ever have to re-settle it — an image bump is the one thing that could
-reintroduce startup caching, and the version this was measured on is named above
-— the discriminator is `source=builtin` vs `source=direct`, never "a card
-appeared". A card appears either way, which is the whole reason a forced run
-could not answer this.
+An image bump is the one thing that could reintroduce startup caching, so check
+yours against the version above — `hermes --version`, in the container. To
+re-settle it you have to let a *real* fire land, because `source=builtin` is the
+one row you cannot force: create a throwaway job a few minutes out against the
+running gateway and wait for it. Then read `source=`, never "a card appeared" —
+a card appears either way, which is the whole reason a forced run could not
+answer this.
