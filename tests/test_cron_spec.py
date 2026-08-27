@@ -446,8 +446,17 @@ def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
     assert "is missing" in str(excinfo.value)
 
 
-@pytest.mark.parametrize("content", ["{not json", '{"schedules": []}', ""],
-                         ids=["malformed", "wrong-shape", "empty"])
+@pytest.mark.parametrize("content", [
+    "{not json",
+    '{"schedules": []}',
+    "",
+    # A well-formed file whose ENTRY has no name. The docstring's claim that
+    # `name` is the only field whose absence raises is load-bearing and was
+    # asserted by nothing: swap job["name"] for job.get("name") and a nameless
+    # entry becomes a None key -- it vanishes from the answer instead of
+    # stopping the run, which is the invariant this test is named for.
+    '{"jobs": [{"enabled": true, "paused_at": null}]}',
+], ids=["malformed", "wrong-shape", "empty", "entry-without-a-name"])
 def test_an_unreadable_schedule_is_not_read_as_an_empty_one(tmp_path, content):
     """The seed installer's one invariant, and the only one worth keeping.
 
