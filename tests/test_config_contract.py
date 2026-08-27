@@ -596,7 +596,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
     # The real ld-sports/SKILL.md line. Green by accident today: it holds no
     # tracked segment, so the pattern never matches it and the exemption is
-    # never consulted. Rows that DO exercise the exemption say so themselves.
+    # never consulted.
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
     # The exemption on a real HOST head. `scripts` is tracked so the pattern
     # matches and the string is relative, so the heuristic is the only thing
