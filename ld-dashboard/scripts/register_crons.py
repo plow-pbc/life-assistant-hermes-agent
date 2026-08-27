@@ -23,7 +23,7 @@ human-readable listing is not a data structure. This reads jobs.json instead:
 hermes's own state, where a name is a field, `enabled`/`paused_at` are fields,
 an absent file reads as an empty schedule and a malformed one raises. See registered_jobs().
 
-It runs INSIDE the container, where hermes is on PATH and that file lives.
+It runs INSIDE the container, where /opt/hermes/bin/hermes and that file live.
 """
 from __future__ import annotations
 
@@ -282,7 +282,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
                 print(
                     f"WARNING: {job['name']} is registered but PAUSED -- it will "
                     "never fire, and this leaves it alone rather than "
-                    f"duplicating it. Resume it: hermes cron resume {job['name']}"
+                    f"duplicating it. Resume it: {HERMES} cron resume {job['name']}"
                 )
                 paused.append(job["name"])
             continue
@@ -297,7 +297,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
         raise SystemExit(
             f"registered what was missing, but {len(paused)} producer(s) are "
             f"PAUSED and will never fire: {', '.join(paused)} -- "
-            "hermes cron resume <name>"
+            f"{HERMES} cron resume <name>"
         )
     return 0
 
