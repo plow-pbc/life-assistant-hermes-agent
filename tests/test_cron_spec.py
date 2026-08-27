@@ -126,10 +126,15 @@ def _jobs_file(tmp_path, jobs):
 
 
 def test_a_missing_jobs_file_is_an_empty_schedule_not_an_unreadable_one(tmp_path):
-    """A fresh instance has no jobs.json, and that is unambiguous -- which is the
-    point of reading the file rather than a rendering. The listing this replaced
-    could not tell an empty schedule from a format it could not parse, and the
-    notice-sniffing that told them apart was itself pinned to a rendering."""
+    """A fresh instance has no jobs.json, and its absence READS as an empty
+    schedule -- it is not by itself unambiguous, since a wrong path raises the
+    same ENOENT. The home and cron-directory checks catch the wrong path before
+    anything is created, and verify_landed() catches whatever survives both.
+
+    What reading the file buys over the listing it replaced is elsewhere: the
+    listing could not tell an empty schedule from a format it could not parse,
+    and the notice-sniffing that told them apart was itself pinned to a
+    rendering."""
     assert spec().registered_jobs(tmp_path / "nope.json") == {}
 
 
@@ -504,12 +509,17 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
             f"the captured hermes format has no {field!r} -- register_crons.py "
             "reads it, and the abort it raises would be correct but unexplained"
         )
+    # Not an abort field -- the reader treats it as the second candidate pause
+    # encoding -- but a re-capture that drops it deletes half the pause detection
+    # silently, with every other test still green.
+    assert "state" in entry, (
+        "the captured hermes format has no 'state' -- register_crons.py reads it "
+        "as the second pause encoding, and losing it is silent"
+    )
 
 
 def test_the_absent_branch_is_only_for_a_genuinely_missing_file(tmp_path):
-    """uid-independent, unlike the chmod row above.
-
-    Path.exists() swallows every OSError on 3.12+, which `just test` pins, so a
+    """Path.exists() swallows every OSError on 3.12+, which `just test` pins, so a
     permission denial on the cron directory came back False and read as a fresh
     instance -- registering every job again, silently. Only FileNotFoundError
     means "nothing scheduled yet".
@@ -574,3 +584,18 @@ def test_a_dry_run_does_not_fail_over_a_paused_job_it_did_not_create(
     assert mod.main(["--dry-run"], runner=FakeHermes(path), env=ENV, jobs_path=path) == 0
     out = capsys.readouterr().out
     assert "would leave 1 paused producer(s) alone: ld-weather" in out
+
+
+def test_a_wrong_cron_directory_under_a_good_home_also_refuses(tmp_path):
+    """The likelier typo, and the one a home-only check sails past.
+
+    /opt/data/crons/jobs.json passes the mounted-home stat, reads as an empty
+    schedule, registers the first live job, and only then trips verify_landed --
+    which is "duplicate one per attempt", recurring on every retry. That is the
+    cost the pre-create check exists to remove, so both levels are checked."""
+    home = tmp_path / "data"
+    (home / "cron").mkdir(parents=True)
+    with pytest.raises(SystemExit) as excinfo:
+        spec().registered_jobs(home / "crons" / "jobs.json")
+    msg = str(excinfo.value)
+    assert "is mounted but" in msg and "wrong one" in msg

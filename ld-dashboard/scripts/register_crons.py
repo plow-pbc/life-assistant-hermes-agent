@@ -215,17 +215,21 @@ def registered_jobs(jobs_path=JOBS_FILE):
     # path and an unmounted home, the two cases the ENOENT branch below cannot
     # tell from a fresh instance.
     #
-    # Deliberately not `path.parent` (/opt/data/cron): that would rest on the
-    # cron directory existing before any job does. It does -- the gateway creates
-    # it at start, measured on two homes that never had a single cron (the
-    # retired ~/.hermes-life and ~/.hermes-sam-property both carry cron/ with
-    # executions.db and no jobs.json) -- but resting on it buys nothing the home
-    # check does not, and would abort a fresh instance outright if a future
-    # hermes created it lazily instead.
+    # BOTH levels, with distinct messages. They catch different faults and are
+    # not alternatives: the home is missing when the container is not wired
+    # correctly, and the cron directory is missing when JOBS_FILE names the
+    # wrong subdirectory under a perfectly good home -- /opt/data/crons, say,
+    # which is the likelier typo and which the home check sails straight past.
+    #
+    # Checking cron/ rests on the gateway creating it before any job exists, and
+    # that is measured rather than assumed: the retired ~/.hermes-life (never
+    # activated, not one cron ever) and ~/.hermes-sam-property both carry cron/
+    # with executions.db and no jobs.json. See tests/fixtures/README.md.
     #
     # stat(), not is_dir(): is_dir() swallows every OSError exactly the way
-    # exists() does, so a permission denial on the home would report "not a
-    # directory" and send the operator to check a path that is fine.
+    # exists() does -- the trap the read below goes out of its way to avoid -- so
+    # a permission denial would report "not a directory" and send the operator to
+    # check a path that is fine.
     home = path.parent.parent
     try:
         home.stat()
@@ -240,6 +244,21 @@ def registered_jobs(jobs_path=JOBS_FILE):
         raise SystemExit(
             f"refusing to register: could not stat {home} ({exc}). Reading an "
             "unreachable home as an empty schedule would register duplicates."
+        ) from exc
+    try:
+        path.parent.stat()
+    except FileNotFoundError:
+        raise SystemExit(
+            f"refusing to register: {home} is mounted but {path.parent} is not "
+            "there. The gateway creates that directory at start, so JOBS_FILE "
+            "most likely names the wrong one. Reading its absence as an empty "
+            "schedule would register duplicates on every run."
+        ) from None
+    except OSError as exc:
+        raise SystemExit(
+            f"refusing to register: could not stat {path.parent} ({exc}). "
+            "Reading an unreachable schedule as an empty one would register "
+            "duplicates."
         ) from exc
     try:
         raw = path.read_text()
@@ -299,13 +318,17 @@ def registered_jobs(jobs_path=JOBS_FILE):
                 "`enabled` nor `paused_at` -- the format changed, and guessing it "
                 "is runnable would leave a paused producer reported as healthy."
             )
-        # Both encodings, because the capture settles the names and not the
-        # semantics: the entry it came from is a RUNNING job (enabled true,
-        # paused_at null, paused_reason null, state "scheduled"), which proves
-        # the keys exist and not which one pausing moves. `state` is a field the
-        # same capture confirms hermes maintains, so reading it costs one term
-        # and removes the guess -- rather than betting the PAUSED warning, and
-        # the non-zero exit built on it, on paused_at being the one that flips.
+        # Two candidate encodings, neither of them verified, and saying so
+        # plainly because the difference matters. The capture is a RUNNING job
+        # (enabled true, paused_at null, paused_reason null, state "scheduled"),
+        # so it proves the keys exist and settles nothing about which one pausing
+        # moves -- and reading `state != "paused"` swaps a guess about the FIELD
+        # for a guess about the VALUE, since "suspended" or "Paused" would leave
+        # the term inert. It is still worth the one term: two candidates fail
+        # closed less often than one. What would actually settle it is a paused
+        # entry in the fixture, which needs `hermes cron pause` against an
+        # instance this repo owns -- so it is captured at cutover on `life`
+        # rather than by mutating a live agent tonight.
         out[entry["name"]] = (
             bool(entry.get("enabled", True))
             and not entry.get("paused_at")
