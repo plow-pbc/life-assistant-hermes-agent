@@ -431,6 +431,45 @@ def test_every_skill_is_mounted_flat_and_read_only():
     }
 
 
+def unanchored_refs(text):
+    """Path-like citations in a SKILL.md that the agent could not resolve.
+
+    The defect is cwd-relative resolution: the container's WorkingDir and the
+    gateway's cwd are both /opt/hermes (measured) and `hermes cron create` sets
+    no --workdir, so any path handed to the agent that does not start with `/`
+    resolves under /opt/hermes and is not there. ABSOLUTE is therefore the rule,
+    not "starts with /opt/data/skills/" -- these files also cite
+    /opt/data/cron/jobs.json, /opt/data/ld/config.json and /opt/hermes/bin/hermes,
+    all correct and all immune.
+
+    Segment names come from the whole tree rather than a list. Three rounds of
+    this guard were narrowing: an `ld-*` head, then an ld-*|scripts|references
+    alternation, then root directories plus ld-shared's. Each was one name short
+    of the next bare citation somebody would write. rglob is the end of that
+    line -- there is no wider set to widen to next round.
+
+    Returns the offending strings so the caller can name them."""
+    names = sorted(
+        {
+            path.name
+            for path in ROOT.rglob("*")
+            if path.is_dir()
+            and not any(
+                part.startswith(".") or part == "__pycache__"
+                for part in path.relative_to(ROOT).parts
+            )
+        }
+    )
+    known = "|".join(map(re.escape, names))
+    return sorted(
+        {
+            ref
+            for ref in re.findall(rf"[\w./-]*(?:{known})/[\w./-]*", text)
+            if not ref.startswith("/")
+        }
+    )
+
+
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     """Every path a SKILL.md hands the agent, checked where the agent will use it.
 
@@ -449,14 +488,6 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     such backing, which is why the rule below is that there are none."""
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
-    # Every directory name a bare citation could plausibly be, taken from the
-    # tree so a new one is covered the moment it exists.
-    known = "|".join(
-        map(re.escape, sorted(
-            {p.name for p in ROOT.iterdir() if p.is_dir() and not p.name.startswith(".")}
-            | {p.name for p in (ROOT / "ld-shared").iterdir() if p.is_dir()}
-        ))
-    )
     seen = 0
     for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
         text = skill_md.read_text()
@@ -473,41 +504,48 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
             )
             seen += 1
 
-        # No unanchored reference may creep back in, in ANY spelling. Anchored
-        # on the TAIL rather than the head: a head-anchored `ld-*` alternation
-        # missed `scripts/register_crons.py` -- whose first segment is not a
-        # skill name, and which is worse than the bare ld-shared/ form because a
-        # repo-root scripts/ exists holding a different file -- and its
-        # `(?<![\w/])` lookbehind excluded the wrappers' own `../../ld-shared`
-        # hop identically to how it excluded the legitimate prefix.
-        #
-        # Matching the tail and asserting the prefix covers the bare, `./` and
-        # `../../` forms in one rule. The segment names are DERIVED (see `known`
-        # above) rather than listed: an alternation of ld-*|scripts|references
-        # was just a second hardcoded list, one name narrower than the tree, so a
-        # bare `docs/...` or `runtime/config.yaml` -- real repo-root directories
-        # holding different content -- read fine in the checkout and found
-        # nothing in the container, which is the exact failure this guards.
-        #
-        # The tail is optional so a bare single-segment citation is caught too:
-        # `vendored under ld-shared/` is prose natural to these files, and the
-        # absolute loop was widened to accept directory citations for that
-        # reason. This is invisible from the host -- an unanchored path resolves
-        # fine when a reader clicks it in the repo and not at all for the agent,
-        # which is the only reader that matters.
-        unanchored = sorted(
-            {
-                ref for ref in re.findall(rf"[\w./-]*(?:{known})/[\w./-]*", text)
-                if not ref.startswith(prefix)
-            }
-        )
+        # No unanchored citation may creep back in, in ANY spelling. The rule
+        # and its derivation live in unanchored_refs() so they are reachable
+        # from a test -- four rounds of widening this were verified only by hand,
+        # which is how round five silently re-narrows what round four widened.
+        unanchored = unanchored_refs(text)
         assert not unanchored, (
             f"{skill_md.name} hands the agent unanchored path(s) {unanchored} -- "
-            "the agent's cwd is /opt/hermes, not the skills directory, so these "
-            f"resolve to nothing. Prefix them with {prefix}"
+            "the agent's cwd is /opt/hermes, so a relative path resolves to "
+            "nothing. Give each an absolute container path"
         )
 
     assert seen, (
         "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
         "style changed?"
     )
+
+
+@pytest.mark.parametrize("text,flagged", [
+    # Every spelling four rounds of widening this guard were verified against by
+    # hand. Each round's "verified red" evaporated into shell history, so round
+    # five could silently re-narrow what round four widened. These are the rows
+    # that stop it.
+    ("read `ld-shared/references/kiosk-protocol.md`", ["ld-shared/references/kiosk-protocol.md"]),
+    ("read `./ld-shared/references/kiosk-protocol.md`", ["./ld-shared/references/kiosk-protocol.md"]),
+    ("the wrappers hop `../../ld-shared/scripts`", ["../../ld-shared/scripts"]),
+    ("run `scripts/register_crons.py`", ["scripts/register_crons.py"]),
+    # A first segment that is a real repo-root directory holding different
+    # content -- reads fine in the checkout, finds nothing in the container.
+    ("see `runtime/config.yaml`", ["runtime/config.yaml"]),
+    ("see `docs/superpowers/plans/x.md`", ["docs/superpowers/plans/x.md"]),
+    ("see `tests/fixtures/hermes-cron-jobs.json`", ["tests/fixtures/hermes-cron-jobs.json"]),
+    # Bare single-segment citations, which are prose natural to these files.
+    ("vendored under `ld-shared/` and mounted", ["ld-shared/"]),
+    ("see `references/` for the spec", ["references/"]),
+    # Absolute is the rule, not the skills prefix: these three are correct and
+    # immune to cwd, and all appear in ld-dashboard/SKILL.md today.
+    ("persists to `/opt/data/cron/jobs.json`", []),
+    ("reads `/opt/data/ld/config.json`", []),
+    ("run `/opt/hermes/bin/hermes cron list`", []),
+    ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
+    # A URL is not a path citation.
+    ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
+])
+def test_unanchored_refs_flags_exactly_the_citations_the_agent_cannot_resolve(text, flagged):
+    assert unanchored_refs(text) == flagged
