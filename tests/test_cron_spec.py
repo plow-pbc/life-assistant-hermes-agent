@@ -644,7 +644,11 @@ def test_the_cross_document_pointers_still_land_somewhere():
     line; do not rebuild the deriver."""
     readme = (ROOT / "README.md").read_text()
     skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    recipe = (ROOT / "justfile").read_text()
+    # Comment continuations un-wrapped once, so the literals below pin the
+    # POINTER and not the line wrap. Reflowing that block -- what happens the
+    # moment anyone edits the surrounding sentence -- would otherwise fail
+    # against a justfile whose pointer is intact and correctly worded.
+    recipe = (ROOT / "justfile").read_text().replace("\n# ", " ")
 
     assert "## Bring-up" in readme.splitlines(), (
         "the justfile keeps no copy of the bring-up procedure and points at "
@@ -660,12 +664,8 @@ def test_the_cross_document_pointers_still_land_somewhere():
     # literals closing it costs a line each rather than a normaliser.
     for heading, pointer in (
         ("## Migrating `rowan`", 'README "Migrating rowan"'),
-        # Wrapped across two comment lines in the justfile, matched verbatim so
-        # this tuple keeps the `README` prefix the other two carry -- without it,
-        # rewriting the line to point at a different document leaves the quoted
-        # title alone and the test green.
         ("## No connectors, and what that costs",
-         'README\n# "No connectors, and what that costs"'),
+         'README "No connectors, and what that costs"'),
     ):
         assert heading in readme.splitlines(), (
             f"README's {heading!r} was retitled or moved, and the justfile points "
