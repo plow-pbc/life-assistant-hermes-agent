@@ -153,7 +153,7 @@ agent-mgr agent <agent> 'what is the weather today?'          # a turn without t
 # `hermes cron` persists to /opt/data/cron/jobs.json, which agent-mgr does not
 # touch, so a rebuilt home comes up with a wall screen that never updates and
 # nothing to diff against. Create-if-missing, so re-running it is safe.
-agent-mgr agent <agent> 'set up the life dashboard crons; paste the output and exit code'
+agent-mgr agent <agent> 'set up the life dashboard crons; paste the output verbatim + exit code'
 ```
 
 That is a turn, not an exec, and deliberately: `ld-dashboard` is a skill, so the

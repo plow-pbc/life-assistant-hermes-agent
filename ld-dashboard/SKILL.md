@@ -22,9 +22,8 @@ than improvising six schedules from a sentence.
 **This is a bring-up step, not a repair step.** `agent-mgr restore` does not
 replay `jobs.json`, so an instance that has been brought up without it has a wall
 screen that never updates — and nothing to diff against, because the failure
-looks identical to a producer that is running and finding nothing. The README's
-bring-up block and the `justfile` header both carry this line for that reason;
-run it after `sign-in`, and again after any rebuild of the home.
+looks identical to a producer that is running and finding nothing. Run it after
+`sign-in`, and again after any rebuild of the home.
 
 You are already inside the container, running as the gateway's own uid. Just
 run it:

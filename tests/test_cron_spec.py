@@ -615,7 +615,34 @@ def test_the_paste_instruction_survives_in_every_document_that_promises_it():
     assert "exit status" in skill
 
     readme = (ROOT / "README.md").read_text()
-    assert "paste the output and exit code" in readme, (
-        "README's bring-up turn no longer asks for the output -- the request has "
-        "to be in the prompt as well as the skill"
+    assert "paste the output verbatim" in readme, (
+        "README's bring-up turn no longer asks for the output VERBATIM -- and "
+        "'paste the output' alone is satisfied by 'the output showed one job "
+        "already present', which is the summary the whole instruction exists to "
+        "prevent"
     )
+    assert "exit code" in readme
+
+
+def test_the_cross_document_pointers_still_land_somewhere():
+    """Two documents were deduplicated into pointers; nothing pinned the targets.
+
+    The justfile deliberately keeps no copy of the bring-up procedure and names
+    README's section as text; README links SKILL.md's section as a rendered
+    anchor. Retitle either heading and both dangle silently -- the justfile
+    reader is sent to a section that no longer exists, the README reader gets a
+    dead in-page jump. Deleting a duplicate is only an improvement while the
+    pointer that replaced it resolves."""
+    readme = (ROOT / "README.md").read_text()
+    skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
+    recipe = (ROOT / "justfile").read_text()
+
+    assert '## Bring-up' in readme, "the justfile points at README's Bring-up section"
+    assert 'README "Bring-up"' in recipe, (
+        "the justfile no longer points at README -- it keeps no copy of the "
+        "procedure, so without the pointer it names nothing at all"
+    )
+    assert "## Unattended runs" in skill, (
+        "README links SKILL.md#unattended-runs; renaming that heading breaks it"
+    )
+    assert "#unattended-runs" in readme
