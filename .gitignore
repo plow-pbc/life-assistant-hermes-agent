@@ -2,3 +2,6 @@
 __pycache__/
 .pytest_cache/
 docs/superpowers/plans/
+
+# knightwatch materializes declared review siblings here during a review.
+.siblings/
