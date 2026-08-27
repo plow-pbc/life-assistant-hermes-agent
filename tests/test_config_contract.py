@@ -486,13 +486,24 @@ PRODUCERS = [("ld-weather", "post_weather.py"), ("ld-sports", "post_sports.py")]
 # The helper ships no sheet; its constant is the docstring example the next
 # producer copies, so it is pinned for the write-safe check alone.
 HANDOFFS = PRODUCERS + [("ld-shared", "post_to_kiosk.py")]
-# The directory register_crons.py proves writable at bring-up. Read once: it is
-# a property of the registrar, not of any producer, so it should not report a
-# failure under each producer's test id.
-_REGISTRAR = (ROOT / "ld-dashboard" / "scripts" / "register_crons.py").read_text()
-_LD_CONFIG = re.search(r'^LD_CONFIG = "([^"]+)"', _REGISTRAR, re.M)
-assert _LD_CONFIG, "register_crons.py no longer declares LD_CONFIG"
-GUARDED_DIR = PurePosixPath(_LD_CONFIG.group(1)).parent
+def guarded_dir():
+    """The directory register_crons.py proves writable at bring-up.
+
+    A function rather than a module constant: at module scope, a renamed
+    registrar or a dropped LD_CONFIG errors the whole FILE at collection and
+    every other invariant in it -- the descriptor, the dotenv, the write-safe
+    root -- goes dark, at exactly the moment someone is editing the registrar.
+    Its own test below owns the precondition, so the failure is one id."""
+    registrar = (ROOT / "ld-dashboard" / "scripts" / "register_crons.py").read_text()
+    declared = re.search(r'^LD_CONFIG = "([^"]+)"', registrar, re.M)
+    assert declared, "register_crons.py no longer declares LD_CONFIG"
+    return PurePosixPath(declared.group(1)).parent
+
+
+def test_the_registrar_still_declares_ld_config():
+    """Owns the precondition, so it reports once rather than per producer."""
+    assert guarded_dir()
+
 
 BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
 
@@ -577,7 +588,7 @@ def test_the_guarded_directory_is_the_one_the_producers_write_into(skill, wrappe
     guard proving a directory no producer touches -- green at bring-up, while
     the one that matters is unwritable."""
     written = PurePosixPath(_handoff(skill, wrapper)).parent
-    assert written == GUARDED_DIR, (
+    assert written == guarded_dir(), (
         f"{skill} writes its handoff into {written}, but register_crons.py "
-        f"proves {GUARDED_DIR} is writable -- move the guard or the handoff"
+        f"proves {guarded_dir()} is writable -- move the guard or the handoff"
     )

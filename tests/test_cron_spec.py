@@ -696,7 +696,11 @@ def test_the_probe_lands_beside_the_config_it_was_given(tmp_path):
     # The whole probe path, not a substring of it: `…/not-here` alone survives a
     # derivation that drops the .parent, which would put the probe inside
     # config.json's own name and still raise with that text in the message.
-    assert str(tmp_path / "not-here" / ".ld-handoff-probe") in str(exc.value)
+    probe = tmp_path / "not-here" / ".ld-handoff-probe"
+    assert str(probe) in str(exc.value), (
+        f"the refusal names {exc.value}, not {probe} -- the probe did not land "
+        "beside the config it was handed"
+    )
 
     # main()'s default, not the guard's. Nothing in production calls the guard
     # with no arguments -- __main__ calls main(), and main's config_path is what
