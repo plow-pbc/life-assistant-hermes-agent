@@ -511,8 +511,8 @@ def test_the_registrar_still_declares_ld_config():
     from a relative LD_CONFIG."""
     guarded = guarded_dir()
     assert guarded.is_absolute(), (
-        f"LD_CONFIG resolves to {guarded}, which is relative -- the probe would "
-        "land wherever cron happens to have cwd, not beside the config"
+        f"LD_CONFIG's directory resolves to {guarded}, which is relative -- the "
+        "probe would land wherever cron has cwd, not beside the config"
     )
 
 
