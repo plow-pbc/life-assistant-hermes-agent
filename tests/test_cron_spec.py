@@ -650,19 +650,12 @@ def test_the_cross_document_pointers_still_land_somewhere():
     # against a justfile whose pointer is intact and correctly worded.
     recipe = (ROOT / "justfile").read_text().replace("\n# ", " ")
 
-    assert "## Bring-up" in readme.splitlines(), (
-        "the justfile keeps no copy of the bring-up procedure and points at "
-        "README's `Bring-up` section by name -- retitling it leaves the justfile "
-        "naming nothing at all"
-    )
-    assert 'README "Bring-up"' in recipe, (
-        "the justfile no longer points at README -- it keeps no copy of the "
-        "procedure, so without the pointer it names nothing at all"
-    )
-    # The justfile names THREE README sections as text, having deleted its copies
-    # of all of them. One pinned and two not is the same silent dangle, and under
-    # literals closing it costs a line each rather than a normaliser.
+    # Every README section the justfile names, having deleted its copies of all
+    # of them. One tuple each: an unpinned pointer dangles silently, which is the
+    # failure this test is named for, and a bespoke copy of the loop body for one
+    # of them just leaves the next author two forms to choose between.
     for heading, pointer in (
+        ("## Bring-up", 'README "Bring-up"'),
         ("## Migrating `rowan`", 'README "Migrating rowan"'),
         ("## No connectors, and what that costs",
          'README "No connectors, and what that costs"'),
