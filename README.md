@@ -86,7 +86,7 @@ imply this one: #14 landing makes it *more* reachable, not less.
    pointer rather than a copy, deliberately: this section's whole premise is
    that everything points here instead of carrying its own sequence, and the
    abbreviated `restore` → `up` chain that used to sit on this line was already
-   missing the `mkdir` that keeps `skills/` from landing root-owned.
+   missing the `mkdir` that keeps `skills/` and `ld/` from landing root-owned.
 
 Step 1 retires precondition 1. Step 3 is the one that outlives it, so this
 section stays until `rowan` is actually migrated — not until #14 closes.
@@ -149,13 +149,19 @@ registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 agent-mgr restore <agent>            # config.yaml and the plugin into its home
 agent-mgr activate <agent>           # prints a code — its owner texts it from their phone
 
-# BEFORE `up`, and not optional. compose.override.yml mounts each skill UNDER
-# /opt/data, which is already the home bind, so the runtime creates any missing
-# mountpoint inside that bind's source on the host -- as root. Create the parent
-# first, as the instance owner, or `skills/` lands root-owned and no later
-# `restore` can install into it. plow-pbc/agent-mgr#44 is the fleet-level fix;
-# until it lands this line is what stands in for it.
-mkdir -p ~/.hermes-<agent>/skills
+# BEFORE `up`, and not optional. Both directories have to be owned by the
+# instance owner, for different reasons. `skills/`: compose.override.yml mounts
+# each skill UNDER /opt/data, which is already the home bind, so the runtime
+# creates the missing mountpoint inside that bind's source on the host -- as
+# root, and no later `restore` can install into it. plow-pbc/agent-mgr#44 is the
+# fleet-level fix; until it lands this line stands in for it. `ld/`: nothing
+# mounts there, so it is instead whoever first lands config.json in it who owns
+# it -- and `agent-mgr compose ... exec` is root (see below). The agent writes
+# each composed tile to /opt/data/ld/<bundle>-text with its file tool for the
+# wrapper to read back, so a root-owned `ld/` costs every card and does it
+# quietly: a blocked file tool is the kind of thing an agent improvises around,
+# and intermittent posting looks fine from the kiosk.
+mkdir -p ~/.hermes-<agent>/{skills,ld}
 
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
@@ -215,7 +221,9 @@ host and in-container forms, and what a forced run does and does not prove.
 
 The dashboard also needs `/opt/data/ld/config.json` (the producers read
 `weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and
-`DASHBOARD_TOKEN` in the instance's dotenv. `ld-shared/scripts/ld_config_gate.py`
+`DASHBOARD_TOKEN` in the instance's dotenv. Land that file as the instance
+owner, not through a root `exec` — the producers read it as the agent, and the
+live one is mode-600. `ld-shared/scripts/ld_config_gate.py`
 is the single definition of a valid config — run it rather than eyeballing the
 JSON. Its `family.timezone` must match the container's `AGENT_TZ`, because
 `hermes cron create` takes no per-job zone and every producer fires in the
