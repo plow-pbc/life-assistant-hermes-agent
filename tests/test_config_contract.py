@@ -453,8 +453,9 @@ def _is_hostname_head(ref):
     Dormant for the live `site.api.espn.com/apis/site/v2/sports/...` line in
     ld-sports/SKILL.md -- that string holds no tracked segment, so the pattern
     never matches it -- and load-bearing the day a tracked
-    `ld-shared/references/sports/` appears. The one row this exemption makes
-    green today is `site.api.espn.com/scripts/scoreboard`.
+    `ld-shared/references/sports/` appears. Which rows it decides is
+    not restated here -- that count has been wrong or one short in three of the
+    last four rounds, and each row's own comment sits next to its assertion.
 
     The cost, stated because an unstated hole is how the next round re-derives
     it as a bug or quietly widens it: any dotted first segment is treated as a
