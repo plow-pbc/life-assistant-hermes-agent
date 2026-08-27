@@ -333,7 +333,8 @@ def test_a_paused_job_is_not_runnable(tmp_path):
     unasserted in either direction -- no other fixture omits it -- so
     `job["enabled"]` or a `False` default stayed green while aborting the 06:00
     run or reading a live producer as not-runnable. `paused_at`'s default was
-    already covered incidentally, by a fixture above that omits it."""
+    already covered incidentally, by the fixture in
+    test_a_run_registers_only_the_live_jobs_that_are_missing, which omits it."""
     mod = spec()
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
