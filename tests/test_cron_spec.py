@@ -311,8 +311,10 @@ def test_the_reader_handles_a_real_captured_jobs_file():
 
 def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
     """If a re-capture from a newer hermes drops one of these, this says so in
-    one line -- rather than the reader aborting at 06:00 on a real instance with
-    'the format changed' and nobody knowing which field went."""
+    one line -- rather than the reader misbehaving on a real instance with
+    nobody knowing which field went. registered_jobs() has one caller,
+    main(), which runs at bring-up, so these surface during registration
+    rather than on the wall at 06:00."""
     entry = json.loads(FIXTURE.read_text())["jobs"][0]
     # One message per field, because registered_jobs() genuinely treats them
     # differently and a reader who trips one row should not be told about the
@@ -344,9 +346,9 @@ def test_a_paused_job_is_not_runnable(tmp_path):
     test above enforces that both fields are always present. It is here for a
     different reason: the reader DEFAULTS on both, and `enabled`'s default was
     unasserted in either direction -- no other fixture omits it -- so
-    `job["enabled"]` or a `False` default stayed green while aborting the 06:00
-    run or reading a live producer as not-runnable. `paused_at`'s default was
-    already covered incidentally, by the fixture in
+    `job["enabled"]` or a `False` default stayed green while aborting
+    registration or reading a live producer as not-runnable. `paused_at`'s
+    default was already covered incidentally, by the fixture in
     test_a_run_registers_only_the_live_jobs_that_are_missing, which omits it."""
     mod = spec()
     path = _jobs_file(tmp_path, [
