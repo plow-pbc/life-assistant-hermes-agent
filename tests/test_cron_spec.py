@@ -312,8 +312,8 @@ def test_the_reader_handles_a_real_captured_jobs_file():
 
 
 def test_a_paused_job_is_not_runnable(tmp_path):
-    """A paused producer reported as healthy is the stale card the WARNING
-    exists to catch, and these three rows are what make that the answer."""
+    """A paused or disabled producer reported as healthy is the stale card the
+    WARNING exists to catch."""
     mod = spec()
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
