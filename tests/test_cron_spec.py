@@ -67,7 +67,6 @@ def test_no_schedule_carries_a_timezone(job):
     )
 
 
-
 def _jobs_file(tmp_path, jobs):
     """A jobs.json the way hermes writes it."""
     path = tmp_path / "jobs.json"
@@ -319,7 +318,6 @@ def test_the_protocol_card_map_still_parses():
     )
 
 
-
 def test_the_spec_uses_the_viewers_slot_map_and_shares_only_the_alert_card():
     """Triage and calendar-nudge deliberately share card 1 -- both are alerts --
     and that is the only sharing there is. Every other producer owns its slot, so
@@ -373,22 +371,23 @@ def test_both_restatements_of_the_spec_still_agree_with_it(job):
             f"({job['blocked']!r}) -- teach it the new blocker rather than "
             "letting the row go unchecked"
         )
-        # ALL of them, not the leftmost. "needs the iMessage rewrite, tracked in
-        # latch#183" is a plausible next edit, and a leftmost match would then
-        # check the row for "iMessage" and report it missing its blocker while
-        # the row names the one the spec records.
         # `in`, not startswith, and a default. The assertion above proves the row
         # is somewhere in the text, not that a LINE begins with it -- indent the
         # table into a list item or a fenced block and startswith matches
         # nothing, so a bare next() raises StopIteration with no message and
         # throws away every crafted failure below.
         row_line = next((l for l in skill.splitlines() if skill_row in l), "")
+        # ALL of them, not the leftmost. "needs the iMessage rewrite, tracked in
+        # latch#183" is a plausible next edit, and a leftmost match would then
+        # check the row for "iMessage" and report it missing its blocker while
+        # the row names the one the spec records.
         for token in tokens:
             assert token in row_line, (
                 f"SKILL.md's row for {job['name']} does not name {token}, which "
                 f"its blocked text records ({job['blocked']!r})"
             )
 
+        # Dark producers are exactly the blocked ones; README prints only those.
         readme = (ROOT / "README.md").read_text()
         row = f"| `{job['name']}` | {job['card']} · {job['type']} |"
         assert row in readme, (
