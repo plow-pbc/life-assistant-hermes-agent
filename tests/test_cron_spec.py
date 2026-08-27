@@ -607,21 +607,19 @@ def test_the_paste_instruction_survives_in_every_document_that_promises_it():
     the operator grepping a summary. This is the newest cross-document
     dependency and was the one restatement nothing covered."""
     skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    assert "paste its output verbatim" in skill, (
+    assert "paste its output verbatim and report its exit status" in skill, (
         "SKILL.md no longer instructs the agent to paste the script's output -- "
         "README's `refusing to register` / WARNING / PAUSED check greps a "
         "summary without it, and the justfile points at README for the same"
     )
-    assert "exit status" in skill
 
     readme = (ROOT / "README.md").read_text()
-    assert "paste the output verbatim" in readme, (
+    assert "paste the output verbatim + exit code" in readme, (
         "README's bring-up turn no longer asks for the output VERBATIM -- and "
         "'paste the output' alone is satisfied by 'the output showed one job "
         "already present', which is the summary the whole instruction exists to "
         "prevent"
     )
-    assert "exit code" in readme
 
 
 def test_the_cross_document_pointers_still_land_somewhere():
@@ -637,12 +635,28 @@ def test_the_cross_document_pointers_still_land_somewhere():
     skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
     recipe = (ROOT / "justfile").read_text()
 
-    assert '## Bring-up' in readme, "the justfile points at README's Bring-up section"
+    # The heading LINE, not a substring of it. Retitle by extension --
+    # "## Unattended runs and forced runs" -- and a substring check still
+    # passes while the rendered anchor becomes #unattended-runs-and-forced-runs
+    # and every link to it dies. Same reason the table checks assert whole rows.
+    assert "## Bring-up" in readme.splitlines(), (
+        "the justfile keeps no copy of the bring-up procedure and points at "
+        "README's `Bring-up` section by name -- retitling it leaves the justfile "
+        "naming nothing at all"
+    )
     assert 'README "Bring-up"' in recipe, (
         "the justfile no longer points at README -- it keeps no copy of the "
         "procedure, so without the pointer it names nothing at all"
     )
-    assert "## Unattended runs" in skill, (
-        "README links SKILL.md#unattended-runs; renaming that heading breaks it"
+
+    heading = next(
+        (l for l in skill.splitlines() if l.startswith("## ") and "Unattended" in l),
+        None,
     )
-    assert "#unattended-runs" in readme
+    assert heading, "SKILL.md has no Unattended-runs heading for README to link"
+    slug = "#" + heading[3:].strip().lower().replace(" ", "-")
+    assert slug in readme, (
+        f"README links SKILL.md#unattended-runs, but that heading now slugifies "
+        f"to {slug!r} -- the in-page jump is dead"
+    )
+    assert slug in skill, f"SKILL.md's own link to {slug!r} is dead too"
