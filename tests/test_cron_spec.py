@@ -461,8 +461,9 @@ def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
     "{not json",
     '{"schedules": []}',
     "",
-    # A well-formed file whose ENTRY has no name. The docstring's claim that
-    # `name` is the only field whose absence raises is load-bearing and was
+    # A well-formed file whose ENTRY has no name. The claim in
+    # test_the_reader_handles_a_real_captured_jobs_file -- that `name` is the
+    # only field whose absence raises -- is load-bearing and was
     # asserted by nothing: swap job["name"] for job.get("name") and a nameless
     # entry becomes a None key -- it vanishes from the answer instead of
     # stopping the run, which is the invariant this test is named for.
