@@ -445,14 +445,11 @@ def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
     # from the answer instead of stopping the run, which is the invariant this
     # test is named for.
     '{"jobs": [{"enabled": true, "paused_at": null}]}',
-    # And without either of the other two the reader subscripts. Every entry
-    # hermes writes carries all three -- confirmed against the live agent -- so
-    # a fallback here would be semantics for a shape that does not occur, and
-    # the wrong ones if it ever did: defaulting `enabled` to True reads a
-    # DISABLED producer as runnable, silently, which is the failure the paused
-    # branch exists to prevent. These rows are what make that a refusal, one
-    # each: restoring job.get("enabled", True) reds entry-without-enabled,
-    # and job.get("paused_at") reds entry-without-paused-at.
+    # Without either of the other two the reader subscripts too
+    # (register_crons.py, registered_jobs) -- one row each: restoring
+    # job.get("enabled", True) reds entry-without-enabled, and
+    # job.get("paused_at") reds entry-without-paused-at. Why there is no
+    # fallback is argued next to the code that would carry it.
     '{"jobs": [{"name": "x", "paused_at": null}]}',
     '{"jobs": [{"name": "x", "enabled": true}]}',
 ], ids=["malformed", "wrong-shape", "empty", "entry-without-a-name",
