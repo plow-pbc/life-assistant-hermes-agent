@@ -32,6 +32,17 @@ import sys
 
 HERMES = "/opt/hermes/bin/hermes"
 
+# What a genuinely empty schedule looks like, as opposed to a listing this
+# cannot read. Both parse to zero names, and only one of them is safe to act on:
+# an empty schedule means register everything, a format change means register
+# everything AGAIN. So the empty case has to be recognised positively rather
+# than inferred from the absence of names.
+#
+#   $ hermes cron list
+#   No scheduled jobs.
+#   Create one with 'hermes cron create ...' or the /cron command in chat.
+EMPTY_LISTING = re.compile(r"^\s*No scheduled jobs\b", re.I | re.M)
+
 # The spec. One row per producer, live or not.
 #
 # `deliver` is None for every card-only producer: the card IS the delivery, over
@@ -47,6 +58,7 @@ JOBS = (
     {
         "name": "ld-weather",
         "card": 3,
+        "type": "weather",
         "schedule": "0 6 * * *",
         "prompt": (
             "Run the ld-weather producer now: fetch the forecast and post the "
@@ -59,6 +71,7 @@ JOBS = (
     {
         "name": "ld-sports",
         "card": 5,
+        "type": "sports",
         "schedule": "0 6 * * *",
         "prompt": (
             "Run the ld-sports producer now: fetch results and post the "
@@ -71,6 +84,7 @@ JOBS = (
     {
         "name": "ld-morning-updates",
         "card": 2,
+        "type": "affirmation",
         "schedule": "0 7 * * *",
         "prompt": (
             "Run the ld-morning-updates affirmation producer now: compose the "
@@ -83,6 +97,7 @@ JOBS = (
     {
         "name": "ld-morning-triage",
         "card": 1,
+        "type": "alert",
         "schedule": "5 7 * * *",
         "prompt": (
             "Run the ld-morning-triage producer now: surface the one "
@@ -96,6 +111,7 @@ JOBS = (
     {
         "name": "ld-weekly-digest",
         "card": 4,
+        "type": "digest",
         "schedule": "0 17 * * 0",
         "prompt": (
             "Run the ld-weekly-digest producer now: compose the week-ahead "
@@ -108,6 +124,7 @@ JOBS = (
     {
         "name": "ld-calendar-nudge",
         "card": 1,
+        "type": "alert",
         "schedule": "20,50 * * * *",
         "prompt": (
             "Run the ld-calendar-nudge producer now: if a meeting with other "
@@ -141,7 +158,18 @@ def resolve_deliver(spec, env):
         return None
     def sub(match):
         name = match.group(1)
-        value = env.get(name, "").strip()
+        # Absent and blank are different faults with different remedies, and the
+        # widened pattern makes the first reachable: a typo in JOBS is now
+        # identifier-shaped enough to arrive here, and answering it with the
+        # credential message sends the operator to re-mint a token when the real
+        # defect is a misspelling three lines up.
+        if name not in env:
+            raise SystemExit(
+                f"refusing to register: delivery target names ${{{name}}}, which "
+                "is not a variable this container sets -- check the spelling in "
+                "the JOBS table."
+            )
+        value = env[name].strip()
         if not value:
             raise SystemExit(
                 f"refusing to register: delivery target needs {name}, which is "
@@ -172,14 +200,29 @@ def existing_names(runner):
     one wording change away from matching a job's own prompt and silently
     skipping a registration. Reading the Name: field makes the key the field it
     is supposed to be."""
-    proc = runner([HERMES, "cron", "list"])
+    proc = runner([HERMES, "cron", "list", "--all"])
     if proc.returncode != 0:
         raise SystemExit(
             "refusing to register: `hermes cron list` errored, and an empty "
             "snapshot read as 'nothing exists' would duplicate every job.\n"
             f"{proc.stdout}\n{proc.stderr}"
         )
-    return set(re.findall(r"^\s*Name:\s*(\S+)\s*$", proc.stdout, re.M))
+    names = set(re.findall(r"^\s*Name:\s*(\S+)\s*$", proc.stdout, re.M))
+    # The parse needs the same floor the exit code has. `hermes cron list` has no
+    # machine-readable mode, so this reads a rendering nothing pins: a table, a
+    # relabelled column, a lowercase `name:` all yield an empty set from a
+    # SUCCESSFUL call -- which is the "nothing exists" reading that duplicates
+    # every job, arriving through the door the returncode check does not cover.
+    # Output with no parseable name is a format change, not an empty schedule.
+    if not names and not EMPTY_LISTING.search(proc.stdout):
+        raise SystemExit(
+            "refusing to register: `hermes cron list` succeeded but its output "
+            "holds neither a `Name:` field nor the empty-schedule notice -- the "
+            "format changed, and reading that as 'nothing exists' would "
+            "duplicate every job.\n"
+            f"{proc.stdout}"
+        )
+    return names
 
 
 def is_present(names, name):

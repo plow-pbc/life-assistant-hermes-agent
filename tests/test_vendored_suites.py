@@ -28,15 +28,22 @@ def _discover():
     A hand-kept list has the same hole as the suites it runs: a new vendored
     suite is excluded from pytest by the tests/ scope AND absent from the list,
     so it silently never runs -- a suite that cannot go red by omission instead
-    of by counter. Sorted so the parametrize ids are stable."""
-    return sorted(
-        str(p.relative_to(ROOT))
-        for p in ROOT.rglob("test_*.py")
-        if tests_dir not in p.parents and ".git" not in p.parts
-    )
+    of by counter.
+
+    Bounded to the repo root and the mounted skill trees rather than walking
+    everything. An unbounded rglob EXECUTES what it finds, so a .venv or a
+    vendored dependency tree would run hundreds of third-party suites as
+    subprocesses, and an untracked scratch test_*.py an operator drops in the
+    checkout would turn the suite red for no reason. These two globs are also
+    exactly the surface compose.override.yml mounts, which is the boundary the
+    rest of this repo already reasons about. Sorted so the ids are stable."""
+    found = set(ROOT.glob("test_*.py"))
+    for skill in ROOT.glob("ld-*"):
+        if skill.is_dir():
+            found |= set(skill.rglob("test_*.py"))
+    return sorted(str(p.relative_to(ROOT)) for p in found)
 
 
-tests_dir = Path(__file__).resolve().parent
 SUITES = _discover()
 
 

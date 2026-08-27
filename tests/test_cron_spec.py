@@ -79,15 +79,75 @@ def test_no_delivery_target_is_a_literal_chat_id(job):
     assert not re.search(r"cht_[A-Za-z0-9_-]+", deliver)
 
 
-def test_a_blank_delivery_variable_refuses_rather_than_registering():
-    """`plow_chat:` is accepted at create time and undeliverable at 06:00. The
-    refusal has to happen while someone is watching."""
+def test_an_unusable_delivery_target_refuses_rather_than_registering():
+    """`plow_chat:` and `plow_chat:${...}` are both accepted at create time and
+    undeliverable at 06:00, so every way of arriving at one has to refuse while
+    someone is watching -- and each fault has to name its own remedy, because
+    they have different ones."""
     mod = spec()
-    with pytest.raises(SystemExit) as excinfo:
+
+    # Set but blank: the credential was never minted.
+    with pytest.raises(SystemExit) as blank:
         mod.resolve_deliver("plow_chat:${PLOW_CHAT_CHAT_UID}", {"PLOW_CHAT_CHAT_UID": "  "})
-    assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
+    assert "PLOW_CHAT_CHAT_UID" in str(blank.value) and "activate" in str(blank.value)
+
+    # Identifier-shaped but absent: a typo in JOBS, not a missing credential.
+    with pytest.raises(SystemExit) as typo:
+        mod.resolve_deliver("plow_chat:${PLOW_CHAT_CHT_UID}", {"PLOW_CHAT_CHAT_UID": "cht_abc"})
+    assert "spelling" in str(typo.value), "a typo must not read as a missing credential"
+    assert "activate" not in str(typo.value)
+
+    # Shapes the substitution pattern cannot match at all. Before the result was
+    # checked, these came back verbatim and registered a job delivering to a
+    # literal ${...}.
+    for spelling in ("plow_chat:${chat-uid}", "plow_chat:${a.b}", "plow_chat:${}"):
+        with pytest.raises(SystemExit) as unexpanded:
+            mod.resolve_deliver(spelling, {})
+        assert "unexpanded" in str(unexpanded.value), spelling
+
+    # Lowercase now goes THROUGH the substitution rather than past it.
+    assert mod.resolve_deliver("plow_chat:${plow_chat_chat_uid}",
+                               {"plow_chat_chat_uid": "cht_low"}) == "plow_chat:cht_low"
     assert mod.resolve_deliver("plow_chat:${PLOW_CHAT_CHAT_UID}",
                                {"PLOW_CHAT_CHAT_UID": "cht_abc"}) == "plow_chat:cht_abc"
+
+
+def test_an_unparseable_cron_listing_aborts_like_a_failed_one():
+    """The hole opened while closing another one.
+
+    Switching dedup from a substring search to a `Name:` parse coupled it to a
+    rendering nothing pins. A successful `cron list` in any other format yields
+    an empty set, which is read as "nothing exists" -- duplicating every job,
+    the exact failure the returncode abort three lines up exists to prevent,
+    arriving through a door that check does not cover."""
+    mod = spec()
+    with pytest.raises(SystemExit) as excinfo:
+        mod.existing_names(lambda a: _Proc(0, "job_id  schedule  next_run\nabc  0 6 * * *  ...\n"))
+    assert "format changed" in str(excinfo.value)
+
+    # A genuinely empty schedule is NOT a format change, and telling them apart
+    # is the whole difficulty: both parse to zero names, and only one is safe to
+    # act on. This is the state a fresh instance is in at first bring-up, so
+    # getting it wrong refuses to register anything on exactly the run that has
+    # everything to register.
+    empty = "No scheduled jobs.\nCreate one with 'hermes cron create ...' or the /cron command in chat.\n"
+    assert mod.existing_names(lambda a: _Proc(0, empty)) == set()
+
+    # Silence is not the empty case either. The real tool always says something,
+    # so a successful call that printed nothing is another unrecognised shape --
+    # and the safe reading of "I cannot tell" is to stop, not to register.
+    with pytest.raises(SystemExit):
+        mod.existing_names(lambda a: _Proc(0, ""))
+
+
+def test_the_listing_includes_paused_jobs():
+    """`hermes cron list` hides disabled jobs without --all. A paused
+    ld-weather is still a registered ld-weather, so dedup that cannot see it
+    registers a second one."""
+    mod = spec()
+    seen = []
+    mod.existing_names(lambda a: (seen.append(a), _Proc(0, "    Name:      x\n"))[1])
+    assert "--all" in seen[0], f"cron list must include paused jobs: {seen[0]}"
 
 
 def test_dedup_reads_the_name_field_not_the_whole_listing():
@@ -139,8 +199,16 @@ class FakeHermes:
     that never checked what was already registered -- lived entirely in the
     orchestration, which every leaf test passed straight through."""
 
+    EMPTY = ("No scheduled jobs.\n"
+             "Create one with 'hermes cron create ...' or the /cron command in chat.\n")
+
     def __init__(self, registered=(), create_rc=0):
-        self.listing = "".join(f"  abc [active]\n    Name:      {n}\n" for n in registered)
+        # Mimics the real renderings, including the empty one. A fake that
+        # returns "" for no-jobs is a fake of a tool that does not exist, and it
+        # would have hidden the abort-on-empty-schedule defect this file caught.
+        self.listing = "".join(
+            f"  abc [active]\n    Name:      {n}\n" for n in registered
+        ) or self.EMPTY
         self.create_rc = create_rc
         self.calls = []
 
@@ -219,17 +287,38 @@ def test_no_prompt_names_a_card_other_than_the_one_the_spec_assigns(job):
         f"{job['name']} is card {job['card']} in the spec but its prompt names "
         f"{sorted(named)}"
     )
+    # The type is the other half, and promoting only the number left the same
+    # prose-drift one field over: "card 3, type sports" satisfied the number
+    # check while writing the wrong tile.
+    typed = set(re.findall(r"\btype (\w+)", job["prompt"]))
+    assert typed <= {job["type"]}, (
+        f"{job['name']} is type {job['type']!r} in the spec but its prompt names "
+        f"{sorted(typed)}"
+    )
+    if named:
+        assert f"card {job['card']}, type {job['type']}" in job["prompt"], (
+            f"{job['name']} names a card, so it must name the pair the viewer keys on"
+        )
 
 
-def test_the_card_map_matches_the_viewer_and_only_the_alert_slot_is_shared():
-    """1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports is the viewer's
-    pinned mapping. Triage and calendar-nudge deliberately share card 1 -- both
-    are alerts -- and that is the only sharing there is."""
+# The viewer's pinned slot map, from ld-shared/references/kiosk-protocol.md.
+# Written here as the pair, because the card alone does not say what renders.
+VIEWER_SLOTS = {1: "alert", 2: "affirmation", 3: "weather", 4: "digest", 5: "sports"}
+
+
+def test_the_spec_uses_the_viewers_slot_map_and_shares_only_the_alert_card():
+    """Triage and calendar-nudge deliberately share card 1 -- both are alerts --
+    and that is the only sharing there is. Every other producer owns its slot, so
+    a renumbering silently overwrites another producer's tile."""
     mod = spec()
     by_card = {}
     for job in mod.JOBS:
+        assert VIEWER_SLOTS[job["card"]] == job["type"], (
+            f"{job['name']} claims card {job['card']} as {job['type']!r}, but the "
+            f"viewer renders that slot as {VIEWER_SLOTS[job['card']]!r}"
+        )
         by_card.setdefault(job["card"], []).append(job["name"])
-    assert sorted(by_card) == [1, 2, 3, 4, 5]
+    assert sorted(by_card) == sorted(VIEWER_SLOTS)
     shared = {c: n for c, n in by_card.items() if len(n) > 1}
     assert shared == {1: ["ld-morning-triage", "ld-calendar-nudge"]}
 

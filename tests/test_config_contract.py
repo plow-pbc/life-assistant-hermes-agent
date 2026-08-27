@@ -396,12 +396,18 @@ def test_split_probe_survives_a_body_that_never_arrived():
 
 
 def override():
-    """The parsed override, or a refusal that says which file is missing.
+    """The parsed override, with a message that names the file when it is gone.
 
-    override_mounts() feeds a @parametrize, so it runs at COLLECTION time: an
-    absent or malformed file becomes a module-level error that takes down every
-    unrelated test here and reads as "the test module is broken". Same
-    mis-attribution the _recipe helper below already guards against."""
+    Not a fix for the collection-time blast radius, and it should not be read as
+    one: override_mounts() feeds a @parametrize, so this still raises while
+    pytest is collecting, and an absent -- or malformed, which yaml raises on
+    before this returns -- override still errors out every test in this module.
+    What changed is only that the message says which file, instead of a
+    FileNotFoundError or a bare ScannerError that reads as "the test module is
+    broken". Decoupling it properly would mean returning [] on failure and
+    moving the assertion into a test of its own, which buys a smaller blast
+    radius at the cost of a mount list that can be silently empty -- a worse
+    trade in a file whose whole subject is guards that cannot fail."""
     path = ROOT / "compose.override.yml"
     assert path.is_file(), (
         "compose.override.yml is missing -- it is how the ld- skills reach the "
