@@ -650,9 +650,8 @@ def test_the_cross_document_pointers_still_land_somewhere():
     recipe = (ROOT / "justfile").read_text().replace("\n# ", " ")
 
     # Every README section the justfile names, having deleted its copies of all
-    # of them. One tuple each: an unpinned pointer dangles silently, which is the
-    # failure this test is named for, and a bespoke copy of the loop body for one
-    # of them just leaves the next author two forms to choose between.
+    # of them. One tuple each: an unpinned pointer dangles silently, which is
+    # the failure this test is named for.
     for heading, pointer in (
         ("## Bring-up", 'README "Bring-up"'),
         ("## Migrating `rowan`", 'README "Migrating rowan"'),
