@@ -343,7 +343,8 @@ def test_the_protocol_card_map_still_parses():
     assert len(VIEWER_SLOTS) == len(VIEWER_SLOT_ROWS), (
         f"two rows parsed from kiosk-protocol.md share a card number: "
         f"{VIEWER_SLOT_ROWS} -- one silently overrode the other. They need not "
-        "both be in the Card map; this parser scans the whole document"
+        "both be in the Card map; this parser scans the whole document, "
+        "including indented and blockquoted rows"
     )
 
 
