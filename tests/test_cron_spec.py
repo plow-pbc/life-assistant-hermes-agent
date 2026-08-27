@@ -708,6 +708,14 @@ def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
         f"README's dark-producer table header is no longer {header!r} -- either "
         "the table moved or its columns were renamed; this test anchors on it"
     )
+    # Unique, because the split takes the FIRST occurrence. A post-latch#183
+    # "what's live" table mirroring these columns and placed ABOVE the dark one
+    # -- live-first is the natural ordering -- would silently hand back the live
+    # producers under a message about the dark table being stale.
+    assert readme.count(header) == 1, (
+        f"{header!r} now appears {readme.count(header)}x -- this test anchors on "
+        "it being the dark table's alone, and splits on the first one"
+    )
     body = readme.split(header, 1)[1].split("\n", 2)[2]
     table = []
     for line in body.splitlines():
