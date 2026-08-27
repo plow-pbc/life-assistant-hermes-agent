@@ -314,11 +314,22 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
     one line -- rather than the reader aborting at 06:00 on a real instance with
     'the format changed' and nobody knowing which field went."""
     entry = json.loads(FIXTURE.read_text())["jobs"][0]
-    for field in ("name", "enabled", "paused_at"):
+    # One message per field, because registered_jobs() genuinely treats them
+    # differently and a reader who trips one row should not be told about the
+    # other two.
+    consequences = {
+        "name": "registered_jobs() keys on it, so a re-capture without it makes "
+                "every read raise -- loud, but with nothing naming the field",
+        "enabled": "registered_jobs() defaults it to True, so a re-capture "
+                   "without it reads every job as runnable -- silently, "
+                   "including a disabled one",
+        "paused_at": "registered_jobs() defaults it to absent, so a re-capture "
+                     "without it reads a PAUSED producer as runnable -- "
+                     "silently, which is the stale card on the wall",
+    }
+    for field, consequence in consequences.items():
         assert field in entry, (
-            f"the captured hermes format has no {field!r} -- registered_jobs() "
-            "reads it, and for enabled/paused_at that is a silently wrong answer "
-            "rather than a raise"
+            f"the captured hermes format has no {field!r} -- {consequence}"
         )
 
 
