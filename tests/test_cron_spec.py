@@ -327,7 +327,7 @@ def test_a_paused_job_is_not_runnable(tmp_path):
     that carry them read what hermes writes rather than guessing. A paused
     producer reported as healthy is the stale card the WARNING exists to catch.
 
-    The last row is deliberately a shape hermes does NOT emit -- the fixture
+    `defaults-only` is deliberately a shape hermes does NOT emit -- the fixture
     test above enforces that both fields are always present. It is here for a
     different reason: the reader DEFAULTS on both, and those defaults were
     unasserted in either direction, so `job["enabled"]` or a `False` default
@@ -338,12 +338,6 @@ def test_a_paused_job_is_not_runnable(tmp_path):
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
         {"name": "by-enabled", "enabled": False, "paused_at": None},
         {"name": "running", "enabled": True, "paused_at": None, "state": "scheduled"},
-        # Neither field present. The claim is two-sided -- `name` raises,
-        # these two DEFAULT -- and only the raising half was pinned: no fixture
-        # anywhere omitted `enabled`, so job.get("enabled", True) was unasserted
-        # in both directions. Swap it for job["enabled"] and an entry hermes
-        # wrote without it aborts the 06:00 run; flip the default and a live
-        # producer reads as not-runnable. Both silently wrong answers.
         {"name": "defaults-only"},
     ])
     assert mod.registered_jobs(path) == {
