@@ -562,11 +562,19 @@ def test_a_paused_job_is_recognised_under_either_encoding(tmp_path):
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
         {"name": "by-state", "enabled": True, "paused_at": None, "state": "paused"},
+        # Casing, which is the half of the value guess that costs one token to
+        # cover -- and the failure it would leave is the fail-open one, a paused
+        # producer reported healthy. Without this row, reverting the casefold
+        # leaves the suite green.
+        {"name": "by-state-cased", "enabled": True, "paused_at": None, "state": "Paused"},
+        # A non-string state must not raise on its way through casefold.
+        {"name": "odd-state", "enabled": True, "paused_at": None, "state": 7},
         {"name": "by-enabled", "enabled": False, "paused_at": None},
         {"name": "running", "enabled": True, "paused_at": None, "state": "scheduled"},
     ])
     assert mod.registered_jobs(path) == {
-        "by-paused-at": False, "by-state": False, "by-enabled": False, "running": True
+        "by-paused-at": False, "by-state": False, "by-state-cased": False,
+        "by-enabled": False, "odd-state": True, "running": True
     }
 
 

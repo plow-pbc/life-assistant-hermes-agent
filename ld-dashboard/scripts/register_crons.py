@@ -236,21 +236,16 @@ def registered_jobs(jobs_path=JOBS_FILE):
     # mounted home, then the cron directory. Between them they cover the cases
     # the ENOENT branch below cannot tell from a fresh instance.
     #
-    # Distinct messages, because they are distinct faults. They catch different faults and are
-    # not alternatives: the home is missing when the container is not wired
-    # correctly, and the cron directory is missing when JOBS_FILE names the
-    # wrong subdirectory under a perfectly good home -- /opt/data/crons, say,
-    # which is the likelier typo and which the home check sails straight past.
+    # Distinct messages, because they are distinct faults, not alternatives: the
+    # home is missing when the container is not wired correctly, and the cron
+    # directory is missing when JOBS_FILE names the wrong subdirectory under a
+    # perfectly good home -- /opt/data/crons, say, which is the likelier typo
+    # and which the home check sails straight past.
     #
     # Checking cron/ rests on the gateway creating it before any job exists, and
     # that is measured rather than assumed: the retired ~/.hermes-life (never
     # activated, not one cron ever) and ~/.hermes-sam-property both carry cron/
     # with executions.db and no jobs.json. See tests/fixtures/README.md.
-    #
-    # stat(), not is_dir(): is_dir() swallows every OSError exactly the way
-    # exists() does -- the trap the read below goes out of its way to avoid -- so
-    # a permission denial would report "not a directory" and send the operator to
-    # check a path that is fine.
     home = path.parent.parent
     _require_dir(
         home,
