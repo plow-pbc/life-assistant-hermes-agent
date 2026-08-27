@@ -31,21 +31,29 @@ run it:
 
     /opt/data/skills/ld-dashboard/scripts/register_crons.py
 
-Preview without changing anything: `… register_crons.py --dry-run`.
+**Then paste its output verbatim and report its exit status. The run is not
+done until you have.** This matters more than it looks: the script signals every
+refusal it has — a failed `cron create`, an unreadable `jobs.json`, a wrong
+`JOBS_FILE`, a producer that is registered but PAUSED — through its output and a
+non-zero exit, and a turn does not propagate an exit code. If you summarise
+instead of pasting, "set up the crons, though one was already there and isn't
+active" is a perfectly honest sentence describing a run that failed, and the
+operator has no way to tell. Do not paraphrase, and do not call it done on a
+non-zero exit.
 
 (The uid matters to whoever invokes this from the *host* — a bare
 `agent-mgr compose … exec` lands as root and would create the schedule
 root-owned. That is the README's problem, and the reason bring-up goes through
 `agent-mgr agent` rather than an exec. Nothing for you to do about it here.)
 
-Then verify it — see [Unattended runs](#unattended-runs), which owns both the
-commands and what they do and do not prove.
-
 Preview without changing anything: `… register_crons.py --dry-run`.
 
 Create-if-missing, so it is safe to re-run — including `--dry-run`, which reads
 the same state and therefore reports `already present, would skip` exactly where
 the real run would skip.
+
+Then verify it — see [Unattended runs](#unattended-runs), which owns both the
+host and in-container forms and what a forced run does and does not prove.
 
 What counts as "already registered" comes from `/opt/data/cron/jobs.json`, the
 file `hermes cron` itself writes. Not from `hermes cron list`: that is a

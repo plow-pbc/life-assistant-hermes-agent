@@ -153,7 +153,8 @@ agent-mgr agent <agent> 'what is the weather today?'          # a turn without t
 # `hermes cron` persists to /opt/data/cron/jobs.json, which agent-mgr does not
 # touch, so a rebuilt home comes up with a wall screen that never updates and
 # nothing to diff against. Create-if-missing, so re-running it is safe.
-agent-mgr agent <agent> 'set up the life dashboard crons'
+agent-mgr agent <agent> 'set up the life dashboard crons; paste the script
+                         output verbatim and report its exit code'
 ```
 
 That is a turn, not an exec, and deliberately: `ld-dashboard` is a skill, so the
@@ -171,10 +172,13 @@ inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
 **The turn costs you the exit code.** `register_crons.py` refuses loudly — a
 failed `cron create`, an unreadable `jobs.json`, a wrong `JOBS_FILE`, a producer
-that is registered but PAUSED — and a turn returns the *turn's* status, so the
-agent reads that refusal as text and summarises it in prose. Read the reply.
-Anything with `refusing to register`, `WARNING`, or `PAUSED` in it means bring-up
-did not finish, however calmly the agent phrases it.
+that is registered but PAUSED — but a turn returns the *turn's* status, so a
+non-zero exit reaches you only as whatever the agent chose to say about it. The
+skill therefore instructs the agent to paste the script's output verbatim and
+report its exit status, and to treat the run as unfinished until it has; ask for
+it explicitly if it does not appear, because a summary is exactly the thing that
+drops the words you would grep for. `refusing to register`, `WARNING` or
+`PAUSED` anywhere in that output means bring-up did not finish.
 
 If you are scripting this rather than running it by hand, take the exit code
 directly and pin the uid yourself:
