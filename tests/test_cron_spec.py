@@ -704,7 +704,9 @@ def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
     # naming them), and a future README documenting the marker convention in a
     # fence that quotes BOTH markers above the table -- the first-match span
     # would then be the example, and a correct README would go red. Quoting only
-    # the opening marker is harmless: the span just widens to include the table.
+    # the opening marker just widens the span over the intervening prose, which
+    # is harmless unless that prose carries a row-shaped example line -- which a
+    # fence documenting the convention plausibly would.
     readme = (ROOT / "README.md").read_text()
     # ONE search across both markers. `split(close, 1)[0]` never raises -- index
     # 0 always exists -- so a missing CLOSING marker silently returned the rest
