@@ -20,6 +20,11 @@
 # so an unscoped run collects them -- but they report through a counter instead of
 # raising, so every one of them passes even when it fails. They run as subprocesses
 # from tests/test_vendored_suites.py instead, where the exit code is the verdict.
+#
+# The line directly above a recipe is what `just --list` prints as its
+# description, so the reasoning goes above THIS line and the summary stays on it.
+
+# Run the whole suite: this repo's contracts plus the vendored ld- suites.
 test:
     uv run --no-project --python 3.13 --with pytest==8.4.2 --with pyyaml==6.0.2 pytest -q tests/
 
