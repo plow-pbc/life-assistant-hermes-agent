@@ -26,11 +26,17 @@ looks identical to a producer that is running and finding nothing. The README's
 bring-up block and the `justfile` header both carry this line for that reason;
 run it after `sign-in`, and again after any rebuild of the home.
 
-Inside the container, **as the gateway's own uid** — `agent-mgr compose … exec`
-lands as root, and a schedule created root-owned is one the gateway can never
-pause, resume or remove:
+You are already inside the container, running as the gateway's own uid. Just
+run it:
 
     /opt/data/skills/ld-dashboard/scripts/register_crons.py
+
+Preview without changing anything: `… register_crons.py --dry-run`.
+
+(The uid matters to whoever invokes this from the *host* — a bare
+`agent-mgr compose … exec` lands as root and would create the schedule
+root-owned. That is the README's problem, and the reason bring-up goes through
+`agent-mgr agent` rather than an exec. Nothing for you to do about it here.)
 
 Then verify it — see [Unattended runs](#unattended-runs), which owns both the
 commands and what they do and do not prove.
@@ -68,9 +74,12 @@ read-back below.
 **A paused producer is neither.** It is registered, so re-registering duplicates
 it; it will never fire, so skipping it silently leaves a card that stops
 updating. It is left alone, named, and — after the rest of the run finishes —
-**the script exits non-zero**, because the exit code is the only signal that
-reaches an unattended re-provision. `--dry-run` says the same thing and still
-exits 0 — a preview must not report a failure over a state it did not create:
+**the script exits non-zero** — the signal an unattended re-provision can act
+on. Note that a `agent-mgr agent` turn does NOT propagate it: the agent reads
+the refusal as text and summarises it, so a caller that needs the status has to
+run the script through an exec (README § Bring-up carries that form and its uid
+caveat). `--dry-run` says the same thing and still exits 0 — a preview must not
+report a failure over a state it did not create:
 
     WARNING: ld-weather is registered but PAUSED -- it will never fire...
     Resume it: hermes cron resume ld-weather
@@ -137,11 +146,16 @@ not need to: the sibling `str` agent has run a cron every two minutes for months
 with no `hooks_auto_accept` and no `HERMES_ACCEPT_HOOKS` anywhere in its config,
 so a scheduled turn on this image does not gate on a human.
 
-Verify rather than trust that paragraph:
+Verify rather than trust that paragraph. From inside the container:
 
     /opt/hermes/bin/hermes cron list          # is the job there, and not paused?
     /opt/hermes/bin/hermes cron run <job-id>  # force one
     /opt/hermes/bin/hermes cron runs          # then look for the card on the kiosk
+
+From the host, where the bring-up reader is standing — a turn, for the same
+reason bring-up is one (no uid to get wrong):
+
+    agent-mgr agent <agent> 'list the dashboard crons, force one run, report what happened'
 
 **What that proves, and what it does not.** A forced run exercises the producer,
 the mount, `/opt/data/ld/config.json` and the kiosk POST — the whole path a

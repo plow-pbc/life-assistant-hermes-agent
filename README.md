@@ -157,22 +157,44 @@ agent-mgr agent <agent> 'set up the life dashboard crons'
 ```
 
 That is a turn, not an exec, and deliberately: `ld-dashboard` is a skill, so the
-agent reads it and runs `register_crons.py` itself. It also sidesteps a real
-trap. The image's s6 entrypoint remaps its in-image `hermes` user to
-`HERMES_UID`/`HERMES_GID`, so a plain `compose exec` runs as **root** (measured:
-`id` in the `str` container returns `uid=0`) — and on a fresh instance
-`jobs.json` does not exist yet, so a root-run registration creates the schedule
-root-owned and the gateway can then never pause, resume or remove anything in
-it. `agent-mgr` pins the pair on every exec it makes (`agent-mgr:146`, `:194`,
-`:343`) precisely because of this; going through it means this repo does not
-have to restate a uid rule it would get wrong the moment a second operator, a
-root shell, or an automated re-provision ran the command. The repo has been
-bitten by root-owned paths inside these nested binds before
-(`plow-pbc/agent-mgr#44`).
+agent reads it and runs `register_crons.py` itself — inside the container, as
+the gateway's own uid, with no uid for anyone to choose. A plain
+`agent-mgr compose … exec` runs as **root** (measured: `id` in the `str`
+container returns `uid=0`, because the image's s6 entrypoint remaps its in-image
+`hermes` user to `HERMES_UID`/`HERMES_GID` and a bare exec bypasses that), and
+on a fresh instance `jobs.json` does not exist yet — so a root-run registration
+creates the schedule root-owned and the gateway can then never pause, resume or
+remove anything in it. `agent-mgr` pins the pair on every exec it makes
+(`agent-mgr:146`, `:194`, `:343`) for this reason; going through it is how this
+repo avoids restating a uid rule. The repo has been bitten by root-owned paths
+inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
-Then check it landed, and watch a card appear — see
-[Unattended runs](ld-dashboard/SKILL.md#unattended-runs) for what that does and
-does not prove.
+**The turn costs you the exit code.** `register_crons.py` refuses loudly — a
+failed `cron create`, an unreadable `jobs.json`, a wrong `JOBS_FILE`, a producer
+that is registered but PAUSED — and a turn returns the *turn's* status, so the
+agent reads that refusal as text and summarises it in prose. Read the reply.
+Anything with `refusing to register`, `WARNING`, or `PAUSED` in it means bring-up
+did not finish, however calmly the agent phrases it.
+
+If you are scripting this rather than running it by hand, take the exit code
+directly and pin the uid yourself:
+
+```sh
+agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
+  /opt/data/skills/ld-dashboard/scripts/register_crons.py
+```
+
+`$(id -u)` is right **only when the same host user who brought the instance up
+runs it** — `agent-mgr` sets `HERMES_UID="$(id -u)"` from the invoking user
+(`lib/common.sh:481`), so it is that user's uid that got baked in, not whoever
+runs this later. Measured on `wakeup`: host `uid=1000`, `HERMES_UID=1000`, live
+`jobs.json` owned `1000:1000`. A different operator or a root shell must read
+`HERMES_UID`/`HERMES_GID` off the running container instead of borrowing their
+own.
+
+Then check it landed and watch a card appear — see
+[Unattended runs](ld-dashboard/SKILL.md#unattended-runs), which carries both the
+host and in-container forms, and what a forced run does and does not prove.
 
 The dashboard also needs `/opt/data/ld/config.json` (the producers read
 `weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and

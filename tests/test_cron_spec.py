@@ -361,7 +361,12 @@ def test_both_restatements_of_the_spec_still_agree_with_it(job):
     # The blocker column too. It restates latch#183 vs the iMessage rewrite, and
     # runtime/config.yaml was off by one on exactly that split a round ago.
     if job["blocked"]:
-        token = "latch#183" if "latch#183" in job["blocked"] else "iMessage"
+        # Derived from the row's own text, not a two-way guess: a producer
+        # blocked on a third thing would otherwise be silently checked for
+        # "iMessage" and misnamed in the failure message -- the same hand-kept
+        # split this test exists to catch.
+        match = re.search(r"latch#\d+", job["blocked"])
+        token = match.group() if match else "iMessage"
         row_line = next(l for l in skill.splitlines() if l.startswith(skill_row))
         assert token in row_line, (
             f"SKILL.md's row for {job['name']} does not name its blocker ({token})"
