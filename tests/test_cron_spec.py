@@ -654,9 +654,24 @@ def test_the_cross_document_pointers_still_land_somewhere():
         None,
     )
     assert heading, "SKILL.md has no Unattended-runs heading for README to link"
-    slug = "#" + heading[3:].strip().lower().replace(" ", "-")
-    assert slug in readme, (
-        f"README links SKILL.md#unattended-runs, but that heading now slugifies "
-        f"to {slug!r} -- the in-page jump is dead"
-    )
-    assert slug in skill, f"SKILL.md's own link to {slug!r} is dead too"
+    # GitHub's slugifier drops punctuation and markdown rather than keeping it:
+    # "## Unattended runs (forced)" anchors at #unattended-runs-forced, not
+    # #unattended-runs-(forced). Modelling it as space->hyphen only would fail a
+    # README that had been updated to the CORRECT anchor, and the message would
+    # then send the next author to edit a link that resolves fine.
+    slug = "#" + re.sub(r"[^a-z0-9]+", "-", heading[3:].strip().lower()).strip("-")
+
+    # Equality on the extracted target, not containment. `"#unattended-runs" in
+    # readme` is satisfied by `#unattended-runs-and-forced-runs` -- the same
+    # retitle-by-extension hole this test just closed on the heading side, left
+    # open at the LINK side, where a section split is just as likely to move it.
+    for label, text, pattern in (
+        ("README", readme, r"\]\(ld-dashboard/SKILL\.md(#[a-z0-9-]*)\)"),
+        ("SKILL.md", skill, r"\]\((#[a-z0-9-]*)\)"),
+    ):
+        found = [m.group(1) for m in re.finditer(pattern, text)]
+        assert found, f"{label} no longer links SKILL.md's Unattended-runs section"
+        assert slug in found, (
+            f"{label} links {found!r}, but the heading now anchors at {slug!r} -- "
+            "the in-page jump is dead"
+        )
