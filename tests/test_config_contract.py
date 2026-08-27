@@ -486,6 +486,8 @@ PRODUCERS = [("ld-weather", "post_weather.py"), ("ld-sports", "post_sports.py")]
 # The helper ships no sheet; its constant is the docstring example the next
 # producer copies, so it is pinned for the write-safe check alone.
 HANDOFFS = PRODUCERS + [("ld-shared", "post_to_kiosk.py")]
+
+
 def guarded_dir():
     """The directory register_crons.py proves writable at bring-up.
 
@@ -493,7 +495,8 @@ def guarded_dir():
     registrar or a dropped LD_CONFIG errors the whole FILE at collection and
     every other invariant in it -- the descriptor, the dotenv, the write-safe
     root -- goes dark, at exactly the moment someone is editing the registrar.
-    Its own test below owns the precondition, so the failure is one id."""
+    As a function it is a test failure instead, so the file still collects and
+    every other invariant in it still reports."""
     registrar = (ROOT / "ld-dashboard" / "scripts" / "register_crons.py").read_text()
     declared = re.search(r'^LD_CONFIG = "([^"]+)"', registrar, re.M)
     assert declared, "register_crons.py no longer declares LD_CONFIG"
@@ -501,8 +504,16 @@ def guarded_dir():
 
 
 def test_the_registrar_still_declares_ld_config():
-    """Owns the precondition, so it reports once rather than per producer."""
-    assert guarded_dir()
+    """Owns the precondition, and checks something the helper can get wrong.
+
+    A bare `assert guarded_dir()` would be vacuous: PurePosixPath defines no
+    __bool__, so every return value is truthy -- including PurePosixPath(".")
+    from a relative LD_CONFIG."""
+    guarded = guarded_dir()
+    assert guarded.is_absolute(), (
+        f"LD_CONFIG resolves to {guarded}, which is relative -- the probe would "
+        "land wherever cron happens to have cwd, not beside the config"
+    )
 
 
 BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
@@ -587,8 +598,9 @@ def test_the_guarded_directory_is_the_one_the_producers_write_into(skill, wrappe
     both sit in /opt/data/ld today. A handoff moved elsewhere would leave the
     guard proving a directory no producer touches -- green at bring-up, while
     the one that matters is unwritable."""
+    guarded = guarded_dir()
     written = PurePosixPath(_handoff(skill, wrapper)).parent
-    assert written == guarded_dir(), (
+    assert written == guarded, (
         f"{skill} writes its handoff into {written}, but register_crons.py "
-        f"proves {guarded_dir()} is writable -- move the guard or the handoff"
+        f"proves {guarded} is writable -- move the guard or the handoff"
     )
