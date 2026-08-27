@@ -301,9 +301,16 @@ def viewer_slots():
     rather than "the protocol table changed". The count is checked by
     test_the_protocol_card_map_still_parses instead, which goes red alone."""
     table = (ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
-    # [\s>]* to match the other markdown row parser in this file: the same
-    # indentation and blockquote coupling, one guarded by a count assert instead
-    # of a membership one.
+    # [\s>]* for the same indentation and blockquote coupling as the dark-table
+    # parser -- but NOT the same scope, and the difference is the residual. That
+    # one matches inside a marker-delimited span, so its relaxation is bounded to
+    # one table; this scans the whole document, so relaxing the anchor admits any
+    # row-shaped line anywhere in it -- an example in a nested list, an indented
+    # fence. Accepted because kiosk-protocol.md holds exactly one such table and
+    # the count assert below turns a surprise into a named red. Deliberately not
+    # marker-bounded like its sibling: that file is vendored byte-identical to
+    # its pinned ref, which is how this PR keeps provenance checkable, and a test
+    # scoping convenience is not worth forking it.
     rows = re.findall(r"^[\s>]*\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
     return {int(card): type_ for card, type_ in rows}
 
