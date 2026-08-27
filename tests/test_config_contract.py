@@ -11,7 +11,6 @@ Every assertion here exists because getting it wrong is quiet rather than loud,
 and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
-import functools
 import importlib.util
 import re
 import subprocess
@@ -21,24 +20,6 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-
-
-@functools.cache
-def tracked_files():
-    """Every tracked path, once, for the two callers that need one.
-
-    -z, and split on NUL, because git C-quotes paths with non-ASCII bytes and
-    whitespace-splitting fragments any path containing a space. That reasoning
-    belongs to test_no_credential_file_is_tracked, which argued it first and in
-    detail; this exists so the other caller inherits the ruling instead of
-    re-deriving a plain `.split()` that reintroduces exactly what it forbids --
-    a tracked `ld-shared/my notes/x.md` fragmenting into a spurious `notes`
-    segment while the real one is lost, both silently.
-    """
-    out = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
-    )
-    return [path for path in out.stdout.split("\0") if path]
 
 
 def dotenv(path):
@@ -179,7 +160,9 @@ def test_no_credential_file_is_tracked():
     as `"caf\303\251/.env"` and its basename computes to `.env"`, and
     whitespace-splitting fragments any path containing a space.
     """
-    for name in tracked_files():
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                         capture_output=True, text=True, check=True)
+    for name in out.stdout.split("\0")[:-1]:
         base = name.rsplit("/", 1)[-1]
         # Anchored to the full path git prints, not the basename. The two
         # exemptions are excused because two other tests cover those exact
@@ -447,80 +430,6 @@ def test_every_skill_is_mounted_flat_and_read_only():
     }
 
 
-def _is_hostname_head(ref):
-    """A URL's host segment is not a citation of a repo directory.
-
-    Dormant for the live `site.api.espn.com/apis/site/v2/sports/...` line in
-    ld-sports/SKILL.md -- that string holds no tracked segment, so the pattern
-    never matches it -- and load-bearing the day a tracked
-    `ld-shared/references/sports/` appears; the rows that pin the
-    exemption carry their own comments.
-
-    The cost, stated because an unstated hole is how the next round re-derives
-    it as a bug or quietly widens it: any dotted first segment is treated as a
-    host, so `config.d/scripts/x` or `ld-shared.old/scripts/y` is silently
-    exempt though it resolves under /opt/hermes like every bare path. No tracked
-    directory has a dot today. A LEADING dot is a hidden directory rather than a
-    host, which covers `.` and `..` as a consequence.
-    """
-    head = ref.split("/", 1)[0]
-    return not head.startswith(".") and "." in head
-
-
-@functools.cache
-def _unanchored_pattern():
-    """Compiled once, and lazily, so only the guard tests depend on git.
-
-    Built at import time this ran `git ls-files` with check=True during
-    COLLECTION, so outside a checkout -- a source export, a container that copies
-    the tree without .git, git absent from PATH -- the whole module died and took
-    every unrelated dotenv, compose and mount assertion with it.
-    """
-    names = sorted({part for f in tracked_files() for part in Path(f).parent.parts})
-    assert names, (
-        "`git ls-files` reported no tracked directories -- an empty alternation "
-        "collapses to (?:) and would flag anything containing a slash"
-    )
-    # A boundary before the segment, so a known name cannot match as the SUFFIX
-    # of a longer token: `myscripts/foo` is not a citation of scripts/. No `^`
-    # branch -- at offset 0 there is no preceding character, so the lookbehind
-    # already succeeds, and without re.MULTILINE `^` could never match elsewhere.
-    return re.compile(
-        rf"[\w./-]*?(?<![\w-])(?:{'|'.join(map(re.escape, names))})/[\w./-]*"
-    )
-
-
-def unanchored_refs(text):
-    """Path-like citations in a SKILL.md that the agent could not resolve.
-
-    The defect is cwd-relative resolution: the container's WorkingDir and the
-    gateway's cwd are both /opt/hermes (measured) and `hermes cron create` sets
-    no --workdir, so any path handed to the agent that does not start with `/`
-    resolves under /opt/hermes and is not there. ABSOLUTE is therefore the rule,
-    not "starts with /opt/data/skills/" -- these files also cite
-    /opt/data/cron/jobs.json, /opt/data/ld/config.json and /opt/hermes/bin/hermes,
-    all correct and all immune.
-
-    Segment names come from the TRACKED tree, so the guard is identical on every
-    checkout. It was the filesystem, and that made coverage a function of local
-    build state: an untracked docs/ from a plan doc written here put `docs`,
-    `superpowers` and `plans` in the alternation on one machine and nobody
-    else's. The cost of determinism, stated because an unstated hole is how the
-    next round re-narrows this one: a directory that is never tracked -- a
-    gitignored state/, an assets/ its author has not git added yet -- is
-    invisible here, and a bare `state/foo.json` goes unflagged even though it
-    resolves under /opt/hermes exactly like every spelling this does catch.
-
-    Returns the offending strings so the caller can name them."""
-    return sorted(
-        {
-            m
-            for m in _unanchored_pattern().findall(text)
-            if not m.startswith("/") and not _is_hostname_head(m)
-        }
-    )
-
-
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     """Every path a SKILL.md hands the agent, checked where the agent will use it.
 
@@ -535,8 +444,13 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     The check is only worth anything because the mapping is earned:
     test_every_skill_is_mounted_flat_and_read_only pins
     ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
-    ROOT really does mean the agent can open them. A relative reference has no
-    such backing, which is why the rule below is that there are none."""
+    ROOT really does mean the agent can open them.
+
+    It checks that the absolute paths RESOLVE; it does not check that a new
+    reference is written absolute. A linter for that was built and removed: at
+    three hand-authored files it cost more than the drift it fenced, and the
+    eight paths it found are fixed regardless. The convention is visible in the
+    files themselves -- every path in all three is absolute."""
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
     seen = 0
@@ -555,73 +469,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
             )
             seen += 1
 
-        # No unanchored citation may creep back in, in ANY spelling. The rule
-        # and its derivation live in unanchored_refs() so they are reachable
-        # from a test -- four rounds of widening this were verified only by hand,
-        # which is how round five silently re-narrows what round four widened.
-        unanchored = unanchored_refs(text)
-        assert not unanchored, (
-            f"{skill_md.name} hands the agent unanchored path(s) {unanchored} -- "
-            "the agent's cwd is /opt/hermes, so a relative path resolves to "
-            "nothing. Give each an absolute container path"
-        )
-
     assert seen, (
         "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
         "style changed?"
     )
-
-
-@pytest.mark.parametrize("text,flagged", [
-    # Every spelling four rounds of widening this guard were verified against by
-    # hand. Each round's "verified red" evaporated into shell history, so round
-    # five could silently re-narrow what round four widened. These are the rows
-    # that stop it.
-    ("read `ld-shared/references/kiosk-protocol.md`", ["ld-shared/references/kiosk-protocol.md"]),
-    ("read `./ld-shared/references/kiosk-protocol.md`", ["./ld-shared/references/kiosk-protocol.md"]),
-    ("the wrappers hop `../../ld-shared/scripts`", ["../../ld-shared/scripts"]),
-    ("run `scripts/register_crons.py`", ["scripts/register_crons.py"]),
-    # A first segment that is a real repo-root directory holding different
-    # content -- reads fine in the checkout, finds nothing in the container.
-    ("see `runtime/config.yaml`", ["runtime/config.yaml"]),
-    ("see `tests/fixtures/hermes-cron-jobs.json`", ["tests/fixtures/hermes-cron-jobs.json"]),
-    # Bare single-segment citations, which are prose natural to these files.
-    ("vendored under `ld-shared/` and mounted", ["ld-shared/"]),
-    ("see `references/` for the spec", ["references/"]),
-    # Absolute is the rule, not the skills prefix: these three are correct and
-    # immune to cwd, and all appear in ld-dashboard/SKILL.md today.
-    ("persists to `/opt/data/cron/jobs.json`", []),
-    ("reads `/opt/data/ld/config.json`", []),
-    ("run `/opt/hermes/bin/hermes cron list`", []),
-    ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
-    # The real ld-sports/SKILL.md line. Green by accident today: it holds no
-    # tracked segment, so the pattern never matches it and the exemption is
-    # never consulted.
-    ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
-    # The exemption on a real HOST head. `scripts` is tracked so the pattern
-    # matches and the string is relative, so the heuristic is the only thing
-    # returning [].
-    ("site.api.espn.com/scripts/scoreboard", []),
-    # Exempt via the absolute rule -- the match begins at the `//` -- not via the
-    # heuristic. Pinned so that stays true.
-    ("https://example.com/scripts/thing.py", []),
-    # `scripts` is tracked so the pattern matches, and the head is a HIDDEN
-    # DIRECTORY rather than a host -- it resolves under /opt/hermes like any
-    # other bare path, so exempting it would be a silent miss. (A row naming an
-    # untracked segment such as .github/workflows/ would assert nothing: the
-    # pattern would not match it here at all.)
-    ("see `.github/scripts/ci.yml`", [".github/scripts/ci.yml"]),
-    # The same exemption on a DOTTED RELATIVE head, which is the documented miss
-    # rather than a URL: a real relative citation the guard lets through, and the
-    # narrowing cost _is_hostname_head states. Executable so a future widening
-    # (a real host parse, a TLD check) flips a test rather than leaving the
-    # docstring quietly stale.
-    ("see `config.d/scripts/x`", []),
-    # A known name inside a longer token is not a citation. Without a boundary
-    # before the segment these are flagged and reported verbatim as paths the
-    # author never wrote, and the name set grows with the tracked tree.
-    ("the myscripts/foo helper", []),
-    ("see old-shared/bar for context", []),
-])
-def test_unanchored_refs_flags_exactly_the_citations_the_agent_cannot_resolve(text, flagged):
-    assert unanchored_refs(text) == flagged

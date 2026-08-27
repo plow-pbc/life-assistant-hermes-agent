@@ -40,6 +40,9 @@ HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
 # reason this skill exists, because `agent-mgr restore` does not replay it.
 JOBS_FILE = "/opt/data/cron/jobs.json"
+# The producers' own config. Read here for one reason: every schedule below is a
+# bare cron expression, and `hermes cron create` takes no per-job timezone.
+LD_CONFIG = "/opt/data/ld/config.json"
 
 # The spec. One row per producer, live or not.
 #
@@ -138,6 +141,54 @@ JOBS = (
 
 LIVE = tuple(j for j in JOBS if not j["blocked"])
 BLOCKED = tuple(j for j in JOBS if j["blocked"])
+
+
+def require_timezone_agreement(config_path=LD_CONFIG, env=None):
+    """Refuse to register if the config's zone is not the container's.
+
+    Every schedule here is a bare cron expression and `hermes cron create` takes
+    no per-job timezone, so jobs fire in the CONTAINER's zone -- agent-mgr's
+    AGENT_TZ -- while all three SKILL.md files promise 06:00 in
+    `family.timezone`. Nothing else compares them: ld_config_gate.py checks only
+    that the zone is non-blank, which a perfectly valid America/Chicago config
+    satisfies while its cards land at 08:00 family time. Silent, and wrong in
+    exactly the place a life assistant exists for.
+
+    The env var, not /etc/localtime. Measured in the live container: the image's
+    /etc/localtime points at Etc/UTC while TZ carries America/Los_Angeles, which
+    is what Python and cron actually honour -- so reading the symlink would
+    refuse every correct config.
+    """
+    env = os.environ if env is None else env
+    container = (env.get("TZ") or "").strip()
+    if not container:
+        raise SystemExit(
+            "refusing to register: TZ is empty in this container. agent-mgr sets "
+            "it from AGENT_TZ at create time, so an empty one means the schedules "
+            "would fire in a zone nothing here can name."
+        )
+    path = pathlib.Path(config_path)
+    try:
+        family = json.loads(path.read_text()).get("family", {}).get("timezone", "")
+    except FileNotFoundError:
+        raise SystemExit(
+            f"refusing to register: {path} is missing. The producers read their "
+            "location and teams from it, and its family.timezone is what these "
+            "schedules are written against."
+        ) from None
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"refusing to register: could not read {path} ({exc}).") from exc
+
+    if (family or "").strip() != container:
+        raise SystemExit(
+            f"refusing to register: {path} says family.timezone is "
+            f"{family!r} but this container runs in {container!r}. Every schedule "
+            "here is a bare cron expression and hermes cron create takes no "
+            "per-job zone, so the cards would land at the wrong local hour -- "
+            "silently. Fix whichever is wrong: AGENT_TZ in the instance dotenv "
+            "(after `restore`, before `up` -- the zone reaches the container at "
+            "create time), or family.timezone in the config."
+        )
 
 
 def _require_dir(path, missing):
@@ -346,7 +397,7 @@ def _run(argv):
     return subprocess.run(argv, capture_output=True, text=True)
 
 
-def main(argv=None, runner=_run, jobs_path=JOBS_FILE):
+def main(argv=None, runner=_run, jobs_path=JOBS_FILE, tz_check=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true",
                         help="print what would be registered and change nothing")
@@ -362,6 +413,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE):
     # register" for a job that is already there -- the opposite of what the real
     # run does, from the one mode whose entire job is to say what the real run
     # will do.
+    require_timezone_agreement(**({} if tz_check is None else tz_check))
     registered = registered_jobs(jobs_path)
     paused = []
     verified = False

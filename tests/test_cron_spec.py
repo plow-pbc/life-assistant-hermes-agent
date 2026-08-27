@@ -106,6 +106,18 @@ def test_no_schedule_carries_a_timezone(job):
     )
 
 
+def _tz_ok(tmp_path, zone="America/Los_Angeles"):
+    """A timezone check that agrees, so a main() test exercises what it is for.
+
+    Every main() test passes one: registration refuses outright when the
+    config's family.timezone is not the container's, which is the point, and a
+    test that did not supply one would be asserting that refusal instead of the
+    behaviour it names."""
+    config = tmp_path / "ld-config.json"
+    config.write_text(json.dumps({"family": {"timezone": zone}}))
+    return {"config_path": config, "env": {"TZ": zone}}
+
+
 def _jobs_file(tmp_path, jobs):
     """A jobs.json the way hermes writes it."""
     path = tmp_path / "jobs.json"
@@ -228,7 +240,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path)
+    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
     assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -249,7 +261,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     # but an unattended re-provision must not read this run as success -- the
     # exit code is the only signal that reaches one.
     with pytest.raises(SystemExit) as exit_:
-        mod.main([], runner=fake, jobs_path=path)
+        mod.main([], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
     out = capsys.readouterr().out
@@ -264,7 +276,7 @@ def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path)
+    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
     assert set(fake.created) == LIVE_NAMES
     blocked = {j["name"] for j in mod.BLOCKED}
     assert not blocked & set(fake.created)
@@ -277,7 +289,7 @@ def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     with pytest.raises(SystemExit):
         mod.main([], runner=FakeHermes(tmp_path / "none.json", create_rc=1),
-                 jobs_path=tmp_path / "none.json")
+                 jobs_path=tmp_path / "none.json", tz_check=_tz_ok(tmp_path))
 
 
 def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
@@ -289,7 +301,7 @@ def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
     fake = FakeHermes(path)
-    mod.main(["--dry-run"], runner=fake, jobs_path=path)
+    mod.main(["--dry-run"], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
     assert fake.created == []
     out = capsys.readouterr().out
     assert "already present, would skip: ld-weather" in out
@@ -343,7 +355,8 @@ def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_pa
             return _Proc(0, "", "")
 
     with pytest.raises(SystemExit) as excinfo:
-        mod.main([], runner=LyingHermes(), jobs_path=tmp_path / "wrong.json")
+        mod.main([], runner=LyingHermes(), jobs_path=tmp_path / "wrong.json",
+                 tz_check=_tz_ok(tmp_path))
     assert "not where this hermes persists jobs" in str(excinfo.value)
 
 
@@ -472,7 +485,8 @@ def test_a_dry_run_does_not_fail_over_a_paused_job_it_did_not_create(
     path = _jobs_file(tmp_path, [
         {"name": "ld-weather", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"}
     ])
-    assert mod.main(["--dry-run"], runner=FakeHermes(path), jobs_path=path) == 0
+    assert mod.main(["--dry-run"], runner=FakeHermes(path), jobs_path=path,
+                    tz_check=_tz_ok(tmp_path)) == 0
     out = capsys.readouterr().out
     assert "would leave 1 paused producer(s) alone: ld-weather" in out
 
@@ -525,3 +539,48 @@ def test_the_blocked_nudge_still_records_the_target_it_will_need():
     """Deleting the resolver must not delete the requirement."""
     nudge = next(j for j in spec().JOBS if j["name"] == "ld-calendar-nudge")
     assert nudge["blocked"] and nudge["deliver"] == "plow_chat:${PLOW_CHAT_CHAT_UID}"
+
+
+def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):
+    """The gate calls a non-blank family.timezone valid, and it is -- structurally.
+
+    What nothing checked is agreement. Every schedule here is a bare cron
+    expression and `hermes cron create` takes no per-job zone, so a perfectly
+    valid America/Chicago config on a Los_Angeles container puts the 06:00 cards
+    on the wall at 08:00 family time, silently, while all three SKILL.md files
+    promise 06:00. That is wrong in exactly the place a life assistant exists
+    for, and it is the invariant the issue asks for by name."""
+    mod = spec()
+    config = tmp_path / "ld-config.json"
+    config.write_text(json.dumps({"family": {"timezone": "America/Chicago"}}))
+
+    with pytest.raises(SystemExit) as excinfo:
+        mod.require_timezone_agreement(config, {"TZ": "America/Los_Angeles"})
+    message = str(excinfo.value)
+    assert "America/Chicago" in message and "America/Los_Angeles" in message
+    assert "AGENT_TZ" in message, "the message has to name what to fix"
+
+    # Agreement passes.
+    mod.require_timezone_agreement(config, {"TZ": "America/Chicago"})
+
+
+def test_the_container_zone_comes_from_TZ_not_etc_localtime(tmp_path):
+    """Measured in the live container: /etc/localtime points at Etc/UTC while TZ
+    carries America/Los_Angeles, and TZ is what Python and cron honour. Reading
+    the symlink would refuse every correct config."""
+    mod = spec()
+    config = tmp_path / "ld-config.json"
+    config.write_text(json.dumps({"family": {"timezone": "America/Los_Angeles"}}))
+    mod.require_timezone_agreement(config, {"TZ": "America/Los_Angeles"})
+
+    with pytest.raises(SystemExit) as excinfo:
+        mod.require_timezone_agreement(config, {"TZ": ""})
+    assert "AGENT_TZ" in str(excinfo.value)
+
+
+def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
+    """The producers read their location and teams from it, so a schedule
+    registered without it fires into a failure every morning."""
+    with pytest.raises(SystemExit) as excinfo:
+        spec().require_timezone_agreement(tmp_path / "nope.json", {"TZ": "UTC"})
+    assert "is missing" in str(excinfo.value)
