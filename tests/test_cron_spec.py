@@ -297,13 +297,12 @@ FIXTURE = ROOT / "tests" / "fixtures" / "hermes-cron-jobs.json"
 def test_the_reader_handles_a_real_captured_jobs_file():
     """Against bytes a live hermes actually wrote, not a shape this repo invented.
 
-    `name` is the only field whose absence raises -- registered_jobs() keys on
-    it. `enabled` and `paused_at` are what the answer is COMPUTED from, and
-    both default silently, so losing either returns a silently wrong answer --
-    a paused producer coming back runnable -- rather than a refusal. Every
-    other test here builds its fixtures from those same names, so they would
-    all agree with each other and with nothing else; only this one can tell
-    whether the reader reads hermes.
+    All three fields are read by subscript, so an entry missing any of them
+    raises rather than being papered over -- that contract is pinned by the
+    entry-shape rows in test_an_unreadable_schedule_is_not_read_as_an_empty_one.
+    What only THIS test can tell is whether those three names are the ones
+    hermes writes: every other fixture here is built from them, so they would
+    all agree with each other and with nothing else.
 
     Captured from Hermes Agent v0.19.0 (2026.7.20), values scrubbed because the
     field names are the contract. See tests/fixtures/README.md."""
@@ -312,9 +311,9 @@ def test_the_reader_handles_a_real_captured_jobs_file():
 
 
 def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
-    """If a re-capture drops `enabled` or `paused_at`, this says so in one line
-    -- rather than a silently wrong answer with nobody knowing which field went.
-    `name` raises on its own; this test only gets to it first."""
+    """If a re-capture drops any of these, the reader raises on every read --
+    loud, but at bring-up and without naming which field went. This says so in
+    one line instead."""
     entry = json.loads(FIXTURE.read_text())["jobs"][0]
     # A reader who trips one row should not be told about the other two.
     consequences = {
@@ -464,12 +463,10 @@ def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
     "{not json",
     '{"schedules": []}',
     "",
-    # A well-formed file whose ENTRY has no name. The claim in
-    # test_the_reader_handles_a_real_captured_jobs_file -- that `name` is the
-    # only field whose absence raises -- is load-bearing and was
-    # asserted by nothing: swap job["name"] for job.get("name") and a nameless
-    # entry becomes a None key -- it vanishes from the answer instead of
-    # stopping the run, which is the invariant this test is named for.
+    # A well-formed file whose ENTRY has no name. Swap job["name"] for
+    # job.get("name") and a nameless entry becomes a None key -- it vanishes
+    # from the answer instead of stopping the run, which is the invariant this
+    # test is named for.
     '{"jobs": [{"enabled": true, "paused_at": null}]}',
     # And without either of the other two the reader subscripts. Every entry
     # hermes writes carries all three -- confirmed against the live agent -- so
