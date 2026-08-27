@@ -298,40 +298,17 @@ def test_the_reader_handles_a_real_captured_jobs_file():
     """Against bytes a live hermes actually wrote, not a shape this repo invented.
 
     All three fields are read by subscript, so an entry missing any of them
-    raises rather than being papered over -- that contract is pinned by the
-    entry-shape rows in test_an_unreadable_schedule_is_not_read_as_an_empty_one.
-    What only THIS test can tell is whether those three names are the ones
-    hermes writes: every other fixture here is built from them, so they would
-    all agree with each other and with nothing else.
+    raises rather than being papered over -- pinned as a contract by the
+    entry-shape rows in test_an_unreadable_schedule_is_not_read_as_an_empty_one,
+    and pinned against REALITY here: this is the only fixture nobody in this
+    repo wrote, so a re-capture from a newer hermes that drops any of the three
+    fails this assertion with KeyError naming it. Every other fixture is built
+    from those same names and would agree with each other and with nothing else.
 
     Captured from Hermes Agent v0.19.0 (2026.7.20), values scrubbed because the
     field names are the contract. See tests/fixtures/README.md."""
     registered = spec().registered_jobs(FIXTURE)
     assert registered == {"<scrubbed-name>": True}
-
-
-def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
-    """If a re-capture drops any of these, the reader raises on every read --
-    loud, and at bring-up, but as a traceback out of a dict comprehension. This
-    says which field went, in one line, before anyone has to read that."""
-    entry = json.loads(FIXTURE.read_text())["jobs"][0]
-    # A reader who trips one row should not be told about the other two.
-    # registered_jobs() subscripts all three, so every one of these raises the
-    # same way -- what differs is what an operator can tell from the traceback.
-    consequences = {
-        "name": "registered_jobs() keys on it, so KeyError('name') names the "
-                "field itself",
-        "enabled": "registered_jobs() reads it to decide runnable, so "
-                   "KeyError('enabled') is what a re-capture without it "
-                   "produces -- at bring-up, before any schedule is touched",
-        "paused_at": "registered_jobs() reads it to tell a PAUSED producer "
-                     "from a live one, so KeyError('paused_at') is what a "
-                     "re-capture without it produces",
-    }
-    for field, consequence in consequences.items():
-        assert field in entry, (
-            f"the captured hermes format has no {field!r} -- {consequence}"
-        )
 
 
 def test_a_paused_job_is_not_runnable(tmp_path):
