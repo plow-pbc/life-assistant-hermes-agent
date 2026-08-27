@@ -478,22 +478,6 @@ def test_a_renamed_field_aborts_rather_than_parsing_to_nothing(tmp_path, jobs, e
     assert expected in str(excinfo.value)
 
 
-def test_an_unreadable_jobs_file_is_not_mistaken_for_an_absent_one(tmp_path):
-    """Path.exists() swallows every OSError on 3.12+, so EACCES on the cron
-    directory would have come back False and read as a fresh instance. Only
-    FileNotFoundError means "nothing scheduled yet"."""
-    mod = spec()
-    path = tmp_path / "jobs.json"
-    path.write_text(json.dumps({"jobs": []}))
-    path.chmod(0o000)
-    try:
-        with pytest.raises(SystemExit) as excinfo:
-            mod.registered_jobs(path)
-        assert "duplicates every job" in str(excinfo.value)
-    finally:
-        path.chmod(0o600)
-
-
 FIXTURE = ROOT / "tests" / "fixtures" / "hermes-cron-jobs.json"
 
 
@@ -525,27 +509,55 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
 def test_the_absent_branch_is_only_for_a_genuinely_missing_file(tmp_path):
     """uid-independent, unlike the chmod row above.
 
-    Under a root runner -- a container, most CI images -- root bypasses the mode
-    bits, so the chmod case reads the file happily and that test goes red for a
-    reason unrelated to the code while leaving this branch unexercised. A
-    directory raises IsADirectoryError, which is an OSError and never a
+    Path.exists() swallows every OSError on 3.12+, which `just test` pins, so a
+    permission denial on the cron directory came back False and read as a fresh
+    instance -- registering every job again, silently. Only FileNotFoundError
+    means "nothing scheduled yet".
+
+    Proven with a DIRECTORY rather than a chmod. A chmod(0o000) row was the
+    obvious way to write this and is uid-dependent: under any root runner -- a
+    container, most CI images -- root bypasses the mode bits, the read succeeds,
+    and the test goes red for a reason unrelated to the code while leaving this
+    branch covered by nothing. IsADirectoryError is an OSError and never a
     FileNotFoundError, whoever runs it."""
     with pytest.raises(SystemExit) as excinfo:
         spec().registered_jobs(tmp_path)
     assert "duplicates every job" in str(excinfo.value)
 
 
-def test_a_wrong_parent_directory_refuses_before_creating_anything(tmp_path):
+def test_an_unmounted_home_refuses_before_creating_anything(tmp_path):
     """The pre-create half of the wrong-path check.
 
     verify_landed only fires AFTER a create has landed, so a retry there adds a
-    second copy of that job each attempt -- 'duplicate everything forever'
-    becomes 'duplicate one per attempt', which is smaller but not fixed. A fresh
-    instance has /opt/data/cron present and empty; a wrong path usually has a
-    wrong parent, and that costs nothing to check first."""
+    second copy of that job each attempt -- "duplicate everything forever"
+    becomes "duplicate one per attempt", which is smaller but not fixed.
+
+    It checks the mounted HOME (jobs.json's grandparent), not the cron directory:
+    /opt/data is agent-mgr's one template mount, so its absence is exactly the
+    wrong-path-or-unmounted case. Checking cron/ instead would rest on the
+    gateway creating it before any job exists -- it does, measured on two homes
+    that never had one -- but that buys nothing extra and would abort a genuinely
+    fresh instance if a future hermes created it lazily."""
     with pytest.raises(SystemExit) as excinfo:
-        spec().registered_jobs(tmp_path / "no-such-dir" / "jobs.json")
-    assert "not a directory" in str(excinfo.value)
+        spec().registered_jobs(tmp_path / "no-home" / "cron" / "jobs.json")
+    assert "agent home is not mounted" in str(excinfo.value)
+
+
+def test_a_paused_job_is_recognised_under_either_encoding(tmp_path):
+    """The capture settles the field NAMES; it came from a running job, so it
+    cannot settle which field pausing moves. Reading both costs one term and
+    keeps a paused producer from reporting as healthy -- the stale card the
+    WARNING exists to catch -- if hermes flips `state` rather than `paused_at`."""
+    mod = spec()
+    path = _jobs_file(tmp_path, [
+        {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
+        {"name": "by-state", "enabled": True, "paused_at": None, "state": "paused"},
+        {"name": "by-enabled", "enabled": False, "paused_at": None},
+        {"name": "running", "enabled": True, "paused_at": None, "state": "scheduled"},
+    ])
+    assert mod.registered_jobs(path) == {
+        "by-paused-at": False, "by-state": False, "by-enabled": False, "running": True
+    }
 
 
 def test_a_dry_run_does_not_fail_over_a_paused_job_it_did_not_create(

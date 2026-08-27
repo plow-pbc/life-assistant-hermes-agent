@@ -21,8 +21,8 @@ empty-schedule notice, `--all` for paused jobs, a second floor for partial
 parses -- each one correct and none of them reaching the bottom, because a
 human-readable listing is not a data structure. This reads jobs.json instead:
 hermes's own state, where a name is a field, `enabled`/`paused_at` are fields,
-an absent file is unambiguously an empty schedule, and a malformed one raises.
-See registered_jobs().
+an absent file reads as an empty schedule -- with verify_landed() to tell that
+from a wrong path -- and a malformed one raises. See registered_jobs().
 
 It runs INSIDE the container, where hermes is on PATH and that file lives.
 """
@@ -198,9 +198,10 @@ def registered_jobs(jobs_path=JOBS_FILE):
     jobs.json is the file `hermes cron` actually writes -- the issue that asked
     for this skill names it as the reason the skill has to exist, since
     `agent-mgr restore` does not replay it. Reading it deletes the whole class:
-    a name is a field, `enabled` and `paused_at` are fields, an absent file is
-    unambiguously an empty schedule, and a malformed one raises instead of
-    quietly parsing to zero.
+    a name is a field, `enabled` and `paused_at` are fields, and a malformed
+    file raises instead of quietly parsing to zero. An ABSENT one is the case
+    the file cannot settle by itself -- a fresh instance and a wrong path raise
+    the same ENOENT -- which is what verify_landed() is for.
 
     Returns {name: is_runnable}. A job that exists but will never fire is a
     DIFFERENT answer from one that does not exist, and the caller needs both:
@@ -208,18 +209,38 @@ def registered_jobs(jobs_path=JOBS_FILE):
     that never updates again.
     """
     path = pathlib.Path(jobs_path)
-    # Before trusting an absence, check the directory that would hold it. A
-    # fresh instance has /opt/data/cron present and empty; a moved or wrong path
-    # almost always has a wrong parent. This is the half of the wrong-path check
-    # that costs nothing -- verify_landed() catches the rest, but only AFTER a
-    # create has already landed, so a retry there duplicates one job per attempt.
-    parent = path.parent
-    if not parent.is_dir():
+    # Before trusting an absence, check the mounted HOME, not the cron directory.
+    # /opt/data is agent-mgr's one template mount, so it is present whenever the
+    # container is wired correctly and absent when it is not -- which is a wrong
+    # path and an unmounted home, the two cases the ENOENT branch below cannot
+    # tell from a fresh instance.
+    #
+    # Deliberately not `path.parent` (/opt/data/cron): that would rest on the
+    # cron directory existing before any job does. It does -- the gateway creates
+    # it at start, measured on two homes that never had a single cron (the
+    # retired ~/.hermes-life and ~/.hermes-sam-property both carry cron/ with
+    # executions.db and no jobs.json) -- but resting on it buys nothing the home
+    # check does not, and would abort a fresh instance outright if a future
+    # hermes created it lazily instead.
+    #
+    # stat(), not is_dir(): is_dir() swallows every OSError exactly the way
+    # exists() does, so a permission denial on the home would report "not a
+    # directory" and send the operator to check a path that is fine.
+    home = path.parent.parent
+    try:
+        home.stat()
+    except FileNotFoundError:
         raise SystemExit(
-            f"refusing to register: {parent} is not a directory, so {path} "
-            "cannot be where this hermes persists jobs. Reading that as an empty "
-            "schedule would register duplicates on every run."
-        )
+            f"refusing to register: {home} does not exist, so {path} cannot be "
+            "where this hermes persists jobs -- the agent home is not mounted, or "
+            "JOBS_FILE is wrong. Reading that as an empty schedule would register "
+            "duplicates on every run."
+        ) from None
+    except OSError as exc:
+        raise SystemExit(
+            f"refusing to register: could not stat {home} ({exc}). Reading an "
+            "unreachable home as an empty schedule would register duplicates."
+        ) from exc
     try:
         raw = path.read_text()
     except FileNotFoundError:
@@ -278,7 +299,18 @@ def registered_jobs(jobs_path=JOBS_FILE):
                 "`enabled` nor `paused_at` -- the format changed, and guessing it "
                 "is runnable would leave a paused producer reported as healthy."
             )
-        out[entry["name"]] = bool(entry.get("enabled", True)) and not entry.get("paused_at")
+        # Both encodings, because the capture settles the names and not the
+        # semantics: the entry it came from is a RUNNING job (enabled true,
+        # paused_at null, paused_reason null, state "scheduled"), which proves
+        # the keys exist and not which one pausing moves. `state` is a field the
+        # same capture confirms hermes maintains, so reading it costs one term
+        # and removes the guess -- rather than betting the PAUSED warning, and
+        # the non-zero exit built on it, on paused_at being the one that flips.
+        out[entry["name"]] = (
+            bool(entry.get("enabled", True))
+            and not entry.get("paused_at")
+            and entry.get("state") != "paused"
+        )
     return out
 
 
@@ -296,6 +328,8 @@ def verify_landed(name, jobs_path):
             f"{name}, but it is not in {jobs_path} afterwards. That file is not "
             "where this hermes persists jobs, so every run would read an empty "
             "schedule and register duplicates.\n"
+            # `remove` confirmed against `hermes cron --help` on the live agent:
+            # {list,create,add,edit,pause,resume,run,remove,rm,delete,...}.
             f"NOTE: {name} HAS been created. Remove it before retrying, or the "
             f"retry adds a second one: hermes cron remove {name}\n"
             "Then check JOBS_FILE against `hermes cron list`."

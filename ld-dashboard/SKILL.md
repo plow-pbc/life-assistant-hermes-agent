@@ -39,9 +39,19 @@ is a field, so is `enabled`, so is `paused_at`.
 
 One invariant survives from the retired seed installer, because it is the one
 that matters: **never read "I could not tell what is registered" as "nothing
-is"** — that re-registers every job and duplicates all of them. So an
-unreadable or unexpected `jobs.json` aborts. An *absent* one does not: that is a
-fresh instance with nothing scheduled, which the file makes unambiguous.
+is"** — that re-registers every job and duplicates all of them. So an unreadable
+or unexpected `jobs.json` aborts.
+
+An *absent* one is the case the file cannot settle on its own: a fresh instance
+and a wrong path raise the same `ENOENT`. Two things close that. Before doing
+anything it checks the mounted home — if `/opt/data` is not there, the container
+is not wired correctly and it refuses rather than reading an empty schedule:
+
+    refusing to register: /opt/data does not exist ... the agent home is not
+    mounted, or JOBS_FILE is wrong
+
+That is the guard most likely to be the one you actually see. The other is the
+read-back below.
 
 **A paused producer is neither.** It is registered, so re-registering duplicates
 it; it will never fire, so skipping it silently leaves a card that stops
@@ -53,10 +63,11 @@ exits 0 — a preview must not report a failure over a state it did not create:
     WARNING: ld-weather is registered but PAUSED -- it will never fire...
     Resume it: hermes cron resume ld-weather
 
-The first job it creates is read back out of `jobs.json`. That is the floor
-under "absent file means fresh instance": nothing pins the path, so a moved or
-wrong one would look like an empty schedule on every run and register duplicates
-forever, quietly. The read-back makes that fail on run one instead.
+The first job it creates is read back out of `jobs.json` — the floor under a
+path that *looks* plausible: nothing pins it, so a wrong one would read as an
+empty schedule on every run and register duplicates forever, quietly. The
+read-back makes that fail on run one, and says the job has been created so a
+retry does not add a second.
 
 ## The spec
 

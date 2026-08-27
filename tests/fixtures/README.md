@@ -12,3 +12,16 @@ writes. Every value that could carry private content is `<scrubbed>`; the field
 Re-capture with:
 
     docker exec <container> cat /opt/data/cron/jobs.json   # then scrub values
+
+## Measured, not captured
+
+`/opt/data/cron/` exists before any cron job does — the gateway creates it at
+start, not lazily on first save. Checked on two homes that never had a single
+job: the retired `~/.hermes-life` (stood up 04:50, torn down 14:45, never
+activated) and `~/.hermes-sam-property`, both carrying `cron/` with
+`executions.db`, `.jobs.lock`, `output/` and **no `jobs.json`**.
+
+That shape — the directory present, the file absent — is what a fresh instance
+looks like to `registered_jobs()`, and it takes the `FileNotFoundError` branch.
+Recorded because it is the claim a pre-create check would otherwise rest on;
+`register_crons.py` deliberately checks the mounted home instead, so it does not.
