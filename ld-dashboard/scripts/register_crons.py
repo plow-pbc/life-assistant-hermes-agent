@@ -198,6 +198,16 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
         )
 
 
+# One place says how to run this as the agent, and it is not a string in here.
+# Three consecutive review rounds found the remedy printed below wrong in a
+# different way -- a chown the named user cannot perform, a host command handed
+# to someone in a container shell, a `$HERMES_UID` that expands to nothing off
+# the container. Each fix was correct and the next round found the next one,
+# which is the tell that a refusal should state the FACT and point at the one
+# maintained copy of the procedure rather than carry a fourth paraphrase of it.
+RUNBOOK = "README.md, ## Bring-up"
+
+
 def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid, env=None):
     """Refuse to register if the agent cannot write beside its own config.
 
@@ -219,33 +229,46 @@ def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid, env=
     getting it wrong; an earlier version checked S_IWUSR without S_IXUSR, so an
     agent-owned 0600 passed while nothing could be created.
 
-    Who the agent is comes from HERMES_UID, which the image exports and
-    agent-mgr sets from the invoking user's `id -u`. Read it rather than
-    assuming, because the obvious assumption -- that the agent is never root --
-    is wrong on an instance brought up from a root host shell, and there the
-    refusal would hard-block the documented bring-up while naming the very
-    command the operator just ran. Absent the variable, uid 0 is still refused:
-    `docker exec` with no --user lands there, and root's probe succeeds on a
-    directory the agent cannot write, which is the one answer worse than none.
+    Who the agent is comes from HERMES_UID rather than from assuming it is not
+    root -- agent-mgr sets it from the invoking user's `id -u`, so an instance
+    brought up from a root host shell runs the gateway AS uid 0, and refusing on
+    root alone would hard-block that instance's documented bring-up.
+
+    That euid == HERMES_UID holds for the agent is observed, not inferred: the
+    image's s6 entrypoint remaps its in-image `hermes` user onto
+    HERMES_UID/HERMES_GID, which is also why a bare `exec` -- bypassing the
+    remap -- lands at uid 0 (README, "What only the instance's owner can do",
+    measured in the `str` container). So a mismatch here means this process is
+    not the agent, not that the premise drifted.
     """
     env = os.environ if env is None else env
     declared = env.get("HERMES_UID")
+    try:
+        # int(), not isdigit(): "\u00b2".isdigit() is True and int() raises on it,
+        # so branching on isdigit admits a value the next line dies on. The
+        # reachable unparseable form is "", which is what compose substitutes
+        # for an unset host variable in HERMES_UID=${HERMES_UID}.
+        declared_uid = int(declared)
+    except (TypeError, ValueError):
+        declared_uid = None
     euid = geteuid()
-    if declared is not None and declared.strip().isdigit():
-        if euid != int(declared):
+
+    if declared_uid is not None:
+        if euid != declared_uid:
             raise SystemExit(
                 f"refusing to register: this is running as uid {euid}, but the "
-                f"agent is uid {declared}. A probe run as anyone else answers a "
-                "different question than the one that matters -- root can write "
-                "directories the agent cannot. Run it as a turn: `agent-mgr "
-                "agent <name>`."
+                f"agent is uid {declared_uid}. A probe run as anyone else "
+                "answers a different question than the one that matters -- root "
+                "can write directories the agent cannot. How to run it as the "
+                f"agent: {RUNBOOK}."
             )
     elif euid == 0:
         raise SystemExit(
-            "refusing to register: this is running as root and HERMES_UID is "
-            "unset, so there is nothing to check against. Root can write "
-            "directories the agent cannot, so the check below would pass on the "
-            "setup it exists to catch. Run it as a turn: `agent-mgr agent <name>`."
+            f"refusing to register: running as root, and HERMES_UID is unset or "
+            f"unreadable ({declared!r}), so there is nothing to check against. "
+            "Root can write directories the agent cannot, so the check below "
+            f"would pass on the setup it exists to catch. How to run it as the "
+            f"agent: {RUNBOOK}."
         )
 
     handoff = pathlib.Path(config_path).parent
@@ -254,19 +277,19 @@ def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid, env=
         # exist_ok=False, after clearing a leftover: touch()'s default fast path
         # is utime() on an existing file, so a probe stranded by a killed run --
         # root-owned, say -- would fail EPERM and condemn a directory that is
-        # fine. Create-or-fail is the question being asked.
+        # fine. Create-or-fail is the question being asked. Both unlinks tolerate
+        # absence, because two runs can share this directory (a turn and a
+        # scripted exec) and a raced-away probe answered the question correctly.
         probe.unlink(missing_ok=True)
         probe.touch(exist_ok=False)
-        probe.unlink()
+        probe.unlink(missing_ok=True)
     except OSError as exc:
         raise SystemExit(
             f"refusing to register: the agent cannot create {probe} "
             f"({exc.strerror}). The producers write their composed tile into "
             "that directory, so every card would fail to post -- or worse, fall "
             "back to the shell and post intermittently, which looks fine from "
-            "the kiosk. From a root shell in the container, where HERMES_UID "
-            f"and HERMES_GID are set: `chown -R $HERMES_UID:$HERMES_GID "
-            f"{handoff} && chmod u+wx {handoff}`."
+            f"the kiosk. Fixing the directory's ownership: {RUNBOOK}."
         ) from exc
 
 

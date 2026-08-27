@@ -230,11 +230,34 @@ reads it back. So land `config.json` as the agent, not through a root shell:
 `docker exec` without `--user` lands as uid 0 and leaves a directory the agent
 cannot write, which is the `agent-mgr#44` shape again.
 
-`register_crons.py` proves it rather than trusting it — it writes a probe file
-into that directory and deletes it — and **refuses to run as root at all**,
-because root's probe succeeds on a directory the agent cannot write and would
-go green on the very setup the check exists to catch. Run it the documented
-way, as a turn (`agent-mgr agent <name>`), and that is already true.
+`register_crons.py` proves it rather than trusting it — it creates a probe file
+in that directory and removes it — and refuses to answer unless this process
+*is* the agent, comparing its euid against the container's `HERMES_UID`. Root's
+probe succeeds on a directory the agent cannot write, so an answer from anyone
+else is worse than none.
+
+**This section is where its refusals point**, so the two remedies live here
+rather than in the messages. Both were wrong three rounds running when each
+refusal carried its own copy.
+
+Running it as the agent — either form:
+
+```sh
+# From the host, as a turn. The documented path; agent-mgr pins the uid pair.
+agent-mgr agent <agent> 'register the dashboard crons and report what happened'
+
+# Already in a container shell, or scripting it: pin the pair explicitly.
+agent-mgr compose <agent> exec -T --user "$HERMES_UID:$HERMES_GID" \
+    hermes /opt/data/skills/ld-dashboard/scripts/register_crons.py
+```
+
+Fixing the directory when it refuses on ownership — from a **root** shell in
+the container, where both variables are set:
+
+```sh
+agent-mgr compose <agent> exec -T --user root hermes sh -c \
+    'chown -R "$HERMES_UID:$HERMES_GID" /opt/data/ld && chmod u+wx /opt/data/ld'
+```
 
 There is no `check-connectors` step: this instance has no connectors. See
 [No connectors, and what that costs](#no-connectors-and-what-that-costs).

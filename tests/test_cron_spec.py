@@ -502,9 +502,18 @@ def test_the_handoff_probe_refuses_to_answer_as_root(tmp_path):
     who came in through `docker exec` with no --user, which lands as uid 0.
     """
     mod = spec()
-    with pytest.raises(SystemExit) as exc:
-        mod.require_handoff_dir_writable(_cfg(tmp_path), geteuid=IS_ROOT, env={})
-    assert "running as root" in str(exc.value)
+    cfg = _cfg(tmp_path)
+    for env in ({}, {"HERMES_UID": ""}, {"HERMES_UID": "\u00b2"}):
+        # "" is the reachable unparseable form: compose substitutes it for an
+        # unset host variable in HERMES_UID=${HERMES_UID}. It must land in the
+        # same refusal as absent, and the message must not claim "unset" flatly
+        # -- an operator who then runs printenv sees it present and goes looking
+        # in the wrong place. "\u00b2" is the isdigit()/int() gap: isdigit() is
+        # True for it and int() raises, so branching on isdigit admits a value
+        # the next line dies on -- a designed refusal becoming a traceback.
+        with pytest.raises(SystemExit) as exc:
+            mod.require_handoff_dir_writable(cfg, geteuid=IS_ROOT, env=env)
+        assert "unset or unreadable" in str(exc.value), env
 
 
 def test_the_handoff_directory_is_proved_by_writing_not_by_inspection(tmp_path):
@@ -618,3 +627,29 @@ def test_a_stranded_probe_does_not_condemn_a_writable_directory(tmp_path):
     stranded.write_text("left by a killed run")
     mod.require_handoff_dir_writable(cfg, geteuid=NOT_ROOT, env={})
     assert not stranded.exists()
+
+
+def test_a_refusal_points_at_a_runbook_section_that_exists():
+    """The refusals stopped carrying their own remedy, so the pointer is load-bearing.
+
+    Three consecutive rounds found the embedded remedy wrong in a new way -- a
+    chown the named user cannot perform, a host command handed to a container
+    shell, a $HERMES_UID that expands to nothing off-container. Each fix was
+    right and the next round found the next one, so the messages now state the
+    fact and name the one maintained copy. That trade only holds while the
+    section is really there and really carries the remedy.
+    """
+    mod = spec()
+    readme = (ROOT / "README.md").read_text()
+    filename, _, heading = mod.RUNBOOK.partition(", ")
+    assert filename == "README.md"
+    assert f"\n{heading}\n" in readme, (
+        f"register_crons.py sends operators to {mod.RUNBOOK}, which is not a "
+        "heading in it"
+    )
+    section = readme.split(f"\n{heading}\n", 1)[1].split("\n## ", 1)[0]
+    for needed in ("chown -R", "--user", "chmod u+wx"):
+        assert needed in section, (
+            f"{mod.RUNBOOK} no longer carries {needed!r}, which the refusals "
+            "send operators there to find"
+        )
