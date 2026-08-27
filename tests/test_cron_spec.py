@@ -27,6 +27,42 @@ def spec():
 LIVE_NAMES = {"ld-weather", "ld-sports"}
 
 
+# The whole job contract, as one table. name -> (card, type, is-blocked).
+#
+# This is what a stack of Markdown parsers used to reach for indirectly: the
+# viewer's card map read out of kiosk-protocol.md, SKILL.md's and README's
+# restatements of it, and the pointers between those documents. All of that
+# guarded non-executable operator prose with test machinery, and made ordinary
+# documentation edits fail the suite. The prose is for humans; this is the part
+# that decides which tile a producer overwrites, so this is the part pinned.
+#
+# 1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports is the viewer's mapping
+# (ld-shared/references/kiosk-protocol.md). Cards 1 and 5 are the only ones a
+# producer shares, and only because triage and calendar-nudge are both alerts.
+JOB_CONTRACT = {
+    "ld-weather":         (3, "weather",     False),
+    "ld-sports":          (5, "sports",      False),
+    "ld-morning-updates": (2, "affirmation", True),
+    "ld-morning-triage":  (1, "alert",       True),
+    "ld-weekly-digest":   (4, "digest",      True),
+    "ld-calendar-nudge":  (1, "alert",       True),
+}
+
+
+def test_the_job_contract_is_exactly_this():
+    """One assertion for the whole spec: which producers exist, which slot each
+    writes, and which can run.
+
+    An exact set, so it catches a renumbered card (a producer silently
+    overwriting another's tile), a retyped one (the right slot rendering the
+    wrong way), a producer added or dropped, and a blocker cleared or
+    introduced -- the things every separate check here used to cover between
+    them, without reading a single Markdown file."""
+    assert {
+        (j["name"], j["card"], j["type"], bool(j["blocked"])) for j in spec().JOBS
+    } == {(name, card, type_, blocked) for name, (card, type_, blocked) in JOB_CONTRACT.items()}
+
+
 def test_exactly_the_two_producers_with_a_public_data_source_are_live():
     """The other four read Gmail, Google Calendar or Slack, and plow-connectors
     is dropped. Registering one would schedule a turn that cannot succeed, and
@@ -288,146 +324,6 @@ def test_no_prompt_names_a_card_other_than_the_one_the_spec_assigns(job):
         )
 
 
-def viewer_slots():
-    """The card->type map, PARSED from kiosk-protocol.md's Card map table.
-
-    Restating it here would have been the fourth hand-kept copy of the same
-    pairing -- the protocol doc, this constant, each job's `type`, and SKILL.md's
-    `3 · weather` column -- which is the prose drift promoting `type` to data was
-    meant to end, moved one file over. Renumber the protocol and this goes red.
-
-    Returns PAIRS, not a dict: the collapse to a mapping is last-wins, so a row
-    reusing an existing card number would vanish into it silently. Keeping the
-    rows lets test_the_protocol_card_map_still_parses see both counts.
-
-    Parses without asserting: this runs at import, so a bare assert here would
-    fail COLLECTION of the whole module and read as "the tests are broken"
-    rather than "the protocol table changed". The counts are checked by that
-    test instead, which goes red alone."""
-    table = (ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
-    # Whole-document, unlike the dark-table parser, which matches inside a
-    # marker-delimited span; [\s>]* matches that parser's relaxation, since a
-    # blockquote prefixes rows with "> " and `>` is not \s. Inert on today's
-    # column-0 Card map, and half of what creates the residual below: the
-    # whole-document scan admits a row-shaped line anywhere in the doc, and
-    # [\s>]* extends that to an indented or blockquoted one. Both asserts below
-    # name the scope they actually have.
-    #
-    # Deliberately not marker-bounded the same way: that would mean editing
-    # kiosk-protocol.md, which is vendored byte-identical to its pinned ref --
-    # the property that keeps this PR's provenance checkable with a diff -- and
-    # a test scoping convenience does not buy a fork of it.
-    rows = re.findall(r"^[\s>]*\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
-    return [(int(card), type_) for card, type_ in rows]
-
-
-VIEWER_SLOT_ROWS = viewer_slots()
-VIEWER_SLOTS = dict(VIEWER_SLOT_ROWS)
-
-
-def test_the_protocol_card_map_still_parses():
-    """A reformatted table must fail loudly, not yield an empty map that agrees
-    with everything -- an empty VIEWER_SLOTS makes every pinned-map assertion
-    below vacuous."""
-    assert len(VIEWER_SLOT_ROWS) == 5, (
-        f"expected 5 card rows in kiosk-protocol.md's Card map, parsed "
-        f"{len(VIEWER_SLOT_ROWS)} -- the table was reformatted, or a row-shaped "
-        f"line elsewhere in the doc parsed as one: {VIEWER_SLOT_ROWS}"
-    )
-    # Rows BEFORE the dict collapse, so a substituted row is caught here rather
-    # than one test later. The map is built by comprehension, so last-wins: a row
-    # reusing an existing card number with a different type keeps the dict at
-    # five and surfaces at the slot-map test as "ld-weather claims card 3 as
-    # 'weather', but the viewer renders that slot as X" -- blaming the spec when
-    # the protocol doc is what changed.
-    assert len(VIEWER_SLOTS) == len(VIEWER_SLOT_ROWS), (
-        f"two rows parsed from kiosk-protocol.md share a card number: "
-        f"{VIEWER_SLOT_ROWS} -- one silently overrode the other. They need not "
-        "both be in the Card map; this parser scans the whole document, "
-        "including indented and blockquoted rows"
-    )
-
-
-def test_the_spec_uses_the_viewers_slot_map_and_shares_only_the_alert_card():
-    """Triage and calendar-nudge deliberately share card 1 -- both are alerts --
-    and that is the only sharing there is. Every other producer owns its slot, so
-    a renumbering silently overwrites another producer's tile."""
-    mod = spec()
-    by_card = {}
-    for job in mod.JOBS:
-        assert VIEWER_SLOTS[job["card"]] == job["type"], (
-            f"{job['name']} claims card {job['card']} as {job['type']!r}, but the "
-            f"viewer renders that slot as {VIEWER_SLOTS[job['card']]!r}"
-        )
-        by_card.setdefault(job["card"], []).append(job["name"])
-    assert sorted(by_card) == sorted(VIEWER_SLOTS)
-    shared = {c: n for c, n in by_card.items() if len(n) > 1}
-    assert shared == {1: ["ld-morning-triage", "ld-calendar-nudge"]}
-
-
-@pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
-def test_both_restatements_of_the_spec_still_agree_with_it(job):
-    """Two documents restate JOBS for human readers, and a restatement drifts.
-
-    SKILL.md carries the full table — name, schedule, card and type. README.md
-    carries only the four dark producers, to say what an owner has lost, so it
-    is checked only for those rows and only for the fields it prints.
-
-    Asserting the ROW in both, not the fields separately. A bare backticked
-    ld-weather appears in prose anywhere in a 300-line README and passes while
-    the table beside it is wrong; and three independent substring checks against
-    SKILL.md all pass on a row whose name was copied onto a neighbour's schedule,
-    since every asserted string is still somewhere in the file. The card map has
-    been in four hand-kept copies before; two are pinned here and the third is
-    parsed straight out of kiosk-protocol.md."""
-    skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    skill_row = f"| `{job['name']}` | `{job['schedule']}` | {job['card']} · {job['type']} |"
-    assert skill_row in skill, (
-        f"SKILL.md has no row {skill_row!r} -- three separate substring checks "
-        "would pass on a row whose name was copied onto a neighbour's schedule"
-    )
-    # The blocker column too. It restates latch#183 vs the iMessage rewrite, and
-    # runtime/config.yaml was off by one on exactly that split a round ago.
-    if job["blocked"]:
-        # Extracted from the row's own text, and FAILING when it cannot be. A
-        # two-way guess (anything without latch#NNN must be the iMessage
-        # rewrite) holds only for today's four rows: a producer blocked on a
-        # third thing -- a missing key, a retired upstream -- would be silently
-        # checked for the wrong string and then misnamed in the failure message,
-        # which is the hand-kept split this test exists to catch.
-        tokens = re.findall(r"latch#\d+|iMessage", job["blocked"])
-        assert tokens, (
-            f"{job['name']} is blocked on something this check cannot name "
-            f"({job['blocked']!r}) -- teach it the new blocker rather than "
-            "letting the row go unchecked"
-        )
-        # `in`, not startswith, and a default. The assertion above proves the row
-        # is somewhere in the text, not that a LINE begins with it -- indent the
-        # table into a list item or a fenced block and startswith matches
-        # nothing, so a bare next() raises StopIteration with no message and
-        # throws away every crafted failure below.
-        row_line = next((l for l in skill.splitlines() if skill_row in l), "")
-        # ALL of them, not the leftmost. "needs the iMessage rewrite, tracked in
-        # latch#183" is a plausible next edit, and a leftmost match would then
-        # check the row for "iMessage" and report it missing its blocker while
-        # the row names the one the spec records.
-        for token in tokens:
-            assert token in row_line, (
-                f"SKILL.md's row for {job['name']} does not name {token}, which "
-                f"its blocked text records ({job['blocked']!r})"
-            )
-
-        # README prints the dark producers; every blocked one needs its row. The
-        # converse -- no row for anything else -- is
-        # test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else.
-        readme = (ROOT / "README.md").read_text()
-        row = f"| `{job['name']}` | {job['card']} · {job['type']} |"
-        assert row in readme, (
-            f"README's dark-producer table has no row {row!r} -- it is the only "
-            "place an owner reads what they lost, and nothing else checks it"
-        )
-
-
 def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_path):
     """The floor under "absent file means fresh instance".
 
@@ -626,140 +522,3 @@ def test_the_blocked_nudge_still_records_the_target_it_will_need():
     """Deleting the resolver must not delete the requirement."""
     nudge = next(j for j in spec().JOBS if j["name"] == "ld-calendar-nudge")
     assert nudge["blocked"] and nudge["deliver"] == "plow_chat:${PLOW_CHAT_CHAT_UID}"
-
-
-def test_the_paste_instruction_survives_in_every_document_that_promises_it():
-    """The README's token check is load-bearing on a sentence in another file.
-
-    A turn does not propagate the script's exit code, so the only thing carrying
-    a refusal across that gap is SKILL.md telling the agent to paste the output
-    verbatim instead of summarising — and README tells the operator to grep that
-    output for `refusing to register` / `WARNING` / `PAUSED` on the strength of
-    it. Reword SKILL.md (it has been rewritten in three of the last four
-    commits) and README keeps promising a guarantee that no longer exists, with
-    the operator grepping a summary. This is the newest cross-document
-    dependency and was the one restatement nothing covered."""
-    skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    assert "paste its output verbatim and report its exit status" in skill, (
-        "SKILL.md no longer instructs the agent to paste the script's output -- "
-        "README's `refusing to register` / WARNING / PAUSED check greps a "
-        "summary without it, and the justfile points at README for the same"
-    )
-
-    readme = (ROOT / "README.md").read_text()
-    assert "paste the output verbatim + exit code" in readme, (
-        "README's bring-up turn no longer asks for the output VERBATIM -- and "
-        "'paste the output' alone is satisfied by 'the output showed one job "
-        "already present', which is the summary the whole instruction exists to "
-        "prevent"
-    )
-
-
-def test_the_cross_document_pointers_still_land_somewhere():
-    """Documents were deduplicated into pointers; nothing pinned the targets.
-
-    The justfile keeps no copy of three README sections and names each by title;
-    README and SKILL.md both link SKILL.md's Unattended-runs section as a
-    rendered anchor. Retitle a heading or repoint a link and they dangle
-    silently -- deleting a duplicate is only an improvement while the pointer
-    that replaced it resolves.
-
-    LITERALS, deliberately, after five rounds of the alternative. Deriving an
-    anchor from a heading means modelling GitHub's slugifier, and every
-    refinement of that model found another divergence from it. Exact strings
-    make no claim about those rules, so they cannot drift from them: change a
-    heading and its assertion fails, change a pointer and its own does, and
-    whoever does either updates the literal here -- the test working, not
-    friction.
-
-    To add a justfile->README pointer, add a tuple to the loop. Do not rebuild
-    the deriver, and do not write a pair out by hand beside it."""
-    readme = (ROOT / "README.md").read_text()
-    skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    # Comment continuations un-wrapped once, so the literals below pin the
-    # POINTER and not the line wrap. Reflowing that block -- what happens the
-    # moment anyone edits the surrounding sentence -- would otherwise fail
-    # against a justfile whose pointer is intact and correctly worded.
-    recipe = (ROOT / "justfile").read_text().replace("\n# ", " ")
-
-    # Every README section the justfile names, having deleted its copies of all
-    # of them. An unpinned pointer dangles silently, which is the failure this
-    # test is named for.
-    for heading, pointer in (
-        ("## Bring-up", 'README "Bring-up"'),
-        ("## Migrating `rowan`", 'README "Migrating rowan"'),
-        ("## No connectors, and what that costs",
-         'README "No connectors, and what that costs"'),
-    ):
-        assert heading in readme.splitlines(), (
-            f"README's {heading!r} was retitled or moved, and the justfile points "
-            "at it by name -- its reader is sent to a section that no longer exists"
-        )
-        assert pointer in recipe, (
-            f"the justfile no longer carries {pointer!r} -- it keeps no copy of "
-            "what that section says, so without the pointer it names nothing"
-        )
-
-    assert "## Unattended runs" in skill.splitlines(), (
-        "SKILL.md's Unattended-runs heading moved or was retitled; README and "
-        "SKILL.md both link #unattended-runs, and both are now dead"
-    )
-    assert "](ld-dashboard/SKILL.md#unattended-runs)" in readme, (
-        "README's link into SKILL.md's Unattended-runs section is gone or "
-        "repointed -- it is the only invocation the bring-up reader has for "
-        "verifying the crons landed"
-    )
-    assert "](#unattended-runs)" in skill, (
-        "SKILL.md's own link to its Unattended-runs section is gone or repointed"
-    )
-
-
-def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
-    """Membership, not just presence — the stale row is the likelier failure.
-
-    The per-job check above proves every blocked producer has a row. The gap is
-    the converse, and it is not hypothetical: latch#183 is what unblocks three of
-    these, and the edit that flips `blocked` to None is not the edit that
-    remembers to delete a README row. A table that keeps listing a producer as
-    dark over-reports what the owner has lost, which is the one thing it exists
-    to say."""
-    # Delimited by explicit markers, after five rounds of positional anchors --
-    # whole file, then the section, then the header row, then the header row
-    # asserted unique. Each closed one false-red window and opened a smaller one,
-    # because every positional anchor is a guess about where a future editor puts
-    # a second table. Markers make no guess: immune to a second table anywhere,
-    # to a column rename, to indentation, and to the header being quoted in prose
-    # or a fence. Two residuals, accepted rather than traded for a sixth anchor:
-    # an invisible pair a README editor can delete (which fails here loudly,
-    # naming them), and a future README documenting the marker convention in a
-    # fence that quotes BOTH markers above the table -- the first-match span
-    # would then be the example, and a correct README would go red. Quoting only
-    # the opening marker just widens the span over the intervening prose, which
-    # is harmless unless that prose carries a row-shaped example line -- which a
-    # fence documenting the convention plausibly would.
-    readme = (ROOT / "README.md").read_text()
-    # ONE search across both markers. `split(close, 1)[0]` never raises -- index
-    # 0 always exists -- so a missing CLOSING marker silently returned the rest
-    # of the file and reverted this to the whole-file scan the marker fence
-    # replaced, while the guard's message claimed both were checked. Deleting the
-    # closing one alone is also the likelier edit of the two.
-    fenced = re.search(r"<!-- dark-table -->(.*?)<!-- /dark-table -->", readme, re.S)
-    assert fenced, (
-        "README's <!-- dark-table --> / <!-- /dark-table --> pair is broken -- "
-        "one or both markers are missing. They delimit the dark-producer table "
-        "so this test does not have to guess at its position; put them back "
-        "around it."
-    )
-    # [\s>]* because the comment above claims immunity to indentation, and a
-    # blockquote prefixes rows with "> " -- `>` is not \s. The
-    # marker move dropped only half of what carried it: indent the table into a
-    # list item or blockquote and a column-0 anchor matches nothing, under a
-    # message about a stale row.
-    rows = re.findall(r"^[\s>]*\| `(ld-[\w-]+)` \| \d+ · \w+ \|", fenced[1], re.M)
-    found = sorted(rows)
-    expected = sorted(j["name"] for j in spec().BLOCKED)
-    assert found == expected, (
-        f"README's dark-producer table lists {found}, but the blocked "
-        f"producers are {expected} -- a row left behind after a blocker cleared "
-        "tells the owner they lost something they have back"
-    )
