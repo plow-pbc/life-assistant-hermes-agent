@@ -7,7 +7,6 @@ producer registered against a data source it does not have.
 """
 import importlib.util
 import json
-import pathlib
 import re
 from pathlib import Path
 
@@ -208,7 +207,7 @@ class FakeHermes:
     to hide."""
 
     def __init__(self, jobs_path, create_rc=0):
-        self.jobs_path = pathlib.Path(jobs_path)
+        self.jobs_path = Path(jobs_path)
         self.create_rc = create_rc
         self.calls = []
 
@@ -355,6 +354,9 @@ def viewer_slots():
     return {int(card): type_ for card, type_ in rows}
 
 
+VIEWER_SLOTS = viewer_slots()
+
+
 def test_the_protocol_card_map_still_parses():
     """A reformatted table must fail loudly, not yield an empty map that agrees
     with everything -- an empty VIEWER_SLOTS makes every pinned-map assertion
@@ -364,8 +366,6 @@ def test_the_protocol_card_map_still_parses():
         f"{len(VIEWER_SLOTS)} -- the table was reformatted and this map is blind"
     )
 
-
-VIEWER_SLOTS = viewer_slots()
 
 
 def test_the_spec_uses_the_viewers_slot_map_and_shares_only_the_alert_card():
@@ -397,13 +397,14 @@ def test_the_skill_table_still_agrees_with_the_spec(job):
     assert f"{job['card']} · {job['type']}" in table
 
 
-# Written by `agent-mgr activate` into the instance dotenv, and by agent-mgr's
-# compose template into the container -- the half this repo does NOT declare, so
-# it is the only part named by hand. Everything else comes from .env.example.
+# The half this repo does not declare, because agent-mgr writes it rather than
+# the operator: everything else is parsed out of .env.example below. Named by
+# hand because there is no file here to parse it from -- each with its origin,
+# so a reader can check the claim.
 SET_BY_AGENT_MGR = {
-    "PLOW_CHAT_BASE_URL",       # derived by activate
-    "PLOW_CHAT_HOME_CHANNEL",   # derived by activate
-    "TZ",                       # templates/compose.yml, from AGENT_TZ
+    "PLOW_CHAT_BASE_URL",       # derived by `agent-mgr activate`
+    "PLOW_CHAT_HOME_CHANNEL",   # derived by `agent-mgr activate`
+    "TZ",                       # agent-mgr templates/compose.yml, from AGENT_TZ
     "AGENT_TZ",                 # the instance dotenv, read after the home resolves
 }
 
@@ -414,7 +415,13 @@ def supplied_by_the_environment():
     The declared half is PARSED from .env.example rather than restated -- this
     is the only typo guard left, since the runtime absent-branch was removed in
     favour of catching it statically, and a hand-kept copy of an environment
-    contract is the drift this file spent a round eliminating elsewhere."""
+    contract is the drift this file spent a round eliminating elsewhere.
+
+    Erring restrictive is the failure mode that bites: a name this set omits
+    refuses a LEGITIMATE target at registration. DASHBOARD_ENDPOINT_URL and
+    DASHBOARD_TOKEN were exactly that until they were declared in .env.example,
+    which is where they belong anyway -- post_to_kiosk.py reads both from the
+    container environment."""
     declared = re.findall(r"^([A-Z][A-Z0-9_]*)=", (ROOT / ".env.example").read_text(), re.M)
     assert declared, ".env.example declares no keys -- has the format changed?"
     return set(declared) | SET_BY_AGENT_MGR
@@ -444,7 +451,6 @@ def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_pa
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
 
     class LyingHermes:
-        calls = []
         def __call__(self, argv):
             return _Proc(0, "", "")
 
@@ -486,3 +492,73 @@ def test_an_unreadable_jobs_file_is_not_mistaken_for_an_absent_one(tmp_path):
         assert "duplicates every job" in str(excinfo.value)
     finally:
         path.chmod(0o600)
+
+
+FIXTURE = ROOT / "tests" / "fixtures" / "hermes-cron-jobs.json"
+
+
+def test_the_reader_handles_a_real_captured_jobs_file():
+    """Against bytes a live hermes actually wrote, not a shape this repo invented.
+
+    The reader aborts on any entry missing `name`, or missing both `enabled` and
+    `paused_at` -- a hard refusal resting on three field names. Every other test
+    here builds its fixtures from those same names, so they would all agree with
+    each other and with nothing else; only this one can tell whether the reader
+    reads hermes. Captured from Hermes Agent v0.19.0 (2026.7.20), values scrubbed
+    because the field names are the contract. See tests/fixtures/README.md."""
+    registered = spec().registered_jobs(FIXTURE)
+    assert registered == {"<scrubbed-name>": True}
+
+
+def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
+    """If a re-capture from a newer hermes drops one of these, this says so in
+    one line -- rather than the reader aborting at 06:00 on a real instance with
+    'the format changed' and nobody knowing which field went."""
+    entry = json.loads(FIXTURE.read_text())["jobs"][0]
+    for field in ("name", "enabled", "paused_at"):
+        assert field in entry, (
+            f"the captured hermes format has no {field!r} -- register_crons.py "
+            "reads it, and the abort it raises would be correct but unexplained"
+        )
+
+
+def test_the_absent_branch_is_only_for_a_genuinely_missing_file(tmp_path):
+    """uid-independent, unlike the chmod row above.
+
+    Under a root runner -- a container, most CI images -- root bypasses the mode
+    bits, so the chmod case reads the file happily and that test goes red for a
+    reason unrelated to the code while leaving this branch unexercised. A
+    directory raises IsADirectoryError, which is an OSError and never a
+    FileNotFoundError, whoever runs it."""
+    with pytest.raises(SystemExit) as excinfo:
+        spec().registered_jobs(tmp_path)
+    assert "duplicates every job" in str(excinfo.value)
+
+
+def test_a_wrong_parent_directory_refuses_before_creating_anything(tmp_path):
+    """The pre-create half of the wrong-path check.
+
+    verify_landed only fires AFTER a create has landed, so a retry there adds a
+    second copy of that job each attempt -- 'duplicate everything forever'
+    becomes 'duplicate one per attempt', which is smaller but not fixed. A fresh
+    instance has /opt/data/cron present and empty; a wrong path usually has a
+    wrong parent, and that costs nothing to check first."""
+    with pytest.raises(SystemExit) as excinfo:
+        spec().registered_jobs(tmp_path / "no-such-dir" / "jobs.json")
+    assert "not a directory" in str(excinfo.value)
+
+
+def test_a_dry_run_does_not_fail_over_a_paused_job_it_did_not_create(
+    monkeypatch, capsys, tmp_path
+):
+    """A preview's contract is "change nothing", and its exit code is what a
+    provisioning script gates on -- so failing here makes a clean preview
+    indistinguishable from a failed real run."""
+    mod = spec()
+    monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
+    path = _jobs_file(tmp_path, [
+        {"name": "ld-weather", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"}
+    ])
+    assert mod.main(["--dry-run"], runner=FakeHermes(path), env=ENV, jobs_path=path) == 0
+    out = capsys.readouterr().out
+    assert "would leave 1 paused producer(s) alone: ld-weather" in out

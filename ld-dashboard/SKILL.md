@@ -47,7 +47,8 @@ fresh instance with nothing scheduled, which the file makes unambiguous.
 it; it will never fire, so skipping it silently leaves a card that stops
 updating. It is left alone, named, and — after the rest of the run finishes —
 **the script exits non-zero**, because the exit code is the only signal that
-reaches an unattended re-provision:
+reaches an unattended re-provision. `--dry-run` says the same thing and still
+exits 0 — a preview must not report a failure over a state it did not create:
 
     WARNING: ld-weather is registered but PAUSED -- it will never fire...
     Resume it: hermes cron resume ld-weather

@@ -208,17 +208,31 @@ def registered_jobs(jobs_path=JOBS_FILE):
     that never updates again.
     """
     path = pathlib.Path(jobs_path)
+    # Before trusting an absence, check the directory that would hold it. A
+    # fresh instance has /opt/data/cron present and empty; a moved or wrong path
+    # almost always has a wrong parent. This is the half of the wrong-path check
+    # that costs nothing -- verify_landed() catches the rest, but only AFTER a
+    # create has already landed, so a retry there duplicates one job per attempt.
+    parent = path.parent
+    if not parent.is_dir():
+        raise SystemExit(
+            f"refusing to register: {parent} is not a directory, so {path} "
+            "cannot be where this hermes persists jobs. Reading that as an empty "
+            "schedule would register duplicates on every run."
+        )
     try:
         raw = path.read_text()
     except FileNotFoundError:
-        # A fresh instance, before anything has been scheduled. The ONLY absence
-        # that means "nothing is registered" -- which is why it is caught by its
-        # own exception rather than through Path.exists(). On 3.12+ exists()
-        # swallows every OSError, so EACCES on /opt/data/cron -- or an unmounted
-        # home, or a moved file -- would come back False and read as a fresh
-        # instance, re-registering every job on every run forever. Silently.
-        # verify_landed() below is the floor under this branch: it proves the
-        # path was right by reading back the first job actually created.
+        # A fresh instance with nothing scheduled yet -- AND a wrong path, which
+        # raises the same ENOENT. This branch cannot tell them apart, which is
+        # exactly why verify_landed() exists: it reads back the first job
+        # actually created and proves the path was right.
+        #
+        # What the exception split buys is narrower than "no absence is
+        # trusted": Path.exists() swallows every OSError on 3.12+, which
+        # `just test` pins, so a permission denial on /opt/data/cron or a
+        # not-a-directory came back False and read as a fresh instance --
+        # re-registering every job on every run, silently. Those refuse now.
         return {}
     except OSError as exc:
         raise SystemExit(
@@ -253,6 +267,11 @@ def registered_jobs(jobs_path=JOBS_FILE):
                 f"({entry!r}) -- the format changed, and reading that as "
                 "'nothing exists' would duplicate every job."
             )
+        # `name`, `enabled` and `paused_at` are not inferred: tests/fixtures/
+        # hermes-cron-jobs.json is a real entry captured from a live agent
+        # (Hermes Agent v0.19.0 / 2026.7.20), and tests/test_cron_spec.py reads
+        # the reader against it. A future hermes that renames them lands here
+        # loudly rather than defaulting a paused producer to runnable.
         if "enabled" not in entry and "paused_at" not in entry:
             raise SystemExit(
                 f"refusing to register: {entry['name']} in {path} carries neither "
@@ -276,8 +295,10 @@ def verify_landed(name, jobs_path):
             f"refusing to continue: `hermes cron create` reported success for "
             f"{name}, but it is not in {jobs_path} afterwards. That file is not "
             "where this hermes persists jobs, so every run would read an empty "
-            "schedule and register duplicates. Check JOBS_FILE against "
-            "`hermes cron list`."
+            "schedule and register duplicates.\n"
+            f"NOTE: {name} HAS been created. Remove it before retrying, or the "
+            f"retry adds a second one: hermes cron remove {name}\n"
+            "Then check JOBS_FILE against `hermes cron list`."
         )
 
 
@@ -352,10 +373,18 @@ def main(argv=None, runner=_run, env=None, jobs_path=JOBS_FILE):
             verified = True
 
     if paused:
+        names = ", ".join(paused)
+        if args.dry_run:
+            # A preview's contract is "change nothing", and its exit code is what
+            # a provisioning script gates on. Failing here would make a clean
+            # preview indistinguishable from a failed real run, over a state the
+            # preview did not create.
+            print(f"would leave {len(paused)} paused producer(s) alone: {names}")
+            return 0
         raise SystemExit(
             "registered what was missing, but "
             f"{len(paused)} producer(s) are PAUSED and will never fire: "
-            f"{', '.join(paused)} -- hermes cron resume <name>"
+            f"{names} -- hermes cron resume <name>"
         )
     return 0
 
