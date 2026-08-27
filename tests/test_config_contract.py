@@ -449,17 +449,17 @@ def unanchored_refs(text):
     line -- there is no wider set to widen to next round.
 
     Returns the offending strings so the caller can name them."""
-    names = sorted(
-        {
-            path.name
-            for path in ROOT.rglob("*")
-            if path.is_dir()
-            and not any(
-                part.startswith(".") or part == "__pycache__"
-                for part in path.relative_to(ROOT).parts
-            )
-        }
-    )
+    # TRACKED directories, not the filesystem. rglob made the guard's coverage a
+    # function of local build state: an untracked docs/ from a plan doc written
+    # in this checkout put `docs`, `superpowers` and `plans` in the alternation
+    # here and in nobody else's, so the guard was strictly weaker on a fresh
+    # clone than on the author's machine -- environment-dependent green, which is
+    # the one thing a table of pinned cases exists to prevent. git ls-files is
+    # identical on every checkout.
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    names = sorted({part for f in tracked for part in Path(f).parent.parts})
     known = "|".join(map(re.escape, names))
     return sorted(
         {
@@ -533,7 +533,10 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     # A first segment that is a real repo-root directory holding different
     # content -- reads fine in the checkout, finds nothing in the container.
     ("see `runtime/config.yaml`", ["runtime/config.yaml"]),
-    ("see `docs/superpowers/plans/x.md`", ["docs/superpowers/plans/x.md"]),
+    # scripts/ is the sharpest case: a real tracked root directory holding a
+    # DIFFERENT file (latch-verdict.py), so the string reads fine in the checkout
+    # and finds nothing in the container.
+    ("run `scripts/latch-verdict.py`", ["scripts/latch-verdict.py"]),
     ("see `tests/fixtures/hermes-cron-jobs.json`", ["tests/fixtures/hermes-cron-jobs.json"]),
     # Bare single-segment citations, which are prose natural to these files.
     ("vendored under `ld-shared/` and mounted", ["ld-shared/"]),
