@@ -626,19 +626,26 @@ def test_the_cross_document_pointers_still_land_somewhere():
     """Two documents were deduplicated into pointers; nothing pinned the targets.
 
     The justfile deliberately keeps no copy of the bring-up procedure and names
-    README's section as text; README links SKILL.md's section as a rendered
-    anchor. Retitle either heading and both dangle silently -- the justfile
-    reader is sent to a section that no longer exists, the README reader gets a
-    dead in-page jump. Deleting a duplicate is only an improvement while the
-    pointer that replaced it resolves."""
+    README's section as text; README and SKILL.md both link SKILL.md's section as
+    a rendered anchor. Retitle a heading or repoint a link and they dangle
+    silently -- deleting a duplicate is only an improvement while the pointer
+    that replaced it resolves.
+
+    LITERALS, deliberately, after five rounds of the alternative. Deriving the
+    anchor from the heading means modelling GitHub's slugifier, and every
+    refinement of that model found another divergence -- punctuation deleted
+    rather than collapsed, spaced em-dashes yielding two hyphens, `_` surviving,
+    an optional path prefix that let a README link drop `ld-dashboard/SKILL.md`
+    and still pass. The value being protected is two pointers. Four exact
+    strings cannot drift from GitHub's rules because they make no claim about
+    them: change a heading and the first assertion fails, change a link and its
+    own does, and whoever does either updates the literal here -- which is the
+    test doing its job, not friction. If a third pointer ever appears, add a
+    line; do not rebuild the deriver."""
     readme = (ROOT / "README.md").read_text()
     skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
     recipe = (ROOT / "justfile").read_text()
 
-    # The heading LINE, not a substring of it. Retitle by extension --
-    # "## Unattended runs and forced runs" -- and a substring check still
-    # passes while the rendered anchor becomes #unattended-runs-and-forced-runs
-    # and every link to it dies. Same reason the table checks assert whole rows.
     assert "## Bring-up" in readme.splitlines(), (
         "the justfile keeps no copy of the bring-up procedure and points at "
         "README's `Bring-up` section by name -- retitling it leaves the justfile "
@@ -648,43 +655,15 @@ def test_the_cross_document_pointers_still_land_somewhere():
         "the justfile no longer points at README -- it keeps no copy of the "
         "procedure, so without the pointer it names nothing at all"
     )
-
-    heading = next(
-        (l for l in skill.splitlines() if l.startswith("## ") and "Unattended" in l),
-        None,
+    assert "## Unattended runs" in skill.splitlines(), (
+        "SKILL.md's Unattended-runs heading moved or was retitled; README and "
+        "SKILL.md both link #unattended-runs, and both are now dead"
     )
-    assert heading, "SKILL.md has no Unattended-runs heading for README to link"
-    # GitHub's real algorithm: lowercase, DELETE every character that is not a
-    # word char, hyphen or space, then map spaces to hyphens. Not "collapse runs
-    # of punctuation to one hyphen" -- the difference shows up on the two shapes
-    # this repo actually writes. A spaced em-dash separator collapses to TWO
-    # hyphens ("## Unattended runs — forced" anchors at #unattended-runs--forced;
-    # README.md already has "## The account boundary — how one repo serves two
-    # people"), and `_` survives ("## The ld_weather job" -> #the-ld_weather-job).
-    # Getting either wrong fails a README updated to the CORRECT anchor, with a
-    # message claiming the jump is dead -- which sends the next author to edit a
-    # link that resolves fine.
-    slug = "#" + re.sub(r"[^\w\- ]", "", heading[3:].strip().lower()).replace(" ", "-")
-
-    # Equality on the extracted target, not containment. `"#unattended-runs" in
-    # readme` is satisfied by `#unattended-runs-and-forced-runs` -- the same
-    # retitle-by-extension hole this test closes on the heading side, which has
-    # to be closed at the LINK side too, where a section split moves it.
-    #
-    # Scoped to the link whose LABEL names the section. An unscoped in-page
-    # pattern matches every anchor in the file: SKILL.md self-links once today,
-    # and the moment a second one appears `assert found` goes vacuous and the
-    # equality degrades from "this pointer resolves" to "some link in the
-    # document happens to land here". [\w-] so a correct underscore anchor is
-    # extracted rather than reported missing.
-    label_link = r"\[[^\]]*Unattended[^\]]*\]\((?:ld-dashboard/SKILL\.md)?(#[\w-]*)\)"
-    for label, text in (("README", readme), ("SKILL.md", skill)):
-        found = [m.group(1) for m in re.finditer(label_link, text)]
-        assert found, (
-            f"{label} has no link labelled for SKILL.md's Unattended-runs "
-            "section -- the pointer that replaced the deleted copy is gone"
-        )
-        assert all(a == slug for a in found), (
-            f"{label} links {found!r}, but the heading now anchors at {slug!r} -- "
-            "the in-page jump is dead"
-        )
+    assert "](ld-dashboard/SKILL.md#unattended-runs)" in readme, (
+        "README's link into SKILL.md's Unattended-runs section is gone or "
+        "repointed -- it is the only invocation the bring-up reader has for "
+        "verifying the crons landed"
+    )
+    assert "](#unattended-runs)" in skill, (
+        "SKILL.md's own link to its Unattended-runs section is gone or repointed"
+    )
