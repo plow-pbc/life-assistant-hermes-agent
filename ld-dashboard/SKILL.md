@@ -164,9 +164,9 @@ already-running gateway loaded the newly created schedule. If the gateway caches
 its jobs at startup, every command above succeeds, a card appears, and the wall
 screen is still dark tomorrow morning.
 
-**Measured, 2026-08-27, on Hermes Agent v0.19.0 (2026.7.20):** it does load
-them. Both jobs were created against an already-running gateway and fired
-unforced at their first 06:00, with no restart in between — `hermes cron runs`
+**Measured 2026-08-27**, on the image named below: it does load them. Both jobs
+were created against an already-running gateway and fired unforced at their
+first 06:00, with no restart in between — `/opt/hermes/bin/hermes cron runs`
 shows `source=builtin` where a forced run shows `source=direct`, which is how
 you tell the two apart:
 
@@ -182,9 +182,13 @@ A forced run is now enough for bring-up: the schedule-loading question is
 settled above, and you do not need the restart.
 
 An image bump is the one thing that could reintroduce startup caching, so check
-yours against the version above — `hermes --version`, in the container. To
-re-settle it you have to let a *real* fire land, because `source=builtin` is the
-one row you cannot force: create a throwaway job a few minutes out against the
-running gateway and wait for it. Then read `source=`, never "a card appeared" —
-a card appears either way, which is the whole reason a forced run could not
-answer this.
+yours against the one it was measured on:
+
+    /opt/hermes/bin/hermes --version
+    Hermes Agent v0.19.0 (2026.7.20) · upstream b4f8c491
+
+Re-settling it means letting a *real* fire land, because `source=builtin` is the
+one row you cannot force — `cron create '*/2 * * * *' ...` against the running
+gateway, then `cron delete <job-id>` once the row lands. Read `source=`, never
+"a card appeared": a card appears either way, which is the whole reason a forced
+run could not answer this.
