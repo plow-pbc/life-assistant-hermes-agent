@@ -451,11 +451,11 @@ def _is_hostname_head(ref):
     """A URL's host segment is not a citation of a repo directory.
 
     `site.api.espn.com/apis/site/v2/sports/...` is a live line in
-    ld-sports/SKILL.md. It passes today only because no tracked directory is
-    named apis, site, v2 or sports -- the same grow-with-the-tree hazard the
-    segment boundary guards for mid-token matches, on a case the ledger asserts
-    green. Add a tracked ld-shared/references/sports/ and both that row and the
-    real line would go red, telling the author to give a URL a container path.
+    ld-sports/SKILL.md. Without this exemption it would be green only by
+    accident -- no tracked directory happens to be named apis, site, v2 or
+    sports, so the pattern finds nothing to match -- and it would go red the day
+    a tracked `ld-shared/references/sports/` appeared, telling the author to give
+    a URL a container path. This is what makes it green on purpose instead.
 
     A leading dot is a hidden DIRECTORY, not a host: `.github/workflows/ci.yml`
     resolves under /opt/hermes exactly like any other bare path, so exempting it
@@ -602,8 +602,9 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     ("run `/opt/hermes/bin/hermes cron list`", []),
     ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
     # A URL is not a path citation.
-    # A URL is not a path citation, and both spellings are asserted rather than
-    # left exempt by accident of the character class.
+    # The real ld-sports/SKILL.md line. Green by accident today -- it holds no
+    # tracked segment, so the pattern never matches it -- and the row below is
+    # the one that pins the exemption itself.
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
     # The row only the hostname heuristic can make green: `scripts` IS tracked,
     # so the pattern matches and the string does not start with `/`. Without it
@@ -612,8 +613,6 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     # Exempt via the absolute rule -- the match begins at the `//` -- not via the
     # heuristic. Pinned so that stays true.
     ("https://example.com/scripts/thing.py", []),
-    # A hidden directory is not a host: this resolves under /opt/hermes like any
-    # other bare path, so exempting it would be a silent miss.
     # `scripts` is tracked so the pattern matches, and the head is a HIDDEN
     # DIRECTORY rather than a host -- it resolves under /opt/hermes like any
     # other bare path, so exempting it would be a silent miss. (A row naming an
