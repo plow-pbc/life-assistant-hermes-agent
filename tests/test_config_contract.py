@@ -488,7 +488,8 @@ WRITE_SAFE_ROOT = "/opt/data"
 HANDOFFS = sorted(
     (p.parent.parent.name, p) for p in ROOT.glob("ld-*/scripts/post_*.py")
 )
-PRODUCERS = [(s, p) for s, p in HANDOFFS if (p.parent.parent / "SKILL.md").exists()]
+HELPER = "ld-shared"  # the canonical post_to_kiosk, not a producer
+PRODUCERS = [(s, p) for s, p in HANDOFFS if s != HELPER]
 
 
 def _handoff(wrapper):
@@ -513,12 +514,15 @@ def test_handoff_discovery_still_finds_the_producers():
         f"discovery found {len(PRODUCERS)} producer handoff(s); ld-weather and "
         "ld-sports both set MESSAGE_FILE, so the glob has stopped matching"
     )
-    sheetless = {skill for skill, _ in HANDOFFS} - {skill for skill, _ in PRODUCERS}
-    assert sheetless == {"ld-shared"}, (
-        f"{sorted(sheetless)} ship a handoff wrapper with no SKILL.md beside it. "
-        "Only ld-shared may -- it is the helper, not a producer. A producer that "
-        "loses or misnames its sheet would otherwise drop out of the agreement "
-        "check instead of failing it."
+    # One-directional: a producer is anything that is not the helper, and every
+    # producer must HAVE a sheet. Inferring "producer" from the absence of a
+    # SKILL.md reads that absence as two different things -- the day ld-shared
+    # gains one (it is a mounted skill directory, so it plausibly will) it would
+    # enter PRODUCERS and be checked against its own docstring placeholder.
+    missing = {s for s, w in PRODUCERS if not (w.parent.parent / "SKILL.md").exists()}
+    assert not missing, (
+        f"{sorted(missing)} ship a handoff wrapper with no SKILL.md beside it, so "
+        "nothing checks that the agent is told the path its wrapper reads"
     )
 
 
@@ -554,16 +558,20 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
     what this is meant to close."""
     sheet = (wrapper.parent.parent / "SKILL.md").read_text()
     path = _handoff(wrapper)
-    boundary = r"(?![\w.\-/])"
+    edge = r"(?<![\w.\-/])", r"(?![\w.\-/])"
 
-    assert re.search(re.escape(path) + boundary, sheet), (
+    assert re.search(edge[0] + re.escape(path) + edge[1], sheet), (
         f"{skill}/SKILL.md never names {path}, the handoff its wrapper reads -- "
         "the agent would write somewhere else entirely"
     )
-    # Scoped to the -text convention deliberately: it is what the drift looks
-    # like, and a future handoff that does not follow it simply finds nothing
-    # here rather than failing a sheet that is correct.
-    stale = set(re.findall(r"[/\w.-]*-text" + boundary, sheet)) - {path}
+    # A PATH ending in -text, not any token: the leading slash is what keeps the
+    # prose "plain-text cards" -- the wording cards 1/2/4 already use, and those
+    # are exactly the four producers still blocked -- from reading as a stale
+    # sibling. Scoped to the suffix rather than to the handoff's directory
+    # because the sheets legitimately name /opt/data/ld/config.json, so a
+    # directory anchor fails a correct sheet. A future handoff not ending in
+    # -text simply finds nothing here; the assertion above still binds it.
+    stale = set(re.findall(edge[0] + r"(/[\w./-]*-text)" + edge[1], sheet)) - {path}
     assert not stale, (
         f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
         "half-applied path change, and the agent is told two different files"
