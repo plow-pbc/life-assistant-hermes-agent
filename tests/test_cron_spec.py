@@ -699,8 +699,12 @@ def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
     # because every positional anchor is a guess about where a future editor puts
     # a second table. Markers make no guess: immune to a second table anywhere,
     # to a column rename, to indentation, and to the header being quoted in prose
-    # or a fence. The cost is an invisible pair a README editor can delete, and
-    # that fails here, loudly, naming them.
+    # or a fence. Two residuals, accepted rather than traded for a sixth anchor:
+    # an invisible pair a README editor can delete (which fails here loudly,
+    # naming them), and a future README documenting the marker convention in a
+    # fence that quotes BOTH markers above the table -- the first-match span
+    # would then be the example, and a correct README would go red. Quoting only
+    # the opening marker is harmless: the span just widens to include the table.
     readme = (ROOT / "README.md").read_text()
     # ONE search across both markers. `split(close, 1)[0]` never raises -- index
     # 0 always exists -- so a missing CLOSING marker silently returned the rest
@@ -714,14 +718,16 @@ def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
         "so this test does not have to guess at its position; put them back "
         "around it."
     )
-    # \s* because the comment above claims immunity to indentation and the
+    # [\s>]* because the comment above claims immunity to indentation, and a
+    # blockquote prefixes rows with "> " -- `>` is not \s. The
     # marker move dropped only half of what carried it: indent the table into a
     # list item or blockquote and a column-0 anchor matches nothing, under a
     # message about a stale row.
-    rows = re.findall(r"^\s*\| `(ld-[\w-]+)` \| \d+ · \w+ \|", fenced[1], re.M)
+    rows = re.findall(r"^[\s>]*\| `(ld-[\w-]+)` \| \d+ · \w+ \|", fenced[1], re.M)
+    found = sorted(rows)
     expected = sorted(j["name"] for j in spec().BLOCKED)
-    assert sorted(rows) == expected, (
-        f"README's dark-producer table lists {sorted(rows)}, but the blocked "
+    assert found == expected, (
+        f"README's dark-producer table lists {found}, but the blocked "
         f"producers are {expected} -- a row left behind after a blocker cleared "
         "tells the owner they lost something they have back"
     )
