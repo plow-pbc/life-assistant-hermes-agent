@@ -341,8 +341,9 @@ def test_the_protocol_card_map_still_parses():
     # 'weather', but the viewer renders that slot as X" -- blaming the spec when
     # the protocol doc is what changed.
     assert len(VIEWER_SLOTS) == len(VIEWER_SLOT_ROWS), (
-        f"kiosk-protocol.md's Card map reuses a card number: parsed "
-        f"{VIEWER_SLOT_ROWS} -- one row silently overrode another"
+        f"two rows parsed from kiosk-protocol.md share a card number: "
+        f"{VIEWER_SLOT_ROWS} -- one silently overrode the other. They need not "
+        "both be in the Card map; this parser scans the whole document"
     )
 
 
