@@ -449,18 +449,18 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     such backing, which is why the rule below is that there are none."""
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
+    # Every directory name a bare citation could plausibly be, taken from the
+    # tree so a new one is covered the moment it exists.
+    known = "|".join(
+        map(re.escape, sorted(
+            {p.name for p in ROOT.iterdir() if p.is_dir() and not p.name.startswith(".")}
+            | {p.name for p in (ROOT / "ld-shared").iterdir() if p.is_dir()}
+        ))
+    )
     seen = 0
     for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
         text = skill_md.read_text()
         for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
-            # An ellipsis is prose, not a path -- these files write
-            # `/opt/data/skills/ld-weather/scripts/...` to elide the rest of a
-            # command. Skipped rather than resolved: stripping the dots leaves a
-            # trailing slash that strips to the real parent directory, so it
-            # would pass the bound below and increment `seen` as though a
-            # reference had been verified. Measured, not assumed.
-            if "..." in ref:
-                continue
             ref = ref.rstrip(".").rstrip("/")
             head, _, rest = ref.partition("/")
             assert head in leaves, (
@@ -482,15 +482,22 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
         # hop identically to how it excluded the legitimate prefix.
         #
         # Matching the tail and asserting the prefix covers the bare, `./` and
-        # `../../` forms in one rule, and needs no list of skill names to keep in
-        # step with the tree. This is invisible from the host: an unanchored path
-        # resolves fine when a reader clicks it in the repo and not at all for
-        # the agent, which is the only reader that matters.
+        # `../../` forms in one rule. The segment names are DERIVED (see `known`
+        # above) rather than listed: an alternation of ld-*|scripts|references
+        # was just a second hardcoded list, one name narrower than the tree, so a
+        # bare `docs/...` or `runtime/config.yaml` -- real repo-root directories
+        # holding different content -- read fine in the checkout and found
+        # nothing in the container, which is the exact failure this guards.
+        #
+        # The tail is optional so a bare single-segment citation is caught too:
+        # `vendored under ld-shared/` is prose natural to these files, and the
+        # absolute loop was widened to accept directory citations for that
+        # reason. This is invisible from the host -- an unanchored path resolves
+        # fine when a reader clicks it in the repo and not at all for the agent,
+        # which is the only reader that matters.
         unanchored = sorted(
             {
-                ref for ref in re.findall(
-                    r"[\w./-]*(?:ld-[\w-]+|scripts|references)/[\w./-]+", text
-                )
+                ref for ref in re.findall(rf"[\w./-]*(?:{known})/[\w./-]*", text)
                 if not ref.startswith(prefix)
             }
         )
