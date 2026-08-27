@@ -310,13 +310,11 @@ def test_the_reader_handles_a_real_captured_jobs_file():
 
 
 def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
-    """If a re-capture from a newer hermes drops one of these, this says so in
-    one line -- rather than the reader misbehaving on a real instance with
-    nobody knowing which field went."""
+    """If a re-capture drops `enabled` or `paused_at`, this says so in one line
+    -- rather than a silently wrong answer with nobody knowing which field went.
+    `name` raises on its own; this test only gets to it first."""
     entry = json.loads(FIXTURE.read_text())["jobs"][0]
-    # One message per field, because registered_jobs() genuinely treats them
-    # differently and a reader who trips one row should not be told about the
-    # other two.
+    # A reader who trips one row should not be told about the other two.
     consequences = {
         "name": "registered_jobs() keys on it, so a re-capture without it makes "
                 "every read raise KeyError('name') -- which names the field "
