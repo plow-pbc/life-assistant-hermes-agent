@@ -160,8 +160,13 @@ agent-mgr activate <agent>           # prints a code — its owner texts it from
 # each composed tile to /opt/data/ld/<bundle>-text with its file tool for the
 # wrapper to read back, so a root-owned `ld/` costs every card and does it
 # quietly: a blocked file tool is the kind of thing an agent improvises around,
-# and intermittent posting looks fine from the kiosk.
-mkdir -p ~/.hermes-<agent>/{skills,ld}
+# and intermittent posting looks fine from the kiosk. Nothing downstream
+# re-checks either one: `register_crons.py` refuses on a config it cannot read,
+# but an `ld/` the agent can read and not write passes bring-up clean and
+# surfaces later as a card that stopped updating. This line is the only defence.
+# Two paths, not `{skills,ld}` -- brace expansion is bash/zsh, and under the
+# host's `sh` that collapses to one literal directory and exits 0.
+mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it

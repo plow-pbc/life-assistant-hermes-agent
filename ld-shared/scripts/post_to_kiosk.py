@@ -28,7 +28,10 @@ via argv:
       and its body sits durably in the operator's host home. Fine for the two
       producers on this transport, which overwrite unconditionally every run
       and post public feed data; worth deciding deliberately for a future
-      producer whose body paraphrases private mail or iMessage.
+      producer whose body paraphrases private mail or iMessage. It also only
+      clears on a run that reaches the write: a producer that errors before
+      composing leaves the wrapper reading the previous body and posting it as
+      fresh, and nothing here timestamps it.
     - MESSAGE_FILE None (read-only agent sandboxes, e.g. Plow — its file tool
       cannot create a handoff at all): read stdin, fed by the caller's quoted
       heredoc, so an injected body is inert data, never parsed as shell.
