@@ -112,7 +112,7 @@ def _cfg(tmp_path, zone="America/Los_Angeles"):
     Every main() test supplies one: registration refuses outright when the
     config's family.timezone is not the container's, and a test that did not
     would be asserting that refusal instead of the behaviour it names."""
-    config = tmp_path / "ld-config.json"
+    config = tmp_path / "config.json"
     config.write_text(json.dumps({"family": {"timezone": zone}}))
     return config
 
@@ -370,7 +370,7 @@ def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):
     promise 06:00. That is wrong in exactly the place a life assistant exists
     for, and it is the invariant the issue asks for by name."""
     mod = spec()
-    config = tmp_path / "ld-config.json"
+    config = tmp_path / "config.json"
     config.write_text(json.dumps({"family": {"timezone": "America/Chicago"}}))
 
     with pytest.raises(SystemExit) as excinfo:
@@ -395,7 +395,7 @@ def test_the_container_zone_comes_from_TZ_not_etc_localtime(tmp_path):
     Antarctica/Troll is nobody's local time, so agreement here is only possible
     if TZ was consulted."""
     mod = spec()
-    config = tmp_path / "ld-config.json"
+    config = tmp_path / "config.json"
     config.write_text(json.dumps({"family": {"timezone": "Antarctica/Troll"}}))
     mod.require_timezone_agreement(config, {"TZ": "Antarctica/Troll"})
 
@@ -476,7 +476,7 @@ def test_a_config_without_a_usable_timezone_refuses_by_name(tmp_path, config):
     read directly. Without the full exception tuple they escape as a raw
     traceback or an AttributeError instead of the refusal that names what to
     fix."""
-    path = tmp_path / "ld-config.json"
+    path = tmp_path / "config.json"
     path.write_text(json.dumps(config))
     with pytest.raises(SystemExit) as excinfo:
         spec().require_timezone_agreement(path, {"TZ": "America/Los_Angeles"})

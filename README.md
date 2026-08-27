@@ -86,7 +86,7 @@ imply this one: #14 landing makes it *more* reachable, not less.
    pointer rather than a copy, deliberately: this section's whole premise is
    that everything points here instead of carrying its own sequence, and the
    abbreviated `restore` → `up` chain that used to sit on this line was already
-   missing the `mkdir` that keeps `skills/` from landing root-owned.
+   missing the `mkdir` that keeps `skills/` and `ld/` from landing root-owned.
 
 Step 1 retires precondition 1. Step 3 is the one that outlives it, so this
 section stays until `rowan` is actually migrated — not until #14 closes.
@@ -145,17 +145,42 @@ not an omission to be tidied up later.
 `<agent>` is the registry name. `life` is the only instance that *may* be
 registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 
+Land `/opt/data/ld/config.json` before you start, not after: the last step below
+registers the crons, and `register_crons.py` reads `family.timezone` from that
+file and refuses without it. The producers read their location and teams from it
+too, as the agent. It goes at `~/.hermes-<agent>/ld/config.json` on the host,
+landed as the instance owner rather than through a root `exec`, and the live one
+is mode-600. The dotenv needs `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN`
+alongside it. `ld-shared/scripts/ld_config_gate.py` is the single definition of
+a valid config — run it rather than eyeballing the JSON. Its `family.timezone`
+must match the container's `AGENT_TZ`, because `hermes cron create` takes no
+per-job zone and every producer fires in the container's; you do not have to
+check that by eye, though — `register_crons.py` refuses to register at all when
+they differ, so a mismatch stops bring-up rather than reaching the wall two
+hours late.
+
 ```sh
 agent-mgr restore <agent>            # config.yaml and the plugin into its home
 agent-mgr activate <agent>           # prints a code — its owner texts it from their phone
 
-# BEFORE `up`, and not optional. compose.override.yml mounts each skill UNDER
-# /opt/data, which is already the home bind, so the runtime creates any missing
-# mountpoint inside that bind's source on the host -- as root. Create the parent
-# first, as the instance owner, or `skills/` lands root-owned and no later
-# `restore` can install into it. plow-pbc/agent-mgr#44 is the fleet-level fix;
-# until it lands this line is what stands in for it.
-mkdir -p ~/.hermes-<agent>/skills
+# BEFORE `up`, and not optional. Both directories have to be owned by the
+# instance owner, for different reasons. `skills/`: compose.override.yml mounts
+# each skill UNDER /opt/data, which is already the home bind, so the runtime
+# creates the missing mountpoint inside that bind's source on the host -- as
+# root, and no later `restore` can install into it. plow-pbc/agent-mgr#44 is the
+# fleet-level fix; until it lands this line stands in for it. `ld/`: nothing
+# mounts there, so it is instead whoever first lands config.json in it who owns
+# it -- and `agent-mgr compose ... exec` is root (see below). The agent writes
+# each composed tile to /opt/data/ld/<bundle>-text with its file tool for the
+# wrapper to read back, so a root-owned `ld/` costs every card and does it
+# quietly: a blocked file tool is the kind of thing an agent improvises around,
+# and intermittent posting looks fine from the kiosk. Nothing downstream
+# re-checks either one: `register_crons.py` refuses on a config it cannot read,
+# but an `ld/` the agent can read and not write passes bring-up clean and
+# surfaces later as a card that stopped updating. This line is the only defence.
+# Two paths, not `{skills,ld}` -- brace expansion is bash/zsh, and under the
+# host's `sh` that collapses to one literal directory and exits 0.
+mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
@@ -183,7 +208,7 @@ repo avoids restating a uid rule. The repo has been bitten by root-owned paths
 inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
 **The turn costs you the exit code.** `register_crons.py` refuses loudly — a missing or
-unusable `ld-config.json`, a `family.timezone` that is not the container's zone,
+unusable `config.json`, a `family.timezone` that is not the container's zone,
 an empty `TZ`, a failed `cron create`, an unreadable `jobs.json`, a producer
 that is registered but PAUSED — but a turn returns the *turn's* status, so a
 non-zero exit reaches you only as whatever the agent chose to say about it. The
@@ -212,16 +237,6 @@ own.
 Then check it landed and watch a card appear — see
 [Unattended runs](ld-dashboard/SKILL.md#unattended-runs), which carries both the
 host and in-container forms, and what a forced run does and does not prove.
-
-The dashboard also needs `/opt/data/ld/config.json` (the producers read
-`weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and
-`DASHBOARD_TOKEN` in the instance's dotenv. `ld-shared/scripts/ld_config_gate.py`
-is the single definition of a valid config — run it rather than eyeballing the
-JSON. Its `family.timezone` must match the container's `AGENT_TZ`, because
-`hermes cron create` takes no per-job zone and every producer fires in the
-container's; you do not have to check that by eye, though —
-`register_crons.py` refuses to register at all when they differ, so a mismatch
-stops bring-up rather than reaching the wall two hours late.
 
 There is no `check-connectors` step: this instance has no connectors. See
 [No connectors, and what that costs](#no-connectors-and-what-that-costs).
