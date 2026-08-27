@@ -46,6 +46,7 @@ HERMES = "/opt/hermes/bin/hermes"
 JOBS = (
     {
         "name": "ld-weather",
+        "card": 3,
         "schedule": "0 6 * * *",
         "prompt": (
             "Run the ld-weather producer now: fetch the forecast and post the "
@@ -57,6 +58,7 @@ JOBS = (
     },
     {
         "name": "ld-sports",
+        "card": 5,
         "schedule": "0 6 * * *",
         "prompt": (
             "Run the ld-sports producer now: fetch results and post the "
@@ -68,6 +70,7 @@ JOBS = (
     },
     {
         "name": "ld-morning-updates",
+        "card": 2,
         "schedule": "0 7 * * *",
         "prompt": (
             "Run the ld-morning-updates affirmation producer now: compose the "
@@ -79,6 +82,7 @@ JOBS = (
     },
     {
         "name": "ld-morning-triage",
+        "card": 1,
         "schedule": "5 7 * * *",
         "prompt": (
             "Run the ld-morning-triage producer now: surface the one "
@@ -91,6 +95,7 @@ JOBS = (
     },
     {
         "name": "ld-weekly-digest",
+        "card": 4,
         "schedule": "0 17 * * 0",
         "prompt": (
             "Run the ld-weekly-digest producer now: compose the week-ahead "
@@ -102,6 +107,7 @@ JOBS = (
     },
     {
         "name": "ld-calendar-nudge",
+        "card": 1,
         "schedule": "20,50 * * * *",
         "prompt": (
             "Run the ld-calendar-nudge producer now: if a meeting with other "
@@ -123,7 +129,14 @@ def resolve_deliver(spec, env):
 
     Only reached for a live job. A blank uid would register a job that delivers
     to the literal string `plow_chat:` -- accepted at create time and silently
-    undeliverable at 06:00, which is the failure this refuses to create."""
+    undeliverable at 06:00, which is the failure this refuses to create.
+
+    Two ways to be left holding an unusable target, and both refuse here. The
+    variable is set but blank, which the substitution catches; or the placeholder
+    is spelled in a shape the pattern does not match -- lowercase, hyphenated,
+    dotted -- in which case re.sub simply leaves it verbatim and hands back
+    `plow_chat:${whatever}` as if it were a chat id. The second is the quieter of
+    the two, so the result is checked rather than the input."""
     if spec is None:
         return None
     def sub(match):
@@ -136,14 +149,29 @@ def resolve_deliver(spec, env):
                 "`agent-mgr activate` and lives in the instance's own dotenv."
             )
         return value
-    return re.sub(r"\$\{([A-Z][A-Z0-9_]*)\}", sub, spec)
+    out = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sub, spec)
+    if "${" in out:
+        raise SystemExit(
+            f"refusing to register: delivery target {spec!r} still holds an "
+            "unexpanded placeholder after substitution -- it would be sent to "
+            "hermes as a literal chat id and fail only when the job fires."
+        )
+    return out
 
 
 def existing_names(runner):
-    """Job names already registered. Aborts rather than guessing.
+    """The set of job names already registered. Aborts rather than guessing.
 
-    The seed learned this one: treating a failed list as an empty list
-    re-registers everything."""
+    The seed learned the abort: treating a failed list as an empty list
+    re-registers everything.
+
+    Returns parsed names, not the raw blob, and that is the whole point. Every
+    prompt in JOBS below literally contains its own producer name ("Run the
+    ld-weather producer now..."), and `hermes cron list` renders job fields; a
+    dedup key of "does this string appear anywhere in the output" is therefore
+    one wording change away from matching a job's own prompt and silently
+    skipping a registration. Reading the Name: field makes the key the field it
+    is supposed to be."""
     proc = runner([HERMES, "cron", "list"])
     if proc.returncode != 0:
         raise SystemExit(
@@ -151,13 +179,14 @@ def existing_names(runner):
             "snapshot read as 'nothing exists' would duplicate every job.\n"
             f"{proc.stdout}\n{proc.stderr}"
         )
-    return proc.stdout
+    return set(re.findall(r"^\s*Name:\s*(\S+)\s*$", proc.stdout, re.M))
 
 
-def is_present(listing, name):
-    """Whole-word match, never a substring -- `ld-weather` must not be satisfied
-    by a stale `ld-weather-v2`."""
-    return re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", listing) is not None
+def is_present(names, name):
+    """Exact membership. `ld-weather` is not satisfied by a stale
+    `ld-weather-v2` or `ld-weather.v2` -- a near-miss counted as present skips
+    the real registration and the card never updates."""
+    return name in names
 
 
 def create_argv(job, env):
@@ -184,14 +213,19 @@ def main(argv=None, runner=_run, env=None):
     for job in BLOCKED:
         print(f"blocked, not registered: {job['name']} ({job['schedule']}) -- {job['blocked']}")
 
-    if not args.dry_run and not shutil.which(HERMES) and not os.path.exists(HERMES):
+    if not shutil.which(HERMES) and not os.path.exists(HERMES):
         raise SystemExit(f"{HERMES} not found -- run this inside the agent container")
 
-    listing = "" if args.dry_run else existing_names(runner)
+    # Always listed, even for --dry-run. `hermes cron list` is read-only, and a
+    # preview that skips it reports "would register" for a job that is already
+    # there -- the opposite of what the real run does, from the one mode whose
+    # entire job is to say what the real run will do. It also means a broken
+    # `cron list` shows a clean plan and then aborts for real.
+    names = existing_names(runner)
 
     for job in LIVE:
-        if not args.dry_run and is_present(listing, job["name"]):
-            print(f"already present, skipped: {job['name']}")
+        if is_present(names, job["name"]):
+            print(f"already present, {'would skip' if args.dry_run else 'skipped'}: {job['name']}")
             continue
         argv_ = create_argv(job, env)
         if args.dry_run:

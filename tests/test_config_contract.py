@@ -15,7 +15,7 @@ import importlib.util
 import json
 import re
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
@@ -396,7 +396,18 @@ def test_split_probe_survives_a_body_that_never_arrived():
 
 
 def override():
-    return yaml.safe_load((ROOT / "compose.override.yml").read_text())
+    """The parsed override, or a refusal that says which file is missing.
+
+    override_mounts() feeds a @parametrize, so it runs at COLLECTION time: an
+    absent or malformed file becomes a module-level error that takes down every
+    unrelated test here and reads as "the test module is broken". Same
+    mis-attribution the _recipe helper below already guards against."""
+    path = ROOT / "compose.override.yml"
+    assert path.is_file(), (
+        "compose.override.yml is missing -- it is how the ld- skills reach the "
+        "container, and agent-mgr loads it only if it exists (lib/common.sh:577)"
+    )
+    return yaml.safe_load(path.read_text())
 
 
 def _split_volume(spec):
@@ -514,10 +525,43 @@ def test_each_mount_lands_flat_under_the_skills_directory_read_only(source, targ
     assert subdir == leaf, f"{subdir} is mounted as {leaf} -- keep the names equal"
 
 
-def test_the_override_mounts_nothing_over_the_agent_home():
-    """/opt/data is the home agent-mgr's template mounts and resolve-guard reads
-    to prove this container belongs to this agent. An override target of
-    /opt/data would replace it, and the guard compares the FIRST volume whose
-    target is /opt/data -- so the shadowing would be invisible to it."""
+def test_no_mount_target_is_an_ancestor_of_the_agent_home():
+    """/opt/data is the home agent-mgr's template mounts, and resolve-guard reads
+    the first volume targeting it to prove this container is this agent's.
+
+    A target of /opt/data exactly is already refused by the strict-child rule
+    above, so asserting only that would be a test that cannot fail on its own.
+    The gap it leaves is an ANCESTOR -- `/opt`, or `/` -- which no rule above
+    covers and which buries the home just as thoroughly."""
+    home = PurePosixPath("/opt/data")
     for _, target, _ in override_mounts():
-        assert target != "/opt/data", "the override must not remount the agent home"
+        t = PurePosixPath(target)
+        assert t != home and t not in home.parents, (
+            f"{target} contains the agent home; resolve-guard would be reading a "
+            "mount this override buried"
+        )
+
+
+def test_every_absolute_skill_path_in_a_skill_md_resolves_in_the_tree():
+    """The SKILL.md files tell the agent to run absolute container paths, and
+    those are the strings that decide whether a producer runs at all.
+
+    Nothing else checks them: test_wrappers.py exercises the relative
+    ../../ld-shared hop by importing the wrappers, but a typo, a renamed skill
+    directory, or a moved script leaves every test green and fails at 06:00 as
+    "the agent ran a path that isn't there"."""
+    prefix = "/opt/data/skills/"
+    leaves = {t[len(prefix):] for _, t, _ in override_mounts()}
+    seen = 0
+    for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
+        for ref in re.findall(r"/opt/data/skills/([\w./-]+)", skill_md.read_text()):
+            ref = ref.rstrip(".")
+            head, _, rest = ref.partition("/")
+            assert head in leaves, (
+                f"{skill_md.name} names {prefix}{ref}, but {head} is not mounted"
+            )
+            assert (ROOT / head / rest).is_file() if rest else (ROOT / head).is_dir(), (
+                f"{skill_md.name} names {prefix}{ref}, which is not in the tree"
+            )
+            seen += 1
+    assert seen, "no absolute skill paths found -- has the reference style changed?"

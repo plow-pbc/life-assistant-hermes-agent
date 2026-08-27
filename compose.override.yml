@@ -29,14 +29,31 @@
 #     hop off its own realpath. Both only resolve if the three land as siblings
 #     directly under /opt/data/skills.
 #
-# A child path does not shadow its parent, so these four coexist with whatever
-# restore puts beside them.
+# A child path does not shadow its parent -- but shadowing is not the hazard
+# here, and the real one costs something. These are NESTED binds: /opt/data is
+# already the home bind from agent-mgr's template, so when a target's mountpoint
+# does not exist the runtime creates it inside the PARENT BIND'S SOURCE, on the
+# host, as root:root. Measured, not predicted: ~/.hermes-sam-property/skills and
+# ~/.hermes-mark-property/skills are both root-owned today, created exactly this
+# way by property-hunt's own override, while the agent runs as uid 1000.
+#
+# A root-owned skills/ is one `agent-mgr restore` cannot write into, so the cost
+# lands on the day skills.tsv is refilled (latch#183) and reads as a permission
+# error nobody attributes to a mount. `mkdir -p $AGENT_HOME/skills` as the agent
+# uid before the first `up` is what keeps the parent writable; the leaves under
+# it may be root-owned, because restore only needs to create siblings.
+# plow-pbc/agent-mgr#44 is the durable fix (and #42 is the same mechanism seen
+# from teardown, where the root-owned dirs are what the operator cannot rm).
 #
 # Subdirectories, never ${AGENT_DIR} itself. The mount -- not git -- is the
 # boundary between this repo and the agent, and mounting the checkout root would
-# hand the skills directory .git, agent.env, runtime/, tests/, and anything an
-# operator drops in the checkout, `cp .env.example .env` being the obvious one:
-# untracked, and therefore invisible to every guard that reads git.
+# hand the skills directory .git, agent.env, runtime/ and tests/, plus anything
+# untracked an operator drops beside them -- `cp .env.example .env` being the
+# obvious one. It narrows that exposure rather than removing it: an untracked
+# file dropped INSIDE ld-shared/ or a producer still crosses, and
+# test_no_credential_file_is_tracked reads `git ls-files`, so it is blind to
+# that by construction. What the subdirectory choice actually buys is excluding
+# the checkout's own machinery, not untracked files in general.
 #
 # Read-only: the agent runs these, it does not edit them.
 services:

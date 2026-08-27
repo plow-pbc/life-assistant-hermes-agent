@@ -22,14 +22,22 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Every vendored suite in the repo. A new one added under ld-shared/ or beside a
-# producer belongs here: nothing else runs it, because collection is scoped away
-# from both locations.
-SUITES = [
-    "ld-shared/scripts/test_post_to_kiosk.py",
-    "ld-shared/scripts/test_ld_config_gate.py",
-    "test_wrappers.py",
-]
+def _discover():
+    """Every test_*.py outside tests/, found rather than listed.
+
+    A hand-kept list has the same hole as the suites it runs: a new vendored
+    suite is excluded from pytest by the tests/ scope AND absent from the list,
+    so it silently never runs -- a suite that cannot go red by omission instead
+    of by counter. Sorted so the parametrize ids are stable."""
+    return sorted(
+        str(p.relative_to(ROOT))
+        for p in ROOT.rglob("test_*.py")
+        if tests_dir not in p.parents and ".git" not in p.parts
+    )
+
+
+tests_dir = Path(__file__).resolve().parent
+SUITES = _discover()
 
 
 @pytest.mark.parametrize("rel", SUITES)
@@ -52,9 +60,16 @@ def test_collection_is_scoped_away_from_the_vendored_suites():
     every one of them reports green no matter what it found -- and the runner
     test would still pass beside them, so nothing here would notice.
     """
-    recipe = (ROOT / "justfile").read_text()
-    assert "pytest -q tests/" in recipe, (
-        "the test recipe must scope pytest to tests/ -- an unscoped run collects "
-        "the vendored suites, whose test functions never raise and therefore "
-        "always report passed"
-    )
+    text = (ROOT / "justfile").read_text()
+    # The recipe BODY, not the file. A substring check over the whole text is
+    # satisfied by the explanatory comment above the recipe, which quotes the
+    # very string it looks for -- so reverting line 24 to a bare `pytest -q`
+    # left this passing on the comment alone. Measured: it did.
+    runs = [l for l in text.splitlines() if l[:1] in " \t" and "pytest" in l]
+    assert runs, "no indented pytest invocation found in the justfile"
+    for line in runs:
+        assert line.rstrip().endswith("tests/"), (
+            f"unscoped pytest in the test recipe: {line.strip()!r} -- an "
+            "unscoped run collects the vendored suites, whose test functions "
+            "never raise and therefore always report passed"
+        )
