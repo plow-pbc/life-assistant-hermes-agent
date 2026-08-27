@@ -486,6 +486,14 @@ PRODUCERS = [("ld-weather", "post_weather.py"), ("ld-sports", "post_sports.py")]
 # The helper ships no sheet; its constant is the docstring example the next
 # producer copies, so it is pinned for the write-safe check alone.
 HANDOFFS = PRODUCERS + [("ld-shared", "post_to_kiosk.py")]
+# The directory register_crons.py proves writable at bring-up. Read once: it is
+# a property of the registrar, not of any producer, so it should not report a
+# failure under each producer's test id.
+_REGISTRAR = (ROOT / "ld-dashboard" / "scripts" / "register_crons.py").read_text()
+_LD_CONFIG = re.search(r'^LD_CONFIG = "([^"]+)"', _REGISTRAR, re.M)
+assert _LD_CONFIG, "register_crons.py no longer declares LD_CONFIG"
+GUARDED_DIR = PurePosixPath(_LD_CONFIG.group(1)).parent
+
 BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
 
 
@@ -568,12 +576,8 @@ def test_the_guarded_directory_is_the_one_the_producers_write_into(skill, wrappe
     both sit in /opt/data/ld today. A handoff moved elsewhere would leave the
     guard proving a directory no producer touches -- green at bring-up, while
     the one that matters is unwritable."""
-    registrar = (ROOT / "ld-dashboard" / "scripts" / "register_crons.py").read_text()
-    ld_config = re.search(r'^LD_CONFIG = "([^"]+)"', registrar, re.M)
-    assert ld_config, "register_crons.py no longer declares LD_CONFIG"
-    guarded = PurePosixPath(ld_config.group(1)).parent
     written = PurePosixPath(_handoff(skill, wrapper)).parent
-    assert written == guarded, (
+    assert written == GUARDED_DIR, (
         f"{skill} writes its handoff into {written}, but register_crons.py "
-        f"proves {guarded} is writable -- move the guard or the handoff"
+        f"proves {GUARDED_DIR} is writable -- move the guard or the handoff"
     )

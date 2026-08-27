@@ -693,10 +693,18 @@ def test_the_probe_lands_beside_the_config_it_was_given(tmp_path):
     elsewhere = tmp_path / "not-here" / "config.json"
     with pytest.raises(SystemExit) as exc:
         mod.require_handoff_dir_writable(elsewhere, geteuid=NOT_ROOT, env={})
-    assert str(tmp_path / "not-here") in str(exc.value)
+    # The whole probe path, not a substring of it: `…/not-here` alone survives a
+    # derivation that drops the .parent, which would put the probe inside
+    # config.json's own name and still raise with that text in the message.
+    assert str(tmp_path / "not-here" / ".ld-handoff-probe") in str(exc.value)
 
-    signature = inspect.signature(mod.require_handoff_dir_writable)
-    assert signature.parameters["config_path"].default == mod.LD_CONFIG, (
-        "the guard's default config_path is no longer LD_CONFIG, so a real "
-        "bring-up probes a directory the contract test does not pin"
-    )
+    # main()'s default, not the guard's. Nothing in production calls the guard
+    # with no arguments -- __main__ calls main(), and main's config_path is what
+    # gets passed through. Pinning only the guard's leaves the one that decides
+    # the probe's directory free to move with every test still green.
+    for func in (mod.main, mod.require_handoff_dir_writable):
+        default = inspect.signature(func).parameters["config_path"].default
+        assert default == mod.LD_CONFIG, (
+            f"{func.__name__}'s default config_path is {default!r}, not "
+            "LD_CONFIG -- a real bring-up would probe a directory nothing pins"
+        )
