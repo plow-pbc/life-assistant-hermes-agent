@@ -11,8 +11,8 @@ Every assertion here exists because getting it wrong is quiet rather than loud,
 and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
-import importlib.util
 import hashlib
+import importlib.util
 import json
 import re
 import subprocess
@@ -484,16 +484,32 @@ def test_the_vendored_files_still_match_their_recorded_hashes():
     recorded = json.loads(VENDORED_MANIFEST.read_text())
     assert recorded, "the vendored manifest is empty"
 
+    # Present first: coverage is a superset check and only means anything once
+    # the recorded files are known to exist. Run the other way round, deleting
+    # kiosk-protocol.md reports as a two-set disagreement the reader has to diff
+    # by eye rather than as the deletion it is.
+    missing = [path for path in recorded if not (ROOT / path).is_file()]
+    assert not missing, f"vendored files are gone: {missing}"
+
     # Coverage, not just drift. `missing` catches a deletion and `drifted` an
     # edit, but a re-vendor that ADDS a file -- a split-out protocol doc, another
     # reference -- lands unguarded and silent. Full discovery is not possible
     # here (byte-identical-to-upstream is not derivable from the tree), but
     # ld-shared/ is wholly vendored and is where the wire contract lives, so its
     # coverage is.
+    #
+    # Bounded the way tests/test_vendored_suites.py bounds its walk, and for the
+    # same reason: this reads the filesystem rather than git, so a Finder
+    # .DS_Store or a scratch dir would otherwise fail the suite with a re-vendor
+    # message for a re-vendor that never happened.
     shared = {
         str(path.relative_to(ROOT))
         for path in (ROOT / "ld-shared").rglob("*")
-        if path.is_file() and "__pycache__" not in path.parts
+        if path.is_file()
+        and not any(
+            part.startswith(".") or part == "__pycache__"
+            for part in path.relative_to(ROOT).parts
+        )
     }
     assert shared == {p for p in recorded if p.startswith("ld-shared/")}, (
         "ld-shared/ and the manifest disagree about which files are vendored -- "
@@ -501,8 +517,6 @@ def test_the_vendored_files_still_match_their_recorded_hashes():
         f"{sorted(p for p in recorded if p.startswith('ld-shared/'))}"
     )
 
-    missing = [path for path in recorded if not (ROOT / path).is_file()]
-    assert not missing, f"vendored files are gone: {missing}"
     drifted = sorted(
         path for path in recorded
         if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != recorded[path]
