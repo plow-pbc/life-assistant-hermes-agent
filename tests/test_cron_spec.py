@@ -471,7 +471,17 @@ def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
     # entry becomes a None key -- it vanishes from the answer instead of
     # stopping the run, which is the invariant this test is named for.
     '{"jobs": [{"enabled": true, "paused_at": null}]}',
-], ids=["malformed", "wrong-shape", "empty", "entry-without-a-name"])
+    # And without either of the other two the reader subscripts. Every entry
+    # hermes writes carries all three -- confirmed against the live agent -- so
+    # a fallback here would be semantics for a shape that does not occur, and
+    # the wrong ones if it ever did: defaulting `enabled` to True reads a
+    # DISABLED producer as runnable, silently, which is the failure the paused
+    # branch exists to prevent. These rows are what make that a refusal;
+    # restoring job.get("enabled", True) turns them red.
+    '{"jobs": [{"name": "x", "paused_at": null}]}',
+    '{"jobs": [{"name": "x", "enabled": true}]}',
+], ids=["malformed", "wrong-shape", "empty", "entry-without-a-name",
+        "entry-without-enabled", "entry-without-paused-at"])
 def test_an_unreadable_schedule_is_not_read_as_an_empty_one(tmp_path, content):
     """The seed installer's one invariant, and the only one worth keeping.
 
