@@ -204,7 +204,9 @@ class FakeHermes:
 def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys, tmp_path):
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
+    path = _jobs_file(tmp_path, [
+        {"name": "ld-weather", "enabled": True, "paused_at": None}
+    ])
     fake = FakeHermes(path)
     mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
     assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
@@ -334,28 +336,18 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
 
 
 def test_a_paused_job_is_not_runnable(tmp_path):
-    """`enabled` and `paused_at` are both in the captured fixture, so the rows
-    that carry them read what hermes writes rather than guessing. A paused
-    producer reported as healthy is the stale card the WARNING exists to catch.
-
-    `defaults-only` is deliberately a shape hermes does NOT emit -- the fixture
-    test above enforces that both fields are always present. It is here for a
-    different reason: the reader DEFAULTS on both, and `enabled`'s default was
-    unasserted in either direction -- no other fixture omits it -- so
-    `job["enabled"]` or a `False` default stayed green while aborting
-    registration or reading a live producer as not-runnable. `paused_at`'s
-    default was already covered incidentally, by the fixture in
-    test_a_run_registers_only_the_live_jobs_that_are_missing, which omits it."""
+    """`enabled` and `paused_at` are both in every entry hermes writes -- the
+    captured fixture pins that -- so the reader subscripts them rather than
+    defaulting. A paused producer reported as healthy is the stale card the
+    WARNING exists to catch."""
     mod = spec()
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
         {"name": "by-enabled", "enabled": False, "paused_at": None},
         {"name": "running", "enabled": True, "paused_at": None, "state": "scheduled"},
-        {"name": "defaults-only"},
     ])
     assert mod.registered_jobs(path) == {
-        "by-paused-at": False, "by-enabled": False, "running": True,
-        "defaults-only": True,
+        "by-paused-at": False, "by-enabled": False, "running": True
     }
 
 

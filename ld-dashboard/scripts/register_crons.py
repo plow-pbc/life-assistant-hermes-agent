@@ -225,8 +225,14 @@ def registered_jobs(jobs_path=JOBS_FILE):
         # is the invariant: an unreadable or unexpected schedule must stop the
         # run, not read as empty and duplicate every job.
         return {}
+    # Subscript, not .get with a fallback. Every entry hermes writes carries
+    # both -- confirmed against the live agent's jobs.json and pinned by
+    # tests/fixtures/hermes-cron-jobs.json -- so a default would be semantics
+    # for a shape that does not occur, and the wrong semantics if it ever did:
+    # defaulting `enabled` to True reads a disabled producer as runnable,
+    # silently. A KeyError here is loud, at bring-up, in front of the operator.
     return {
-        job["name"]: bool(job.get("enabled", True)) and not job.get("paused_at")
+        job["name"]: bool(job["enabled"]) and not job["paused_at"]
         for job in jobs
     }
 
