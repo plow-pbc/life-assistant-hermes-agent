@@ -393,3 +393,131 @@ def test_split_probe_survives_a_body_that_never_arrived():
     assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
     assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
     assert mod.split_probe("200\n") == ("200", ""), "a trailing newline is still no body"
+
+
+def override():
+    return yaml.safe_load((ROOT / "compose.override.yml").read_text())
+
+
+def _split_volume(spec):
+    """Split `source:target:options` on the colons Compose actually separates on.
+
+    Not `spec.split(":")`. A source of
+    `${AGENT_DIR:?set by agent-mgr from the registry}` carries two colons of its
+    own inside the braces -- the `:?` and the one in `agent-mgr from` is not one,
+    but `:?` is -- so naive splitting hands back `${AGENT_DIR` as the source and
+    an empty options field, which reads as "this mount is not read-only" and
+    fails the wrong test for the wrong reason. That is exactly the shape the
+    template documents and the guard must accept, so the parser tracks brace
+    depth and splits only outside it.
+    """
+    parts, buf, depth = [], [], 0
+    i = 0
+    while i < len(spec):
+        c = spec[i]
+        if c == "$" and spec[i + 1:i + 2] == "{":
+            depth += 1
+            buf.append(spec[i:i + 2])
+            i += 2
+            continue
+        if c == "}" and depth:
+            depth -= 1
+        elif c == ":" and not depth:
+            parts.append("".join(buf))
+            buf = []
+            i += 1
+            continue
+        buf.append(c)
+        i += 1
+    parts.append("".join(buf))
+    return parts
+
+
+def override_mounts():
+    """The override's hermes volumes as (source, target, options) triples."""
+    out = []
+    for v in override()["services"]["hermes"]["volumes"]:
+        assert isinstance(v, str), f"long-form volume syntax is not parsed here: {v!r}"
+        parts = _split_volume(v)
+        assert len(parts) == 3, f"expected source:target:options, got {parts!r}"
+        out.append(tuple(parts))
+    return out
+
+
+def test_the_volume_parser_splits_outside_brace_expansions():
+    """The guard is only as good as its parser, and this one has a real trap.
+
+    Pinned as its own case because every mount-shape assertion below reads
+    through _split_volume: if it silently mis-splits, those tests keep running
+    and start checking the wrong strings."""
+    assert _split_volume("${AGENT_DIR:?set by agent-mgr}/x:/opt/data/skills/x:ro") == [
+        "${AGENT_DIR:?set by agent-mgr}/x", "/opt/data/skills/x", "ro"
+    ]
+    assert _split_volume("/a:/b:ro") == ["/a", "/b", "ro"]
+
+
+SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
+
+
+def test_every_ld_skill_in_the_tree_is_mounted():
+    """A skill directory nobody mounts is a skill the agent cannot see.
+
+    Derived from the filesystem rather than listed, so adding a producer without
+    adding its mount fails here instead of at 06:00 as a cron that runs a skill
+    the container does not have."""
+    mounted = {t.rsplit("/", 1)[-1] for _, t, _ in override_mounts()}
+    assert set(SKILL_DIRS) == mounted, (
+        f"tree has {SKILL_DIRS}, override mounts {sorted(mounted)}"
+    )
+
+
+@pytest.mark.parametrize("source,target,options", override_mounts())
+def test_each_mount_lands_flat_under_the_skills_directory_read_only(source, target, options):
+    """Three properties, each protecting a different quiet failure.
+
+    read-only, because the agent runs these and does not edit them -- a writable
+    mount lets a prompt-injected turn rewrite the script the next cron runs.
+
+    A STRICT CHILD of /opt/data/skills. Mounting AT /opt/data/skills shadows
+    where `agent-mgr restore` installs skills.tsv (empty now, refilled by
+    latch#183), and mounting /opt/data would shadow the home itself, which
+    resolve-guard reads to prove this container is this agent's.
+
+    Exactly one segment deep, because the producers carry absolute paths
+    (/opt/data/skills/ld-weather/scripts/post_weather.py) and each wrapper hops
+    ../../ld-shared off its own realpath. Nesting one level -- the shape
+    property-hunt uses, legitimately, because nothing inside it names an
+    absolute path -- breaks both at once.
+
+    And a ${AGENT_DIR}-rooted source with a subpath: relative resolves against
+    agent-mgr's templates directory, and the bare root would hand the skills
+    directory .git, agent.env and any untracked dotenv beside them."""
+    assert options == "ro", f"{target} is not read-only"
+
+    prefix = "/opt/data/skills/"
+    assert target.startswith(prefix), f"{target} is not under {prefix}"
+    leaf = target[len(prefix):]
+    assert leaf and "/" not in leaf, (
+        f"{target} must be exactly one segment under {prefix} -- the producers "
+        "name absolute paths and reach ld-shared by a relative ../../ hop"
+    )
+
+    assert source.startswith("${AGENT_DIR"), (
+        f"{source} must be ${{AGENT_DIR}}-rooted: Compose resolves a relative "
+        "bind path against agent-mgr's templates/compose.yml, not this file"
+    )
+    assert "}/" in source and source.split("}/", 1)[1], (
+        f"{source} must name a subdirectory, never the checkout root"
+    )
+    subdir = source.split("}/", 1)[1]
+    assert (ROOT / subdir).is_dir(), f"{source} names {subdir}, which is not in the tree"
+    assert subdir == leaf, f"{subdir} is mounted as {leaf} -- keep the names equal"
+
+
+def test_the_override_mounts_nothing_over_the_agent_home():
+    """/opt/data is the home agent-mgr's template mounts and resolve-guard reads
+    to prove this container belongs to this agent. An override target of
+    /opt/data would replace it, and the guard compares the FIRST volume whose
+    target is /opt/data -- so the shadowing would be invisible to it."""
+    for _, target, _ in override_mounts():
+        assert target != "/opt/data", "the override must not remount the agent home"
