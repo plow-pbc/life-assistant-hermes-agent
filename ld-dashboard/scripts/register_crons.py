@@ -23,7 +23,7 @@ human-readable listing is not a data structure. This reads jobs.json instead:
 hermes's own state, where a name is a field, `enabled`/`paused_at` are fields,
 an absent file reads as an empty schedule and a malformed one raises. See registered_jobs().
 
-It runs INSIDE the container, where hermes is on PATH and that file lives.
+It runs INSIDE the container, where /opt/hermes/bin/hermes and that file live.
 """
 from __future__ import annotations
 

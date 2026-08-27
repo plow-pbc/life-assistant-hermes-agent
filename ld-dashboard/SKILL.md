@@ -189,10 +189,19 @@ yours against the one it was measured on:
 
 Re-settling it means letting a *real* fire land, because `source=builtin` is the
 one row you cannot force. Create a throwaway against the running gateway, wait
-for it, then remove it:
+two minutes, then remove it -- both commands run against the live agent, so this
+is the attested form rather than a sketch:
 
-    /opt/hermes/bin/hermes cron create '*/2 * * * *' --name resettle ...
-    /opt/hermes/bin/hermes cron remove <job-id>
+    /opt/hermes/bin/hermes cron create '*/2 * * * *' 'reply ok' --name resettle
+    Created job: 61cf727bab44
+    /opt/hermes/bin/hermes cron runs      # look for source=builtin on that id
+    /opt/hermes/bin/hermes cron remove resettle
+
+The prompt is the second positional and `--name` follows it, the order
+`create_argv()` builds. `create` prints the id, so no `cron list` in between.
+`remove` takes the name despite its `--help` saying `job_id` -- confirmed on
+Hermes Agent v0.19.0 by the round trip above, which is also why the throwaway
+gets removed by the name you just set rather than an id you have to go find.
 
 Read `source=`, never "a card appeared": a card appears either way, which is the
 whole reason a forced run could not answer this.
