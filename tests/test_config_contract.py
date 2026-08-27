@@ -109,12 +109,42 @@ def test_latch_is_configured_from_the_environment_not_from_git():
 
 
 def test_every_pinned_skill_is_a_sha_not_a_branch():
+    """Empty today, and the emptiness is the point.
+
+    plow-connectors was the only row, and it went out with the dashboard work:
+    the four producers that read Gmail, Google Calendar and Slack have no data
+    source on this agent, so nothing here reaches a connector. latch#183 is what
+    refills this file -- a vendored gog behind Latch -- and the per-row rule
+    below is what will check that row when it lands.
+
+    Deliberately NOT asserting the file is non-empty. It used to say the
+    connector skill is what lets an instance reach its owner's mail, which was
+    true while there was one; asserting it now would fail the suite for being
+    correct."""
     rows = [r for r in (ROOT / "skills.tsv").read_text().splitlines() if r.strip()]
-    assert rows, "the connector skill is what lets an instance reach its owner's mail"
     for row in rows:
         repo, ref, dest = row.split("\t")[:3]
         assert len(ref) == 40 and all(c in "0123456789abcdef" for c in ref), row
         assert repo and dest
+
+
+def test_skills_tsv_carries_no_comment_lines():
+    """A comment here breaks `agent-mgr restore`, and only at deploy time.
+
+    agent-mgr gates the replay on `[ -s skills.tsv ]` -- size, not content --
+    then feeds every line with a non-empty first tab-field to lib/fetch-tree. A
+    zero-byte file is skipped cleanly, but a file holding only `# see latch#183`
+    is non-empty, so the comment text becomes the repo argument and restore dies
+    on it. The explanation belongs in a docstring like this one, never in the
+    file itself, and this test is what keeps a well-meaning edit from putting it
+    there."""
+    text = (ROOT / "skills.tsv").read_text()
+    for line in text.splitlines():
+        assert not line.lstrip().startswith("#"), (
+            f"skills.tsv carries a comment line: {line!r} -- agent-mgr feeds it to "
+            "fetch-tree as a repo name and restore dies. Keep the file empty or "
+            "tab-separated rows only."
+        )
 
 
 def test_no_credential_file_is_tracked():

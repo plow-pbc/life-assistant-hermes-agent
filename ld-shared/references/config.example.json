@@ -1,0 +1,49 @@
+{
+  "_comment": "Canonical ld-config template for ALL life-dashboard producers, both platforms. Each seed's installer assembles the live config.json from this shape. Platform-specific fields are noted inline: owner/partner.imessage and morning_triage.exclude.imessage_handles are read only by the Plow agent seed (iMessage triage); morning_triage.exclude.slack_handles is read only by the Hermes agent seed (Slack triage). The unused field is harmless on the other platform.",
+  "family": {
+    "owner": { "name": "[OWNER_NAME]", "imessage": "[OWNER_IMESSAGE]" },
+    "partner": { "name": "[PARTNER_NAME]", "imessage": "[PARTNER_IMESSAGE]" },
+    "people": ["[FAMILY_PERSON_1]", "[FAMILY_PERSON_2]"],
+    "timezone": "America/Los_Angeles"
+  },
+  "calendar": {
+    "sources": [
+      { "account": "[CALENDAR_ACCOUNT_1]", "calendar_id": "primary", "name": "Personal" },
+      { "account": "[CALENDAR_ACCOUNT_1]", "calendar_id": "[FAMILY_CALENDAR_ID]", "name": "Family shared" },
+      { "account": "[CALENDAR_ACCOUNT_2]", "calendar_id": "primary", "name": "Work" },
+      { "account": "[PARTNER_CALENDAR_ACCOUNT]", "calendar_id": "primary", "name": "Partner", "self": false }
+    ]
+  },
+  "morning_updates": {
+    "review_window_hours": 24
+  },
+  "weekly_digest": {
+    "length": "",
+    "long_lead": [{ "type": "[LONG_LEAD_TYPE]", "lead_days": 7 }]
+  },
+  "morning_triage": {
+    "ranking_instructions": "",
+    "exclude": {
+      "imessage_handles": [],
+      "slack_handles": [],
+      "email_addresses": []
+    }
+  },
+  "calendar_nudge": {
+    "lookahead_virtual_minutes": 30,
+    "lookahead_in_person_minutes": 60
+  },
+  "weather": {
+    "location": "Mountain View",
+    "lat": 37.386,
+    "lon": -122.083
+  },
+  "sports": {
+    "_comment": "Followed teams for the kiosk sports card. Demo default — customize to your teams. abbr = ESPN team abbreviation; sport/league name its ESPN scoreboard.",
+    "followed": [
+      { "abbr": "sf", "sport": "baseball", "league": "mlb" },
+      { "abbr": "lad", "sport": "baseball", "league": "mlb" },
+      { "abbr": "gsw", "sport": "basketball", "league": "nba" }
+    ]
+  }
+}

@@ -15,8 +15,13 @@
 # Eleven recipes here re-implemented those. What is left is one recipe that does
 # something agent-mgr does not yet do -- see below -- and `test`.
 
+# `pytest -q tests/`, never a bare `pytest`. The vendored ld- suites under
+# ld-shared/ and test_wrappers.py are named test_*.py and define test_* functions,
+# so an unscoped run collects them -- but they report through a counter instead of
+# raising, so every one of them passes even when it fails. They run as subprocesses
+# from tests/test_vendored_suites.py instead, where the exit code is the verdict.
 test:
-    uv run --no-project --python 3.13 --with pytest==8.4.2 --with pyyaml==6.0.2 pytest -q
+    uv run --no-project --python 3.13 --with pytest==8.4.2 --with pyyaml==6.0.2 pytest -q tests/
 
 # Did that instance's Mac answer with tools? Kept rather than replaced by
 # `agent-mgr check-latch`, which classifies the same response into a verdict.
