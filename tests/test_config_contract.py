@@ -23,6 +23,24 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 
 
+@functools.cache
+def tracked_files():
+    """Every tracked path, once, for the two callers that need one.
+
+    -z, and split on NUL, because git C-quotes paths with non-ASCII bytes and
+    whitespace-splitting fragments any path containing a space. That reasoning
+    belongs to test_no_credential_file_is_tracked, which argued it first and in
+    detail; this exists so the other caller inherits the ruling instead of
+    re-deriving a plain `.split()` that reintroduces exactly what it forbids --
+    a tracked `ld-shared/my notes/x.md` fragmenting into a spurious `notes`
+    segment while the real one is lost, both silently.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+    )
+    return [path for path in out.stdout.split("\0") if path]
+
+
 def dotenv(path):
     """The KEY=VALUE lines of a dotenv, stripped, comments dropped.
 
@@ -161,10 +179,7 @@ def test_no_credential_file_is_tracked():
     as `"caf\303\251/.env"` and its basename computes to `.env"`, and
     whitespace-splitting fragments any path containing a space.
     """
-    import subprocess
-    out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
-                         capture_output=True, text=True, check=True)
-    for name in out.stdout.split("\0")[:-1]:
+    for name in tracked_files():
         base = name.rsplit("/", 1)[-1]
         # Anchored to the full path git prints, not the basename. The two
         # exemptions are excused because two other tests cover those exact
@@ -432,6 +447,27 @@ def test_every_skill_is_mounted_flat_and_read_only():
     }
 
 
+def _is_url(ref):
+    """A URL path segment is not a citation of a repo directory.
+
+    `site.api.espn.com/apis/site/v2/sports/...` is a live line in
+    ld-sports/SKILL.md, and it was exempt only because no tracked directory
+    happens to be named apis, site, v2 or sports -- the same "names available to
+    match grow with the tree" hazard the boundary above guards for mid-token
+    matches, on a case the ledger asserts green. Add an ld-shared/references/
+    sports/ and both that row and the real SKILL.md line would go red, telling
+    the author to give a URL an absolute container path.
+
+    The scheme-qualified form was exempt for the wrong reason too:
+    https://x.com/scripts/y survives only because the leftmost match begins at
+    the `//` and so starts with a slash."""
+    head = ref.split("/", 1)[0]
+    # `.` and `..` are relative prefixes, not hostnames -- excluding them
+    # explicitly, because "contains a dot" alone exempts ./ld-shared/... and
+    # ../../ld-shared/..., which are two of the spellings this guard exists for.
+    return "://" in ref or (head not in {".", ".."} and "." in head)
+
+
 @functools.cache
 def _unanchored_pattern():
     """Compiled once, and lazily, so only the guard tests depend on git.
@@ -441,10 +477,7 @@ def _unanchored_pattern():
     the tree without .git, git absent from PATH -- the whole module died and took
     every unrelated dotenv, compose and mount assertion with it.
     """
-    tracked = subprocess.run(
-        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.split()
-    names = sorted({part for f in tracked for part in Path(f).parent.parts})
+    names = sorted({part for f in tracked_files() for part in Path(f).parent.parts})
     assert names, (
         "`git ls-files` reported no tracked directories -- an empty alternation "
         "collapses to (?:) and would flag anything containing a slash"
@@ -480,7 +513,13 @@ def unanchored_refs(text):
     resolves under /opt/hermes exactly like every spelling this does catch.
 
     Returns the offending strings so the caller can name them."""
-    return sorted({m for m in _unanchored_pattern().findall(text) if not m.startswith("/")})
+    return sorted(
+        {
+            m
+            for m in _unanchored_pattern().findall(text)
+            if not m.startswith("/") and not _is_url(m)
+        }
+    )
 
 
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
@@ -557,7 +596,10 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     ("run `/opt/hermes/bin/hermes cron list`", []),
     ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
     # A URL is not a path citation.
+    # A URL is not a path citation, and both spellings are asserted rather than
+    # left exempt by accident of the character class.
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
+    ("https://example.com/scripts/thing.py", []),
     # A known name inside a longer token is not a citation. Without a boundary
     # before the segment these are flagged and reported verbatim as paths the
     # author never wrote, and the name set grows with the tracked tree.
