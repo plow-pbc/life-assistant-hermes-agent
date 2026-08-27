@@ -492,8 +492,34 @@ PRODUCERS = [(s, p) for s, p in HANDOFFS if (p.parent.parent / "SKILL.md").exist
 
 
 def _handoff(wrapper):
-    [path] = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text())
-    return path
+    paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text())
+    assert len(paths) == 1, (
+        f"{wrapper.name} declares {len(paths)} MESSAGE_FILE assignments; expected "
+        "exactly 1. The glob is deliberately broad -- four more producers are "
+        "coming -- so a post_*.py that sets none, or two, lands here."
+    )
+    return paths[0]
+
+
+def test_handoff_discovery_still_finds_the_producers():
+    """Parametrizing over an empty list SKIPS; this is what makes it fail.
+
+    There is no pytest config in this repo, so empty_parameter_set_mark is the
+    default `skip` -- a wrapper renamed off the post_* prefix, moved out of
+    scripts/, or in a bundle not named ld-* empties both lists and both tests go
+    quietly green. That is the same silently-green hole discovery exists to
+    prevent, relocated from a hand-kept table into the glob."""
+    assert len(PRODUCERS) >= 2, (
+        f"discovery found {len(PRODUCERS)} producer handoff(s); ld-weather and "
+        "ld-sports both set MESSAGE_FILE, so the glob has stopped matching"
+    )
+    sheetless = {skill for skill, _ in HANDOFFS} - {skill for skill, _ in PRODUCERS}
+    assert sheetless == {"ld-shared"}, (
+        f"{sorted(sheetless)} ship a handoff wrapper with no SKILL.md beside it. "
+        "Only ld-shared may -- it is the helper, not a producer. A producer that "
+        "loses or misnames its sheet would otherwise drop out of the agreement "
+        "check instead of failing it."
+    )
 
 
 @pytest.mark.parametrize(("skill", "wrapper"), HANDOFFS, ids=[s for s, _ in HANDOFFS])
@@ -514,18 +540,31 @@ def test_every_handoff_path_is_inside_the_write_safe_root(skill, wrapper):
     )
 
 
-@pytest.mark.parametrize(
-    ("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS]
-)
+@pytest.mark.parametrize(("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS])
 def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper):
     """The wrapper is what runs; the SKILL.md is what the agent is TOLD.
 
-    Set equality, not containment: each sheet names the handoff twice -- once to
-    write, once to read back -- so a half-applied path change leaves a substring
-    check green while the agent is looking at two different files."""
+    Two assertions, because each sheet names the handoff twice -- once to write,
+    once to read back -- and a half-applied path change leaves one of them stale
+    while the agent reads two different files.
+
+    The trailing negative lookahead is load-bearing on both: without it a sheet
+    saying `/opt/data/ld/weather-text.tmp` contains the wrapper's path as a
+    prefix and reads as agreement -- the escape a substring check makes, and
+    what this is meant to close."""
+    sheet = (wrapper.parent.parent / "SKILL.md").read_text()
     path = _handoff(wrapper)
-    named = set(re.findall(r"/[\w./-]*-text\b", (wrapper.parent.parent / "SKILL.md").read_text()))
-    assert named == {path}, (
-        f"{skill}/SKILL.md names {sorted(named)}, but its wrapper reads {path} "
-        "-- the agent would write the wrong file"
+    boundary = r"(?![\w.\-/])"
+
+    assert re.search(re.escape(path) + boundary, sheet), (
+        f"{skill}/SKILL.md never names {path}, the handoff its wrapper reads -- "
+        "the agent would write somewhere else entirely"
+    )
+    # Scoped to the -text convention deliberately: it is what the drift looks
+    # like, and a future handoff that does not follow it simply finds nothing
+    # here rather than failing a sheet that is correct.
+    stale = set(re.findall(r"[/\w.-]*-text" + boundary, sheet)) - {path}
+    assert not stale, (
+        f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
+        "half-applied path change, and the agent is told two different files"
     )
