@@ -301,7 +301,10 @@ def viewer_slots():
     rather than "the protocol table changed". The count is checked by
     test_the_protocol_card_map_still_parses instead, which goes red alone."""
     table = (ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
-    rows = re.findall(r"^\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
+    # [\s>]* to match the other markdown row parser in this file: the same
+    # indentation and blockquote coupling, one guarded by a count assert instead
+    # of a membership one.
+    rows = re.findall(r"^[\s>]*\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
     return {int(card): type_ for card, type_ in rows}
 
 
