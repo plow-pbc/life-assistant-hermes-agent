@@ -32,7 +32,10 @@ run it:
 
 **Then paste its output verbatim and report its exit status. The run is not
 done until you have.** This matters more than it looks: the script signals every
-refusal it has — a failed `cron create`, an unreadable `jobs.json`, a producer that is registered but PAUSED — through its output and a
+refusal it has — a missing or unusable `ld-config.json`, a `family.timezone`
+that is not the container's zone, an empty `TZ`, a failed `cron create`, an
+unreadable `jobs.json`, a producer that is registered but PAUSED — through
+its output and a
 non-zero exit, and a turn does not propagate an exit code. If you summarise
 instead of pasting, "set up the crons, though one was already there and isn't
 active" is a perfectly honest sentence describing a run that failed, and the

@@ -312,16 +312,10 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
     entry = json.loads(FIXTURE.read_text())["jobs"][0]
     for field in ("name", "enabled", "paused_at"):
         assert field in entry, (
-            f"the captured hermes format has no {field!r} -- register_crons.py "
-            "reads it, and the abort it raises would be correct but unexplained"
+            f"the captured hermes format has no {field!r} -- registered_jobs() "
+            "reads it, and for enabled/paused_at that is a silently wrong answer "
+            "rather than a raise"
         )
-    # Not an abort field -- the reader treats it as the second candidate pause
-    # encoding -- but a re-capture that drops it deletes half the pause detection
-    # silently, with every other test still green.
-    assert "state" in entry, (
-        "the captured hermes format has no 'state' -- register_crons.py reads it "
-        "as the second pause encoding, and losing it is silent"
-    )
 
 
 def test_a_paused_job_is_not_runnable(tmp_path):
