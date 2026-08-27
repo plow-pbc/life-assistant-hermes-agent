@@ -45,11 +45,8 @@ non-zero exit.
 root-owned. That is the README's problem, and the reason bring-up goes through
 `agent-mgr agent` rather than an exec. Nothing for you to do about it here.)
 
-Preview without changing anything: `… register_crons.py --dry-run`.
-
-Create-if-missing, so it is safe to re-run — including `--dry-run`, which reads
-the same state and therefore reports `already present, would skip` exactly where
-the real run would skip.
+Create-if-missing, so it is safe to re-run: it reads what is already scheduled
+and creates only what is absent.
 
 Then verify it — see [Unattended runs](#unattended-runs), which owns both the
 host and in-container forms and what a forced run does and does not prove.
@@ -86,8 +83,7 @@ on. A turn does not propagate that code, which is why § Registering above
 requires you to paste the output verbatim and report the status rather than
 summarise: that instruction is what carries the signal across the gap. A
 *scripted* caller that wants the code itself uses the exec form instead (README
-§ Bring-up, with its uid caveat). `--dry-run` says the same thing and still exits 0 — a preview must not
-report a failure over a state it did not create:
+§ Bring-up, with its uid caveat):
 
     WARNING: ld-weather is registered but PAUSED -- it will never fire...
     Resume it: hermes cron resume ld-weather

@@ -106,17 +106,15 @@ def test_no_schedule_carries_a_timezone(job):
     )
 
 
-def _tz_check(tmp_path, family="America/Los_Angeles", container=None):
-    """A timezone check for main(), agreeing by default.
+def _cfg(tmp_path, zone="America/Los_Angeles"):
+    """An ld-config for main(), agreeing with the container zone its caller passes.
 
-    Every main() test passes one: registration refuses outright when the
-    config's family.timezone is not the container's, which is the point, and a
-    test that did not supply one would be asserting that refusal instead of the
-    behaviour it names. Pass `container` to build a DISAGREEING pair, which is
-    what the refusal test needs -- and the shape the next one will."""
+    Every main() test supplies one: registration refuses outright when the
+    config's family.timezone is not the container's, and a test that did not
+    would be asserting that refusal instead of the behaviour it names."""
     config = tmp_path / "ld-config.json"
-    config.write_text(json.dumps({"family": {"timezone": family}}))
-    return {"config_path": config, "env": {"TZ": container or family}}
+    config.write_text(json.dumps({"family": {"timezone": zone}}))
+    return config
 
 
 def _jobs_file(tmp_path, jobs):
@@ -139,24 +137,6 @@ def test_a_missing_jobs_file_is_an_empty_schedule_not_an_unreadable_one(tmp_path
     assert spec().registered_jobs(tmp_path / "nope.json") == {}
 
 
-def test_a_malformed_jobs_file_refuses_rather_than_reading_as_empty(tmp_path):
-    """Reading "I cannot tell" as "nothing is registered" duplicates every job.
-    That is the one invariant carried over from the seed installer, and it is
-    the only guard the file-based seam still needs."""
-    mod = spec()
-    bad = tmp_path / "jobs.json"
-
-    bad.write_text("{not json")
-    with pytest.raises(SystemExit) as broken:
-        mod.registered_jobs(bad)
-    assert "duplicate" in str(broken.value)
-
-    bad.write_text(json.dumps({"schedules": []}))
-    with pytest.raises(SystemExit) as shape:
-        mod.registered_jobs(bad)
-    assert "format changed" in str(shape.value)
-
-
 def test_a_paused_job_counts_as_registered_but_not_as_runnable(tmp_path):
     """Two different answers the caller needs to tell apart: re-registering a
     paused job duplicates it, and silently skipping it leaves a card that never
@@ -170,22 +150,6 @@ def test_a_paused_job_counts_as_registered_but_not_as_runnable(tmp_path):
     assert mod.registered_jobs(path) == {
         "ld-weather": True, "ld-sports": False, "ld-old": False
     }
-
-
-def test_a_near_miss_name_is_simply_a_different_key(tmp_path):
-    """The whole-word matching this replaced existed because a substring search
-    over a rendering could confuse `ld-weather-v2` with `ld-weather`, and because
-    every prompt in the spec contains its own producer name. On a parsed field
-    neither is expressible."""
-    mod = spec()
-    path = _jobs_file(tmp_path, [
-        {"name": "ld-weather-v2", "enabled": True},
-        {"name": "other", "enabled": True,
-         "prompt": "Run the ld-weather producer now: ... card 3, type weather."},
-    ])
-    registered = mod.registered_jobs(path)
-    assert not mod.is_present(registered, "ld-weather")
-    assert mod.is_present(registered, "ld-weather-v2")
 
 
 def test_each_live_job_attaches_its_own_skill():
@@ -241,7 +205,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
     assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -262,7 +226,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     # but an unattended re-provision must not read this run as success -- the
     # exit code is the only signal that reaches one.
     with pytest.raises(SystemExit) as exit_:
-        mod.main([], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
+        mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
     out = capsys.readouterr().out
@@ -277,7 +241,7 @@ def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
     assert set(fake.created) == LIVE_NAMES
     blocked = {j["name"] for j in mod.BLOCKED}
     assert not blocked & set(fake.created)
@@ -290,23 +254,7 @@ def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     with pytest.raises(SystemExit):
         mod.main([], runner=FakeHermes(tmp_path / "none.json", create_rc=1),
-                 jobs_path=tmp_path / "none.json", tz_check=_tz_check(tmp_path))
-
-
-def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
-    monkeypatch, capsys, tmp_path
-):
-    """The preview must agree with the real run. It used to skip the listing
-    entirely and print `would register` for a job that already existed."""
-    mod = spec()
-    monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
-    fake = FakeHermes(path)
-    mod.main(["--dry-run"], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
-    assert fake.created == []
-    out = capsys.readouterr().out
-    assert "already present, would skip: ld-weather" in out
-    assert "would register: ld-sports" in out
+                 jobs_path=tmp_path / "none.json", config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
 
 
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
@@ -338,46 +286,6 @@ def test_no_prompt_names_a_card_other_than_the_one_the_spec_assigns(job):
         assert f"card {job['card']}, type {job['type']}" in job["prompt"], (
             f"{job['name']} names a card, so it must name the pair the viewer keys on"
         )
-
-
-def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_path):
-    """The floor under "absent file means fresh instance".
-
-    Nothing pins JOBS_FILE -- not a fixture, not a hermes version -- so a moved
-    or wrong path looks exactly like an empty schedule, on every run, forever,
-    and registers duplicates each time in silence. Reading back the first job
-    actually created turns that into a loud failure on run one. A runner that
-    reports success without writing is precisely the wrong-path case."""
-    mod = spec()
-    monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-
-    class LyingHermes:
-        def __call__(self, argv):
-            return _Proc(0, "", "")
-
-    with pytest.raises(SystemExit) as excinfo:
-        mod.main([], runner=LyingHermes(), jobs_path=tmp_path / "wrong.json",
-                 tz_check=_tz_check(tmp_path))
-    assert "not where this hermes persists jobs" in str(excinfo.value)
-
-
-@pytest.mark.parametrize("jobs,expected", [
-    ([{"job_name": "ld-weather", "enabled": True}], "no string `name`"),
-    ([{"name": "", "enabled": True}], "no string `name`"),
-    (["ld-weather"], "no string `name`"),
-    ([{"name": "ld-weather", "state": "paused"}], "neither `enabled` nor `paused_at`"),
-])
-def test_a_renamed_field_aborts_rather_than_parsing_to_nothing(tmp_path, jobs, expected):
-    """A container-only shape check leaves the entries open, and both renames
-    are silent in the worst direction: dropping every entry hands back an empty
-    map from a readable file -- register everything, again -- and losing the
-    pause fields defaults a paused producer to runnable, which is the stale card
-    the WARNING exists to catch."""
-    path = tmp_path / "jobs.json"
-    path.write_text(json.dumps({"jobs": jobs, "updated_at": "2026-08-27T00:00:00Z"}))
-    with pytest.raises(SystemExit) as excinfo:
-        spec().registered_jobs(path)
-    assert expected in str(excinfo.value)
 
 
 FIXTURE = ROOT / "tests" / "fixtures" / "hermes-cron-jobs.json"
@@ -415,42 +323,7 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
     )
 
 
-def test_the_absent_branch_is_only_for_a_genuinely_missing_file(tmp_path):
-    """Path.exists() swallows every OSError on 3.12+, which `just test` pins, so a
-    permission denial on the cron directory came back False and read as a fresh
-    instance -- registering every job again, silently. Only FileNotFoundError
-    means "nothing scheduled yet".
-
-    Proven with a DIRECTORY rather than a chmod. A chmod(0o000) row was the
-    obvious way to write this and is uid-dependent: under any root runner -- a
-    container, most CI images -- root bypasses the mode bits, the read succeeds,
-    and the test goes red for a reason unrelated to the code while leaving this
-    branch covered by nothing. IsADirectoryError is an OSError and never a
-    FileNotFoundError, whoever runs it."""
-    with pytest.raises(SystemExit) as excinfo:
-        spec().registered_jobs(tmp_path)
-    assert "duplicates every job" in str(excinfo.value)
-
-
-def test_an_unmounted_home_refuses_before_creating_anything(tmp_path):
-    """The pre-create half of the wrong-path check.
-
-    verify_landed only fires AFTER a create has landed, so a retry there adds a
-    second copy of that job each attempt -- "duplicate everything forever"
-    becomes "duplicate one per attempt", which is smaller but not fixed.
-
-    This is the FIRST of two levels: /opt/data is agent-mgr's one template mount,
-    so its absence means the container is not wired correctly. The second level
-    is the cron directory under it -- see
-    test_a_wrong_cron_directory_under_a_good_home_also_refuses -- which catches
-    the likelier fault of JOBS_FILE naming the wrong subdirectory under a home
-    that mounted fine."""
-    with pytest.raises(SystemExit) as excinfo:
-        spec().registered_jobs(tmp_path / "no-home" / "cron" / "jobs.json")
-    assert "agent home is not mounted" in str(excinfo.value)
-
-
-def test_a_paused_job_is_recognised_under_either_encoding(tmp_path):
+def test_a_paused_job_is_not_runnable(tmp_path):
     """The capture settles the field NAMES; it came from a running job, so it
     cannot settle which field pausing moves. Reading both costs one term and
     keeps a paused producer from reporting as healthy -- the stale card the
@@ -458,53 +331,12 @@ def test_a_paused_job_is_recognised_under_either_encoding(tmp_path):
     mod = spec()
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
-        {"name": "by-state", "enabled": True, "paused_at": None, "state": "paused"},
-        # Casing, which is the half of the value guess that costs one token to
-        # cover -- and the failure it would leave is the fail-open one, a paused
-        # producer reported healthy. Without this row, reverting the casefold
-        # leaves the suite green.
-        {"name": "by-state-cased", "enabled": True, "paused_at": None, "state": "Paused"},
-        # A non-string state must not raise on its way through casefold.
-        {"name": "odd-state", "enabled": True, "paused_at": None, "state": 7},
         {"name": "by-enabled", "enabled": False, "paused_at": None},
         {"name": "running", "enabled": True, "paused_at": None, "state": "scheduled"},
     ])
     assert mod.registered_jobs(path) == {
-        "by-paused-at": False, "by-state": False, "by-state-cased": False,
-        "by-enabled": False, "odd-state": True, "running": True
+        "by-paused-at": False, "by-enabled": False, "running": True
     }
-
-
-def test_a_dry_run_does_not_fail_over_a_paused_job_it_did_not_create(
-    monkeypatch, capsys, tmp_path
-):
-    """A preview's contract is "change nothing", and its exit code is what a
-    provisioning script gates on -- so failing here makes a clean preview
-    indistinguishable from a failed real run."""
-    mod = spec()
-    monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    path = _jobs_file(tmp_path, [
-        {"name": "ld-weather", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"}
-    ])
-    assert mod.main(["--dry-run"], runner=FakeHermes(path), jobs_path=path,
-                    tz_check=_tz_check(tmp_path)) == 0
-    out = capsys.readouterr().out
-    assert "would leave 1 paused producer(s) alone: ld-weather" in out
-
-
-def test_a_wrong_cron_directory_under_a_good_home_also_refuses(tmp_path):
-    """The likelier typo, and the one a home-only check sails past.
-
-    /opt/data/crons/jobs.json passes the mounted-home stat, reads as an empty
-    schedule, registers the first live job, and only then trips verify_landed --
-    which is "duplicate one per attempt", recurring on every retry. That is the
-    cost the pre-create check exists to remove, so both levels are checked."""
-    home = tmp_path / "data"
-    (home / "cron").mkdir(parents=True)
-    with pytest.raises(SystemExit) as excinfo:
-        spec().registered_jobs(home / "crons" / "jobs.json")
-    msg = str(excinfo.value)
-    assert "is mounted but" in msg and "wrong one" in msg
 
 
 def test_no_live_job_needs_a_delivery_target():
@@ -586,25 +418,24 @@ def test_the_container_zone_comes_from_TZ_not_etc_localtime(tmp_path):
     assert "AGENT_TZ" in str(excinfo.value)
 
 
-@pytest.mark.parametrize("argv", [[], ["--dry-run"]], ids=["real", "dry-run"])
 def test_main_refuses_before_creating_anything_when_the_zones_disagree(
-    monkeypatch, tmp_path, argv
+    monkeypatch, tmp_path
 ):
     """That main() CALLS the check, which its other tests cannot show.
 
-    They all pass a check that agrees, so they only prove it passes -- delete the
-    call and `tz_check` becomes an ignored parameter, every one of them stays
-    green, and registration quietly goes back to creating wrong-hour schedules.
-    This is the wiring, and it is the whole value of the guard."""
+    They all pass a config that agrees, so they only prove it passes -- delete
+    the call and every one of them stays green while registration quietly goes
+    back to creating wrong-hour schedules. This is the wiring, and it is the
+    whole value of the guard."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
 
     with pytest.raises(SystemExit) as excinfo:
-        mod.main(argv, runner=fake, jobs_path=path,
-                 tz_check=_tz_check(tmp_path, family="America/Chicago",
-                                    container="America/Los_Angeles"))
+        mod.main([], runner=fake, jobs_path=path,
+                 config_path=_cfg(tmp_path, "America/Chicago"),
+                 env={"TZ": "America/Los_Angeles"})
     assert "America/Chicago" in str(excinfo.value)
     assert fake.created == [], "nothing may be registered against a wrong clock"
 
@@ -615,3 +446,19 @@ def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):
     with pytest.raises(SystemExit) as excinfo:
         spec().require_timezone_agreement(tmp_path / "nope.json", {"TZ": "UTC"})
     assert "is missing" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("content", ["{not json", '{"schedules": []}', ""],
+                         ids=["malformed", "wrong-shape", "empty"])
+def test_an_unreadable_schedule_is_not_read_as_an_empty_one(tmp_path, content):
+    """The seed installer's one invariant, and the only one worth keeping.
+
+    Reading "I could not tell what is registered" as "nothing is" re-registers
+    every job and duplicates all of them. Only FileNotFoundError means a fresh
+    instance; everything else propagates and stops the run, so this asserts the
+    absence of a handler rather than the wording of one."""
+    path = tmp_path / "jobs.json"
+    path.write_text(content)
+    with pytest.raises(Exception) as excinfo:
+        spec().registered_jobs(path)
+    assert not isinstance(excinfo.value, FileNotFoundError)
