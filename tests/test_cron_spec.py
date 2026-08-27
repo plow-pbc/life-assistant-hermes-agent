@@ -37,11 +37,11 @@ LIVE_NAMES = {"ld-weather", "ld-sports"}
 # that decides which tile a producer overwrites, so this is the part pinned.
 #
 # 1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports is the viewer's mapping
-# (ld-shared/references/kiosk-protocol.md) -- the viewer's WIRE CONTRACT, whose
-# bytes are pinned by test_the_vendored_files_still_match_their_recorded_hashes,
-# since a re-vendor is what changes it and this table restates it. Card 1 is the
-# only one a producer shares, and only because triage and calendar-nudge are
-# both alerts.
+# (ld-shared/references/kiosk-protocol.md) -- the viewer's wire contract, which
+# this table restates. Nothing guards that restatement, and nothing needs to:
+# both upstreams are being archived, which is the whole reason these files came
+# in-tree, so there is no re-vendor to drift from. Card 1 is the only one a
+# producer shares, and only because triage and calendar-nudge are both alerts.
 JOB_CONTRACT = {
     "ld-weather":         (3, "weather",     False),
     "ld-sports":          (5, "sports",      False),

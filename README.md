@@ -144,6 +144,15 @@ registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 ```sh
 agent-mgr restore <agent>            # config.yaml and the plugin into its home
 agent-mgr activate <agent>           # prints a code — its owner texts it from their phone
+
+# BEFORE `up`, and not optional. compose.override.yml mounts each skill UNDER
+# /opt/data, which is already the home bind, so the runtime creates any missing
+# mountpoint inside that bind's source on the host -- as root. Create the parent
+# first, as the instance owner, or `skills/` lands root-owned and no later
+# `restore` can install into it. plow-pbc/agent-mgr#44 is the fleet-level fix;
+# until it lands this line is what stands in for it.
+mkdir -p ~/.hermes-<agent>/skills
+
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 just check-latch <agent>             # can this container reach that owner's Mac?
