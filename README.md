@@ -148,10 +148,10 @@ registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 Land `/opt/data/ld/config.json` before you start, not after: the last step below
 registers the crons, and `register_crons.py` reads `family.timezone` from that
 file and refuses without it. The producers read their location and teams from it
-too. It goes at `~/.hermes-<agent>/ld/config.json` on
-the host, landed as the instance owner rather than through a root `exec` — the
-producers read it as the agent, and the live one is mode-600. The dotenv needs
-`DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN` alongside it.
+too. It goes at `~/.hermes-<agent>/ld/config.json` on the host, landed as the
+instance owner rather than through a root `exec` — they read it as the agent,
+and the live one is mode-600. The dotenv needs `DASHBOARD_ENDPOINT_URL` and
+`DASHBOARD_TOKEN` alongside it.
 `ld-shared/scripts/ld_config_gate.py` is the single definition of a valid config
 — run it rather than eyeballing the JSON. Its `family.timezone` must match the
 container's `AGENT_TZ`, because `hermes cron create` takes no per-job zone and
