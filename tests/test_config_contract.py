@@ -473,3 +473,65 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
         "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
         "style changed?"
     )
+
+
+# Hermes confines its file-writing tool to this root; a handoff outside it is
+# denied at 06:00, in front of nobody. Measured in the container rather than
+# read off the compose file -- the image sets it, not this repo.
+WRITE_SAFE_ROOT = "/opt/data"
+
+
+def test_every_producer_handoff_sits_inside_the_write_safe_root():
+    """The agent has to be able to WRITE the handoff, not just read it back.
+
+    The wrappers are thin: the agent composes the tile itself, writes it to
+    MESSAGE_FILE with its file tool, then runs the wrapper, which reads that
+    path and consumes it on a successful send. So MESSAGE_FILE is a path the
+    *agent's file tool* must be able to create -- and Hermes confines that tool
+    to HERMES_WRITE_SAFE_ROOT, which the image sets to /opt/data on every agent
+    in the fleet.
+
+    Shipped as /tmp/ld-<bundle>-text, inherited from the Plow seed where the
+    sandbox differed, and both producers logged
+
+        Write denied: '/tmp/ld-weather-text' is outside
+        HERMES_WRITE_SAFE_ROOT (/opt/data)
+
+    on their first unattended run. The cards still landed, which is what makes
+    this worth pinning: the agent fell back to the shell, which the variable
+    does not gate, so the failure is invisible from the kiosk and recurs as a
+    coin flip every morning. Nothing else in the suite would have caught it --
+    test_post_to_kiosk drives MESSAGE_FILE through tmp_path, so it passes
+    against any path at all.
+
+    Both halves are checked because they drift apart: the wrapper is what runs,
+    the SKILL.md is what the agent is told, and an agent told the wrong path
+    writes the wrong file and posts nothing."""
+    seen = 0
+    producers = 0
+    for skill in SKILL_DIRS:
+        skill_md = ROOT / skill / "SKILL.md"
+        for wrapper in sorted((ROOT / skill / "scripts").glob("post_*.py")):
+            paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text())
+            for path in paths:
+                assert path.startswith(WRITE_SAFE_ROOT + "/"), (
+                    f"{skill}/scripts/{wrapper.name} hands the agent {path}, "
+                    f"which its file tool cannot create -- outside "
+                    f"HERMES_WRITE_SAFE_ROOT ({WRITE_SAFE_ROOT})"
+                )
+                seen += 1
+                # ld-shared carries the same constant as a docstring example and
+                # ships no SKILL.md; it is worth pinning, but only a producer has
+                # an instruction sheet that can disagree with its own wrapper.
+                if not skill_md.exists():
+                    continue
+                producers += 1
+                assert path in skill_md.read_text(), (
+                    f"{skill}/SKILL.md does not name {path}, the handoff its "
+                    f"wrapper actually reads -- the agent would write elsewhere"
+                )
+
+    assert producers >= 2, (
+        f"only {producers} producer handoff(s) checked -- ld-weather and "
+        "ld-sports both set MESSAGE_FILE, so this test has stopped finding them"
+    )

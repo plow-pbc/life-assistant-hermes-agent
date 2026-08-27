@@ -43,12 +43,12 @@ every feed- or config-derived string (team names, status, scores) — `&`→`&am
 ## Post
 
 Write the composed tile HTML to the fixed handoff file —
-`/tmp/ld-sports-text` — with your file-writing tool, then run the helper by
-absolute path (the cron's working directory is not the skill directory):
+`/opt/data/ld/sports-text` — with your file-writing tool, then run the helper
+by absolute path (the cron's working directory is not the skill directory):
 
     /opt/data/skills/ld-sports/scripts/post_sports.py
 
-It reads the tile from `/tmp/ld-sports-text`, the endpoint from the
+It reads the tile from `/opt/data/ld/sports-text`, the endpoint from the
 `DASHBOARD_ENDPOINT_URL` env var, and the token from the `DASHBOARD_TOKEN`
 env var (both from `data/.env`, mode 600) — no value reaches argv. It posts
 as card 5 with `type: "sports"`, http(s)-allowed, no redirects, and fails
