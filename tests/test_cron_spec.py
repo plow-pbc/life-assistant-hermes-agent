@@ -312,21 +312,21 @@ def test_the_reader_handles_a_real_captured_jobs_file():
 
 def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
     """If a re-capture drops any of these, the reader raises on every read --
-    loud, but at bring-up and without naming which field went. This says so in
-    one line instead."""
+    loud, and at bring-up, but as a traceback out of a dict comprehension. This
+    says which field went, in one line, before anyone has to read that."""
     entry = json.loads(FIXTURE.read_text())["jobs"][0]
     # A reader who trips one row should not be told about the other two.
+    # registered_jobs() subscripts all three, so every one of these raises the
+    # same way -- what differs is what an operator can tell from the traceback.
     consequences = {
-        "name": "registered_jobs() keys on it, so a re-capture without it makes "
-                "every read raise KeyError('name') -- which names the field "
-                "itself, during registration, in front of whoever is doing "
-                "bring-up, whether or not this test exists",
-        "enabled": "registered_jobs() defaults it to True, so a re-capture "
-                   "without it reads every job as runnable -- silently, "
-                   "including a disabled one",
-        "paused_at": "registered_jobs() defaults it to absent, so a re-capture "
-                     "without it reads a PAUSED producer as runnable -- "
-                     "silently, which is the stale card on the wall",
+        "name": "registered_jobs() keys on it, so KeyError('name') names the "
+                "field itself",
+        "enabled": "registered_jobs() reads it to decide runnable, so "
+                   "KeyError('enabled') is what a re-capture without it "
+                   "produces -- at bring-up, before any schedule is touched",
+        "paused_at": "registered_jobs() reads it to tell a PAUSED producer "
+                     "from a live one, so KeyError('paused_at') is what a "
+                     "re-capture without it produces",
     }
     for field, consequence in consequences.items():
         assert field in entry, (
