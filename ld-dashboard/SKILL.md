@@ -32,10 +32,8 @@ pause, resume or remove:
 
     /opt/data/skills/ld-dashboard/scripts/register_crons.py
 
-Then force one run (`hermes cron run <job-id>`) and check the kiosk. That proves
-the producer, not the scheduler: whether the already-running gateway loads a
-newly created job without a restart is unmeasured, so watch the first unforced
-fire before calling bring-up done.
+Then verify it — see [Unattended runs](#unattended-runs), which owns both the
+commands and what they do and do not prove.
 
 Preview without changing anything: `… register_crons.py --dry-run`.
 
@@ -134,11 +132,25 @@ as roadmap inventory.
 
 ## Unattended runs
 
-The producers fire with nobody present. Nothing here auto-approves: the sibling
-`str` agent has run a cron every two minutes for months with no
-`hooks_auto_accept` and no `HERMES_ACCEPT_HOOKS` anywhere in its config, so a
-scheduled turn on this image does not gate on a human. Confirm it the same way
-rather than trusting this paragraph — force one run and read the result:
+The producers fire with nobody present. Nothing here auto-approves, and it does
+not need to: the sibling `str` agent has run a cron every two minutes for months
+with no `hooks_auto_accept` and no `HERMES_ACCEPT_HOOKS` anywhere in its config,
+so a scheduled turn on this image does not gate on a human.
 
-    /opt/hermes/bin/hermes cron run <job-id>
-    /opt/hermes/bin/hermes cron runs
+Verify rather than trust that paragraph:
+
+    /opt/hermes/bin/hermes cron list          # is the job there, and not paused?
+    /opt/hermes/bin/hermes cron run <job-id>  # force one
+    /opt/hermes/bin/hermes cron runs          # then look for the card on the kiosk
+
+**What that proves, and what it does not.** A forced run exercises the producer,
+the mount, `/opt/data/ld/config.json` and the kiosk POST — the whole path a
+6 a.m. fire would take *once it starts*. It does not show that the
+already-running gateway loaded the newly created schedule. If the gateway caches
+its jobs at startup, every command above succeeds, a card appears, and the wall
+screen is still dark tomorrow morning.
+
+That question is **unmeasured**. Until it is, do not call bring-up done on a
+forced run: set a job a couple of minutes out and watch it fire on its own, or
+restart the gateway after registering so the answer cannot decide the outcome.
+Whoever settles it should write the answer here and delete this paragraph.

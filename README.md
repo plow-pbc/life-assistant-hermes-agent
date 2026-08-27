@@ -153,42 +153,26 @@ agent-mgr agent <agent> 'what is the weather today?'          # a turn without t
 # `hermes cron` persists to /opt/data/cron/jobs.json, which agent-mgr does not
 # touch, so a rebuilt home comes up with a wall screen that never updates and
 # nothing to diff against. Create-if-missing, so re-running it is safe.
-agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
-  /opt/data/skills/ld-dashboard/scripts/register_crons.py
+agent-mgr agent <agent> 'set up the life dashboard crons'
 ```
 
-`--user` is not optional. `agent-mgr compose … exec` lands as **root** —
-measured: `id` inside the `str` container returns `uid=0` — because the image's
-s6 entrypoint remaps its in-image `hermes` user to `HERMES_UID`/`HERMES_GID` and
-a plain exec bypasses that. `agent-mgr` pins the pair on every exec it makes for
-this reason (`agent-mgr:143-146`, `:194`, `:343`); this one has to do the same,
-and unlike `check-latch` — which only curls and writes to `/tmp`, so a mismatch
-there is invisible — this exec *creates* `jobs.json` on a fresh instance, where
-it does not exist yet. Get it wrong and the gateway can never pause, resume or
-remove anything in its own schedule. The repo has been bitten by root-owned
-paths inside these nested binds before (`plow-pbc/agent-mgr#44`).
+That is a turn, not an exec, and deliberately: `ld-dashboard` is a skill, so the
+agent reads it and runs `register_crons.py` itself. It also sidesteps a real
+trap. The image's s6 entrypoint remaps its in-image `hermes` user to
+`HERMES_UID`/`HERMES_GID`, so a plain `compose exec` runs as **root** (measured:
+`id` in the `str` container returns `uid=0`) — and on a fresh instance
+`jobs.json` does not exist yet, so a root-run registration creates the schedule
+root-owned and the gateway can then never pause, resume or remove anything in
+it. `agent-mgr` pins the pair on every exec it makes (`agent-mgr:146`, `:194`,
+`:343`) precisely because of this; going through it means this repo does not
+have to restate a uid rule it would get wrong the moment a second operator, a
+root shell, or an automated re-provision ran the command. The repo has been
+bitten by root-owned paths inside these nested binds before
+(`plow-pbc/agent-mgr#44`).
 
-`$(id -u)` is the right value rather than a lucky one: `agent-mgr` sets
-`HERMES_UID="$(id -u)"` from the invoking user (`lib/common.sh:481`), so the
-host operator's uid *is* the gateway's uid by construction. Measured on
-`wakeup`: host `uid=1000`, `HERMES_UID=1000`, and the live `jobs.json` owned by
-`1000:1000`.
-
-Then confirm the producer runs end to end and posts its card:
-
-```sh
-agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
-  /opt/hermes/bin/hermes cron run <job-id>      # job-id from `hermes cron list`
-agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
-  /opt/hermes/bin/hermes cron runs              # then look for the card on the kiosk
-```
-
-That is a **forced** run, so it proves the producer, the mount, the config and
-the kiosk POST — not that the already-running gateway loaded the new schedule.
-Whether it picks jobs up without a restart is **open**: if it caches at startup,
-this check passes and the wall screen is still dark at 06:00. Until it is
-measured, watch the first *unforced* fire (or set a job a couple of minutes out
-and wait for it) before calling bring-up done.
+Then check it landed, and watch a card appear — see
+[Unattended runs](ld-dashboard/SKILL.md#unattended-runs) for what that does and
+does not prove.
 
 The dashboard also needs `/opt/data/ld/config.json` (the producers read
 `weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and

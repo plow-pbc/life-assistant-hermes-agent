@@ -12,13 +12,12 @@
 #   agent-mgr agent <agent> "what's the weather?"
 #
 #   # The dashboard crons -- NOT replayed by restore, so bring-up is not done
-#   # without this. `hermes cron` persists to /opt/data/cron/jobs.json, which
-#   # agent-mgr does not touch. Create-if-missing, safe to re-run.
-#   # --user because `compose exec` lands as ROOT (measured), and on a fresh
-#   # instance jobs.json does not exist yet -- an unpinned exec creates the
-#   # schedule root-owned and the gateway can never touch it again.
-#   agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
-#     /opt/data/skills/ld-dashboard/scripts/register_crons.py
+#   # without this. A turn rather than an exec: ld-dashboard is a skill, and
+#   # agent-mgr pins HERMES_UID/GID for it (a plain `compose exec` runs as ROOT
+#   # and would create the schedule root-owned on a fresh instance).
+#   agent-mgr agent <agent> 'set up the life dashboard crons'
+#   # Then see ld-dashboard/SKILL.md "Unattended runs" -- a forced run proves the
+#   # producer, not that the running gateway loaded the new schedule.
 #
 # No check-connectors: this instance installs no plow-connectors. See README
 # "No connectors, and what that costs".

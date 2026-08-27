@@ -345,15 +345,27 @@ def test_both_restatements_of_the_spec_still_agree_with_it(job):
     carries only the four dark producers, to say what an owner has lost, so it
     is checked only for those rows and only for the fields it prints.
 
-    Asserting the ROW, not just the name: a bare backticked ld-weather appears in
-    prose anywhere in a 300-line README and passes while the table beside it is
-    wrong, which is exactly the drift this is for. The card map has been in four
-    hand-kept copies before; two of them are now pinned here and the third is
+    Asserting the ROW in both, not the fields separately. A bare backticked
+    ld-weather appears in prose anywhere in a 300-line README and passes while
+    the table beside it is wrong; and three independent substring checks against
+    SKILL.md all pass on a row whose name was copied onto a neighbour's schedule,
+    since every asserted string is still somewhere in the file. The card map has
+    been in four hand-kept copies before; two are pinned here and the third is
     parsed straight out of kiosk-protocol.md."""
     skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    assert f"`{job['name']}`" in skill
-    assert f"`{job['schedule']}`" in skill
-    assert f"{job['card']} · {job['type']}" in skill
+    skill_row = f"| `{job['name']}` | `{job['schedule']}` | {job['card']} · {job['type']} |"
+    assert skill_row in skill, (
+        f"SKILL.md has no row {skill_row!r} -- three separate substring checks "
+        "would pass on a row whose name was copied onto a neighbour's schedule"
+    )
+    # The blocker column too. It restates latch#183 vs the iMessage rewrite, and
+    # runtime/config.yaml was off by one on exactly that split a round ago.
+    if job["blocked"]:
+        token = "latch#183" if "latch#183" in job["blocked"] else "iMessage"
+        row_line = next(l for l in skill.splitlines() if l.startswith(skill_row))
+        assert token in row_line, (
+            f"SKILL.md's row for {job['name']} does not name its blocker ({token})"
+        )
 
     if job["blocked"]:
         readme = (ROOT / "README.md").read_text()
