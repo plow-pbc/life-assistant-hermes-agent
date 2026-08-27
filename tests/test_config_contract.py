@@ -12,9 +12,10 @@ and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
 import importlib.util
+import json
 import re
 import subprocess
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import pytest
 import yaml
@@ -447,10 +448,53 @@ def test_every_absolute_skill_path_in_a_skill_md_resolves_in_the_tree():
             ref = ref.rstrip(".")
             head, _, rest = ref.partition("/")
             assert head in leaves, (
-                f"{skill_md.name} names {prefix}{ref}, but {head} is not mounted"
+                f"{skill_md.name} names {prefix}{ref}, but {head} is not a skill "
+                "directory in this tree"
             )
             assert (ROOT / head / rest).is_file() if rest else (ROOT / head).is_dir(), (
                 f"{skill_md.name} names {prefix}{ref}, which is not in the tree"
             )
             seen += 1
     assert seen, "no absolute skill paths found -- has the reference style changed?"
+
+
+VENDORED_MANIFEST = ROOT / "tests" / "fixtures" / "vendored.sha256.json"
+
+
+def test_the_vendored_files_still_match_their_recorded_hashes():
+    """The eight files taken byte-identical from their pinned upstream refs.
+
+    Two things rest on this and neither is checked anywhere else. The PR's
+    provenance claim -- that these are a `diff` away from
+    seed-life-dashboard-hermes-agent@678c7b17 and
+    life-dashboard-skills@c1136ce7 -- is only true while they are untouched. And
+    ld-shared/references/kiosk-protocol.md is the WIRE CONTRACT with the viewer,
+    not documentation: JOB_CONTRACT in test_cron_spec.py restates its card->type
+    map, so a re-vendor that renumbers or retypes a slot would leave the spec and
+    its restatement mutually agreeing and green while every producer writes to a
+    tile the viewer renders differently.
+
+    That is why this is a hash and not a Markdown parser. The drift surface for
+    a vendored tree is a dependency bump, which is a deliberate reviewable act;
+    re-vendoring should update these hashes in the same commit, and the diff
+    should be read. An operator editing a heading in this repo's OWN prose is a
+    different thing entirely and is deliberately not guarded.
+    """
+    import hashlib
+
+    recorded = json.loads(VENDORED_MANIFEST.read_text())
+    assert recorded, "the vendored manifest is empty"
+    drifted = {
+        path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+        for path in recorded
+        if (ROOT / path).is_file()
+        and hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != recorded[path]
+    }
+    missing = [path for path in recorded if not (ROOT / path).is_file()]
+    assert not missing, f"vendored files are gone: {missing}"
+    assert not drifted, (
+        f"vendored files no longer match their recorded hashes: {sorted(drifted)} -- "
+        "if this is a deliberate re-vendor, read the diff (kiosk-protocol.md is the "
+        "viewer's wire contract, and JOB_CONTRACT restates its card map) and update "
+        f"{VENDORED_MANIFEST.name} in the same commit"
+    )

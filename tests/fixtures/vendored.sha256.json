@@ -1,0 +1,10 @@
+{
+  "ld-shared/references/config.example.json": "b9520b35636f8c2b1c6e0502da0770c00fbaad7a6e64d87bc6fcd285f9dcc18a",
+  "ld-shared/references/kiosk-protocol.md": "29dc2be89ae6848cb31eaf28957b0144fe2b9001f5dc65b1fe136d99a20c77f5",
+  "ld-shared/scripts/ld_config_gate.py": "b12491a72a272b146eedc2fefc295f54a4654bf462689475cc974bcda15566d2",
+  "ld-shared/scripts/post_to_kiosk.py": "943e1a39f52adb70a56d7cb64ffc60adca402afe78b3d527eaa41f928ef5c721",
+  "ld-shared/scripts/test_ld_config_gate.py": "ef02f198824abd38500aa49bdd10edb4a70a1e98e6a0d09aa20c83ece4963f3c",
+  "ld-shared/scripts/test_post_to_kiosk.py": "fd69a6bcfb54652a3f220923f017f3572338135089ec4a9460f7c2c6e005275d",
+  "ld-sports/scripts/post_sports.py": "3bbf2323feae3ea47191f16185b07a96d004f9ec925b33c6e5a96029b4b4d7f0",
+  "ld-weather/scripts/post_weather.py": "139bfc5acfa837a182b0381ce8612bfbe998988e383552e0b73007c1665dea41"
+}
