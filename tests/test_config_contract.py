@@ -450,35 +450,18 @@ def test_every_skill_is_mounted_flat_and_read_only():
 def _is_hostname_head(ref):
     """A URL's host segment is not a citation of a repo directory.
 
-    `site.api.espn.com/apis/site/v2/sports/...` is a live line in
-    ld-sports/SKILL.md. Without this exemption it would be green only by
-    accident -- no tracked directory happens to be named apis, site, v2 or
-    sports, so the pattern finds nothing in it to match and nothing here fires.
-    It would go red the day a tracked `ld-shared/references/sports/` appeared,
-    telling the author to give a URL a container path; this exemption is what
-    will keep it green then. The one row this decides TODAY is
-    `site.api.espn.com/scripts/scoreboard`, where `scripts` is tracked.
-
-    A leading dot is a hidden DIRECTORY, not a host: `.github/workflows/ci.yml`
-    resolves under /opt/hermes exactly like any other bare path, so exempting it
-    would be a silent miss of the very kind this guards. `.` and `..` are
-    relative prefixes for the same reason, and they are two of the spellings the
-    guard exists for.
-
-    Scheme-qualified URLs are not handled here and do not need to be: the
-    pattern's character class holds no `:`, so the leftmost match on
-    `https://x.com/scripts/y` begins at the `//` and the absolute-path rule
-    catches it. Stated because a `"://" in ref` disjunct sat here unreachable --
-    it can never see a colon -- while the docstring claimed it was what exempted
-    them.
+    Dormant for the live `site.api.espn.com/apis/site/v2/sports/...` line in
+    ld-sports/SKILL.md -- that string holds no tracked segment, so the pattern
+    never matches it -- and load-bearing the day a tracked
+    `ld-shared/references/sports/` appears. The one row this exemption makes
+    green today is `site.api.espn.com/scripts/scoreboard`.
 
     The cost, stated because an unstated hole is how the next round re-derives
     it as a bug or quietly widens it: any dotted first segment is treated as a
-    host, so a genuine relative citation whose head holds a dot --
-    `config.d/scripts/x`, `ld-shared.old/scripts/y` -- is silently exempt even
-    though it resolves under /opt/hermes like every other bare path. No tracked
-    directory has a dot today, which is exactly the grow-with-the-tree exposure
-    to watch.
+    host, so `config.d/scripts/x` or `ld-shared.old/scripts/y` is silently
+    exempt though it resolves under /opt/hermes like every bare path. No tracked
+    directory has a dot today. A LEADING dot is a hidden directory rather than a
+    host, which covers `.` and `..` as a consequence.
     """
     head = ref.split("/", 1)[0]
     return not head.startswith(".") and "." in head
