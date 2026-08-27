@@ -323,9 +323,16 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
 
 
 def test_a_paused_job_is_not_runnable(tmp_path):
-    """`enabled` and `paused_at` are both in the captured fixture, so this reads
-    what hermes writes rather than guessing. A paused producer reported as
-    healthy is the stale card the WARNING exists to catch."""
+    """`enabled` and `paused_at` are both in the captured fixture, so the rows
+    that carry them read what hermes writes rather than guessing. A paused
+    producer reported as healthy is the stale card the WARNING exists to catch.
+
+    The last row is deliberately a shape hermes does NOT emit -- the fixture
+    test above enforces that both fields are always present. It is here for a
+    different reason: the reader DEFAULTS on both, and those defaults were
+    unasserted in either direction, so `job["enabled"]` or a `False` default
+    stayed green while aborting the 06:00 run or reading a live producer as
+    not-runnable."""
     mod = spec()
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
