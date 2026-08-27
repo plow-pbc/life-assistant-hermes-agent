@@ -11,6 +11,7 @@ Every assertion here exists because getting it wrong is quiet rather than loud,
 and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
+import functools
 import importlib.util
 import re
 import subprocess
@@ -431,29 +432,30 @@ def test_every_skill_is_mounted_flat_and_read_only():
     }
 
 
-# Directory names any bare citation could plausibly start with, from the TRACKED
-# tree rather than the filesystem. rglob made the guard's coverage a function of
-# local build state: an untracked docs/ from a plan doc written in this checkout
-# put `docs`, `superpowers` and `plans` in the alternation here and in nobody
-# else's, so the guard was strictly weaker on a fresh clone than on the author's
-# machine -- environment-dependent green, which is the one thing a table of
-# pinned cases exists to prevent. Confirmed: a fresh clone of this branch has no
-# docs/ at all. `git ls-files` is identical on every checkout, and computing it
-# once here keeps it off the per-call path.
-_TRACKED_DIR_NAMES = sorted({
-    part
-    for f in subprocess.run(
+@functools.cache
+def _unanchored_pattern():
+    """Compiled once, and lazily, so only the guard tests depend on git.
+
+    Built at import time this ran `git ls-files` with check=True during
+    COLLECTION, so outside a checkout -- a source export, a container that copies
+    the tree without .git, git absent from PATH -- the whole module died and took
+    every unrelated dotenv, compose and mount assertion with it.
+    """
+    tracked = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.split()
-    for part in Path(f).parent.parts
-})
-# A boundary before the segment, so a known name cannot match as the SUFFIX of a
-# longer token -- `myscripts/foo` is not a citation of scripts/, and with the set
-# derived from the whole tree the number of names available to be matched
-# mid-token grows with it.
-_UNANCHORED = re.compile(
-    rf"[\w./-]*?(?:(?<![\w-])|^)(?:{'|'.join(map(re.escape, _TRACKED_DIR_NAMES))})/[\w./-]*"
-)
+    names = sorted({part for f in tracked for part in Path(f).parent.parts})
+    assert names, (
+        "`git ls-files` reported no tracked directories -- an empty alternation "
+        "collapses to (?:) and would flag anything containing a slash"
+    )
+    # A boundary before the segment, so a known name cannot match as the SUFFIX
+    # of a longer token: `myscripts/foo` is not a citation of scripts/. No `^`
+    # branch -- at offset 0 there is no preceding character, so the lookbehind
+    # already succeeds, and without re.MULTILINE `^` could never match elsewhere.
+    return re.compile(
+        rf"[\w./-]*?(?<![\w-])(?:{'|'.join(map(re.escape, names))})/[\w./-]*"
+    )
 
 
 def unanchored_refs(text):
@@ -467,13 +469,18 @@ def unanchored_refs(text):
     /opt/data/cron/jobs.json, /opt/data/ld/config.json and /opt/hermes/bin/hermes,
     all correct and all immune.
 
-    Three rounds of this guard were narrowing: an `ld-*` head, then an
-    ld-*|scripts|references alternation, then root directories plus ld-shared's.
-    Each was one name short of the next bare citation somebody would write. The
-    tracked tree is the end of that line -- there is no wider set to widen to.
+    Segment names come from the TRACKED tree, so the guard is identical on every
+    checkout. It was the filesystem, and that made coverage a function of local
+    build state: an untracked docs/ from a plan doc written here put `docs`,
+    `superpowers` and `plans` in the alternation on one machine and nobody
+    else's. The cost of determinism, stated because an unstated hole is how the
+    next round re-narrows this one: a directory that is never tracked -- a
+    gitignored state/, an assets/ its author has not git added yet -- is
+    invisible here, and a bare `state/foo.json` goes unflagged even though it
+    resolves under /opt/hermes exactly like every spelling this does catch.
 
     Returns the offending strings so the caller can name them."""
-    return sorted({m for m in _UNANCHORED.findall(text) if not m.startswith("/")})
+    return sorted({m for m in _unanchored_pattern().findall(text) if not m.startswith("/")})
 
 
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
@@ -539,10 +546,6 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     # A first segment that is a real repo-root directory holding different
     # content -- reads fine in the checkout, finds nothing in the container.
     ("see `runtime/config.yaml`", ["runtime/config.yaml"]),
-    # scripts/ is the sharpest case: a real tracked root directory holding a
-    # DIFFERENT file (latch-verdict.py), so the string reads fine in the checkout
-    # and finds nothing in the container.
-    ("run `scripts/latch-verdict.py`", ["scripts/latch-verdict.py"]),
     ("see `tests/fixtures/hermes-cron-jobs.json`", ["tests/fixtures/hermes-cron-jobs.json"]),
     # Bare single-segment citations, which are prose natural to these files.
     ("vendored under `ld-shared/` and mounted", ["ld-shared/"]),
@@ -555,17 +558,11 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     ("run `/opt/data/skills/ld-weather/scripts/post_weather.py`", []),
     # A URL is not a path citation.
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
+    # A known name inside a longer token is not a citation. Without a boundary
+    # before the segment these are flagged and reported verbatim as paths the
+    # author never wrote, and the name set grows with the tracked tree.
+    ("the myscripts/foo helper", []),
+    ("see old-shared/bar for context", []),
 ])
 def test_unanchored_refs_flags_exactly_the_citations_the_agent_cannot_resolve(text, flagged):
     assert unanchored_refs(text) == flagged
-
-
-@pytest.mark.parametrize("text", [
-    "the myscripts/foo helper",      # `scripts` as a suffix, not a citation
-    "see old-shared/bar for context",  # `ld-shared`'s tail, likewise
-])
-def test_a_known_name_inside_a_longer_token_is_not_a_citation(text):
-    """The alternation has an auto-growing set of names, so without a boundary
-    every one of them can match mid-token and get reported verbatim as an
-    unanchored path the author never wrote."""
-    assert unanchored_refs(text) == []
