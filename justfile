@@ -5,12 +5,20 @@
 # <agent> below is the registry name of a registered instance. `life` is the
 # only one that may be registered today -- see README "Migrating rowan":
 #
-#   agent-mgr restore <agent>     # config, the Plow Chat plugin, and skills.tsv
+#   agent-mgr restore <agent>     # config and the Plow Chat plugin (skills.tsv is empty)
 #   agent-mgr activate <agent>    # prints a code; its OWNER texts it, from their phone
 #   agent-mgr up <agent>          # down / restart / logs
 #   agent-mgr sign-in <agent>     # device-code OAuth; hand the URL to its owner
-#   agent-mgr check-connectors <agent>
-#   agent-mgr agent <agent> "what's on today?"
+#   agent-mgr agent <agent> "what's the weather?"
+#
+#   # The dashboard crons -- NOT replayed by restore, so bring-up is not done
+#   # without this. `hermes cron` persists to /opt/data/cron/jobs.json, which
+#   # agent-mgr does not touch. Create-if-missing, safe to re-run.
+#   agent-mgr compose <agent> exec -T hermes \
+#     /opt/data/skills/ld-dashboard/scripts/register_crons.py
+#
+# No check-connectors: this instance installs no plow-connectors. See README
+# "No connectors, and what that costs".
 #
 # Eleven recipes here re-implemented those. What is left is one recipe that does
 # something agent-mgr does not yet do -- see below -- and `test`.

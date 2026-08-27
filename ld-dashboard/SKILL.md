@@ -19,6 +19,13 @@ than improvising six schedules from a sentence.
 
 ## Registering
 
+**This is a bring-up step, not a repair step.** `agent-mgr restore` does not
+replay `jobs.json`, so a instance that has been brought up without it has a wall
+screen that never updates — and nothing to diff against, because the failure
+looks identical to a producer that is running and finding nothing. The README's
+bring-up block and the `justfile` header both carry this line for that reason;
+run it after `sign-in`, and again after any rebuild of the home.
+
 Inside the container:
 
     /opt/data/skills/ld-dashboard/scripts/register_crons.py

@@ -66,57 +66,6 @@ def test_no_schedule_carries_a_timezone(job):
     )
 
 
-@pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
-def test_no_delivery_target_is_a_literal_chat_id(job):
-    """A chat uid is minted by one instance's activation. A literal here would
-    message whoever the spec was written for -- on a repo explicitly shared by
-    more than one person."""
-    deliver = job["deliver"]
-    if deliver is None:
-        return
-    assert "${" in deliver, (
-        f"{job['name']} delivers to {deliver!r}, which pins one instance's chat"
-    )
-    assert not re.search(r"cht_[A-Za-z0-9_-]+", deliver)
-
-
-def test_an_unusable_delivery_target_refuses_rather_than_registering():
-    """`plow_chat:` and `plow_chat:${...}` are both accepted at create time and
-    undeliverable at 06:00, so every way of arriving at one has to refuse while
-    someone is watching -- and each fault has to name its own remedy, because
-    they have different ones."""
-    mod = spec()
-
-    # Set but blank: the credential was never minted.
-    with pytest.raises(SystemExit) as blank:
-        mod.resolve_deliver("plow_chat:${PLOW_CHAT_CHAT_UID}", {"PLOW_CHAT_CHAT_UID": "  "})
-    assert "PLOW_CHAT_CHAT_UID" in str(blank.value) and "activate" in str(blank.value)
-
-    # Absent behaves the same, and deliberately so. Splitting them looked like
-    # better attribution and mis-fired on the case that matters: before
-    # `agent-mgr activate`, the variable is absent rather than blank, so the
-    # un-activated instance took the "check your spelling" branch. One message
-    # names both remedies; a typo in JOBS is caught statically below instead.
-    with pytest.raises(SystemExit) as absent:
-        mod.resolve_deliver("plow_chat:${PLOW_CHAT_CHT_UID}", {"PLOW_CHAT_CHAT_UID": "cht_abc"})
-    assert "activate" in str(absent.value) and "spelling" in str(absent.value)
-
-    # Shapes the substitution pattern cannot match at all. Before the result was
-    # checked, these came back verbatim and registered a job delivering to a
-    # literal ${...}.
-    for spelling in ("plow_chat:${chat-uid}", "plow_chat:${a.b}", "plow_chat:${}"):
-        with pytest.raises(SystemExit) as unexpanded:
-            mod.resolve_deliver(spelling, {})
-        assert "unexpanded" in str(unexpanded.value), spelling
-
-    # Lowercase now goes THROUGH the substitution rather than past it.
-    assert mod.resolve_deliver("plow_chat:${plow_chat_chat_uid}",
-                               {"plow_chat_chat_uid": "cht_low"}) == "plow_chat:cht_low"
-    assert mod.resolve_deliver("plow_chat:${PLOW_CHAT_CHAT_UID}",
-                               {"PLOW_CHAT_CHAT_UID": "cht_abc"}) == "plow_chat:cht_abc"
-
-
-
 
 def _jobs_file(tmp_path, jobs):
     """A jobs.json the way hermes writes it."""
@@ -235,15 +184,12 @@ class FakeHermes:
         return [a[a.index("--name") + 1] for a in self.calls if "create" in a]
 
 
-ENV = {"PLOW_CHAT_CHAT_UID": "cht_test"}
-
-
 def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys, tmp_path):
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
     fake = FakeHermes(path)
-    mod.main([], runner=fake, env=ENV, jobs_path=path)
+    mod.main([], runner=fake, jobs_path=path)
     assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -264,7 +210,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     # but an unattended re-provision must not read this run as success -- the
     # exit code is the only signal that reaches one.
     with pytest.raises(SystemExit) as exit_:
-        mod.main([], runner=fake, env=ENV, jobs_path=path)
+        mod.main([], runner=fake, jobs_path=path)
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
     out = capsys.readouterr().out
@@ -279,7 +225,7 @@ def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
-    mod.main([], runner=fake, env=ENV, jobs_path=path)
+    mod.main([], runner=fake, jobs_path=path)
     assert set(fake.created) == LIVE_NAMES
     blocked = {j["name"] for j in mod.BLOCKED}
     assert not blocked & set(fake.created)
@@ -292,7 +238,7 @@ def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     with pytest.raises(SystemExit):
         mod.main([], runner=FakeHermes(tmp_path / "none.json", create_rc=1),
-                 env=ENV, jobs_path=tmp_path / "none.json")
+                 jobs_path=tmp_path / "none.json")
 
 
 def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
@@ -304,7 +250,7 @@ def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
     fake = FakeHermes(path)
-    mod.main(["--dry-run"], runner=fake, env=ENV, jobs_path=path)
+    mod.main(["--dry-run"], runner=fake, jobs_path=path)
     assert fake.created == []
     out = capsys.readouterr().out
     assert "already present, would skip: ld-weather" in out
@@ -402,46 +348,6 @@ def test_the_skill_table_still_agrees_with_the_spec(job):
     assert f"{job['card']} · {job['type']}" in table
 
 
-# The half this repo does not declare, because agent-mgr writes it rather than
-# the operator: everything else is parsed out of .env.example below. Named by
-# hand because there is no file here to parse it from -- each with its origin,
-# so a reader can check the claim.
-SET_BY_AGENT_MGR = {
-    "PLOW_CHAT_BASE_URL",       # derived by `agent-mgr activate`
-    "PLOW_CHAT_HOME_CHANNEL",   # derived by `agent-mgr activate`
-    "TZ",                       # agent-mgr templates/compose.yml, from AGENT_TZ
-    "AGENT_TZ",                 # the instance dotenv, read after the home resolves
-}
-
-
-def supplied_by_the_environment():
-    """What a ${VAR} in JOBS may name.
-
-    The declared half is PARSED from .env.example rather than restated -- this
-    is the only typo guard left, since the runtime absent-branch was removed in
-    favour of catching it statically, and a hand-kept copy of an environment
-    contract is the drift this file spent a round eliminating elsewhere.
-
-    Erring restrictive is the failure mode that bites: a name this set omits
-    refuses a LEGITIMATE target at registration. DASHBOARD_ENDPOINT_URL and
-    DASHBOARD_TOKEN were exactly that until they were declared in .env.example,
-    which is where they belong anyway -- post_to_kiosk.py reads both from the
-    container environment."""
-    declared = re.findall(r"^([A-Z][A-Z0-9_]*)=", (ROOT / ".env.example").read_text(), re.M)
-    assert declared, ".env.example declares no keys -- has the format changed?"
-    return set(declared) | SET_BY_AGENT_MGR
-
-
-@pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
-def test_every_placeholder_in_the_spec_names_a_real_variable(job):
-    """A misspelled ${VAR} is a static defect, so it fails here rather than at
-    registration -- which is what lets the runtime message speak plainly about
-    the credential instead of hedging between two causes."""
-    for name in re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", job["deliver"] or ""):
-        assert name in supplied_by_the_environment(), (
-            f"{job['name']} delivers to ${{{name}}}, which nothing supplies -- "
-            "typo, or add it to .env.example and to this set"
-        )
 
 
 def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_path):
@@ -460,7 +366,7 @@ def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_pa
             return _Proc(0, "", "")
 
     with pytest.raises(SystemExit) as excinfo:
-        mod.main([], runner=LyingHermes(), env=ENV, jobs_path=tmp_path / "wrong.json")
+        mod.main([], runner=LyingHermes(), jobs_path=tmp_path / "wrong.json")
     assert "not where this hermes persists jobs" in str(excinfo.value)
 
 
@@ -589,7 +495,7 @@ def test_a_dry_run_does_not_fail_over_a_paused_job_it_did_not_create(
     path = _jobs_file(tmp_path, [
         {"name": "ld-weather", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"}
     ])
-    assert mod.main(["--dry-run"], runner=FakeHermes(path), env=ENV, jobs_path=path) == 0
+    assert mod.main(["--dry-run"], runner=FakeHermes(path), jobs_path=path) == 0
     out = capsys.readouterr().out
     assert "would leave 1 paused producer(s) alone: ld-weather" in out
 
@@ -607,3 +513,28 @@ def test_a_wrong_cron_directory_under_a_good_home_also_refuses(tmp_path):
         spec().registered_jobs(home / "crons" / "jobs.json")
     msg = str(excinfo.value)
     assert "is mounted but" in msg and "wrong one" in msg
+
+
+def test_no_live_job_needs_a_delivery_target():
+    """The tripwire that replaced the resolver.
+
+    Both live producers post their card over the kiosk POST -- the card IS the
+    delivery -- so the ${VAR} expansion machinery `ld-calendar-nudge` needed was
+    reachable only from a blocked row. It was deleted rather than carried as
+    roadmap inventory, and this is what fires on the day a job carrying a
+    delivery target goes live: whoever unblocks it writes the resolver then,
+    against a requirement they can see, instead of inheriting an unreachable one
+    nobody has run."""
+    for job in spec().LIVE:
+        assert job["deliver"] is None, (
+            f"{job['name']} is live and carries deliver={job['deliver']!r}, but "
+            "create_argv() has no --deliver arm -- the target would be silently "
+            "dropped. Add the expansion back (see git history for the deleted "
+            "resolve_deliver) rather than removing this assertion."
+        )
+
+
+def test_the_blocked_nudge_still_records_the_target_it_will_need():
+    """Deleting the resolver must not delete the requirement."""
+    nudge = next(j for j in spec().JOBS if j["name"] == "ld-calendar-nudge")
+    assert nudge["blocked"] and nudge["deliver"] == "plow_chat:${PLOW_CHAT_CHAT_UID}"

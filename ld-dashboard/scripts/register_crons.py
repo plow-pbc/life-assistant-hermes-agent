@@ -32,7 +32,6 @@ import argparse
 import json
 import os
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
@@ -45,10 +44,11 @@ JOBS_FILE = "/opt/data/cron/jobs.json"
 # The spec. One row per producer, live or not.
 #
 # `deliver` is None for every card-only producer: the card IS the delivery, over
-# the kiosk POST. ld-calendar-nudge also messages the owner, and its target is
-# per-instance -- the chat uid this instance activated -- so it resolves from the
-# environment at registration time and is never a literal here. A literal would
-# message whoever the spec was written for.
+# the kiosk POST. ld-calendar-nudge also messages the owner, and it is blocked --
+# so its target is recorded as the ${VAR} it will need and nothing expands it.
+# The resolver that used to live here was reachable only from this one blocked
+# row; see create_argv() for why it went, and
+# test_no_live_job_needs_a_delivery_target for what fires when it is needed.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
 # the container's zone, which is agent-mgr's AGENT_TZ, and the ld-config gate is
@@ -138,49 +138,6 @@ JOBS = (
 
 LIVE = tuple(j for j in JOBS if not j["blocked"])
 BLOCKED = tuple(j for j in JOBS if j["blocked"])
-
-
-def resolve_deliver(spec, env):
-    """Expand a ${VAR} delivery target from the environment, or fail loudly.
-
-    Only reached for a live job. A blank uid would register a job that delivers
-    to the literal string `plow_chat:` -- accepted at create time and silently
-    undeliverable at 06:00, which is the failure this refuses to create.
-
-    Two ways to be left holding an unusable target, and both refuse here. The
-    variable is set but blank, which the substitution catches; or the placeholder
-    is spelled in a shape the pattern does not match -- lowercase, hyphenated,
-    dotted -- in which case re.sub simply leaves it verbatim and hands back
-    `plow_chat:${whatever}` as if it were a chat id. The second is the quieter of
-    the two, so the result is checked rather than the input."""
-    if spec is None:
-        return None
-    def sub(match):
-        name = match.group(1)
-        # One message for absent and blank alike. Splitting them looked like
-        # better attribution and was worse: before `agent-mgr activate` runs,
-        # PLOW_CHAT_CHAT_UID is not a key at all, so the un-activated
-        # instance -- the case this refusal exists for -- took the "check your
-        # spelling" branch. Whether blank is even reachable depends on
-        # agent-mgr's compose template, which this repo does not own. A typo in
-        # JOBS is a static defect and is caught by a test instead.
-        value = env.get(name, "").strip()
-        if not value:
-            raise SystemExit(
-                f"refusing to register: delivery target needs {name}, which this "
-                "container's environment does not supply. It is minted by "
-                "`agent-mgr activate` and lives in the instance's own dotenv -- "
-                "or, if the instance IS activated, check the spelling in JOBS."
-            )
-        return value
-    out = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sub, spec)
-    if "${" in out:
-        raise SystemExit(
-            f"refusing to register: delivery target {spec!r} still holds an "
-            "unexpanded placeholder after substitution -- it would be sent to "
-            "hermes as a literal chat id and fail only when the job fires."
-        )
-    return out
 
 
 def _require_dir(path, missing):
@@ -367,13 +324,21 @@ def is_present(registered, name):
     return name in registered
 
 
-def create_argv(job, env):
+def create_argv(job):
+    """No --deliver arm, because no job that reaches here has one.
+
+    Only LIVE jobs are ever created, and both of them post their card over the
+    kiosk POST -- the card IS the delivery. `ld-calendar-nudge` is the one
+    producer that also messages the owner, and it is blocked, so the expansion
+    machinery its `deliver` field needed was unreachable code: a ${VAR}
+    resolver, its empty/unexpanded refusals, and a hand-kept set of the names
+    the container supplies. All of it deleted rather than carried as roadmap
+    inventory. The field stays as DATA on the blocked row so the requirement is
+    not lost, and test_no_live_job_needs_a_delivery_target fires the day one
+    becomes live -- which is when whoever unblocks it writes the resolver."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]
-    deliver = resolve_deliver(job["deliver"], env)
-    if deliver:
-        argv += ["--deliver", deliver]
     return argv
 
 
@@ -381,12 +346,11 @@ def _run(argv):
     return subprocess.run(argv, capture_output=True, text=True)
 
 
-def main(argv=None, runner=_run, env=None, jobs_path=JOBS_FILE):
+def main(argv=None, runner=_run, jobs_path=JOBS_FILE):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true",
                         help="print what would be registered and change nothing")
     args = parser.parse_args(argv)
-    env = os.environ if env is None else env
 
     for job in BLOCKED:
         print(f"blocked, not registered: {job['name']} ({job['schedule']}) -- {job['blocked']}")
@@ -418,7 +382,7 @@ def main(argv=None, runner=_run, env=None, jobs_path=JOBS_FILE):
                 )
                 paused.append(job["name"])
             continue
-        argv_ = create_argv(job, env)
+        argv_ = create_argv(job)
         if args.dry_run:
             print(f"would register: {job['name']} ({job['schedule']})")
             continue
