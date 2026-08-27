@@ -655,6 +655,22 @@ def test_the_cross_document_pointers_still_land_somewhere():
         "the justfile no longer points at README -- it keeps no copy of the "
         "procedure, so without the pointer it names nothing at all"
     )
+    # The justfile names THREE README sections as text, having deleted its copies
+    # of all of them. One pinned and two not is the same silent dangle, and under
+    # literals closing it costs a line each rather than a normaliser.
+    for heading, pointer in (
+        ("## Migrating `rowan`", 'README "Migrating rowan"'),
+        ("## No connectors, and what that costs", '"No connectors, and what that costs"'),
+    ):
+        assert heading in readme.splitlines(), (
+            f"README's {heading!r} was retitled or moved, and the justfile points "
+            "at it by name -- its reader is sent to a section that no longer exists"
+        )
+        assert pointer in recipe, (
+            f"the justfile no longer carries {pointer!r} -- it keeps no copy of "
+            "what that section says, so without the pointer it names nothing"
+        )
+
     assert "## Unattended runs" in skill.splitlines(), (
         "SKILL.md's Unattended-runs heading moved or was retitled; README and "
         "SKILL.md both link #unattended-runs, and both are now dead"
