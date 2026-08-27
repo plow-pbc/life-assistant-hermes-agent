@@ -45,11 +45,17 @@ fresh instance with nothing scheduled, which the file makes unambiguous.
 
 **A paused producer is neither.** It is registered, so re-registering duplicates
 it; it will never fire, so skipping it silently leaves a card that stops
-updating while the run reports success. It is called out by name instead, and
-left alone:
+updating. It is left alone, named, and — after the rest of the run finishes —
+**the script exits non-zero**, because the exit code is the only signal that
+reaches an unattended re-provision:
 
     WARNING: ld-weather is registered but PAUSED -- it will never fire...
     Resume it: hermes cron resume ld-weather
+
+The first job it creates is read back out of `jobs.json`. That is the floor
+under "absent file means fresh instance": nothing pins the path, so a moved or
+wrong one would look like an empty schedule on every run and register duplicates
+forever, quietly. The read-back makes that fail on run one instead.
 
 ## The spec
 

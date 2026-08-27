@@ -208,17 +208,29 @@ def registered_jobs(jobs_path=JOBS_FILE):
     that never updates again.
     """
     path = pathlib.Path(jobs_path)
-    if not path.exists():
-        # A fresh instance, before anything has been scheduled. Unambiguous --
-        # which is the point; the notice-sniffing this replaces existed only
-        # because an empty listing and an unreadable one looked identical.
-        return {}
     try:
-        data = json.loads(path.read_text())
-    except (OSError, ValueError) as exc:
+        raw = path.read_text()
+    except FileNotFoundError:
+        # A fresh instance, before anything has been scheduled. The ONLY absence
+        # that means "nothing is registered" -- which is why it is caught by its
+        # own exception rather than through Path.exists(). On 3.12+ exists()
+        # swallows every OSError, so EACCES on /opt/data/cron -- or an unmounted
+        # home, or a moved file -- would come back False and read as a fresh
+        # instance, re-registering every job on every run forever. Silently.
+        # verify_landed() below is the floor under this branch: it proves the
+        # path was right by reading back the first job actually created.
+        return {}
+    except OSError as exc:
         raise SystemExit(
             f"refusing to register: could not read {path} ({exc}). Treating an "
             "unreadable schedule as an empty one duplicates every job."
+        ) from exc
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        raise SystemExit(
+            f"refusing to register: {path} is not valid JSON ({exc}). Treating "
+            "an unreadable schedule as an empty one duplicates every job."
         ) from exc
     if not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
         raise SystemExit(
@@ -227,11 +239,46 @@ def registered_jobs(jobs_path=JOBS_FILE):
             "'nothing exists' would duplicate every job."
         )
     out = {}
-    for job in data["jobs"]:
-        name = (job or {}).get("name")
-        if name:
-            out[name] = bool(job.get("enabled", True)) and not job.get("paused_at")
+    for entry in data["jobs"]:
+        # Validate the ENTRY, not just the container. A rename of `name` would
+        # otherwise drop every job through `if name:` and hand back an empty map
+        # from a perfectly readable file -- the duplicate-everything reading
+        # again, through the door a container-only check leaves open. And a
+        # rename of the pause fields would silently default every job to
+        # runnable, restoring the stale-card failure the WARNING exists to catch.
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) \
+                or not entry["name"].strip():
+            raise SystemExit(
+                f"refusing to register: an entry in {path} has no string `name` "
+                f"({entry!r}) -- the format changed, and reading that as "
+                "'nothing exists' would duplicate every job."
+            )
+        if "enabled" not in entry and "paused_at" not in entry:
+            raise SystemExit(
+                f"refusing to register: {entry['name']} in {path} carries neither "
+                "`enabled` nor `paused_at` -- the format changed, and guessing it "
+                "is runnable would leave a paused producer reported as healthy."
+            )
+        out[entry["name"]] = bool(entry.get("enabled", True)) and not entry.get("paused_at")
     return out
+
+
+def verify_landed(name, jobs_path):
+    """Prove the file we read is the file hermes writes, using the first create.
+
+    The floor under "absent means fresh instance". Nothing pins JOBS_FILE -- not
+    a fixture, not a hermes version -- so a moved or wrong path would look like
+    an empty schedule on every run and duplicate every job forever, quietly. One
+    read-back after the first successful create turns that into a loud failure
+    on run one, and costs nothing when the path is right."""
+    if name not in registered_jobs(jobs_path):
+        raise SystemExit(
+            f"refusing to continue: `hermes cron create` reported success for "
+            f"{name}, but it is not in {jobs_path} afterwards. That file is not "
+            "where this hermes persists jobs, so every run would read an empty "
+            "schedule and register duplicates. Check JOBS_FILE against "
+            "`hermes cron list`."
+        )
 
 
 def is_present(registered, name):
@@ -271,21 +318,24 @@ def main(argv=None, runner=_run, env=None, jobs_path=JOBS_FILE):
     # run does, from the one mode whose entire job is to say what the real run
     # will do.
     registered = registered_jobs(jobs_path)
+    paused = []
+    verified = False
 
     for job in LIVE:
         if is_present(registered, job["name"]):
             if registered[job["name"]]:
                 print(f"already present, {'would skip' if args.dry_run else 'skipped'}: {job['name']}")
             else:
-                # Exiting 0 on this would report a clean run over a card that
-                # never updates again -- the quiet failure this file is
-                # organised around. Re-registering it instead would duplicate
-                # the job, so neither action is right: say so.
+                # Neither action is right -- re-registering duplicates the job,
+                # skipping leaves a card that stops updating -- so it is left
+                # alone and reported. Collected rather than raised here so the
+                # other producers still get registered; the run fails at the end.
                 print(
                     f"WARNING: {job['name']} is registered but PAUSED -- it will "
                     "never fire, and this leaves it alone rather than "
                     f"duplicating it. Resume it: hermes cron resume {job['name']}"
                 )
+                paused.append(job["name"])
             continue
         argv_ = create_argv(job, env)
         if args.dry_run:
@@ -297,7 +347,16 @@ def main(argv=None, runner=_run, env=None, jobs_path=JOBS_FILE):
                 f"could not register {job['name']}:\n{proc.stdout}\n{proc.stderr}"
             )
         print(f"registered: {job['name']} ({job['schedule']})")
+        if not verified:
+            verify_landed(job["name"], jobs_path)
+            verified = True
 
+    if paused:
+        raise SystemExit(
+            "registered what was missing, but "
+            f"{len(paused)} producer(s) are PAUSED and will never fire: "
+            f"{', '.join(paused)} -- hermes cron resume <name>"
+        )
     return 0
 
 

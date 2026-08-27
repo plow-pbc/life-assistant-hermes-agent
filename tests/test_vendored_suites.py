@@ -21,6 +21,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
+# Beside ROOT, not below _discover(): it is read inside that function, and the
+# only thing that made a later definition work was the single call site's order.
+TESTS_DIR = Path(__file__).resolve().parent
 
 def _discover():
     """Every test_*.py outside tests/, found rather than listed.
@@ -48,7 +51,6 @@ def _discover():
     return sorted(str(p.relative_to(ROOT)) for p in found)
 
 
-TESTS_DIR = Path(__file__).resolve().parent
 SUITES = _discover()
 
 

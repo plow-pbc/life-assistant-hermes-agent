@@ -7,6 +7,7 @@ producer registered against a data source it does not have.
 """
 import importlib.util
 import json
+import pathlib
 import re
 from pathlib import Path
 
@@ -196,19 +197,33 @@ class _Proc:
 
 
 class FakeHermes:
-    """Records every argv. Only `cron create` reaches it now.
+    """Records every argv, and WRITES what it creates into the jobs file.
 
-    It used to have to fabricate `hermes cron list` output, which made the fake
-    the only record of a rendering nothing pinned -- and a fake of a tool that
-    does not quite exist is what let the empty-schedule defect through. Existing
-    jobs are a file now, so the fake shrank to the one call that mutates."""
+    Writing is not decoration. register_crons reads back the first job it
+    creates to prove the path it is reading is the path hermes writes -- so a
+    fake that only records argv would fail that check, and a fake that made the
+    check pass by not having one would hide the defect it exists to catch. The
+    round that removed FakeHermes' fabricated `cron list` rendering learned the
+    general form: a fake of a tool that does not quite exist is where defects go
+    to hide."""
 
-    def __init__(self, create_rc=0):
+    def __init__(self, jobs_path, create_rc=0):
+        self.jobs_path = pathlib.Path(jobs_path)
         self.create_rc = create_rc
         self.calls = []
 
     def __call__(self, argv):
         self.calls.append(argv)
+        if self.create_rc == 0 and "create" in argv:
+            name = argv[argv.index("--name") + 1]
+            existing = (
+                json.loads(self.jobs_path.read_text())["jobs"]
+                if self.jobs_path.exists() else []
+            )
+            existing.append({"name": name, "enabled": True, "paused_at": None})
+            self.jobs_path.write_text(
+                json.dumps({"jobs": existing, "updated_at": "2026-08-27T00:00:00Z"})
+            )
         return _Proc(self.create_rc, "", "boom" if self.create_rc else "")
 
     @property
@@ -222,8 +237,8 @@ ENV = {"PLOW_CHAT_CHAT_UID": "cht_test"}
 def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys, tmp_path):
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    fake = FakeHermes()
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
+    fake = FakeHermes(path)
     mod.main([], runner=fake, env=ENV, jobs_path=path)
     assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
@@ -237,11 +252,16 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     says so and leaves it alone."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    fake = FakeHermes()
     path = _jobs_file(tmp_path, [
         {"name": "ld-weather", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"}
     ])
-    mod.main([], runner=fake, env=ENV, jobs_path=path)
+    fake = FakeHermes(path)
+    # Non-zero, and only at the END: the other producers still get registered,
+    # but an unattended re-provision must not read this run as success -- the
+    # exit code is the only signal that reaches one.
+    with pytest.raises(SystemExit) as exit_:
+        mod.main([], runner=fake, env=ENV, jobs_path=path)
+    assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
     out = capsys.readouterr().out
     assert "PAUSED" in out and "hermes cron resume ld-weather" in out
@@ -253,8 +273,9 @@ def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
     rather than a missing connector."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    fake = FakeHermes()
-    mod.main([], runner=fake, env=ENV, jobs_path=tmp_path / "none.json")
+    path = tmp_path / "none.json"
+    fake = FakeHermes(path)
+    mod.main([], runner=fake, env=ENV, jobs_path=path)
     assert set(fake.created) == LIVE_NAMES
     blocked = {j["name"] for j in mod.BLOCKED}
     assert not blocked & set(fake.created)
@@ -266,8 +287,8 @@ def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     with pytest.raises(SystemExit):
-        mod.main([], runner=FakeHermes(create_rc=1), env=ENV,
-                 jobs_path=tmp_path / "none.json")
+        mod.main([], runner=FakeHermes(tmp_path / "none.json", create_rc=1),
+                 env=ENV, jobs_path=tmp_path / "none.json")
 
 
 def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
@@ -277,8 +298,8 @@ def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
     entirely and print `would register` for a job that already existed."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    fake = FakeHermes()
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
+    fake = FakeHermes(path)
     mod.main(["--dry-run"], runner=fake, env=ENV, jobs_path=path)
     assert fake.created == []
     out = capsys.readouterr().out
@@ -325,15 +346,23 @@ def viewer_slots():
     `3 · weather` column -- which is the prose drift promoting `type` to data was
     meant to end, moved one file over. Renumber the protocol and this goes red.
 
-    The row count is asserted so a reformatted table fails loudly instead of
-    parsing to an empty map that agrees with everything."""
+    Parses without asserting: this runs at import, so a bare assert here would
+    fail COLLECTION of the whole module and read as "the tests are broken"
+    rather than "the protocol table changed". The count is checked by
+    test_the_protocol_card_map_still_parses instead, which goes red alone."""
     table = (ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
     rows = re.findall(r"^\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
-    assert len(rows) == 5, (
-        f"expected 5 card rows in kiosk-protocol.md's Card map, parsed {len(rows)} "
-        "-- the table was reformatted and this map is now blind"
-    )
     return {int(card): type_ for card, type_ in rows}
+
+
+def test_the_protocol_card_map_still_parses():
+    """A reformatted table must fail loudly, not yield an empty map that agrees
+    with everything -- an empty VIEWER_SLOTS makes every pinned-map assertion
+    below vacuous."""
+    assert len(VIEWER_SLOTS) == 5, (
+        f"expected 5 card rows in kiosk-protocol.md's Card map, parsed "
+        f"{len(VIEWER_SLOTS)} -- the table was reformatted and this map is blind"
+    )
 
 
 VIEWER_SLOTS = viewer_slots()
@@ -368,14 +397,27 @@ def test_the_skill_table_still_agrees_with_the_spec(job):
     assert f"{job['card']} · {job['type']}" in table
 
 
-# The variables this agent's container actually supplies, from .env.example plus
-# what agent-mgr's template sets. A ${VAR} in JOBS outside this set is a typo,
-# and catching it here is why resolve_deliver needs no typo branch at runtime.
-SUPPLIED_BY_THE_ENVIRONMENT = {
-    "PLOW_CHAT_CHAT_UID", "PLOW_CHAT_TOKEN", "PLOW_CHAT_BASE_URL",
-    "PLOW_CHAT_HOME_CHANNEL", "DOMO_MCP_TOKEN", "DOMO_DEVICE_UID",
-    "DASHBOARD_ENDPOINT_URL", "DASHBOARD_TOKEN", "AGENT_TZ", "TZ",
+# Written by `agent-mgr activate` into the instance dotenv, and by agent-mgr's
+# compose template into the container -- the half this repo does NOT declare, so
+# it is the only part named by hand. Everything else comes from .env.example.
+SET_BY_AGENT_MGR = {
+    "PLOW_CHAT_BASE_URL",       # derived by activate
+    "PLOW_CHAT_HOME_CHANNEL",   # derived by activate
+    "TZ",                       # templates/compose.yml, from AGENT_TZ
+    "AGENT_TZ",                 # the instance dotenv, read after the home resolves
 }
+
+
+def supplied_by_the_environment():
+    """What a ${VAR} in JOBS may name.
+
+    The declared half is PARSED from .env.example rather than restated -- this
+    is the only typo guard left, since the runtime absent-branch was removed in
+    favour of catching it statically, and a hand-kept copy of an environment
+    contract is the drift this file spent a round eliminating elsewhere."""
+    declared = re.findall(r"^([A-Z][A-Z0-9_]*)=", (ROOT / ".env.example").read_text(), re.M)
+    assert declared, ".env.example declares no keys -- has the format changed?"
+    return set(declared) | SET_BY_AGENT_MGR
 
 
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
@@ -384,7 +426,63 @@ def test_every_placeholder_in_the_spec_names_a_real_variable(job):
     registration -- which is what lets the runtime message speak plainly about
     the credential instead of hedging between two causes."""
     for name in re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", job["deliver"] or ""):
-        assert name in SUPPLIED_BY_THE_ENVIRONMENT, (
+        assert name in supplied_by_the_environment(), (
             f"{job['name']} delivers to ${{{name}}}, which nothing supplies -- "
             "typo, or add it to .env.example and to this set"
         )
+
+
+def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_path):
+    """The floor under "absent file means fresh instance".
+
+    Nothing pins JOBS_FILE -- not a fixture, not a hermes version -- so a moved
+    or wrong path looks exactly like an empty schedule, on every run, forever,
+    and registers duplicates each time in silence. Reading back the first job
+    actually created turns that into a loud failure on run one. A runner that
+    reports success without writing is precisely the wrong-path case."""
+    mod = spec()
+    monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
+
+    class LyingHermes:
+        calls = []
+        def __call__(self, argv):
+            return _Proc(0, "", "")
+
+    with pytest.raises(SystemExit) as excinfo:
+        mod.main([], runner=LyingHermes(), env=ENV, jobs_path=tmp_path / "wrong.json")
+    assert "not where this hermes persists jobs" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("jobs,expected", [
+    ([{"job_name": "ld-weather", "enabled": True}], "no string `name`"),
+    ([{"name": "", "enabled": True}], "no string `name`"),
+    (["ld-weather"], "no string `name`"),
+    ([{"name": "ld-weather", "state": "paused"}], "neither `enabled` nor `paused_at`"),
+])
+def test_a_renamed_field_aborts_rather_than_parsing_to_nothing(tmp_path, jobs, expected):
+    """A container-only shape check leaves the entries open, and both renames
+    are silent in the worst direction: dropping every entry hands back an empty
+    map from a readable file -- register everything, again -- and losing the
+    pause fields defaults a paused producer to runnable, which is the stale card
+    the WARNING exists to catch."""
+    path = tmp_path / "jobs.json"
+    path.write_text(json.dumps({"jobs": jobs, "updated_at": "2026-08-27T00:00:00Z"}))
+    with pytest.raises(SystemExit) as excinfo:
+        spec().registered_jobs(path)
+    assert expected in str(excinfo.value)
+
+
+def test_an_unreadable_jobs_file_is_not_mistaken_for_an_absent_one(tmp_path):
+    """Path.exists() swallows every OSError on 3.12+, so EACCES on the cron
+    directory would have come back False and read as a fresh instance. Only
+    FileNotFoundError means "nothing scheduled yet"."""
+    mod = spec()
+    path = tmp_path / "jobs.json"
+    path.write_text(json.dumps({"jobs": []}))
+    path.chmod(0o000)
+    try:
+        with pytest.raises(SystemExit) as excinfo:
+            mod.registered_jobs(path)
+        assert "duplicates every job" in str(excinfo.value)
+    finally:
+        path.chmod(0o600)
