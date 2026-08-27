@@ -702,18 +702,26 @@ def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
     # or a fence. The cost is an invisible pair a README editor can delete, and
     # that fails here, loudly, naming them.
     readme = (ROOT / "README.md").read_text()
-    try:
-        section = readme.split("<!-- dark-table -->", 1)[1].split("<!-- /dark-table -->", 1)[0]
-    except IndexError:
-        raise AssertionError(
-            "README's <!-- dark-table --> / <!-- /dark-table --> markers are gone. "
-            "They delimit the dark-producer table so this test does not have to "
-            "guess at its position; put them back around it."
-        ) from None
-    rows = re.findall(r"^\| `(ld-[\w-]+)` \| \d+ · \w+ \|", section, re.M)
-    assert sorted(rows) == sorted(j["name"] for j in spec().BLOCKED), (
+    # ONE search across both markers. `split(close, 1)[0]` never raises -- index
+    # 0 always exists -- so a missing CLOSING marker silently returned the rest
+    # of the file and reverted this to the whole-file scan the marker fence
+    # replaced, while the guard's message claimed both were checked. Deleting the
+    # closing one alone is also the likelier edit of the two.
+    fenced = re.search(r"<!-- dark-table -->(.*?)<!-- /dark-table -->", readme, re.S)
+    assert fenced, (
+        "README's <!-- dark-table --> / <!-- /dark-table --> pair is broken -- "
+        "one or both markers are missing. They delimit the dark-producer table "
+        "so this test does not have to guess at its position; put them back "
+        "around it."
+    )
+    # \s* because the comment above claims immunity to indentation and the
+    # marker move dropped only half of what carried it: indent the table into a
+    # list item or blockquote and a column-0 anchor matches nothing, under a
+    # message about a stale row.
+    rows = re.findall(r"^\s*\| `(ld-[\w-]+)` \| \d+ · \w+ \|", fenced[1], re.M)
+    expected = sorted(j["name"] for j in spec().BLOCKED)
+    assert sorted(rows) == expected, (
         f"README's dark-producer table lists {sorted(rows)}, but the blocked "
-        f"producers are {sorted(j['name'] for j in spec().BLOCKED)} -- a row left "
-        "behind after a blocker cleared tells the owner they lost something they "
-        "have back"
+        f"producers are {expected} -- a row left behind after a blocker cleared "
+        "tells the owner they lost something they have back"
     )
