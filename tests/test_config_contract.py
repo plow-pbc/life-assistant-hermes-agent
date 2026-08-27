@@ -601,7 +601,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
     # The exemption on a real HOST head. `scripts` is tracked so the pattern
     # matches and the string is relative, so the heuristic is the only thing
-    # returning []. (The other row it decides is the dotted-relative head below.)
+    # returning [].
     ("site.api.espn.com/scripts/scoreboard", []),
     # Exempt via the absolute rule -- the match begins at the `//` -- not via the
     # heuristic. Pinned so that stays true.
