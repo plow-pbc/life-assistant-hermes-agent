@@ -302,8 +302,9 @@ def test_the_reader_handles_a_real_captured_jobs_file():
     other test here builds its fixtures from those same names, so they would
     all agree with each other and with nothing else; only this one can tell
     whether the reader reads hermes.
-    Captured from Hermes Agent v0.19.0 (2026.7.20), values scrubbed
-    because the field names are the contract. See tests/fixtures/README.md."""
+
+    Captured from Hermes Agent v0.19.0 (2026.7.20), values scrubbed because the
+    field names are the contract. See tests/fixtures/README.md."""
     registered = spec().registered_jobs(FIXTURE)
     assert registered == {"<scrubbed-name>": True}
 
