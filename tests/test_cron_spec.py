@@ -377,22 +377,24 @@ def test_both_restatements_of_the_spec_still_agree_with_it(job):
         # latch#183" is a plausible next edit, and a leftmost match would then
         # check the row for "iMessage" and report it missing its blocker while
         # the row names the one the spec records.
-        row_line = next(l for l in skill.splitlines() if l.startswith(skill_row))
+        # `in`, not startswith, and a default. The assertion above proves the row
+        # is somewhere in the text, not that a LINE begins with it -- indent the
+        # table into a list item or a fenced block and startswith matches
+        # nothing, so a bare next() raises StopIteration with no message and
+        # throws away every crafted failure below.
+        row_line = next((l for l in skill.splitlines() if skill_row in l), "")
         for token in tokens:
             assert token in row_line, (
                 f"SKILL.md's row for {job['name']} does not name {token}, which "
                 f"its blocked text records ({job['blocked']!r})"
             )
 
-    if job["blocked"]:
         readme = (ROOT / "README.md").read_text()
         row = f"| `{job['name']}` | {job['card']} · {job['type']} |"
         assert row in readme, (
             f"README's dark-producer table has no row {row!r} -- it is the only "
             "place an owner reads what they lost, and nothing else checks it"
         )
-
-
 
 
 def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_path):
