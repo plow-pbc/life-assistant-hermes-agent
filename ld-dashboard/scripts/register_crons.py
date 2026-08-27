@@ -183,6 +183,29 @@ def resolve_deliver(spec, env):
     return out
 
 
+def _require_dir(path, missing):
+    """Refuse unless `path` is reachable, saying which fault it is.
+
+    Two call sites with two bits of variation -- which path, and what its absence
+    means -- so the shape lives here rather than twice. The OSError arm is
+    identical either way: what matters is only that an unreachable directory is
+    never read as an empty schedule.
+
+    stat(), not is_dir(): is_dir() swallows every OSError exactly the way
+    exists() does -- the trap registered_jobs() goes out of its way to avoid --
+    so a permission denial would report "not a directory" and send the operator
+    to check a path that is fine."""
+    try:
+        path.stat()
+    except FileNotFoundError:
+        raise SystemExit(missing) from None
+    except OSError as exc:
+        raise SystemExit(
+            f"refusing to register: could not stat {path} ({exc}). Reading an "
+            "unreachable schedule as an empty one would register duplicates."
+        ) from exc
+
+
 def registered_jobs(jobs_path=JOBS_FILE):
     """What is already scheduled, from hermes's own persisted state.
 
@@ -209,13 +232,11 @@ def registered_jobs(jobs_path=JOBS_FILE):
     that never updates again.
     """
     path = pathlib.Path(jobs_path)
-    # Before trusting an absence, check the mounted HOME, not the cron directory.
-    # /opt/data is agent-mgr's one template mount, so it is present whenever the
-    # container is wired correctly and absent when it is not -- which is a wrong
-    # path and an unmounted home, the two cases the ENOENT branch below cannot
-    # tell from a fresh instance.
+    # Before trusting an absence, check the two directories above it: the
+    # mounted home, then the cron directory. Between them they cover the cases
+    # the ENOENT branch below cannot tell from a fresh instance.
     #
-    # BOTH levels, with distinct messages. They catch different faults and are
+    # Distinct messages, because they are distinct faults. They catch different faults and are
     # not alternatives: the home is missing when the container is not wired
     # correctly, and the cron directory is missing when JOBS_FILE names the
     # wrong subdirectory under a perfectly good home -- /opt/data/crons, say,
@@ -231,35 +252,20 @@ def registered_jobs(jobs_path=JOBS_FILE):
     # a permission denial would report "not a directory" and send the operator to
     # check a path that is fine.
     home = path.parent.parent
-    try:
-        home.stat()
-    except FileNotFoundError:
-        raise SystemExit(
-            f"refusing to register: {home} does not exist, so {path} cannot be "
-            "where this hermes persists jobs -- the agent home is not mounted, or "
-            "JOBS_FILE is wrong. Reading that as an empty schedule would register "
-            "duplicates on every run."
-        ) from None
-    except OSError as exc:
-        raise SystemExit(
-            f"refusing to register: could not stat {home} ({exc}). Reading an "
-            "unreachable home as an empty schedule would register duplicates."
-        ) from exc
-    try:
-        path.parent.stat()
-    except FileNotFoundError:
-        raise SystemExit(
-            f"refusing to register: {home} is mounted but {path.parent} is not "
-            "there. The gateway creates that directory at start, so JOBS_FILE "
-            "most likely names the wrong one. Reading its absence as an empty "
-            "schedule would register duplicates on every run."
-        ) from None
-    except OSError as exc:
-        raise SystemExit(
-            f"refusing to register: could not stat {path.parent} ({exc}). "
-            "Reading an unreachable schedule as an empty one would register "
-            "duplicates."
-        ) from exc
+    _require_dir(
+        home,
+        f"refusing to register: {home} does not exist, so {path} cannot be where "
+        "this hermes persists jobs -- the agent home is not mounted, or JOBS_FILE "
+        "is wrong. Reading that as an empty schedule would register duplicates on "
+        "every run.",
+    )
+    _require_dir(
+        path.parent,
+        f"refusing to register: {home} is mounted but {path.parent} is not there. "
+        "The gateway creates that directory at start, so JOBS_FILE most likely "
+        "names the wrong one. Reading its absence as an empty schedule would "
+        "register duplicates on every run.",
+    )
     try:
         raw = path.read_text()
     except FileNotFoundError:
@@ -323,8 +329,10 @@ def registered_jobs(jobs_path=JOBS_FILE):
         # (enabled true, paused_at null, paused_reason null, state "scheduled"),
         # so it proves the keys exist and settles nothing about which one pausing
         # moves -- and reading `state != "paused"` swaps a guess about the FIELD
-        # for a guess about the VALUE, since "suspended" or "Paused" would leave
-        # the term inert. It is still worth the one term: two candidates fail
+        # for a guess about the VALUE. Casing is covered because it costs one
+        # token and the failure it would leave is the fail-open one; the residual
+        # uncertainty is the WORD -- "suspended" would still leave the term
+        # inert. It is still worth the one term: two candidates fail
         # closed less often than one. What would actually settle it is a paused
         # entry in the fixture, which needs `hermes cron pause` against an
         # instance this repo owns -- so it is captured at cutover on `life`
@@ -332,7 +340,7 @@ def registered_jobs(jobs_path=JOBS_FILE):
         out[entry["name"]] = (
             bool(entry.get("enabled", True))
             and not entry.get("paused_at")
-            and entry.get("state") != "paused"
+            and str(entry.get("state") or "").casefold() != "paused"
         )
     return out
 

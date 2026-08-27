@@ -23,5 +23,11 @@ activated) and `~/.hermes-sam-property`, both carrying `cron/` with
 
 That shape — the directory present, the file absent — is what a fresh instance
 looks like to `registered_jobs()`, and it takes the `FileNotFoundError` branch.
-Recorded because it is the claim a pre-create check would otherwise rest on;
-`register_crons.py` deliberately checks the mounted home instead, so it does not.
+
+**This measurement is load-bearing.** `register_crons.py` refuses to run when
+`/opt/data/cron` is missing, on the grounds that a fresh instance still has it —
+which is true only because of what is written above. A future hermes that
+created the directory lazily on first save would turn that guard into a hard
+abort on exactly the run that has everything to register, so re-measuring is the
+trigger to revisit it: if a fresh home ever comes up *without* `cron/`, the
+lower of the two pre-create checks has to go.

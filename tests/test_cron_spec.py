@@ -542,12 +542,12 @@ def test_an_unmounted_home_refuses_before_creating_anything(tmp_path):
     second copy of that job each attempt -- "duplicate everything forever"
     becomes "duplicate one per attempt", which is smaller but not fixed.
 
-    It checks the mounted HOME (jobs.json's grandparent), not the cron directory:
-    /opt/data is agent-mgr's one template mount, so its absence is exactly the
-    wrong-path-or-unmounted case. Checking cron/ instead would rest on the
-    gateway creating it before any job exists -- it does, measured on two homes
-    that never had one -- but that buys nothing extra and would abort a genuinely
-    fresh instance if a future hermes created it lazily."""
+    This is the FIRST of two levels: /opt/data is agent-mgr's one template mount,
+    so its absence means the container is not wired correctly. The second level
+    is the cron directory under it -- see
+    test_a_wrong_cron_directory_under_a_good_home_also_refuses -- which catches
+    the likelier fault of JOBS_FILE naming the wrong subdirectory under a home
+    that mounted fine."""
     with pytest.raises(SystemExit) as excinfo:
         spec().registered_jobs(tmp_path / "no-home" / "cron" / "jobs.json")
     assert "agent home is not mounted" in str(excinfo.value)
