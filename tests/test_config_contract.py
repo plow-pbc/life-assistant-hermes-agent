@@ -490,11 +490,31 @@ BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
 
 
 def _handoff(skill, wrapper):
-    [path] = re.findall(
-        r'MESSAGE_FILE\s*=\s*"([^"]+)"',
-        (ROOT / skill / "scripts" / wrapper).read_text(),
+    source = (ROOT / skill / "scripts" / wrapper).read_text()
+    paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', source)
+    # ld-shared's only quoted assignment is its docstring EXAMPLE -- the real
+    # constant is `MESSAGE_FILE: str | None = None`, which this cannot see. So a
+    # reworded docstring lands here, and a bare unpack would blame neither the
+    # file nor the contract.
+    assert len(paths) == 1, (
+        f"{skill}/scripts/{wrapper} declares {len(paths)} quoted MESSAGE_FILE "
+        "assignments; expected exactly 1"
     )
-    return path
+    return paths[0]
+
+
+def test_the_handoff_table_lists_every_wrapper():
+    """The one guard the literal cannot encode: a wrapper with no row.
+
+    Four more producers are specified in ld-dashboard's JOBS table, and the row
+    nobody remembers to add is the one that ships on /tmp and logs the denial in
+    front of nobody. Set equality fails on an empty glob rather than skipping,
+    so it needs none of the machinery discovery did."""
+    found = {p.parent.parent.name for p in ROOT.glob("ld-*/scripts/post_*.py")}
+    assert found == {skill for skill, _ in HANDOFFS}, (
+        f"{sorted(found ^ {s for s, _ in HANDOFFS})} -- a post_*.py wrapper "
+        "exists with no row in HANDOFFS, or a row names one that is gone"
+    )
 
 
 @pytest.mark.parametrize(("skill", "wrapper"), HANDOFFS, ids=[s for s, _ in HANDOFFS])
@@ -513,9 +533,7 @@ def test_every_handoff_path_is_inside_the_write_safe_root(skill, wrapper):
     )
 
 
-@pytest.mark.parametrize(
-    ("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS]
-)
+@pytest.mark.parametrize(("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS])
 def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper):
     """The wrapper is what runs; the SKILL.md is what the agent is TOLD.
 
