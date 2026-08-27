@@ -145,6 +145,19 @@ not an omission to be tidied up later.
 `<agent>` is the registry name. `life` is the only instance that *may* be
 registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 
+Land `/opt/data/ld/config.json` before you start, not after: the last step below
+registers the crons, and `register_crons.py` reads `family.timezone` from that
+file and refuses without it. It goes at `~/.hermes-<agent>/ld/config.json` on
+the host, landed as the instance owner rather than through a root `exec` — the
+producers read it as the agent, and the live one is mode-600. The dotenv needs
+`DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN` alongside it.
+`ld-shared/scripts/ld_config_gate.py` is the single definition of a valid config
+— run it rather than eyeballing the JSON. Its `family.timezone` must match the
+container's `AGENT_TZ`, because `hermes cron create` takes no per-job zone and
+every producer fires in the container's; you do not have to check that by eye,
+though — `register_crons.py` refuses to register at all when they differ, so a
+mismatch stops bring-up rather than reaching the wall two hours late.
+
 ```sh
 agent-mgr restore <agent>            # config.yaml and the plugin into its home
 agent-mgr activate <agent>           # prints a code — its owner texts it from their phone
@@ -223,18 +236,6 @@ own.
 Then check it landed and watch a card appear — see
 [Unattended runs](ld-dashboard/SKILL.md#unattended-runs), which carries both the
 host and in-container forms, and what a forced run does and does not prove.
-
-The dashboard also needs `/opt/data/ld/config.json` (the producers read
-`weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and
-`DASHBOARD_TOKEN` in the instance's dotenv. Land that file as the instance
-owner, not through a root `exec` — the producers read it as the agent, and the
-live one is mode-600. `ld-shared/scripts/ld_config_gate.py`
-is the single definition of a valid config — run it rather than eyeballing the
-JSON. Its `family.timezone` must match the container's `AGENT_TZ`, because
-`hermes cron create` takes no per-job zone and every producer fires in the
-container's; you do not have to check that by eye, though —
-`register_crons.py` refuses to register at all when they differ, so a mismatch
-stops bring-up rather than reaching the wall two hours late.
 
 There is no `check-connectors` step: this instance has no connectors. See
 [No connectors, and what that costs](#no-connectors-and-what-that-costs).
