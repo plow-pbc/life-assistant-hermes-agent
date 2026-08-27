@@ -12,6 +12,7 @@ and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
 import importlib.util
+import hashlib
 import json
 import re
 import subprocess
@@ -462,7 +463,7 @@ VENDORED_MANIFEST = ROOT / "tests" / "fixtures" / "vendored.sha256.json"
 
 
 def test_the_vendored_files_still_match_their_recorded_hashes():
-    """The eight files taken byte-identical from their pinned upstream refs.
+    """The files taken byte-identical from their pinned upstream refs.
 
     Two things rest on this and neither is checked anywhere else. The PR's
     provenance claim -- that these are a `diff` away from
@@ -480,20 +481,34 @@ def test_the_vendored_files_still_match_their_recorded_hashes():
     should be read. An operator editing a heading in this repo's OWN prose is a
     different thing entirely and is deliberately not guarded.
     """
-    import hashlib
-
     recorded = json.loads(VENDORED_MANIFEST.read_text())
     assert recorded, "the vendored manifest is empty"
-    drifted = {
-        path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
-        for path in recorded
-        if (ROOT / path).is_file()
-        and hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != recorded[path]
+
+    # Coverage, not just drift. `missing` catches a deletion and `drifted` an
+    # edit, but a re-vendor that ADDS a file -- a split-out protocol doc, another
+    # reference -- lands unguarded and silent. Full discovery is not possible
+    # here (byte-identical-to-upstream is not derivable from the tree), but
+    # ld-shared/ is wholly vendored and is where the wire contract lives, so its
+    # coverage is.
+    shared = {
+        str(path.relative_to(ROOT))
+        for path in (ROOT / "ld-shared").rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts
     }
+    assert shared == {p for p in recorded if p.startswith("ld-shared/")}, (
+        "ld-shared/ and the manifest disagree about which files are vendored -- "
+        f"tree has {sorted(shared)}, manifest records "
+        f"{sorted(p for p in recorded if p.startswith('ld-shared/'))}"
+    )
+
     missing = [path for path in recorded if not (ROOT / path).is_file()]
     assert not missing, f"vendored files are gone: {missing}"
+    drifted = sorted(
+        path for path in recorded
+        if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != recorded[path]
+    )
     assert not drifted, (
-        f"vendored files no longer match their recorded hashes: {sorted(drifted)} -- "
+        f"vendored files no longer match their recorded hashes: {drifted} -- "
         "if this is a deliberate re-vendor, read the diff (kiosk-protocol.md is the "
         "viewer's wire contract, and JOB_CONTRACT restates its card map) and update "
         f"{VENDORED_MANIFEST.name} in the same commit"
