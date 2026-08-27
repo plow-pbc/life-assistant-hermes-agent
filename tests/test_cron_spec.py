@@ -312,10 +312,8 @@ def test_the_reader_handles_a_real_captured_jobs_file():
 
 
 def test_a_paused_job_is_not_runnable(tmp_path):
-    """`enabled` and `paused_at` are both in every entry hermes writes -- the
-    captured fixture pins that -- so the reader subscripts them rather than
-    defaulting. A paused producer reported as healthy is the stale card the
-    WARNING exists to catch."""
+    """A paused producer reported as healthy is the stale card the WARNING
+    exists to catch, and these three rows are what make that the answer."""
     mod = spec()
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
