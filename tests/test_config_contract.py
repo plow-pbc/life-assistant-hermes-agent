@@ -513,8 +513,8 @@ def test_the_handoff_table_lists_every_wrapper():
     listed = set(HANDOFFS)
     found = {(w.parent.parent.name, w.name) for w in ROOT.glob("ld-*/scripts/post_*.py")}
     assert found == listed, (
-        f"{sorted(found ^ listed)} -- a post_*.py wrapper exists with no row in "
-        "HANDOFFS, or a row names one that is gone"
+        f"{sorted(found - listed)} exist with no row in HANDOFFS; "
+        f"{sorted(listed - found)} name a wrapper that is gone"
     )
 
 
