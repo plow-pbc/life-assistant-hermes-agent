@@ -236,23 +236,15 @@ in that directory and removes it — and refuses to answer unless this process
 probe succeeds on a directory the agent cannot write, so an answer from anyone
 else is worse than none.
 
-**This section is where its refusals point**, so the two remedies live here
-rather than in the messages. Both were wrong three rounds running when each
-refusal carried its own copy.
+**This section is where its refusals point**, so the remedies live here rather
+than in the messages — both were wrong three rounds running when each refusal
+carried its own copy. Running it as the agent is the pinned-uid form above,
+with its caveat about whose uid got baked in; there is one copy of that and this
+is not a second one.
 
-Running it as the agent — either form:
-
-```sh
-# From the host, as a turn. The documented path; agent-mgr pins the uid pair.
-agent-mgr agent <agent> 'register the dashboard crons and report what happened'
-
-# Already in a container shell, or scripting it: pin the pair explicitly.
-agent-mgr compose <agent> exec -T --user "$HERMES_UID:$HERMES_GID" \
-    hermes /opt/data/skills/ld-dashboard/scripts/register_crons.py
-```
-
-Fixing the directory when it refuses on ownership — from a **root** shell in
-the container, where both variables are set:
+When it refuses on ownership, fix the directory from a **root** shell in the
+container, where both variables are set — single-quoted so they expand there and
+not in your host shell:
 
 ```sh
 agent-mgr compose <agent> exec -T --user root hermes sh -c \

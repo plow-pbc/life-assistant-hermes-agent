@@ -205,7 +205,7 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
 # the container. Each fix was correct and the next round found the next one,
 # which is the tell that a refusal should state the FACT and point at the one
 # maintained copy of the procedure rather than carry a fourth paraphrase of it.
-RUNBOOK = "README.md, ## Bring-up"
+RUNBOOK = "plow-pbc/life-assistant-hermes-agent, README.md, ## Bring-up"
 
 
 def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid, env=None):
@@ -264,8 +264,9 @@ def require_handoff_dir_writable(config_path=LD_CONFIG, geteuid=os.geteuid, env=
             )
     elif euid == 0:
         raise SystemExit(
-            f"refusing to register: running as root, and HERMES_UID is unset or "
-            f"unreadable ({declared!r}), so there is nothing to check against. "
+            "refusing to register: running as root, and HERMES_UID is "
+            + ("unset" if declared is None else f"unreadable ({declared!r})")
+            + ", so there is nothing to check against. "
             "Root can write directories the agent cannot, so the check below "
             f"would pass on the setup it exists to catch. How to run it as the "
             f"agent: {RUNBOOK}."

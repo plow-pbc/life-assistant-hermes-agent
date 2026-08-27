@@ -513,7 +513,13 @@ def test_the_handoff_probe_refuses_to_answer_as_root(tmp_path):
         # the next line dies on -- a designed refusal becoming a traceback.
         with pytest.raises(SystemExit) as exc:
             mod.require_handoff_dir_writable(cfg, geteuid=IS_ROOT, env=env)
-        assert "unset or unreadable" in str(exc.value), env
+        message = str(exc.value)
+        # Absent says "unset"; present-but-unparseable shows the value. Rendering
+        # an absent variable as the literal string "None" reads as though that
+        # were its value.
+        expected = "is unset," if not env else "unreadable ("
+        assert expected in message, (env, message)
+        assert "(None)" not in message, message
 
 
 def test_the_handoff_directory_is_proved_by_writing_not_by_inspection(tmp_path):
@@ -641,15 +647,31 @@ def test_a_refusal_points_at_a_runbook_section_that_exists():
     """
     mod = spec()
     readme = (ROOT / "README.md").read_text()
-    filename, _, heading = mod.RUNBOOK.partition(", ")
+    repo, _, rest = mod.RUNBOOK.partition(", ")
+    filename, _, heading = rest.partition(", ")
+    assert repo == "plow-pbc/life-assistant-hermes-agent", (
+        "the refusal prints inside the container, from /opt/data/skills, where "
+        "no README sits beside the script -- so the pointer has to name the repo"
+    )
     assert filename == "README.md"
     assert f"\n{heading}\n" in readme, (
         f"register_crons.py sends operators to {mod.RUNBOOK}, which is not a "
         "heading in it"
     )
     section = readme.split(f"\n{heading}\n", 1)[1].split("\n## ", 1)[0]
-    for needed in ("chown -R", "--user", "chmod u+wx"):
+
+    # One token per arm, and they are separate arms: the uid-mismatch refusal --
+    # the more frequently hit one -- sends people to the run form, and the probe
+    # refusal to the ownership fix. An earlier version of this test required
+    # three tokens that all lived inside the ownership snippet, so deleting the
+    # run form entirely left it green.
+    for arm, needed in (
+        ("run it as the agent", 'exec -T --user "$(id -u):$(id -g)"'),
+        ("fix the ownership", "--user root"),
+        ("fix the ownership", "chown -R"),
+        ("fix the ownership", "chmod u+wx"),
+    ):
         assert needed in section, (
-            f"{mod.RUNBOOK} no longer carries {needed!r}, which the refusals "
-            "send operators there to find"
+            f"{mod.RUNBOOK} no longer carries {needed!r} -- the {arm} arm the "
+            "refusals send operators there to find"
         )
