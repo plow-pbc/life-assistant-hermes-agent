@@ -693,9 +693,18 @@ def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
     remembers to delete a README row. A table that keeps listing a producer as
     dark over-reports what the owner has lost, which is the one thing it exists
     to say."""
-    rows = re.findall(
-        r"^\| `(ld-[\w-]+)` \| \d+ · \w+ \|", (ROOT / "README.md").read_text(), re.M
-    )
+    # Scoped to the section, not the file. latch#183 landing is both the event
+    # this test exists for and the likeliest moment a SECOND producer table
+    # appears -- three go live, and the README's job becomes saying what's live
+    # as well as what's lost. A whole-file scan would then read a live-producer
+    # row as a stale dark one and report the dark table wrong while it is right.
+    # The heading is pinned by the cross-document pointer test, so renaming it
+    # fails loudly there rather than silently emptying this match.
+    readme = (ROOT / "README.md").read_text()
+    heading = "## No connectors, and what that costs"
+    assert heading in readme, f"{heading!r} is gone -- see the pointer test"
+    section = readme.split(heading, 1)[1].split("\n## ", 1)[0]
+    rows = re.findall(r"^\| `(ld-[\w-]+)` \| \d+ · \w+ \|", section, re.M)
     assert sorted(rows) == sorted(j["name"] for j in spec().BLOCKED), (
         f"README's dark-producer table lists {sorted(rows)}, but the blocked "
         f"producers are {sorted(j['name'] for j in spec().BLOCKED)} -- a row left "
