@@ -660,7 +660,12 @@ def test_the_cross_document_pointers_still_land_somewhere():
     # literals closing it costs a line each rather than a normaliser.
     for heading, pointer in (
         ("## Migrating `rowan`", 'README "Migrating rowan"'),
-        ("## No connectors, and what that costs", '"No connectors, and what that costs"'),
+        # Wrapped across two comment lines in the justfile, matched verbatim so
+        # this tuple keeps the `README` prefix the other two carry -- without it,
+        # rewriting the line to point at a different document leaves the quoted
+        # title alone and the test green.
+        ("## No connectors, and what that costs",
+         'README\n# "No connectors, and what that costs"'),
     ):
         assert heading in readme.splitlines(), (
             f"README's {heading!r} was retitled or moved, and the justfile points "
