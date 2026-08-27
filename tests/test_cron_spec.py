@@ -565,17 +565,48 @@ def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):
 
 
 def test_the_container_zone_comes_from_TZ_not_etc_localtime(tmp_path):
-    """Measured in the live container: /etc/localtime points at Etc/UTC while TZ
-    carries America/Los_Angeles, and TZ is what Python and cron honour. Reading
-    the symlink would refuse every correct config."""
+    """A zone no host machine will have as its local time.
+
+    Measured in the live container: /etc/localtime points at Etc/UTC while TZ
+    carries America/Los_Angeles, and TZ is what Python and cron honour -- so
+    reading the symlink would refuse every correct config. Pinning that with a
+    real zone would prove nothing: America/Los_Angeles agrees with an LA
+    developer's /etc/localtime and disagrees with a UTC CI container, so the
+    assertion would be about the HOST rather than about which source was read.
+    Antarctica/Troll is nobody's local time, so agreement here is only possible
+    if TZ was consulted."""
     mod = spec()
     config = tmp_path / "ld-config.json"
-    config.write_text(json.dumps({"family": {"timezone": "America/Los_Angeles"}}))
-    mod.require_timezone_agreement(config, {"TZ": "America/Los_Angeles"})
+    config.write_text(json.dumps({"family": {"timezone": "Antarctica/Troll"}}))
+    mod.require_timezone_agreement(config, {"TZ": "Antarctica/Troll"})
 
     with pytest.raises(SystemExit) as excinfo:
         mod.require_timezone_agreement(config, {"TZ": ""})
     assert "AGENT_TZ" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("argv", [[], ["--dry-run"]], ids=["real", "dry-run"])
+def test_main_refuses_before_creating_anything_when_the_zones_disagree(
+    monkeypatch, tmp_path, argv
+):
+    """That main() CALLS the check, which its other tests cannot show.
+
+    They all pass a check that agrees, so they only prove it passes -- delete the
+    call and `tz_check` becomes an ignored parameter, every one of them stays
+    green, and registration quietly goes back to creating wrong-hour schedules.
+    This is the wiring, and it is the whole value of the guard."""
+    mod = spec()
+    monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
+    config = tmp_path / "ld-config.json"
+    config.write_text(json.dumps({"family": {"timezone": "America/Chicago"}}))
+    path = tmp_path / "none.json"
+    fake = FakeHermes(path)
+
+    with pytest.raises(SystemExit) as excinfo:
+        mod.main(argv, runner=fake, jobs_path=path,
+                 tz_check={"config_path": config, "env": {"TZ": "America/Los_Angeles"}})
+    assert "America/Chicago" in str(excinfo.value)
+    assert fake.created == [], "nothing may be registered against a wrong clock"
 
 
 def test_a_missing_ld_config_refuses_rather_than_registering(tmp_path):

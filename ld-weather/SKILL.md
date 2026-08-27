@@ -73,5 +73,7 @@ self-registers.
 
 The container's zone IS `family.timezone` — `hermes cron create` takes no
 per-job timezone, so jobs fire in whatever `AGENT_TZ` agent-mgr created the
-container with. `/opt/data/skills/ld-shared/scripts/ld_config_gate.py` is what proves the two
-agree.
+container with. `/opt/data/skills/ld-dashboard/scripts/register_crons.py` is what proves the two
+agree: it refuses to register any schedule when the container's `TZ` and
+`family.timezone` differ. (The ld-config gate does not — it only checks the zone
+is non-blank.)

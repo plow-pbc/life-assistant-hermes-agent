@@ -123,9 +123,12 @@ when they land.
 **The timezone.** `hermes cron create` takes no per-job zone — every job fires in
 the container's zone, which is `agent-mgr`'s `AGENT_TZ`. `0 6 * * *` therefore
 means 06:00 wherever the container thinks it is, and
-`/opt/data/skills/ld-shared/scripts/ld_config_gate.py` is what proves that zone equals
-`family.timezone` in `/opt/data/ld/config.json`. A mismatch is not an error
-anywhere — it is a dashboard that updates at the wrong hour.
+`register_crons.py` is what proves that zone equals `family.timezone` in
+`/opt/data/ld/config.json` — it reads the container's `TZ` and **refuses to
+register at all** if the two differ, naming both zones. The gate does not: it
+checks only that `family.timezone` is non-blank, which a perfectly valid
+`America/Chicago` config satisfies while its cards land two hours late on a
+Los_Angeles container, silently.
 
 **The Plow Chat delivery target.** `ld-calendar-nudge` messages the owner as
 well as posting a card, and which chat that is was minted by this instance's own
