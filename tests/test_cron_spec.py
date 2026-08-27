@@ -233,7 +233,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
     out = capsys.readouterr().out
-    assert "PAUSED" in out and "hermes cron resume ld-weather" in out
+    assert "PAUSED" in out and "/opt/hermes/bin/hermes cron resume ld-weather" in out
 
 
 def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):

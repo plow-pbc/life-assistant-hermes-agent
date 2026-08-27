@@ -282,7 +282,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
                 print(
                     f"WARNING: {job['name']} is registered but PAUSED -- it will "
                     "never fire, and this leaves it alone rather than "
-                    f"duplicating it. Resume it: hermes cron resume {job['name']}"
+                    f"duplicating it. Resume it: {HERMES} cron resume {job['name']}"
                 )
                 paused.append(job["name"])
             continue
@@ -297,7 +297,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
         raise SystemExit(
             f"registered what was missing, but {len(paused)} producer(s) are "
             f"PAUSED and will never fire: {', '.join(paused)} -- "
-            "hermes cron resume <name>"
+            f"{HERMES} cron resume <name>"
         )
     return 0
 

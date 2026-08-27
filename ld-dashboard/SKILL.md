@@ -84,7 +84,7 @@ summarise: that instruction is what carries the signal across the gap. A
 § Bring-up, with its uid caveat):
 
     WARNING: ld-weather is registered but PAUSED -- it will never fire...
-    Resume it: hermes cron resume ld-weather
+    Resume it: /opt/hermes/bin/hermes cron resume ld-weather
 
 ## The spec
 
@@ -188,7 +188,11 @@ yours against the one it was measured on:
     Hermes Agent v0.19.0 (2026.7.20) · upstream b4f8c491
 
 Re-settling it means letting a *real* fire land, because `source=builtin` is the
-one row you cannot force — `cron create '*/2 * * * *' ...` against the running
-gateway, then `cron delete <job-id>` once the row lands. Read `source=`, never
-"a card appeared": a card appears either way, which is the whole reason a forced
-run could not answer this.
+one row you cannot force. Create a throwaway against the running gateway, wait
+for it, then remove it:
+
+    /opt/hermes/bin/hermes cron create '*/2 * * * *' --name resettle ...
+    /opt/hermes/bin/hermes cron remove <job-id>
+
+Read `source=`, never "a card appeared": a card appears either way, which is the
+whole reason a forced run could not answer this.
