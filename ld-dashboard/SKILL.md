@@ -20,15 +20,20 @@ than improvising six schedules from a sentence.
 ## Registering
 
 **This is a bring-up step, not a repair step.** `agent-mgr restore` does not
-replay `jobs.json`, so a instance that has been brought up without it has a wall
+replay `jobs.json`, so an instance that has been brought up without it has a wall
 screen that never updates — and nothing to diff against, because the failure
 looks identical to a producer that is running and finding nothing. The README's
 bring-up block and the `justfile` header both carry this line for that reason;
 run it after `sign-in`, and again after any rebuild of the home.
 
-Inside the container:
+Inside the container, **as the gateway's own uid** — `agent-mgr compose … exec`
+lands as root, and a schedule created root-owned is one the gateway can never
+pause, resume or remove:
 
     /opt/data/skills/ld-dashboard/scripts/register_crons.py
+
+Then force one run (`hermes cron run <job-id>`) and check the kiosk, rather than
+assuming the already-running gateway picked the new job up.
 
 Preview without changing anything: `… register_crons.py --dry-run`.
 
@@ -104,12 +109,26 @@ means 06:00 wherever the container thinks it is, and
 `family.timezone` in `/opt/data/ld/config.json`. A mismatch is not an error
 anywhere — it is a dashboard that updates at the wrong hour.
 
-**The Plow Chat delivery target.** `ld-calendar-nudge` messages the owner, and
-which chat that is was minted by this instance's own activation. It resolves
-from `PLOW_CHAT_CHAT_UID` at registration time and refuses to register on a
-blank one — a literal would message whoever the spec was written for, and a
-blank uid registers a job that delivers to `plow_chat:` and fails silently at
-06:00 rather than at create time.
+**The Plow Chat delivery target.** `ld-calendar-nudge` messages the owner as
+well as posting a card, and which chat that is was minted by this instance's own
+activation — so it can never be a literal here, on a repo more than one person
+runs.
+
+Right now **nothing expands it and nothing checks it.** The producer is blocked,
+so the target sits in `JOBS` as data (`plow_chat:${PLOW_CHAT_CHAT_UID}`)
+recording what it will need, and `create_argv()` has no `--deliver` arm at all:
+the resolver that used to expand the variable and refuse a blank one was
+reachable only from this one blocked row, so it was deleted rather than carried
+as roadmap inventory.
+
+> **If you are unblocking `ld-calendar-nudge`, read this.** Flipping `blocked`
+> to `None` is not enough — `create_argv()` will silently drop the target and
+> the nudge will post its card and message nobody.
+> `test_no_live_job_needs_a_delivery_target` fails the moment you do it, which
+> is the intended tripwire; the expansion it is asking for is in git history as
+> `resolve_deliver` (deleted in the round that answered knightwatch's stage-one
+> simplification probe). Restore it with its refusals, or write a better one —
+> but do not delete the assertion.
 
 ## Unattended runs
 

@@ -153,8 +153,27 @@ agent-mgr agent <agent> 'what is the weather today?'          # a turn without t
 # `hermes cron` persists to /opt/data/cron/jobs.json, which agent-mgr does not
 # touch, so a rebuilt home comes up with a wall screen that never updates and
 # nothing to diff against. Create-if-missing, so re-running it is safe.
-agent-mgr compose <agent> exec -T hermes \
+agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
   /opt/data/skills/ld-dashboard/scripts/register_crons.py
+```
+
+`--user` is not optional, and is the same pin `just check-latch` uses.
+`agent-mgr compose … exec` lands as **root** — measured: `id` inside the `str`
+container returns `uid=0` — and on a fresh instance `jobs.json` does not exist
+yet, so an unpinned exec has `hermes cron create` write the schedule root-owned,
+after which the gateway, running as `HERMES_UID`, can never pause, resume or
+remove anything in it. This repo has already been bitten by root-owned paths
+created inside these nested binds (`plow-pbc/agent-mgr#44`).
+
+Then confirm a job actually fires **without restarting the gateway**. That is
+the whole point of the step, and a schedule the running gateway never picked up
+looks identical to a producer that runs and finds nothing:
+
+```sh
+agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
+  /opt/hermes/bin/hermes cron run <job-id>      # job-id from `hermes cron list`
+agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
+  /opt/hermes/bin/hermes cron runs              # then look for the card on the kiosk
 ```
 
 The dashboard also needs `/opt/data/ld/config.json` (the producers read

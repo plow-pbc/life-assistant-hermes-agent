@@ -14,7 +14,10 @@
 #   # The dashboard crons -- NOT replayed by restore, so bring-up is not done
 #   # without this. `hermes cron` persists to /opt/data/cron/jobs.json, which
 #   # agent-mgr does not touch. Create-if-missing, safe to re-run.
-#   agent-mgr compose <agent> exec -T hermes \
+#   # --user because `compose exec` lands as ROOT (measured), and on a fresh
+#   # instance jobs.json does not exist yet -- an unpinned exec creates the
+#   # schedule root-owned and the gateway can never touch it again.
+#   agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
 #     /opt/data/skills/ld-dashboard/scripts/register_crons.py
 #
 # No check-connectors: this instance installs no plow-connectors. See README

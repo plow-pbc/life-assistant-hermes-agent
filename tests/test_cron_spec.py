@@ -2,8 +2,9 @@
 
 Every assertion here is about a failure that is quiet at registration time and
 only shows up as a dashboard behaving wrongly hours later -- a job that fires on
-the wrong clock, a delivery target naming someone else's chat, a blocked
-producer registered against a data source it does not have.
+the wrong clock, a blocked producer registered against a data source it does not
+have, a delivery target that would be silently dropped because the machinery to
+expand it was deleted as unreachable.
 """
 import importlib.util
 import json
@@ -340,9 +341,13 @@ def test_the_spec_uses_the_viewers_slot_map_and_shares_only_the_alert_card():
 def test_the_skill_table_still_agrees_with_the_spec(job):
     """SKILL.md restates the schedules for a human reader, and a restatement
     drifts. Name and schedule only -- mechanical enough not to break on prose."""
+    for doc in ("ld-dashboard/SKILL.md", "README.md"):
+        table = (ROOT / doc).read_text()
+        assert f"`{job['name']}`" in table, f"{doc} does not name {job['name']}"
+        if doc.endswith("SKILL.md"):
+            # Only the skill restates schedules; the README lists what is dark.
+            assert f"`{job['schedule']}`" in table
     table = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
-    assert f"`{job['name']}`" in table
-    assert f"`{job['schedule']}`" in table
     # The card/type column too -- names and schedules alone let the slot half
     # drift, which is how the protocol map came to have four copies.
     assert f"{job['card']} · {job['type']}" in table
@@ -525,6 +530,16 @@ def test_no_live_job_needs_a_delivery_target():
     delivery target goes live: whoever unblocks it writes the resolver then,
     against a requirement they can see, instead of inheriting an unreachable one
     nobody has run."""
+    # Every row, not just the live ones. The deleted tests asserted no row
+    # carried a literal chat id, and this repo is shared by more than one
+    # person -- so a blocked row picking up `plow_chat:cht_realuid` would
+    # commit one owner's chat into the tree with the suite still green.
+    for job in spec().JOBS:
+        deliver = job["deliver"]
+        assert deliver is None or "${" in deliver, (
+            f"{job['name']} names a literal delivery target {deliver!r} -- a chat "
+            "uid belongs to one instance's activation, never to this tree"
+        )
     for job in spec().LIVE:
         assert job["deliver"] is None, (
             f"{job['name']} is live and carries deliver={job['deliver']!r}, but "
