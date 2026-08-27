@@ -21,8 +21,7 @@ empty-schedule notice, `--all` for paused jobs, a second floor for partial
 parses -- each one correct and none of them reaching the bottom, because a
 human-readable listing is not a data structure. This reads jobs.json instead:
 hermes's own state, where a name is a field, `enabled`/`paused_at` are fields,
-an absent file reads as an empty schedule -- with verify_landed() to tell that
-from a wrong path -- and a malformed one raises. See registered_jobs().
+an absent file reads as an empty schedule and a malformed one raises. See registered_jobs().
 
 It runs INSIDE the container, where hermes is on PATH and that file lives.
 """
@@ -177,13 +176,17 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
             "location and teams from it, and its family.timezone is what these "
             "schedules are written against."
         ) from None
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         raise SystemExit(
             f"refusing to register: could not read family.timezone from {path} "
             f"({exc!r})."
         ) from exc
 
-    if (family or "").strip() != container:
+    # str(), because nothing upstream in this script has validated the config's
+    # shape -- it does not call ld_config_gate.py -- so `"timezone": 42` reaches
+    # here and would die on .strip() with an AttributeError instead of the
+    # refusal that names both values.
+    if str(family or "").strip() != container:
         raise SystemExit(
             f"refusing to register: {path} says family.timezone is "
             f"{family!r} but this container runs in {container!r}. Every schedule "

@@ -183,7 +183,7 @@ repo avoids restating a uid rule. The repo has been bitten by root-owned paths
 inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
 **The turn costs you the exit code.** `register_crons.py` refuses loudly — a
-failed `cron create`, an unreadable `jobs.json`, a wrong `JOBS_FILE`, a producer
+failed `cron create`, an unreadable `jobs.json`, a producer
 that is registered but PAUSED — but a turn returns the *turn's* status, so a
 non-zero exit reaches you only as whatever the agent chose to say about it. The
 skill therefore instructs the agent to paste the script's output verbatim and

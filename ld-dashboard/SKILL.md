@@ -32,8 +32,7 @@ run it:
 
 **Then paste its output verbatim and report its exit status. The run is not
 done until you have.** This matters more than it looks: the script signals every
-refusal it has — a failed `cron create`, an unreadable `jobs.json`, a wrong
-`JOBS_FILE`, a producer that is registered but PAUSED — through its output and a
+refusal it has — a failed `cron create`, an unreadable `jobs.json`, a producer that is registered but PAUSED — through its output and a
 non-zero exit, and a turn does not propagate an exit code. If you summarise
 instead of pasting, "set up the crons, though one was already there and isn't
 active" is a perfectly honest sentence describing a run that failed, and the
@@ -64,16 +63,12 @@ that matters: **never read "I could not tell what is registered" as "nothing
 is"** — that re-registers every job and duplicates all of them. So an unreadable
 or unexpected `jobs.json` aborts.
 
-An *absent* one is the case the file cannot settle on its own: a fresh instance
-and a wrong path raise the same `ENOENT`. Two things close that. Before doing
-anything it checks the mounted home — if `/opt/data` is not there, the container
-is not wired correctly and it refuses rather than reading an empty schedule:
-
-    refusing to register: /opt/data does not exist ... the agent home is not
-    mounted, or JOBS_FILE is wrong
-
-That is the guard most likely to be the one you actually see. The other is the
-read-back below.
+An *absent* one reads as a fresh instance, and **nothing distinguishes that from
+a wrong `JOBS_FILE`** — both raise the same `ENOENT`. That is a decision, not an
+oversight: this deployment has one operator-run instance and one path, so a
+wrong one would be a code edit rather than a configuration mistake, and the
+guards that used to tell them apart cost more than the fault they fenced. If you
+ever see it register the same jobs on every run, the path is what to check.
 
 **A paused producer is neither.** It is registered, so re-registering duplicates
 it; it will never fire, so skipping it silently leaves a card that stops
@@ -87,12 +82,6 @@ summarise: that instruction is what carries the signal across the gap. A
 
     WARNING: ld-weather is registered but PAUSED -- it will never fire...
     Resume it: hermes cron resume ld-weather
-
-The first job it creates is read back out of `jobs.json` — the floor under a
-path that *looks* plausible: nothing pins it, so a wrong one would read as an
-empty schedule on every run and register duplicates forever, quietly. The
-read-back makes that fail on run one, and says the job has been created so a
-retry does not add a second.
 
 ## The spec
 

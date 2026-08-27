@@ -126,9 +126,10 @@ def _jobs_file(tmp_path, jobs):
 
 def test_a_missing_jobs_file_is_an_empty_schedule_not_an_unreadable_one(tmp_path):
     """A fresh instance has no jobs.json, and its absence READS as an empty
-    schedule -- it is not by itself unambiguous, since a wrong path raises the
-    same ENOENT. The home and cron-directory checks catch the wrong path before
-    anything is created, and verify_landed() catches whatever survives both.
+    schedule, and NOTHING distinguishes that from a wrong JOBS_FILE -- both
+    raise the same ENOENT. That is a decision: one operator-run instance, one
+    path, so a wrong one is a code edit rather than a configuration mistake, and
+    the guards that told them apart cost more than the fault they fenced.
 
     What reading the file buys over the listing it replaced is elsewhere: the
     listing could not tell an empty schedule from a format it could not parse,
@@ -324,10 +325,9 @@ def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
 
 
 def test_a_paused_job_is_not_runnable(tmp_path):
-    """The capture settles the field NAMES; it came from a running job, so it
-    cannot settle which field pausing moves. Reading both costs one term and
-    keeps a paused producer from reporting as healthy -- the stale card the
-    WARNING exists to catch -- if hermes flips `state` rather than `paused_at`."""
+    """`enabled` and `paused_at` are both in the captured fixture, so this reads
+    what hermes writes rather than guessing. A paused producer reported as
+    healthy is the stale card the WARNING exists to catch."""
     mod = spec()
     path = _jobs_file(tmp_path, [
         {"name": "by-paused-at", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"},
@@ -462,3 +462,20 @@ def test_an_unreadable_schedule_is_not_read_as_an_empty_one(tmp_path, content):
     with pytest.raises(Exception) as excinfo:
         spec().registered_jobs(path)
     assert not isinstance(excinfo.value, FileNotFoundError)
+
+
+@pytest.mark.parametrize("config", [{}, {"family": {}}, {"family": "America/LA"},
+                                    {"family": {"timezone": 42}}, []],
+                         ids=["no-family", "no-timezone", "family-not-a-dict",
+                              "timezone-not-a-string", "top-level-array"])
+def test_a_config_without_a_usable_timezone_refuses_by_name(tmp_path, config):
+    """register_crons.py does not call ld_config_gate.py, so nothing upstream in
+    this script has checked the config's shape -- every one of these reaches the
+    read directly. Without the full exception tuple they escape as a raw
+    traceback or an AttributeError instead of the refusal that names what to
+    fix."""
+    path = tmp_path / "ld-config.json"
+    path.write_text(json.dumps(config))
+    with pytest.raises(SystemExit) as excinfo:
+        spec().require_timezone_agreement(path, {"TZ": "America/Los_Angeles"})
+    assert "family.timezone" in str(excinfo.value)
