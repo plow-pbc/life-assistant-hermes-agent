@@ -431,6 +431,31 @@ def test_every_skill_is_mounted_flat_and_read_only():
     }
 
 
+# Directory names any bare citation could plausibly start with, from the TRACKED
+# tree rather than the filesystem. rglob made the guard's coverage a function of
+# local build state: an untracked docs/ from a plan doc written in this checkout
+# put `docs`, `superpowers` and `plans` in the alternation here and in nobody
+# else's, so the guard was strictly weaker on a fresh clone than on the author's
+# machine -- environment-dependent green, which is the one thing a table of
+# pinned cases exists to prevent. Confirmed: a fresh clone of this branch has no
+# docs/ at all. `git ls-files` is identical on every checkout, and computing it
+# once here keeps it off the per-call path.
+_TRACKED_DIR_NAMES = sorted({
+    part
+    for f in subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    for part in Path(f).parent.parts
+})
+# A boundary before the segment, so a known name cannot match as the SUFFIX of a
+# longer token -- `myscripts/foo` is not a citation of scripts/, and with the set
+# derived from the whole tree the number of names available to be matched
+# mid-token grows with it.
+_UNANCHORED = re.compile(
+    rf"[\w./-]*?(?:(?<![\w-])|^)(?:{'|'.join(map(re.escape, _TRACKED_DIR_NAMES))})/[\w./-]*"
+)
+
+
 def unanchored_refs(text):
     """Path-like citations in a SKILL.md that the agent could not resolve.
 
@@ -442,32 +467,13 @@ def unanchored_refs(text):
     /opt/data/cron/jobs.json, /opt/data/ld/config.json and /opt/hermes/bin/hermes,
     all correct and all immune.
 
-    Segment names come from the whole tree rather than a list. Three rounds of
-    this guard were narrowing: an `ld-*` head, then an ld-*|scripts|references
-    alternation, then root directories plus ld-shared's. Each was one name short
-    of the next bare citation somebody would write. rglob is the end of that
-    line -- there is no wider set to widen to next round.
+    Three rounds of this guard were narrowing: an `ld-*` head, then an
+    ld-*|scripts|references alternation, then root directories plus ld-shared's.
+    Each was one name short of the next bare citation somebody would write. The
+    tracked tree is the end of that line -- there is no wider set to widen to.
 
     Returns the offending strings so the caller can name them."""
-    # TRACKED directories, not the filesystem. rglob made the guard's coverage a
-    # function of local build state: an untracked docs/ from a plan doc written
-    # in this checkout put `docs`, `superpowers` and `plans` in the alternation
-    # here and in nobody else's, so the guard was strictly weaker on a fresh
-    # clone than on the author's machine -- environment-dependent green, which is
-    # the one thing a table of pinned cases exists to prevent. git ls-files is
-    # identical on every checkout.
-    tracked = subprocess.run(
-        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.split()
-    names = sorted({part for f in tracked for part in Path(f).parent.parts})
-    known = "|".join(map(re.escape, names))
-    return sorted(
-        {
-            ref
-            for ref in re.findall(rf"[\w./-]*(?:{known})/[\w./-]*", text)
-            if not ref.startswith("/")
-        }
-    )
+    return sorted({m for m in _UNANCHORED.findall(text) if not m.startswith("/")})
 
 
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
@@ -552,3 +558,14 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
 ])
 def test_unanchored_refs_flags_exactly_the_citations_the_agent_cannot_resolve(text, flagged):
     assert unanchored_refs(text) == flagged
+
+
+@pytest.mark.parametrize("text", [
+    "the myscripts/foo helper",      # `scripts` as a suffix, not a citation
+    "see old-shared/bar for context",  # `ld-shared`'s tail, likewise
+])
+def test_a_known_name_inside_a_longer_token_is_not_a_citation(text):
+    """The alternation has an auto-growing set of names, so without a boundary
+    every one of them can match mid-token and get reported verbatim as an
+    unanchored path the author never wrote."""
+    assert unanchored_refs(text) == []
