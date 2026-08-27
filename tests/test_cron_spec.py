@@ -693,36 +693,24 @@ def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
     remembers to delete a README row. A table that keeps listing a producer as
     dark over-reports what the owner has lost, which is the one thing it exists
     to say."""
-    # Anchored on the TABLE, not its section. Section-scoping narrows the
-    # false-red window without closing it for the case this exists for: the
-    # likeliest home for a post-latch#183 "what's live" table is this very
-    # section, whose prose already draws the live/dark contrast in place. A live
-    # row there matches the same row shape and would be read as a stale dark one.
-    #
-    # The trade is that the heading is pinned by the pointer test while this
-    # header row is pinned by nothing, so a column rename fails here rather than
-    # there -- with a message that says so.
+    # Delimited by explicit markers, after five rounds of positional anchors --
+    # whole file, then the section, then the header row, then the header row
+    # asserted unique. Each closed one false-red window and opened a smaller one,
+    # because every positional anchor is a guess about where a future editor puts
+    # a second table. Markers make no guess: immune to a second table anywhere,
+    # to a column rename, to indentation, and to the header being quoted in prose
+    # or a fence. The cost is an invisible pair a README editor can delete, and
+    # that fails here, loudly, naming them.
     readme = (ROOT / "README.md").read_text()
-    header = "| producer | card | needs | tracked by |"
-    assert header in readme, (
-        f"README's dark-producer table header is no longer {header!r} -- either "
-        "the table moved or its columns were renamed; this test anchors on it"
-    )
-    # Unique, because the split takes the FIRST occurrence. A post-latch#183
-    # "what's live" table mirroring these columns and placed ABOVE the dark one
-    # -- live-first is the natural ordering -- would silently hand back the live
-    # producers under a message about the dark table being stale.
-    assert readme.count(header) == 1, (
-        f"{header!r} now appears {readme.count(header)}x -- this test anchors on "
-        "it being the dark table's alone, and splits on the first one"
-    )
-    body = readme.split(header, 1)[1].split("\n", 2)[2]
-    table = []
-    for line in body.splitlines():
-        if not line.startswith("|"):
-            break
-        table.append(line)
-    rows = re.findall(r"^\| `(ld-[\w-]+)` \| \d+ · \w+ \|", "\n".join(table), re.M)
+    try:
+        section = readme.split("<!-- dark-table -->", 1)[1].split("<!-- /dark-table -->", 1)[0]
+    except IndexError:
+        raise AssertionError(
+            "README's <!-- dark-table --> / <!-- /dark-table --> markers are gone. "
+            "They delimit the dark-producer table so this test does not have to "
+            "guess at its position; put them back around it."
+        ) from None
+    rows = re.findall(r"^\| `(ld-[\w-]+)` \| \d+ · \w+ \|", section, re.M)
     assert sorted(rows) == sorted(j["name"] for j in spec().BLOCKED), (
         f"README's dark-producer table lists {sorted(rows)}, but the blocked "
         f"producers are {sorted(j['name'] for j in spec().BLOCKED)} -- a row left "
