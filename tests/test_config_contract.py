@@ -447,25 +447,31 @@ def test_every_skill_is_mounted_flat_and_read_only():
     }
 
 
-def _is_url(ref):
-    """A URL path segment is not a citation of a repo directory.
+def _is_hostname_head(ref):
+    """A URL's host segment is not a citation of a repo directory.
 
     `site.api.espn.com/apis/site/v2/sports/...` is a live line in
-    ld-sports/SKILL.md, and it was exempt only because no tracked directory
-    happens to be named apis, site, v2 or sports -- the same "names available to
-    match grow with the tree" hazard the boundary above guards for mid-token
-    matches, on a case the ledger asserts green. Add an ld-shared/references/
-    sports/ and both that row and the real SKILL.md line would go red, telling
-    the author to give a URL an absolute container path.
+    ld-sports/SKILL.md. It passes today only because no tracked directory is
+    named apis, site, v2 or sports -- the same grow-with-the-tree hazard the
+    segment boundary guards for mid-token matches, on a case the ledger asserts
+    green. Add a tracked ld-shared/references/sports/ and both that row and the
+    real line would go red, telling the author to give a URL a container path.
 
-    The scheme-qualified form was exempt for the wrong reason too:
-    https://x.com/scripts/y survives only because the leftmost match begins at
-    the `//` and so starts with a slash."""
+    A leading dot is a hidden DIRECTORY, not a host: `.github/workflows/ci.yml`
+    resolves under /opt/hermes exactly like any other bare path, so exempting it
+    would be a silent miss of the very kind this guards. `.` and `..` are
+    relative prefixes for the same reason, and they are two of the spellings the
+    guard exists for.
+
+    Scheme-qualified URLs are not handled here and do not need to be: the
+    pattern's character class holds no `:`, so the leftmost match on
+    `https://x.com/scripts/y` begins at the `//` and the absolute-path rule
+    catches it. Stated because a `"://" in ref` disjunct sat here unreachable --
+    it can never see a colon -- while the docstring claimed it was what exempted
+    them.
+    """
     head = ref.split("/", 1)[0]
-    # `.` and `..` are relative prefixes, not hostnames -- excluding them
-    # explicitly, because "contains a dot" alone exempts ./ld-shared/... and
-    # ../../ld-shared/..., which are two of the spellings this guard exists for.
-    return "://" in ref or (head not in {".", ".."} and "." in head)
+    return not head.startswith(".") and "." in head
 
 
 @functools.cache
@@ -517,7 +523,7 @@ def unanchored_refs(text):
         {
             m
             for m in _unanchored_pattern().findall(text)
-            if not m.startswith("/") and not _is_url(m)
+            if not m.startswith("/") and not _is_hostname_head(m)
         }
     )
 
@@ -599,7 +605,21 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     # A URL is not a path citation, and both spellings are asserted rather than
     # left exempt by accident of the character class.
     ("site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard", []),
+    # The row only the hostname heuristic can make green: `scripts` IS tracked,
+    # so the pattern matches and the string does not start with `/`. Without it
+    # the branch is inert and its verification lives in shell history.
+    ("site.api.espn.com/scripts/scoreboard", []),
+    # Exempt via the absolute rule -- the match begins at the `//` -- not via the
+    # heuristic. Pinned so that stays true.
     ("https://example.com/scripts/thing.py", []),
+    # A hidden directory is not a host: this resolves under /opt/hermes like any
+    # other bare path, so exempting it would be a silent miss.
+    # `scripts` is tracked so the pattern matches, and the head is a HIDDEN
+    # DIRECTORY rather than a host -- it resolves under /opt/hermes like any
+    # other bare path, so exempting it would be a silent miss. (A row naming an
+    # untracked segment such as .github/workflows/ would assert nothing: the
+    # pattern would not match it here at all.)
+    ("see `.github/scripts/ci.yml`", [".github/scripts/ci.yml"]),
     # A known name inside a longer token is not a citation. Without a boundary
     # before the segment these are flagged and reported verbatim as paths the
     # author never wrote, and the name set grows with the tracked tree.
