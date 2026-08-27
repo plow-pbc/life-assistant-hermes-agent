@@ -611,6 +611,13 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     # untracked segment such as .github/workflows/ would assert nothing: the
     # pattern would not match it here at all.)
     ("see `.github/scripts/ci.yml`", [".github/scripts/ci.yml"]),
+    # The documented MISS, made executable: `scripts` is tracked so the pattern
+    # matches, the head has no leading dot and holds one, so the hostname
+    # exemption is the only thing returning []. This is a real relative citation
+    # the guard lets through -- the narrowing cost _is_hostname_head states. A
+    # future widening (a real host parse, a TLD check) flips it here rather than
+    # leaving the docstring quietly stale.
+    ("see `config.d/scripts/x`", []),
     # A known name inside a longer token is not a citation. Without a boundary
     # before the segment these are flagged and reported verbatim as paths the
     # author never wrote, and the name set grows with the tracked tree.
