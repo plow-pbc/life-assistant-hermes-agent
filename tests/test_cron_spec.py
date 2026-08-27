@@ -312,9 +312,8 @@ def test_the_reader_handles_a_real_captured_jobs_file():
 def test_the_captured_fixture_still_carries_the_fields_the_reader_needs():
     """If a re-capture from a newer hermes drops one of these, this says so in
     one line -- rather than the reader misbehaving on a real instance with
-    nobody knowing which field went. registered_jobs() has one caller,
-    main(), which runs at bring-up, so these surface during registration
-    rather than on the wall at 06:00."""
+    nobody knowing which field went. Each field's own message says what its
+    absence actually does."""
     entry = json.loads(FIXTURE.read_text())["jobs"][0]
     # One message per field, because registered_jobs() genuinely treats them
     # differently and a reader who trips one row should not be told about the
