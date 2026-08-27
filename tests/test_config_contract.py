@@ -431,17 +431,20 @@ def test_every_skill_is_mounted_flat_and_read_only():
     }
 
 
-def test_every_absolute_skill_path_in_a_skill_md_resolves_in_the_tree():
-    """The SKILL.md files tell the agent to run absolute container paths, and
-    those are the strings that decide whether a producer runs at all.
+def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
+    """Both forms a SKILL.md uses to send the agent somewhere.
 
-    Nothing else checks them: test_wrappers.py exercises the relative
-    ../../ld-shared hop by importing the wrappers, but a typo, a renamed skill
-    directory, or a moved script leaves every test green and fails at 06:00 as
-    "the agent ran a path that isn't there"."""
+    The absolute `/opt/data/skills/...` paths are the strings that decide whether
+    a producer runs at all, and the relative `ld-shared/...` ones are how it
+    finds the card-token spec and the config template. Nothing else asserts
+    either: test_wrappers.py proves the wrappers' own `../../ld-shared` import
+    hop by running them, which covers `scripts/`, and never touches
+    `references/`. A typo, a renamed skill directory, a moved script or a deleted
+    reference otherwise leaves the whole suite green and fails at 06:00, inside
+    the container, as an agent running a path that is not there."""
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
-    seen = 0
+    seen_absolute = seen_relative = 0
     for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
         text = skill_md.read_text()
         for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
@@ -454,17 +457,26 @@ def test_every_absolute_skill_path_in_a_skill_md_resolves_in_the_tree():
             assert (ROOT / head / rest).is_file() if rest else (ROOT / head).is_dir(), (
                 f"{skill_md.name} names {prefix}{ref}, which is not in the tree"
             )
-            seen += 1
-        # The relative form too. Both SKILL.md files send the agent to
-        # `ld-shared/references/...` for the card-token spec and the config
-        # template, and those two files are asserted by nothing else -- no test
-        # loads them, and the absolute pattern above never matches them. A rename
-        # or an accidental deletion would otherwise surface at 06:00, inside the
-        # container, as an agent that cannot find its own reference.
+            seen_absolute += 1
         for ref in re.findall(r"(?<![\w/])(ld-shared/[\w./-]+)", text):
-            ref = ref.rstrip(".")
-            assert (ROOT / ref).is_file(), (
+            # A directory is a legitimate citation here -- `ld-shared/references/`
+            # in prose is natural in these files -- so this mirrors the sibling
+            # loop's bound rather than demanding a file and reporting "not in the
+            # tree" for something that is.
+            target = ROOT / ref.rstrip("./")
+            assert target.is_file() or target.is_dir(), (
                 f"{skill_md.name} points the agent at {ref}, which is not in the tree"
             )
-            seen += 1
-    assert seen, "no skill paths found -- has the reference style changed?"
+            seen_relative += 1
+
+    # Counted separately. Sharing one counter let the relative matches mask the
+    # absolute ones' absence, so the canary stopped detecting the very event it
+    # is named for.
+    assert seen_absolute, (
+        "no absolute /opt/data/skills/ paths found in any SKILL.md -- has the "
+        "reference style changed?"
+    )
+    assert seen_relative, (
+        "no relative ld-shared/ references found in any SKILL.md -- has the "
+        "reference style changed?"
+    )
