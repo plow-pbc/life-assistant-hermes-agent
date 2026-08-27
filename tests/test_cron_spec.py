@@ -387,7 +387,9 @@ def test_both_restatements_of_the_spec_still_agree_with_it(job):
                 f"its blocked text records ({job['blocked']!r})"
             )
 
-        # Dark producers are exactly the blocked ones; README prints only those.
+        # README prints the dark producers; every blocked one needs its row. The
+        # converse -- no row for anything else -- is
+        # test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else.
         readme = (ROOT / "README.md").read_text()
         row = f"| `{job['name']}` | {job['card']} · {job['type']} |"
         assert row in readme, (
@@ -679,4 +681,24 @@ def test_the_cross_document_pointers_still_land_somewhere():
     )
     assert "](#unattended-runs)" in skill, (
         "SKILL.md's own link to its Unattended-runs section is gone or repointed"
+    )
+
+
+def test_the_readme_dark_table_lists_the_blocked_producers_and_nothing_else():
+    """Membership, not just presence — the stale row is the likelier failure.
+
+    The per-job check above proves every blocked producer has a row. The gap is
+    the converse, and it is not hypothetical: latch#183 is what unblocks three of
+    these, and the edit that flips `blocked` to None is not the edit that
+    remembers to delete a README row. A table that keeps listing a producer as
+    dark over-reports what the owner has lost, which is the one thing it exists
+    to say."""
+    rows = re.findall(
+        r"^\| `(ld-[\w-]+)` \| \d+ · \w+ \|", (ROOT / "README.md").read_text(), re.M
+    )
+    assert sorted(rows) == sorted(j["name"] for j in spec().BLOCKED), (
+        f"README's dark-producer table lists {sorted(rows)}, but the blocked "
+        f"producers are {sorted(j['name'] for j in spec().BLOCKED)} -- a row left "
+        "behind after a blocker cleared tells the owner they lost something they "
+        "have back"
     )
