@@ -295,13 +295,14 @@ FIXTURE = ROOT / "tests" / "fixtures" / "hermes-cron-jobs.json"
 def test_the_reader_handles_a_real_captured_jobs_file():
     """Against bytes a live hermes actually wrote, not a shape this repo invented.
 
-    `name` is the only field whose absence raises -- registered_jobs() keys
-    on it. `enabled` and `paused_at` are what the answer is COMPUTED from,
-    and both default silently, so losing either returns a silently wrong
-    answer -- a paused producer coming back runnable -- rather than a
-    refusal. Every other test here builds its fixtures from those same names, so they would all agree with
-    each other and with nothing else; only this one can tell whether the reader
-    reads hermes. Captured from Hermes Agent v0.19.0 (2026.7.20), values scrubbed
+    `name` is the only field whose absence raises -- registered_jobs() keys on
+    it. `enabled` and `paused_at` are what the answer is COMPUTED from, and
+    both default silently, so losing either returns a silently wrong answer --
+    a paused producer coming back runnable -- rather than a refusal. Every
+    other test here builds its fixtures from those same names, so they would
+    all agree with each other and with nothing else; only this one can tell
+    whether the reader reads hermes.
+    Captured from Hermes Agent v0.19.0 (2026.7.20), values scrubbed
     because the field names are the contract. See tests/fixtures/README.md."""
     registered = spec().registered_jobs(FIXTURE)
     assert registered == {"<scrubbed-name>": True}
