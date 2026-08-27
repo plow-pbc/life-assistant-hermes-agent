@@ -19,8 +19,8 @@ via argv:
 
   message text
     - MESSAGE_FILE set (containers whose file tool CAN write a handoff, e.g.
-      Hermes): read that fixed path, then consume it after a successful send so
-      a later run can't repost stale text. Hermes confines its file tool to
+      Hermes): read that fixed path, then consume it after a successful send.
+      Hermes confines its file tool to
       HERMES_WRITE_SAFE_ROOT (/opt/data), so the path a wrapper picks has to
       sit under it -- see the wrappers' /opt/data/ld/<bundle>-text. That path
       is on the agent's home bind rather than the container-ephemeral /tmp it
@@ -28,10 +28,12 @@ via argv:
       and its body sits durably in the operator's host home. Fine for the two
       producers on this transport, which overwrite unconditionally every run
       and post public feed data; worth deciding deliberately for a future
-      producer whose body paraphrases private mail or iMessage. It also only
-      clears on a run that reaches the write: a producer that errors before
-      composing leaves the wrapper reading the previous body and posting it as
-      fresh, and nothing here timestamps it.
+      producer whose body paraphrases private mail or iMessage. Two things
+      displace such a leftover and neither is guaranteed: the unlink below,
+      which needs a SUCCESSFUL send, and the agent's next compose, which
+      overwrites. So a stale body survives exactly when a failed send is
+      followed by a run that errors before composing -- and the wrapper then
+      posts it as fresh, because nothing here timestamps it.
     - MESSAGE_FILE None (read-only agent sandboxes, e.g. Plow — its file tool
       cannot create a handoff at all): read stdin, fed by the caller's quoted
       heredoc, so an injected body is inert data, never parsed as shell.
