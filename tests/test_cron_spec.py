@@ -310,11 +310,13 @@ def viewer_slots():
     # blockquote prefixes rows with "> " and `>` is not \s. Inert on today's
     # column-0 Card map, and half of what creates the residual below -- an
     # indented or blockquoted row-shaped line anywhere in the doc, which is what
-    # the row-count message names. Deliberately not marker-bounded the same way: that
-    # would mean editing kiosk-protocol.md, which is vendored byte-identical to
-    # its pinned ref -- the property that keeps this PR's provenance checkable
-    # with a diff -- and a test scoping convenience does not buy a fork of it.
-    # Both asserts below name the scope they actually have.
+    # the row-count message names.
+    #
+    # Deliberately not marker-bounded the same way: that would mean editing
+    # kiosk-protocol.md, which is vendored byte-identical to its pinned ref --
+    # the property that keeps this PR's provenance checkable with a diff -- and
+    # a test scoping convenience does not buy a fork of it. Both asserts below
+    # name the scope they actually have.
     rows = re.findall(r"^[\s>]*\|\s*(\d)\s*\|\s*`(\w+)`\s*\|", table, re.M)
     return [(int(card), type_) for card, type_ in rows]
 
