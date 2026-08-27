@@ -188,20 +188,23 @@ yours against the one it was measured on:
     Hermes Agent v0.19.0 (2026.7.20) · upstream b4f8c491
 
 Re-settling it means letting a *real* fire land, because `source=builtin` is the
-one row you cannot force. Create a throwaway against the running gateway, wait
-two minutes, then remove it -- both commands run against the live agent, so this
-is the attested form rather than a sketch:
+one row you cannot force. Create a throwaway against the running gateway, poll
+until its row appears, then remove it:
 
     /opt/hermes/bin/hermes cron create '*/2 * * * *' 'reply ok' --name resettle
     Created job: 61cf727bab44
-    /opt/hermes/bin/hermes cron runs      # look for source=builtin on that id
+    until /opt/hermes/bin/hermes cron runs | grep 61cf727bab44; do sleep 20; done
     /opt/hermes/bin/hermes cron remove resettle
 
-The prompt is the second positional and `--name` follows it, the order
-`create_argv()` builds. `create` prints the id, so no `cron list` in between.
-`remove` takes the name despite its `--help` saying `job_id` -- confirmed on
-Hermes Agent v0.19.0 by the round trip above, which is also why the throwaway
-gets removed by the name you just set rather than an id you have to go find.
+Poll rather than sleep for two minutes: the first fire lands on the next even
+minute, not two minutes out. Read `source=` on that row, never "a card appeared"
+-- a card appears either way, which is the whole reason a forced run could not
+answer this.
 
-Read `source=`, never "a card appeared": a card appears either way, which is the
-whole reason a forced run could not answer this.
+**What is attested here.** `create` and `remove` were run on the live agent on
+Hermes Agent v0.19.0, which is where the shape comes from: the prompt is the
+second positional and `--name` follows it (the order `create_argv()` builds),
+`create` prints the id so no `cron list` is needed in between, and `remove`
+takes the *name* despite its `--help` saying `job_id`. That probe was removed
+inside the same minute and never fired, so it is not the source of the
+`source=builtin` evidence -- the 06:00 ledger above is.
