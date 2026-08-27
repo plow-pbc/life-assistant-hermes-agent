@@ -510,10 +510,11 @@ def test_the_handoff_table_lists_every_wrapper():
     nobody remembers to add is the one that ships on /tmp and logs the denial in
     front of nobody. Set equality fails on an empty glob rather than skipping,
     so it needs none of the machinery discovery did."""
-    found = {p.parent.parent.name for p in ROOT.glob("ld-*/scripts/post_*.py")}
-    assert found == {skill for skill, _ in HANDOFFS}, (
-        f"{sorted(found ^ {s for s, _ in HANDOFFS})} -- a post_*.py wrapper "
-        "exists with no row in HANDOFFS, or a row names one that is gone"
+    listed = set(HANDOFFS)
+    found = {(w.parent.parent.name, w.name) for w in ROOT.glob("ld-*/scripts/post_*.py")}
+    assert found == listed, (
+        f"{sorted(found ^ listed)} -- a post_*.py wrapper exists with no row in "
+        "HANDOFFS, or a row names one that is gone"
     )
 
 
