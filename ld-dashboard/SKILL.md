@@ -164,10 +164,11 @@ already-running gateway loaded the newly created schedule. If the gateway caches
 its jobs at startup, every command above succeeds, a card appears, and the wall
 screen is still dark tomorrow morning.
 
-**Measured, 2026-08-27:** it does load them. Both jobs were created against an
-already-running gateway and fired unforced at their first 06:00, with no restart
-in between — `hermes cron runs` shows `source=builtin` where a forced run shows
-`source=direct`, which is how you tell the two apart:
+**Measured, 2026-08-27, on Hermes Agent v0.19.0 (2026.7.20):** it does load
+them. Both jobs were created against an already-running gateway and fired
+unforced at their first 06:00, with no restart in between — `hermes cron runs`
+shows `source=builtin` where a forced run shows `source=direct`, which is how
+you tell the two apart:
 
     083e8b7fcc7a  completed  job=6213bd7c696c  source=builtin   2026-08-27T06:00:09-07:00
     786a083d6047  completed  job=4d0318081ba4  source=builtin   2026-08-27T06:00:09-07:00
@@ -177,6 +178,11 @@ Both kiosk cards changed on that fire and the three cards no producer owns did
 not, so the change came from the schedule and not from the earlier forced runs.
 `Next run` rolled to the following day on both.
 
-So a forced run plus this ledger is enough; you do not need the restart. Still
-read `source=` rather than "a card appeared" — a card appears either way, which
-is the whole reason a forced run could not answer this.
+A forced run is now enough for bring-up: the schedule-loading question is
+settled above, and you do not need the restart.
+
+If you ever have to re-settle it — an image bump is the one thing that could
+reintroduce startup caching, and the version this was measured on is named above
+— the discriminator is `source=builtin` vs `source=direct`, never "a card
+appeared". A card appears either way, which is the whole reason a forced run
+could not answer this.
