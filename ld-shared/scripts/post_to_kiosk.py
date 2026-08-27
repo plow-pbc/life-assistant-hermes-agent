@@ -19,21 +19,19 @@ via argv:
 
   message text
     - MESSAGE_FILE set (containers whose file tool CAN write a handoff, e.g.
-      Hermes): read that fixed path, then consume it after a successful send.
-      Hermes confines its file tool to
+      Hermes): read that fixed path. Hermes confines its file tool to
       HERMES_WRITE_SAFE_ROOT (/opt/data), so the path a wrapper picks has to
       sit under it -- see the wrappers' /opt/data/ld/<bundle>-text. That path
       is on the agent's home bind rather than the container-ephemeral /tmp it
-      replaced, so a file a FAILED send leaves behind now outlives a restart,
-      and its body sits durably in the operator's host home. Fine for the two
-      producers on this transport, which overwrite unconditionally every run
-      and post public feed data; worth deciding deliberately for a future
-      producer whose body paraphrases private mail or iMessage. Only a
-      SUCCESSFUL send consumes it, so any run that writes a body without one --
-      a failed send, a dry run, an aborted run -- leaves it on disk, and a later
-      run that errors before composing posts that body as fresh. Nothing here
-      timestamps it. Left this way deliberately: the alternative, consuming on
-      read, costs the retry the error exits below exist to allow.
+      replaced, so a leftover now outlives a restart, and its body sits durably
+      in the operator's host home. Fine for the two producers on this transport,
+      which post public feed data; worth deciding deliberately for a future one
+      whose body paraphrases private mail or iMessage. Only a SUCCESSFUL send
+      consumes it, so any run that writes a body without one -- a failed send, a
+      dry run, an aborted run -- leaves it on disk, and a later run that errors
+      before composing posts that body as fresh. Nothing here timestamps it.
+      Left this way deliberately: the alternative, consuming on read, costs the
+      retry the error exits below exist to allow.
     - MESSAGE_FILE None (read-only agent sandboxes, e.g. Plow — its file tool
       cannot create a handoff at all): read stdin, fed by the caller's quoted
       heredoc, so an injected body is inert data, never parsed as shell.
