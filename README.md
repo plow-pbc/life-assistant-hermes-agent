@@ -216,9 +216,11 @@ The dashboard also needs `/opt/data/ld/config.json` (the producers read
 `weather` and `sports` from it) plus `DASHBOARD_ENDPOINT_URL` and
 `DASHBOARD_TOKEN` in the instance's dotenv. `ld-shared/scripts/ld_config_gate.py`
 is the single definition of a valid config — run it rather than eyeballing the
-JSON, and make sure its `family.timezone` matches the container's `AGENT_TZ`,
-because `hermes cron create` takes no per-job zone and every producer fires in
-the container's.
+JSON. Its `family.timezone` must match the container's `AGENT_TZ`, because
+`hermes cron create` takes no per-job zone and every producer fires in the
+container's; you do not have to check that by eye, though —
+`register_crons.py` refuses to register at all when they differ, so a mismatch
+stops bring-up rather than reaching the wall two hours late.
 
 There is no `check-connectors` step: this instance has no connectors. See
 [No connectors, and what that costs](#no-connectors-and-what-that-costs).

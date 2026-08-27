@@ -106,16 +106,17 @@ def test_no_schedule_carries_a_timezone(job):
     )
 
 
-def _tz_ok(tmp_path, zone="America/Los_Angeles"):
-    """A timezone check that agrees, so a main() test exercises what it is for.
+def _tz_check(tmp_path, family="America/Los_Angeles", container=None):
+    """A timezone check for main(), agreeing by default.
 
     Every main() test passes one: registration refuses outright when the
     config's family.timezone is not the container's, which is the point, and a
     test that did not supply one would be asserting that refusal instead of the
-    behaviour it names."""
+    behaviour it names. Pass `container` to build a DISAGREEING pair, which is
+    what the refusal test needs -- and the shape the next one will."""
     config = tmp_path / "ld-config.json"
-    config.write_text(json.dumps({"family": {"timezone": zone}}))
-    return {"config_path": config, "env": {"TZ": zone}}
+    config.write_text(json.dumps({"family": {"timezone": family}}))
+    return {"config_path": config, "env": {"TZ": container or family}}
 
 
 def _jobs_file(tmp_path, jobs):
@@ -240,7 +241,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
+    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
     assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -261,7 +262,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     # but an unattended re-provision must not read this run as success -- the
     # exit code is the only signal that reaches one.
     with pytest.raises(SystemExit) as exit_:
-        mod.main([], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
+        mod.main([], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
     out = capsys.readouterr().out
@@ -276,7 +277,7 @@ def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
+    mod.main([], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
     assert set(fake.created) == LIVE_NAMES
     blocked = {j["name"] for j in mod.BLOCKED}
     assert not blocked & set(fake.created)
@@ -289,7 +290,7 @@ def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     with pytest.raises(SystemExit):
         mod.main([], runner=FakeHermes(tmp_path / "none.json", create_rc=1),
-                 jobs_path=tmp_path / "none.json", tz_check=_tz_ok(tmp_path))
+                 jobs_path=tmp_path / "none.json", tz_check=_tz_check(tmp_path))
 
 
 def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
@@ -301,7 +302,7 @@ def test_dry_run_creates_nothing_and_still_reports_what_is_already_there(
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = _jobs_file(tmp_path, [{"name": "ld-weather", "enabled": True}])
     fake = FakeHermes(path)
-    mod.main(["--dry-run"], runner=fake, jobs_path=path, tz_check=_tz_ok(tmp_path))
+    mod.main(["--dry-run"], runner=fake, jobs_path=path, tz_check=_tz_check(tmp_path))
     assert fake.created == []
     out = capsys.readouterr().out
     assert "already present, would skip: ld-weather" in out
@@ -356,7 +357,7 @@ def test_a_create_that_does_not_land_in_the_jobs_file_aborts(monkeypatch, tmp_pa
 
     with pytest.raises(SystemExit) as excinfo:
         mod.main([], runner=LyingHermes(), jobs_path=tmp_path / "wrong.json",
-                 tz_check=_tz_ok(tmp_path))
+                 tz_check=_tz_check(tmp_path))
     assert "not where this hermes persists jobs" in str(excinfo.value)
 
 
@@ -486,7 +487,7 @@ def test_a_dry_run_does_not_fail_over_a_paused_job_it_did_not_create(
         {"name": "ld-weather", "enabled": True, "paused_at": "2026-08-26T12:00:00Z"}
     ])
     assert mod.main(["--dry-run"], runner=FakeHermes(path), jobs_path=path,
-                    tz_check=_tz_ok(tmp_path)) == 0
+                    tz_check=_tz_check(tmp_path)) == 0
     out = capsys.readouterr().out
     assert "would leave 1 paused producer(s) alone: ld-weather" in out
 
@@ -597,14 +598,13 @@ def test_main_refuses_before_creating_anything_when_the_zones_disagree(
     This is the wiring, and it is the whole value of the guard."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
-    config = tmp_path / "ld-config.json"
-    config.write_text(json.dumps({"family": {"timezone": "America/Chicago"}}))
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
 
     with pytest.raises(SystemExit) as excinfo:
         mod.main(argv, runner=fake, jobs_path=path,
-                 tz_check={"config_path": config, "env": {"TZ": "America/Los_Angeles"}})
+                 tz_check=_tz_check(tmp_path, family="America/Chicago",
+                                    container="America/Los_Angeles"))
     assert "America/Chicago" in str(excinfo.value)
     assert fake.created == [], "nothing may be registered against a wrong clock"
 

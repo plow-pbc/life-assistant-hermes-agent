@@ -54,8 +54,11 @@ LD_CONFIG = "/opt/data/ld/config.json"
 # test_no_live_job_needs_a_delivery_target for what fires when it is needed.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
-# the container's zone, which is agent-mgr's AGENT_TZ, and the ld-config gate is
-# what proves that zone equals family.timezone.
+# the container's zone, which is agent-mgr's AGENT_TZ.
+# require_timezone_agreement() below refuses to register unless that zone equals
+# family.timezone; the ld-config gate does NOT -- it only checks the zone is
+# non-blank, which a valid America/Chicago config satisfies while its cards land
+# two hours late.
 JOBS = (
     {
         "name": "ld-weather",
