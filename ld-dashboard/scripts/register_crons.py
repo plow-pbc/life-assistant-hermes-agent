@@ -7,41 +7,40 @@ a wall screen that never updates and nothing to diff against. Keeping the six
 definitions here means "set up the life dashboard crons" replays a reviewed spec
 instead of improvising six schedules from a sentence.
 
-Ported from the retired seed's install-skills.sh CRON_JOBS table
-(seed-life-dashboard-hermes-agent@678c7b17, ref/install-skills.sh:366-410) --
-same schedules, same prompts, same two invariants it learned the hard way:
+Schedules and prompts are ported from the retired seed's CRON_JOBS table
+(seed-life-dashboard-hermes-agent@678c7b17, ref/install-skills.sh:366-410), so
+they are the ones that have been running, along with the invariant that table
+learned: never read "I could not tell what is registered" as "nothing is",
+because that duplicates every job.
 
-  * a failed `hermes cron list` ABORTS. An empty snapshot read as "nothing
-    exists" re-registers every job, duplicating all of them.
-  * dedup matches a job name as a WHOLE WORD, never a substring. Every name here
-    is a prefix of nothing, but `ld-weather` is a substring of a hypothetical
-    `ld-weather-v2`, and counting a longer stale job as "already present" would
-    silently skip the real one.
+How that invariant is kept has changed, and the mechanism is the whole design.
+The seed shelled out to `hermes cron list` and matched on its text. Doing the
+same here cost three review rounds of guards -- whole-word matching, a name
+regex, a floor for when it parsed nothing, a positively-recognised
+empty-schedule notice, `--all` for paused jobs, a second floor for partial
+parses -- each one correct and none of them reaching the bottom, because a
+human-readable listing is not a data structure. This reads jobs.json instead:
+hermes's own state, where a name is a field, `enabled`/`paused_at` are fields,
+an absent file is unambiguously an empty schedule, and a malformed one raises.
+See registered_jobs().
 
-It runs INSIDE the container, where hermes is on PATH -- unlike the seed's
-version, which drove `docker compose exec` from the host.
+It runs INSIDE the container, where hermes is on PATH and that file lives.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
 import sys
 
 HERMES = "/opt/hermes/bin/hermes"
-
-# What a genuinely empty schedule looks like, as opposed to a listing this
-# cannot read. Both parse to zero names, and only one of them is safe to act on:
-# an empty schedule means register everything, a format change means register
-# everything AGAIN. So the empty case has to be recognised positively rather
-# than inferred from the absence of names.
-#
-#   $ hermes cron list
-#   No scheduled jobs.
-#   Create one with 'hermes cron create ...' or the /cron command in chat.
-EMPTY_LISTING = re.compile(r"^\s*No scheduled jobs\b", re.I | re.M)
+# Where `hermes cron` persists its jobs -- the same file the issue names as the
+# reason this skill exists, because `agent-mgr restore` does not replay it.
+JOBS_FILE = "/opt/data/cron/jobs.json"
 
 # The spec. One row per producer, live or not.
 #
@@ -158,23 +157,20 @@ def resolve_deliver(spec, env):
         return None
     def sub(match):
         name = match.group(1)
-        # Absent and blank are different faults with different remedies, and the
-        # widened pattern makes the first reachable: a typo in JOBS is now
-        # identifier-shaped enough to arrive here, and answering it with the
-        # credential message sends the operator to re-mint a token when the real
-        # defect is a misspelling three lines up.
-        if name not in env:
-            raise SystemExit(
-                f"refusing to register: delivery target names ${{{name}}}, which "
-                "is not a variable this container sets -- check the spelling in "
-                "the JOBS table."
-            )
-        value = env[name].strip()
+        # One message for absent and blank alike. Splitting them looked like
+        # better attribution and was worse: before `agent-mgr activate` runs,
+        # PLOW_CHAT_CHAT_UID is not a key at all, so the un-activated
+        # instance -- the case this refusal exists for -- took the "check your
+        # spelling" branch. Whether blank is even reachable depends on
+        # agent-mgr's compose template, which this repo does not own. A typo in
+        # JOBS is a static defect and is caught by a test instead.
+        value = env.get(name, "").strip()
         if not value:
             raise SystemExit(
-                f"refusing to register: delivery target needs {name}, which is "
-                "empty in this container's environment. It is minted by "
-                "`agent-mgr activate` and lives in the instance's own dotenv."
+                f"refusing to register: delivery target needs {name}, which this "
+                "container's environment does not supply. It is minted by "
+                "`agent-mgr activate` and lives in the instance's own dotenv -- "
+                "or, if the instance IS activated, check the spelling in JOBS."
             )
         return value
     out = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sub, spec)
@@ -187,49 +183,60 @@ def resolve_deliver(spec, env):
     return out
 
 
-def existing_names(runner):
-    """The set of job names already registered. Aborts rather than guessing.
+def registered_jobs(jobs_path=JOBS_FILE):
+    """What is already scheduled, from hermes's own persisted state.
 
-    The seed learned the abort: treating a failed list as an empty list
-    re-registers everything.
+    THE SEAM. This used to shell out to `hermes cron list` and parse the
+    rendering, and three review rounds ran on the consequences without ever
+    reaching the bottom of them: substring-vs-whole-word matching, a name regex
+    coupled to a format nothing pins, a floor for when that regex returned
+    nothing, a positively-recognised empty-schedule notice so a fresh instance
+    was not mistaken for a broken one, `--all` so paused jobs counted, and then a
+    second floor for a PARTIAL parse. Six guards, each correct, all defending the
+    same thing: that a human-readable listing is not a data structure.
 
-    Returns parsed names, not the raw blob, and that is the whole point. Every
-    prompt in JOBS below literally contains its own producer name ("Run the
-    ld-weather producer now..."), and `hermes cron list` renders job fields; a
-    dedup key of "does this string appear anywhere in the output" is therefore
-    one wording change away from matching a job's own prompt and silently
-    skipping a registration. Reading the Name: field makes the key the field it
-    is supposed to be."""
-    proc = runner([HERMES, "cron", "list", "--all"])
-    if proc.returncode != 0:
+    jobs.json is the file `hermes cron` actually writes -- the issue that asked
+    for this skill names it as the reason the skill has to exist, since
+    `agent-mgr restore` does not replay it. Reading it deletes the whole class:
+    a name is a field, `enabled` and `paused_at` are fields, an absent file is
+    unambiguously an empty schedule, and a malformed one raises instead of
+    quietly parsing to zero.
+
+    Returns {name: is_runnable}. A job that exists but will never fire is a
+    DIFFERENT answer from one that does not exist, and the caller needs both:
+    re-registering the first duplicates it, skipping it silently leaves a card
+    that never updates again.
+    """
+    path = pathlib.Path(jobs_path)
+    if not path.exists():
+        # A fresh instance, before anything has been scheduled. Unambiguous --
+        # which is the point; the notice-sniffing this replaces existed only
+        # because an empty listing and an unreadable one looked identical.
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
         raise SystemExit(
-            "refusing to register: `hermes cron list` errored, and an empty "
-            "snapshot read as 'nothing exists' would duplicate every job.\n"
-            f"{proc.stdout}\n{proc.stderr}"
-        )
-    names = set(re.findall(r"^\s*Name:\s*(\S+)\s*$", proc.stdout, re.M))
-    # The parse needs the same floor the exit code has. `hermes cron list` has no
-    # machine-readable mode, so this reads a rendering nothing pins: a table, a
-    # relabelled column, a lowercase `name:` all yield an empty set from a
-    # SUCCESSFUL call -- which is the "nothing exists" reading that duplicates
-    # every job, arriving through the door the returncode check does not cover.
-    # Output with no parseable name is a format change, not an empty schedule.
-    if not names and not EMPTY_LISTING.search(proc.stdout):
+            f"refusing to register: could not read {path} ({exc}). Treating an "
+            "unreadable schedule as an empty one duplicates every job."
+        ) from exc
+    if not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
         raise SystemExit(
-            "refusing to register: `hermes cron list` succeeded but its output "
-            "holds neither a `Name:` field nor the empty-schedule notice -- the "
-            "format changed, and reading that as 'nothing exists' would "
-            "duplicate every job.\n"
-            f"{proc.stdout}"
+            f"refusing to register: {path} is not the expected "
+            '{"jobs": [...]} shape -- the format changed, and reading that as '
+            "'nothing exists' would duplicate every job."
         )
-    return names
+    out = {}
+    for job in data["jobs"]:
+        name = (job or {}).get("name")
+        if name:
+            out[name] = bool(job.get("enabled", True)) and not job.get("paused_at")
+    return out
 
 
-def is_present(names, name):
-    """Exact membership. `ld-weather` is not satisfied by a stale
-    `ld-weather-v2` or `ld-weather.v2` -- a near-miss counted as present skips
-    the real registration and the card never updates."""
-    return name in names
+def is_present(registered, name):
+    """Exact membership on a real field. No near-miss to guard against."""
+    return name in registered
 
 
 def create_argv(job, env):
@@ -246,7 +253,7 @@ def _run(argv):
     return subprocess.run(argv, capture_output=True, text=True)
 
 
-def main(argv=None, runner=_run, env=None):
+def main(argv=None, runner=_run, env=None, jobs_path=JOBS_FILE):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true",
                         help="print what would be registered and change nothing")
@@ -259,16 +266,26 @@ def main(argv=None, runner=_run, env=None):
     if not shutil.which(HERMES) and not os.path.exists(HERMES):
         raise SystemExit(f"{HERMES} not found -- run this inside the agent container")
 
-    # Always listed, even for --dry-run. `hermes cron list` is read-only, and a
-    # preview that skips it reports "would register" for a job that is already
-    # there -- the opposite of what the real run does, from the one mode whose
-    # entire job is to say what the real run will do. It also means a broken
-    # `cron list` shows a clean plan and then aborts for real.
-    names = existing_names(runner)
+    # Read for --dry-run too. A preview that skips the check reports "would
+    # register" for a job that is already there -- the opposite of what the real
+    # run does, from the one mode whose entire job is to say what the real run
+    # will do.
+    registered = registered_jobs(jobs_path)
 
     for job in LIVE:
-        if is_present(names, job["name"]):
-            print(f"already present, {'would skip' if args.dry_run else 'skipped'}: {job['name']}")
+        if is_present(registered, job["name"]):
+            if registered[job["name"]]:
+                print(f"already present, {'would skip' if args.dry_run else 'skipped'}: {job['name']}")
+            else:
+                # Exiting 0 on this would report a clean run over a card that
+                # never updates again -- the quiet failure this file is
+                # organised around. Re-registering it instead would duplicate
+                # the job, so neither action is right: say so.
+                print(
+                    f"WARNING: {job['name']} is registered but PAUSED -- it will "
+                    "never fire, and this leaves it alone rather than "
+                    f"duplicating it. Resume it: hermes cron resume {job['name']}"
+                )
             continue
         argv_ = create_argv(job, env)
         if args.dry_run:

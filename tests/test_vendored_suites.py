@@ -30,20 +30,25 @@ def _discover():
     so it silently never runs -- a suite that cannot go red by omission instead
     of by counter.
 
-    Bounded to the repo root and the mounted skill trees rather than walking
-    everything. An unbounded rglob EXECUTES what it finds, so a .venv or a
-    vendored dependency tree would run hundreds of third-party suites as
-    subprocesses, and an untracked scratch test_*.py an operator drops in the
-    checkout would turn the suite red for no reason. These two globs are also
-    exactly the surface compose.override.yml mounts, which is the boundary the
-    rest of this repo already reasons about. Sorted so the ids are stable."""
-    found = set(ROOT.glob("test_*.py"))
-    for skill in ROOT.glob("ld-*"):
-        if skill.is_dir():
-            found |= set(skill.rglob("test_*.py"))
+    Bounded by EXCLUSION rather than an allowlist. Bounding it to the root plus
+    ld-*/ closed the hazards but reopened the hole this docstring starts with: a
+    vendored suite landing under scripts/, runtime/, or any future directory
+    would be invisible to discovery AND excluded from pytest by the tests/
+    scope, running nowhere. Excluding known-bad neighbourhoods keeps the walk
+    total while still refusing to EXECUTE third-party code: a .venv or a
+    vendored dependency tree would otherwise run hundreds of foreign suites as
+    subprocesses, and any dot-directory covers an operator's scratch work.
+    Sorted so the parametrize ids are stable."""
+    skip = {"node_modules", "site-packages", "__pycache__"}
+    found = [
+        p for p in ROOT.rglob("test_*.py")
+        if TESTS_DIR not in p.parents
+        and not any(part.startswith(".") or part in skip for part in p.relative_to(ROOT).parts)
+    ]
     return sorted(str(p.relative_to(ROOT)) for p in found)
 
 
+TESTS_DIR = Path(__file__).resolve().parent
 SUITES = _discover()
 
 

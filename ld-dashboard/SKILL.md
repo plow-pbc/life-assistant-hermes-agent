@@ -25,28 +25,31 @@ Inside the container:
 
 Preview without changing anything: `… register_crons.py --dry-run`.
 
-Create-if-missing, so it is safe to re-run — including `--dry-run`, which lists
-first and therefore reports `already present, would skip` exactly where the real
-run would skip.
+Create-if-missing, so it is safe to re-run — including `--dry-run`, which reads
+the same state and therefore reports `already present, would skip` exactly where
+the real run would skip.
 
-Three behaviours are deliberate, and all three exist to keep one mistake from
-happening: reading "I could not tell what is registered" as "nothing is".
+What counts as "already registered" comes from `/opt/data/cron/jobs.json`, the
+file `hermes cron` itself writes. Not from `hermes cron list`: that is a
+human-readable rendering nothing pins, and matching on its text needed a new
+guard every time it was wrong — whole-word matching, a name regex, a floor for
+when the regex found nothing, a positively-recognised empty-schedule notice, a
+flag so paused jobs counted. Reading the file makes all of that ordinary: a name
+is a field, so is `enabled`, so is `paused_at`.
 
-- **A `hermes cron list` that fails aborts.** An empty snapshot read as "nothing
-  exists" re-registers every job, duplicating all of them. The retired seed
-  installer this is ported from learned that one.
-- **A listing that succeeds but cannot be parsed also aborts.** `hermes cron
-  list` has no machine-readable mode, so dedup reads the `Name:` field out of a
-  rendering nothing pins. A relabelled column would yield zero names from a
-  perfectly healthy call — the same duplication, through a door the exit code
-  does not cover. An empty schedule is recognised by its own notice rather than
-  inferred from the absence of names, because a fresh instance is in exactly
-  that state on the run that has everything to register.
-- **Dedup is exact membership on the parsed name**, and the listing includes
-  paused jobs (`--all`). A stale `ld-weather-v2` is simply a different name, a
-  paused `ld-weather` still counts as registered, and — unlike the substring
-  search this replaced — a job's own prompt text can no longer match, which
-  mattered because every prompt here contains its own producer name.
+One invariant survives from the retired seed installer, because it is the one
+that matters: **never read "I could not tell what is registered" as "nothing
+is"** — that re-registers every job and duplicates all of them. So an
+unreadable or unexpected `jobs.json` aborts. An *absent* one does not: that is a
+fresh instance with nothing scheduled, which the file makes unambiguous.
+
+**A paused producer is neither.** It is registered, so re-registering duplicates
+it; it will never fire, so skipping it silently leaves a card that stops
+updating while the run reports success. It is called out by name instead, and
+left alone:
+
+    WARNING: ld-weather is registered but PAUSED -- it will never fire...
+    Resume it: hermes cron resume ld-weather
 
 ## The spec
 
