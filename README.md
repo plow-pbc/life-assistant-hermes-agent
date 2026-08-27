@@ -82,7 +82,11 @@ imply this one: #14 landing makes it *more* reachable, not less.
 1. `agent-mgr#14` lands
 2. write `~/.config/agent-mgr/rowan.env` with `AGENT_TZ=America/Chicago`
 3. **bring the pre-agent-mgr stack down** and confirm `~/.hermes-rowan` is unowned
-4. `agent-mgr register rowan` → `restore` → `up`
+4. `agent-mgr register rowan`, then the ordinary [Bring-up](#bring-up) — a
+   pointer rather than a copy, deliberately: this section's whole premise is
+   that everything points here instead of carrying its own sequence, and the
+   abbreviated `restore` → `up` chain that used to sit on this line was already
+   missing the `mkdir` that keeps `skills/` from landing root-owned.
 
 Step 1 retires precondition 1. Step 3 is the one that outlives it, so this
 section stays until `rowan` is actually migrated — not until #14 closes.

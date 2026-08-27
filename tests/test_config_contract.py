@@ -443,7 +443,8 @@ def test_every_absolute_skill_path_in_a_skill_md_resolves_in_the_tree():
     leaves = set(SKILL_DIRS)
     seen = 0
     for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
-        for ref in re.findall(r"/opt/data/skills/([\w./-]+)", skill_md.read_text()):
+        text = skill_md.read_text()
+        for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
             ref = ref.rstrip(".")
             head, _, rest = ref.partition("/")
             assert head in leaves, (
@@ -454,4 +455,16 @@ def test_every_absolute_skill_path_in_a_skill_md_resolves_in_the_tree():
                 f"{skill_md.name} names {prefix}{ref}, which is not in the tree"
             )
             seen += 1
-    assert seen, "no absolute skill paths found -- has the reference style changed?"
+        # The relative form too. Both SKILL.md files send the agent to
+        # `ld-shared/references/...` for the card-token spec and the config
+        # template, and those two files are asserted by nothing else -- no test
+        # loads them, and the absolute pattern above never matches them. A rename
+        # or an accidental deletion would otherwise surface at 06:00, inside the
+        # container, as an agent that cannot find its own reference.
+        for ref in re.findall(r"(?<![\w/])(ld-shared/[\w./-]+)", text):
+            ref = ref.rstrip(".")
+            assert (ROOT / ref).is_file(), (
+                f"{skill_md.name} points the agent at {ref}, which is not in the tree"
+            )
+            seen += 1
+    assert seen, "no skill paths found -- has the reference style changed?"
