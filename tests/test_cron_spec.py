@@ -311,7 +311,7 @@ def viewer_slots():
     # one table; this scans the whole document, so relaxing the anchor admits any
     # row-shaped line anywhere in it -- an example in a nested list, an indented
     # fence. Accepted because kiosk-protocol.md holds exactly one such table and
-    # the count assert below turns a surprise into a named red. Deliberately not
+    # the two count asserts below turn a surprise into a named red. Deliberately not
     # marker-bounded like its sibling: that file is vendored byte-identical to
     # its pinned ref, which is how this PR keeps provenance checkable, and a test
     # scoping convenience is not worth forking it.
