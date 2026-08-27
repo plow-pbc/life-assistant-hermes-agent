@@ -476,102 +476,65 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
 
 
 # Hermes confines its file-writing tool to this root; a handoff outside it is
-# denied at 06:00, in front of nobody. Measured in the container rather than
-# read off the compose file -- the image sets it, not this repo.
+# denied at 06:00, in front of nobody. The image sets it, not this repo.
 WRITE_SAFE_ROOT = "/opt/data"
 
-# Discovered, not hand-listed. Four more producers are already specified in
-# ld-dashboard's JOBS table, blocked on latch#183, and each arrives carrying a
-# wrapper that sets MESSAGE_FILE -- a table is silently green for the one whose
-# row nobody remembered to add, which is this check's entire failure mode. Two
-# lines buy that; the discovery this replaced cost twenty and a counter.
-HANDOFFS = sorted(
-    (p.parent.parent.name, p) for p in ROOT.glob("ld-*/scripts/post_*.py")
-)
-HELPER = "ld-shared"  # the canonical post_to_kiosk, not a producer
-PRODUCERS = [(s, p) for s, p in HANDOFFS if s != HELPER]
+# Listed, not globbed: discovery needed a floor (an empty glob SKIPS a
+# parametrized test), a helper exclusion and a sheet-presence rule -- three
+# guards on the finder, none on the contract, and together bigger than it.
+PRODUCERS = [("ld-weather", "post_weather.py"), ("ld-sports", "post_sports.py")]
+# The helper ships no sheet; its constant is the docstring example the next
+# producer copies, so it is pinned for the write-safe check alone.
+HANDOFFS = PRODUCERS + [("ld-shared", "post_to_kiosk.py")]
+BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
 
 
-def _handoff(wrapper):
-    paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper.read_text())
-    assert len(paths) == 1, (
-        f"{wrapper.name} declares {len(paths)} MESSAGE_FILE assignments; expected "
-        "exactly 1. The glob is deliberately broad -- four more producers are "
-        "coming -- so a post_*.py that sets none, or two, lands here."
+def _handoff(skill, wrapper):
+    [path] = re.findall(
+        r'MESSAGE_FILE\s*=\s*"([^"]+)"',
+        (ROOT / skill / "scripts" / wrapper).read_text(),
     )
-    return paths[0]
-
-
-def test_handoff_discovery_still_finds_the_producers():
-    """Parametrizing over an empty list SKIPS; this is what makes it fail.
-
-    There is no pytest config in this repo, so empty_parameter_set_mark is the
-    default `skip` -- a wrapper renamed off the post_* prefix, moved out of
-    scripts/, or in a bundle not named ld-* empties both lists and both tests go
-    quietly green. That is the same silently-green hole discovery exists to
-    prevent, relocated from a hand-kept table into the glob."""
-    assert len(PRODUCERS) >= 2, (
-        f"discovery found {len(PRODUCERS)} producer handoff(s); ld-weather and "
-        "ld-sports both set MESSAGE_FILE, so the glob has stopped matching"
-    )
-    # One-directional: a producer is anything that is not the helper, and every
-    # producer must HAVE a sheet. Inferring "producer" from the absence of a
-    # SKILL.md reads that absence as two different things -- the day ld-shared
-    # gains one (it is a mounted skill directory, so it plausibly will) it would
-    # enter PRODUCERS and be checked against its own docstring placeholder.
-    missing = {s for s, w in PRODUCERS if not (w.parent.parent / "SKILL.md").exists()}
-    assert not missing, (
-        f"{sorted(missing)} ship a handoff wrapper with no SKILL.md beside it, so "
-        "nothing checks that the agent is told the path its wrapper reads"
-    )
+    return path
 
 
 @pytest.mark.parametrize(("skill", "wrapper"), HANDOFFS, ids=[s for s, _ in HANDOFFS])
 def test_every_handoff_path_is_inside_the_write_safe_root(skill, wrapper):
     """The AGENT writes this file, so its file tool has to be able to create it.
 
-    Shipped on /tmp, which Hermes' write_file refuses -- both producers logged
-    the denial on their first unattended run and the cards landed anyway,
-    because the agent fell back to the shell. So the failure is invisible from
-    the kiosk and recurs as a coin flip. Nothing else catches it:
-    test_post_to_kiosk drives MESSAGE_FILE through tmp_path and passes against
-    any path at all. ld-shared is included because its docstring example is how
-    the next wrapper gets written."""
-    path = _handoff(wrapper)
+    Shipped on /tmp, which write_file refuses. Both producers logged the denial
+    on their first unattended run and the cards landed anyway -- the agent fell
+    back to the shell -- so the failure is invisible from the kiosk and recurs
+    as a coin flip. test_post_to_kiosk drives MESSAGE_FILE through tmp_path, so
+    it passes against any path at all; nothing else catches this."""
+    path = _handoff(skill, wrapper)
     assert path.startswith(WRITE_SAFE_ROOT + "/"), (
-        f"{skill}/scripts/{wrapper.name} hands the agent {path}, which its file "
-        f"tool cannot create -- outside HERMES_WRITE_SAFE_ROOT ({WRITE_SAFE_ROOT})"
+        f"{skill}/scripts/{wrapper} hands the agent {path}, which its file tool "
+        f"cannot create -- outside HERMES_WRITE_SAFE_ROOT ({WRITE_SAFE_ROOT})"
     )
 
 
-@pytest.mark.parametrize(("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS])
+@pytest.mark.parametrize(
+    ("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS]
+)
 def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper):
     """The wrapper is what runs; the SKILL.md is what the agent is TOLD.
 
-    Two assertions, because each sheet names the handoff twice -- once to write,
-    once to read back -- and a half-applied path change leaves one of them stale
-    while the agent reads two different files.
+    Each sheet names the handoff twice -- to write, then to read back -- so a
+    half-applied change leaves one stale and the agent reads two files. Both
+    scans are whole-token: /mnt/opt/data/ld/weather-text and
+    /opt/data/ld/weather-text.tmp otherwise read as agreement. The stale scan
+    wants a PATH ending in -text, never a bare token, because "plain-text
+    cards" is the wording cards 1/2/4 use -- exactly the blocked producers;
+    anchoring to the handoff's directory instead fails a correct sheet, since
+    /opt/data/ld/config.json lives there too."""
+    path = _handoff(skill, wrapper)
+    sheet = (ROOT / skill / "SKILL.md").read_text()
 
-    The trailing negative lookahead is load-bearing on both: without it a sheet
-    saying `/opt/data/ld/weather-text.tmp` contains the wrapper's path as a
-    prefix and reads as agreement -- the escape a substring check makes, and
-    what this is meant to close."""
-    sheet = (wrapper.parent.parent / "SKILL.md").read_text()
-    path = _handoff(wrapper)
-    edge = r"(?<![\w.\-/])", r"(?![\w.\-/])"
-
-    assert re.search(edge[0] + re.escape(path) + edge[1], sheet), (
+    assert re.search(BEFORE + re.escape(path) + AFTER, sheet), (
         f"{skill}/SKILL.md never names {path}, the handoff its wrapper reads -- "
         "the agent would write somewhere else entirely"
     )
-    # A PATH ending in -text, not any token: the leading slash is what keeps the
-    # prose "plain-text cards" -- the wording cards 1/2/4 already use, and those
-    # are exactly the four producers still blocked -- from reading as a stale
-    # sibling. Scoped to the suffix rather than to the handoff's directory
-    # because the sheets legitimately name /opt/data/ld/config.json, so a
-    # directory anchor fails a correct sheet. A future handoff not ending in
-    # -text simply finds nothing here; the assertion above still binds it.
-    stale = set(re.findall(edge[0] + r"(/[\w./-]*-text)" + edge[1], sheet)) - {path}
+    stale = set(re.findall(BEFORE + r"(/[\w./-]*-text)" + AFTER, sheet)) - {path}
     assert not stale, (
         f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
         "half-applied path change, and the agent is told two different files"
