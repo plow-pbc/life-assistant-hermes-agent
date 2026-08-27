@@ -83,10 +83,11 @@ read-back below.
 it; it will never fire, so skipping it silently leaves a card that stops
 updating. It is left alone, named, and — after the rest of the run finishes —
 **the script exits non-zero** — the signal an unattended re-provision can act
-on. Note that a `agent-mgr agent` turn does NOT propagate it: the agent reads
-the refusal as text and summarises it, so a caller that needs the status has to
-run the script through an exec (README § Bring-up carries that form and its uid
-caveat). `--dry-run` says the same thing and still exits 0 — a preview must not
+on. A turn does not propagate that code, which is why § Registering above
+requires you to paste the output verbatim and report the status rather than
+summarise: that instruction is what carries the signal across the gap. A
+*scripted* caller that wants the code itself uses the exec form instead (README
+§ Bring-up, with its uid caveat). `--dry-run` says the same thing and still exits 0 — a preview must not
 report a failure over a state it did not create:
 
     WARNING: ld-weather is registered but PAUSED -- it will never fire...

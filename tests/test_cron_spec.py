@@ -367,17 +367,22 @@ def test_both_restatements_of_the_spec_still_agree_with_it(job):
         # third thing -- a missing key, a retired upstream -- would be silently
         # checked for the wrong string and then misnamed in the failure message,
         # which is the hand-kept split this test exists to catch.
-        match = re.search(r"latch#\d+|iMessage", job["blocked"])
-        assert match, (
+        tokens = re.findall(r"latch#\d+|iMessage", job["blocked"])
+        assert tokens, (
             f"{job['name']} is blocked on something this check cannot name "
             f"({job['blocked']!r}) -- teach it the new blocker rather than "
             "letting the row go unchecked"
         )
-        token = match.group()
+        # ALL of them, not the leftmost. "needs the iMessage rewrite, tracked in
+        # latch#183" is a plausible next edit, and a leftmost match would then
+        # check the row for "iMessage" and report it missing its blocker while
+        # the row names the one the spec records.
         row_line = next(l for l in skill.splitlines() if l.startswith(skill_row))
-        assert token in row_line, (
-            f"SKILL.md's row for {job['name']} does not name its blocker ({token})"
-        )
+        for token in tokens:
+            assert token in row_line, (
+                f"SKILL.md's row for {job['name']} does not name {token}, which "
+                f"its blocked text records ({job['blocked']!r})"
+            )
 
     if job["blocked"]:
         readme = (ROOT / "README.md").read_text()
@@ -588,3 +593,29 @@ def test_the_blocked_nudge_still_records_the_target_it_will_need():
     """Deleting the resolver must not delete the requirement."""
     nudge = next(j for j in spec().JOBS if j["name"] == "ld-calendar-nudge")
     assert nudge["blocked"] and nudge["deliver"] == "plow_chat:${PLOW_CHAT_CHAT_UID}"
+
+
+def test_the_paste_instruction_survives_in_every_document_that_promises_it():
+    """The README's token check is load-bearing on a sentence in another file.
+
+    A turn does not propagate the script's exit code, so the only thing carrying
+    a refusal across that gap is SKILL.md telling the agent to paste the output
+    verbatim instead of summarising — and README tells the operator to grep that
+    output for `refusing to register` / `WARNING` / `PAUSED` on the strength of
+    it. Reword SKILL.md (it has been rewritten in three of the last four
+    commits) and README keeps promising a guarantee that no longer exists, with
+    the operator grepping a summary. This is the newest cross-document
+    dependency and was the one restatement nothing covered."""
+    skill = (ROOT / "ld-dashboard" / "SKILL.md").read_text()
+    assert "paste its output verbatim" in skill, (
+        "SKILL.md no longer instructs the agent to paste the script's output -- "
+        "README's `refusing to register` / WARNING / PAUSED check greps a "
+        "summary without it, and the justfile points at README for the same"
+    )
+    assert "exit status" in skill
+
+    readme = (ROOT / "README.md").read_text()
+    assert "paste the output and exit code" in readme, (
+        "README's bring-up turn no longer asks for the output -- the request has "
+        "to be in the prompt as well as the skill"
+    )

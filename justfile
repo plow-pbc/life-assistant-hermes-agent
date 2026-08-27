@@ -12,12 +12,9 @@
 #   agent-mgr agent <agent> "what's the weather?"
 #
 #   # The dashboard crons -- NOT replayed by restore, so bring-up is not done
-#   # without this. A turn rather than an exec: ld-dashboard is a skill, and
-#   # agent-mgr pins HERMES_UID/GID for it (a plain `compose exec` runs as ROOT
-#   # and would create the schedule root-owned on a fresh instance).
-#   agent-mgr agent <agent> 'set up the life dashboard crons'
-#   # Then see ld-dashboard/SKILL.md "Unattended runs" -- a forced run proves the
-#   # producer, not that the running gateway loaded the new schedule.
+#   # without them. Deliberately NOT restated here: the exact turn, the paste
+#   # request, the exit-code caveat and the exec form for scripted callers are
+#   # README "Bring-up". A third copy is how the first two drifted.
 #
 # No check-connectors: this instance installs no plow-connectors. See README
 # "No connectors, and what that costs".
