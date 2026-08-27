@@ -560,7 +560,8 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
     )
 
 
-def test_the_guarded_directory_is_the_one_the_producers_write_into():
+@pytest.mark.parametrize(("skill", "wrapper"), PRODUCERS, ids=[s for s, _ in PRODUCERS])
+def test_the_guarded_directory_is_the_one_the_producers_write_into(skill, wrapper):
     """register_crons.py proves ONE directory writable; it must be theirs.
 
     It probes LD_CONFIG's parent, which is the handoff directory only because
@@ -571,9 +572,8 @@ def test_the_guarded_directory_is_the_one_the_producers_write_into():
     ld_config = re.search(r'^LD_CONFIG = "([^"]+)"', registrar, re.M)
     assert ld_config, "register_crons.py no longer declares LD_CONFIG"
     guarded = PurePosixPath(ld_config.group(1)).parent
-    for skill, wrapper in PRODUCERS:
-        written = PurePosixPath(_handoff(skill, wrapper)).parent
-        assert written == guarded, (
-            f"{skill} writes its handoff into {written}, but register_crons.py "
-            f"proves {guarded} is writable -- move the guard or the handoff"
-        )
+    written = PurePosixPath(_handoff(skill, wrapper)).parent
+    assert written == guarded, (
+        f"{skill} writes its handoff into {written}, but register_crons.py "
+        f"proves {guarded} is writable -- move the guard or the handoff"
+    )

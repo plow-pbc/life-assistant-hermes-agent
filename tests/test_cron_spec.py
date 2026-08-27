@@ -7,6 +7,7 @@ have, a delivery target that would be silently dropped because the machinery to
 expand it was deleted as unreachable.
 """
 import importlib.util
+import inspect
 import json
 import re
 from pathlib import Path
@@ -675,3 +676,27 @@ def test_a_refusal_points_at_a_runbook_section_that_exists():
             f"{mod.RUNBOOK} no longer carries {needed!r} -- the {arm} arm the "
             "refusals send operators there to find"
         )
+
+
+def test_the_probe_lands_beside_the_config_it_was_given(tmp_path):
+    """Pins the OTHER half: that the probed directory derives from LD_CONFIG.
+
+    test_config_contract pins the LD_CONFIG literal against the producers'
+    handoffs, but nothing pinned the probe back to LD_CONFIG -- every test here
+    drives config_path through tmp_path, so a hardcoded or differently-derived
+    probe directory would leave the whole chain green while bring-up proves a
+    directory no producer writes into.
+
+    Behavioural rather than a regex over the source: point config_path at a
+    directory that does not exist and the refusal has to name THAT directory."""
+    mod = spec()
+    elsewhere = tmp_path / "not-here" / "config.json"
+    with pytest.raises(SystemExit) as exc:
+        mod.require_handoff_dir_writable(elsewhere, geteuid=NOT_ROOT, env={})
+    assert str(tmp_path / "not-here") in str(exc.value)
+
+    signature = inspect.signature(mod.require_handoff_dir_writable)
+    assert signature.parameters["config_path"].default == mod.LD_CONFIG, (
+        "the guard's default config_path is no longer LD_CONFIG, so a real "
+        "bring-up probes a directory the contract test does not pin"
+    )
