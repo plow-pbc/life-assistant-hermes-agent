@@ -654,24 +654,37 @@ def test_the_cross_document_pointers_still_land_somewhere():
         None,
     )
     assert heading, "SKILL.md has no Unattended-runs heading for README to link"
-    # GitHub's slugifier drops punctuation and markdown rather than keeping it:
-    # "## Unattended runs (forced)" anchors at #unattended-runs-forced, not
-    # #unattended-runs-(forced). Modelling it as space->hyphen only would fail a
-    # README that had been updated to the CORRECT anchor, and the message would
-    # then send the next author to edit a link that resolves fine.
-    slug = "#" + re.sub(r"[^a-z0-9]+", "-", heading[3:].strip().lower()).strip("-")
+    # GitHub's real algorithm: lowercase, DELETE every character that is not a
+    # word char, hyphen or space, then map spaces to hyphens. Not "collapse runs
+    # of punctuation to one hyphen" -- the difference shows up on the two shapes
+    # this repo actually writes. A spaced em-dash separator collapses to TWO
+    # hyphens ("## Unattended runs — forced" anchors at #unattended-runs--forced;
+    # README.md already has "## The account boundary — how one repo serves two
+    # people"), and `_` survives ("## The ld_weather job" -> #the-ld_weather-job).
+    # Getting either wrong fails a README updated to the CORRECT anchor, with a
+    # message claiming the jump is dead -- which sends the next author to edit a
+    # link that resolves fine.
+    slug = "#" + re.sub(r"[^\w\- ]", "", heading[3:].strip().lower()).replace(" ", "-")
 
     # Equality on the extracted target, not containment. `"#unattended-runs" in
     # readme` is satisfied by `#unattended-runs-and-forced-runs` -- the same
-    # retitle-by-extension hole this test just closed on the heading side, left
-    # open at the LINK side, where a section split is just as likely to move it.
-    for label, text, pattern in (
-        ("README", readme, r"\]\(ld-dashboard/SKILL\.md(#[a-z0-9-]*)\)"),
-        ("SKILL.md", skill, r"\]\((#[a-z0-9-]*)\)"),
-    ):
-        found = [m.group(1) for m in re.finditer(pattern, text)]
-        assert found, f"{label} no longer links SKILL.md's Unattended-runs section"
-        assert slug in found, (
+    # retitle-by-extension hole this test closes on the heading side, which has
+    # to be closed at the LINK side too, where a section split moves it.
+    #
+    # Scoped to the link whose LABEL names the section. An unscoped in-page
+    # pattern matches every anchor in the file: SKILL.md self-links once today,
+    # and the moment a second one appears `assert found` goes vacuous and the
+    # equality degrades from "this pointer resolves" to "some link in the
+    # document happens to land here". [\w-] so a correct underscore anchor is
+    # extracted rather than reported missing.
+    label_link = r"\[[^\]]*Unattended[^\]]*\]\((?:ld-dashboard/SKILL\.md)?(#[\w-]*)\)"
+    for label, text in (("README", readme), ("SKILL.md", skill)):
+        found = [m.group(1) for m in re.finditer(label_link, text)]
+        assert found, (
+            f"{label} has no link labelled for SKILL.md's Unattended-runs "
+            "section -- the pointer that replaced the deleted copy is gone"
+        )
+        assert all(a == slug for a in found), (
             f"{label} links {found!r}, but the heading now anchors at {slug!r} -- "
             "the in-page jump is dead"
         )
