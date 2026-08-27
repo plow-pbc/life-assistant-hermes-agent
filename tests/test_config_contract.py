@@ -453,7 +453,15 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
         text = skill_md.read_text()
         for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
-            ref = ref.rstrip("./")
+            # An ellipsis is prose, not a path -- these files write
+            # `/opt/data/skills/ld-weather/scripts/...` to elide the rest of a
+            # command. Skipped rather than resolved: stripping the dots leaves a
+            # trailing slash that strips to the real parent directory, so it
+            # would pass the bound below and increment `seen` as though a
+            # reference had been verified. Measured, not assumed.
+            if "..." in ref:
+                continue
+            ref = ref.rstrip(".").rstrip("/")
             head, _, rest = ref.partition("/")
             assert head in leaves, (
                 f"{skill_md.name} names {prefix}{ref}, but {head} is not a skill "
@@ -465,14 +473,30 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
             )
             seen += 1
 
-        # No unanchored reference may creep back in. This is the rule the
-        # absolute check rests on, and it is invisible from the host: an
-        # unanchored path resolves fine when a reader clicks it in the repo and
-        # not at all for the agent, which is the only reader that matters.
-        bare = re.findall(r"(?<![\w/])(ld-(?:shared|weather|sports|dashboard)/[\w./-]+)", text)
-        assert not bare, (
-            f"{skill_md.name} hands the agent unanchored path(s) {bare} -- the "
-            "agent's cwd is /opt/hermes, not the skills directory, so these "
+        # No unanchored reference may creep back in, in ANY spelling. Anchored
+        # on the TAIL rather than the head: a head-anchored `ld-*` alternation
+        # missed `scripts/register_crons.py` -- whose first segment is not a
+        # skill name, and which is worse than the bare ld-shared/ form because a
+        # repo-root scripts/ exists holding a different file -- and its
+        # `(?<![\w/])` lookbehind excluded the wrappers' own `../../ld-shared`
+        # hop identically to how it excluded the legitimate prefix.
+        #
+        # Matching the tail and asserting the prefix covers the bare, `./` and
+        # `../../` forms in one rule, and needs no list of skill names to keep in
+        # step with the tree. This is invisible from the host: an unanchored path
+        # resolves fine when a reader clicks it in the repo and not at all for
+        # the agent, which is the only reader that matters.
+        unanchored = sorted(
+            {
+                ref for ref in re.findall(
+                    r"[\w./-]*(?:ld-[\w-]+|scripts|references)/[\w./-]+", text
+                )
+                if not ref.startswith(prefix)
+            }
+        )
+        assert not unanchored, (
+            f"{skill_md.name} hands the agent unanchored path(s) {unanchored} -- "
+            "the agent's cwd is /opt/hermes, not the skills directory, so these "
             f"resolve to nothing. Prefix them with {prefix}"
         )
 

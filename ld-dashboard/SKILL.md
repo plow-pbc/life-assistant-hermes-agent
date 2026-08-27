@@ -100,7 +100,8 @@ retry does not add a second.
 
 ## The spec
 
-`scripts/register_crons.py` `JOBS` is the single source; this table summarises it.
+`/opt/data/skills/ld-dashboard/scripts/register_crons.py`'s `JOBS` is the single
+source; this table summarises it.
 
 | producer | schedule | card | state |
 |---|---|---|---|
