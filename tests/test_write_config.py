@@ -115,6 +115,7 @@ def test_geocode_refuses_cleanly_on_a_blocked_redirect(monkeypatch):
             wc.geocode("Chicago")
     finally:
         server.shutdown()
+        server.server_close()
     assert "could not look up" in str(e.value) and "Chicago" in str(e.value)
 
 
