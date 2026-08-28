@@ -81,9 +81,13 @@ def main():
 
     post_to_kiosk.post_bearer_json(chat_url, token, {"body": text}, "Plow Chat")
 
-    # Both legs succeeded: consume both one-shot handoffs.
-    os.unlink(post_to_kiosk.MESSAGE_FILE)
+    # Both legs succeeded: consume both one-shot handoffs. CHAT_FILE first —
+    # a crash between the two unlinks then biases the residue toward the
+    # accepted failure modes: a retry fails loudly on the missing chat
+    # handoff (never a duplicate chat message), and the next tick overwrites
+    # whatever is left.
     os.unlink(CHAT_FILE)
+    os.unlink(post_to_kiosk.MESSAGE_FILE)
     print(f"posted kiosk card and chat nudge ({len(text)} chars)")
 
 
