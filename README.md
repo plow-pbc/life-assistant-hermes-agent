@@ -1,9 +1,11 @@
 # life-assistant
 
 > [!IMPORTANT]
-> **This repo is code only.** The instances it configures read and send a
-> person's mail, read their calendar, and hold their Plow credential — all of
-> that lives in the instance's home on the host, never here. Keep it that way:
+> **This repo is code only.** The instances it configures hold a person's Plow
+> credential and reach their calendar through their own Mac (see [No connectors,
+> and what that costs](#no-connectors-and-what-that-costs) for what they no
+> longer reach) — all of that lives in the instance's home on the host, never
+> here. Keep it that way:
 > nothing under this tree may carry a credential, a chat id, or a person's data.
 
 A [Hermes](https://howto.plow.co/hermes) agent — texted from iMessage over the
