@@ -3,15 +3,14 @@
 
 Reads the fixed gog `calendar events list --json --results-only` output from
 its gather-file argument, deleting the file as it goes, applies the nudge
-rules — privacy prepass, per-event filter, dedupe — and writes the composed
-≤115-char reminders STRAIGHT to the two fixed handoffs the posting legs
-consume: the earliest qualifying reminder to KIOSK_FILE (post_nudge.py's
-one-line card) and every reminder to CHAT_FILE (send_nudge_chat.py's
-message). stdout carries only {"qualifying": N} — the model routes on the
-count and never touches reminder content, so the helper chain takes zero
-model-controlled content end to end (the plow#625 shape). Deterministic on
-purpose: the rules were 200 lines of sheet prose upstream; now they are code
-with a test per rule.
+rules — privacy prepass, per-event filter, dedupe — and writes every
+composed ≤115-char reminder, earliest first, STRAIGHT to the ONE fixed
+handoff post_nudge.py consumes (the first line becomes the kiosk card, the
+whole body the chat message). stdout carries only {"qualifying": N} — the
+model routes on the count and never touches reminder content, so the helper
+chain takes zero model-controlled content end to end (the plow#625 shape).
+Deterministic on purpose: the rules were 200 lines of sheet prose upstream;
+now they are code with a test per rule.
 
 The gather path is the one model-supplied argument, so it is validated
 BEFORE any open/unlink: only a runtime-persisted result (under
@@ -57,9 +56,8 @@ LIMIT = 115
 # it is a prefix check, and "/tmp/hermes-results-evil" must not pass.
 PERSISTED_ROOT = "/tmp/hermes-results/"
 GATHER_FILE = "/opt/data/ld/calendar-nudge-gather"
-# The two fixed handoffs this helper writes and the posting legs consume.
-KIOSK_FILE = "/opt/data/ld/calendar-nudge-text"
-CHAT_FILE = "/opt/data/ld/calendar-nudge-chat"
+# The one fixed handoff this helper writes and post_nudge.py consumes.
+HANDOFF = "/opt/data/ld/calendar-nudge-text"
 # The shared ld-config, fixed here rather than taken as a flag: the model
 # builds the argv, and a steerable --config could point at a model-written
 # JSON whose identities/lookaheads make a non-qualifying event publish.
@@ -283,18 +281,16 @@ def main(argv=None, now=None) -> int:
         reminders.append(compose(summary or "(untitled meeting)", local_time,
                                  minutes_until, where))
 
-    # The handoffs are written HERE, never by the model: the kiosk card gets
-    # the earliest qualifying reminder (one line, the ≤115 contract enforced
-    # above), the chat message gets them all. Each posting leg consumes its
-    # own file on success. stdout carries only the count the sheet routes on.
-    # Direct writes, on purpose: posting only begins after this process exits
-    # 0, a mid-write crash exits nonzero and the sheet stops, and the next
-    # tick overwrites both files — so a staged-rename variant defended an
+    # The handoff is written HERE, never by the model: every qualifying
+    # reminder, earliest first (each line ≤115, enforced above). post_nudge
+    # gives the first line to the kiosk and the whole body to chat, and owns
+    # consume-on-success. stdout carries only the count the sheet routes on.
+    # A direct write, on purpose: posting only begins after this process
+    # exits 0, a mid-write crash exits nonzero and the sheet stops, and the
+    # next tick overwrites the file — the staged-rename variant defended an
     # unobserved failure mode and was deleted (operator ruling, PR #26).
     if reminders:
-        with open(KIOSK_FILE, "w") as f:
-            f.write(reminders[0] + "\n")
-        with open(CHAT_FILE, "w") as f:
+        with open(HANDOFF, "w") as f:
             f.write("\n".join(reminders) + "\n")
 
     json.dump({"qualifying": len(reminders)}, sys.stdout)

@@ -317,7 +317,7 @@ def test_only_the_digest_rides_the_native_deliver_arm():
     divide is deliberate: --deliver relays EVERY final response, which fits
     the weekly always-has-content digest and would spam from the half-hourly
     quiet-no-op nudge -- so the NOW-LIVE nudge's chat leg is its committed
-    send_nudge_chat.py script and its deliver stays None (the row comment
+    post_nudge.py coordinator and its deliver stays None (the row comment
     records this). This replaces the old tripwire that fired when a job with
     a target went live: the resolver it demanded is back (resolve_deliver),
     so the pin is on WHICH jobs use it."""

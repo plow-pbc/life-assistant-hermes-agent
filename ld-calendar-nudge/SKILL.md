@@ -15,7 +15,7 @@ now" request follows this sheet once and stops — do NOT create a second cron.
 The filter rules — privacy prepass, lookahead windows, owner participation,
 human counterparty, dedupe, the ≤115-char compose template — are owned by
 `scripts/nudge_candidates.py`, not by prose here. Do not re-derive or
-second-guess them; the script also writes both posting handoffs itself, so
+second-guess them; the script also writes the posting handoff itself, so
 your whole job is to run the chain and route on its qualifying count —
 reminder content never passes through you.
 
@@ -64,17 +64,16 @@ Run the deterministic filter:
 
     /opt/data/skills/ld-calendar-nudge/scripts/nudge_candidates.py <gather file path>
 
-The gather path is its ONLY argument — the config location and both handoff
-paths are fixed inside the script, so there is nothing else to steer.
+The gather path is its ONLY argument — the config location and the handoff
+path are fixed inside the script, so there is nothing else to steer.
 
 It accepts only a runtime-persisted result path or the fixed inline gather
 above (any other path is refused before it is touched), deletes the gather
 as it reads it (the raw calendar corpus must not outlive the run), and when
-meetings qualify it writes the two posting handoffs ITSELF — the earliest
-reminder to `/opt/data/ld/calendar-nudge-text` for the kiosk card, all of
-them to its chat handoff for the message. You never see, write, or relay
-reminder content: stdout is only `{"qualifying": <N>}`, and you route on
-that count.
+meetings qualify it writes the posting handoff ITSELF — every qualifying
+reminder, earliest first, to `/opt/data/ld/calendar-nudge-text`. You never
+see, write, or relay reminder content: stdout is only
+`{"qualifying": <N>}`, and you route on that count.
 
 If it exits non-zero, the gather or its consumption FAILED — surface the
 error in the final response so the owner sees it; a failed gather must never
@@ -89,17 +88,18 @@ minutes is noise).
 ## Post — one command, both surfaces
 
 If `qualifying` is 1 or more, run ONE command, by absolute path — no
-arguments, no text (it reads the fixed handoffs, so a prompt-injected turn
+arguments, no text (it reads the fixed handoff, so a prompt-injected turn
 has nothing to steer):
 
     /opt/data/skills/ld-calendar-nudge/scripts/post_nudge.py
 
 It validates the Plow Chat config FIRST (a broken chat config refuses
-before anything posts — never a half-delivered run), then posts card 1,
+before anything posts — never a half-delivered run), reads the handoff
+once, posts its first line — the earliest reminder — as card 1,
 `type: "alert"` (the slot shared with `ld-morning-triage`; the store keeps
 the latest post per card; `DASHBOARD_*` env vars), then messages the owner
-every qualifying reminder over Plow Chat (`PLOW_CHAT_*` credentials, bearer
-never in argv), consuming both handoffs only after both legs succeed. Fails
+the whole reminder body over Plow Chat (`PLOW_CHAT_*` credentials, bearer
+never in argv), consuming the handoff only after both legs succeed. Fails
 loudly at whichever leg breaks — surface that in the final response.
 Preview with `--dry-run` (body redacted, nothing consumed).
 

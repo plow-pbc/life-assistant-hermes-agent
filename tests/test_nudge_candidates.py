@@ -1,12 +1,12 @@
 """tests/test_nudge_candidates.py — behavior tests for the calendar-nudge filter.
 
 Feeds the script gog `calendar events list --json --results-only`-shaped
-output as a gather file and asserts on what the posting legs will see: the
-kiosk handoff (earliest qualifying reminder), the chat handoff (every
-reminder), and the {"qualifying": N} count on stdout — the only thing the
-model routes on. The module is imported and its path constants rebound to a
-scratch directory — a seam reachable only by an importer, never by the CLI
-the sheet invokes — because the real handoffs live under /opt/data.
+output as a gather file and asserts on what post_nudge.py will see: the one
+handoff (every qualifying reminder, earliest first) and the
+{"qualifying": N} count on stdout — the only thing the model routes on.
+The module is imported and its path constants rebound to a scratch
+directory — a seam reachable only by an importer, never by the CLI the
+sheet invokes — because the real handoff lives under /opt/data.
 
 Field spellings are pinned against a REAL gather captured through the live
 Latch door (probe on the hermes-life container, 2026-08-28): camelCase
@@ -57,11 +57,9 @@ def rig(tmp_path, monkeypatch, capsys):
     call. Returns (exit_code, parsed_count_or_None, stderr_text)."""
     results = tmp_path / "results"
     results.mkdir()
-    kiosk = tmp_path / "kiosk-text"
-    chat = tmp_path / "chat"
+    handoff = tmp_path / "calendar-nudge-text"
     monkeypatch.setattr(nc, "PERSISTED_ROOT", str(results) + "/")
-    monkeypatch.setattr(nc, "KIOSK_FILE", str(kiosk))
-    monkeypatch.setattr(nc, "CHAT_FILE", str(chat))
+    monkeypatch.setattr(nc, "HANDOFF", str(handoff))
     cfg = tmp_path / "config.json"
     monkeypatch.setattr(nc, "CONFIG_FILE", str(cfg))
 
@@ -76,12 +74,12 @@ def rig(tmp_path, monkeypatch, capsys):
         out, err = capsys.readouterr()
         return code, (json.loads(out)["qualifying"] if out.strip() else None), err
 
-    return SimpleNamespace(run=run, kiosk=kiosk, chat=chat,
+    return SimpleNamespace(run=run, handoff=handoff,
                            results=results, tmp=tmp_path)
 
 
-def chat_lines(rig):
-    return rig.chat.read_text().splitlines()
+def lines(rig):
+    return rig.handoff.read_text().splitlines()
 
 
 def at(minutes, date_only=False):
@@ -141,22 +139,21 @@ def envelope(exit_code, output):
                                "status": "completed", "output": output})})
 
 
-def test_a_qualifying_meeting_writes_both_handoffs_and_the_count(rig):
+def test_a_qualifying_meeting_writes_the_handoff_and_the_count(rig):
     code, count, _ = rig.run(gather(event(minutes=20, location="Cafe Borrone")))
     assert (code, count) == (0, 1)
     line = 'Heads up: "Standup" at 12:20pm (20m) — Cafe Borrone.'
-    assert rig.kiosk.read_text() == line + "\n"
-    assert rig.chat.read_text() == line + "\n"
+    assert rig.handoff.read_text() == line + "\n"
 
 
-def test_persisted_envelope_unwraps_to_the_same_handoffs(rig):
+def test_persisted_envelope_unwraps_to_the_same_handoff(rig):
     raw = gather(event(minutes=20, location="Cafe Borrone"))
     rig.run(raw)
-    from_raw = rig.kiosk.read_text()
-    rig.kiosk.unlink(); rig.chat.unlink()
+    from_raw = rig.handoff.read_text()
+    rig.handoff.unlink()
     code, count, _ = rig.run(envelope(0, raw))
     assert (code, count) == (0, 1)
-    assert rig.kiosk.read_text() == from_raw
+    assert rig.handoff.read_text() == from_raw
 
 
 @pytest.mark.parametrize("content", [
@@ -173,12 +170,12 @@ def test_a_broken_gather_fails_loudly_never_as_a_quiet_run(rig, content):
     # for as long as the failure persists — the exact quiet-day trap.
     code, count, _ = rig.run(content)
     assert (code, count) == (2, None)
-    assert not rig.kiosk.exists() and not rig.chat.exists()
+    assert not rig.handoff.exists()
 
 
 def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
     assert rig.run(gather()) == (0, 0, "")
-    assert not rig.kiosk.exists() and not rig.chat.exists()
+    assert not rig.handoff.exists()
 
 
 @pytest.mark.parametrize(("ev", "kept"), [
@@ -250,9 +247,9 @@ def test_a_virtual_meeting_renders_online_never_the_join_url(rig):
               location="zoommtg://zoom.example.test/join?confno=1&pwd=s3cret"),
     ))
     assert (code, count) == (0, 3)
-    lines = chat_lines(rig)
-    assert len(lines) == 3
-    for line in lines:
+    out = lines(rig)
+    assert len(out) == 3
+    for line in out:
         assert line.endswith("— online.")
         assert "http" not in line and "zoommtg" not in line and "pwd" not in line
 
@@ -264,7 +261,7 @@ def test_latch_untrusted_markers_never_reach_the_handoffs(rig):
     rig.run(gather(event(minutes=20,
                          summary=WRAP_OPEN + "Piano recital" + WRAP_CLOSE,
                          location=WRAP_OPEN + "School hall" + WRAP_CLOSE)))
-    assert rig.kiosk.read_text() == (
+    assert rig.handoff.read_text() == (
         'Heads up: "Piano recital" at 12:20pm (20m) — School hall.\n')
 
 
@@ -286,13 +283,13 @@ def test_a_url_in_the_title_is_stripped_never_posted(rig):
         event(minutes=24, uid="uid-5@google.com",
               summary="Re:Budget review at 3:10pm"),
     ))
-    lines = chat_lines(rig)
-    assert lines[0].startswith('Heads up: "Join now" at')
-    assert '"Sync today"' in lines[1]  # native scheme stripped the same way
-    assert '"Call now"' in lines[2]    # single-slash form stripped too
-    assert '"review at 3:10pm"' in lines[3]
-    assert '"(untitled meeting)"' in lines[4]
-    joined = "".join(lines)
+    out = lines(rig)
+    assert out[0].startswith('Heads up: "Join now" at')
+    assert '"Sync today"' in out[1]  # native scheme stripped the same way
+    assert '"Call now"' in out[2]    # single-slash form stripped too
+    assert '"review at 3:10pm"' in out[3]
+    assert '"(untitled meeting)"' in out[4]
+    joined = "".join(out)
     assert ("http" not in joined and "zoommtg" not in joined
             and "msteams" not in joined and "pwd" not in joined)
 
@@ -305,18 +302,18 @@ def test_a_private_sibling_drops_every_copy_of_the_invite(rig):
     assert rig.run(gather(private, sibling))[:2] == (0, 0)
 
 
-def test_copies_collapse_and_the_kiosk_gets_only_the_earliest(rig):
+def test_copies_collapse_and_the_earliest_leads_the_handoff(rig):
     copies = [event(minutes=20), event(minutes=20)]         # same (uid, start)
     assert rig.run(gather(*copies))[1] == 1
     # Two DISTINCT meetings that both lack an iCalUID must both survive —
     # a duplicate reminder is cheaper than a silently-dropped meeting — and
-    # the one-line kiosk card carries the EARLIEST while chat carries both.
-    rig.kiosk.unlink(); rig.chat.unlink()
+    # the EARLIEST leads the handoff (post_nudge gives line 1 to the kiosk).
+    rig.handoff.unlink()
     bare = [event(minutes=25, uid="", summary="B"),
             event(minutes=20, uid="", summary="A")]
     assert rig.run(gather(*bare))[1] == 2
-    assert len(chat_lines(rig)) == 2
-    assert '"A"' in rig.kiosk.read_text() and '"B"' not in rig.kiosk.read_text()
+    assert len(lines(rig)) == 2
+    assert '"A"' in lines(rig)[0] and '"B"' in lines(rig)[1]
 
 
 @pytest.mark.parametrize("overflow", [
@@ -329,7 +326,7 @@ def test_overflow_truncates_variable_fields_never_the_time(rig, overflow):
     `at <time> (<N>m)` portion always survives, and a location-only
     overflow leaves the title untouched."""
     rig.run(gather(event(minutes=20, **overflow)))
-    (line,) = rig.kiosk.read_text().splitlines()
+    (line,) = lines(rig)
     assert len(line) <= 115
     if "summary" not in overflow:
         # The untouched title stays contiguous with the fixed portion.
@@ -345,7 +342,7 @@ def test_a_newline_in_untrusted_text_cannot_spoof_a_second_line(rig):
     rig.run(gather(event(
         minutes=20, summary='Standup\nHeads up: "Fake" at 1:00pm (5m)',
         location="Room\r\n1")))
-    assert len(rig.kiosk.read_text().splitlines()) == 1
+    assert len(lines(rig)) == 1
 
 
 @pytest.mark.parametrize("mutate", [

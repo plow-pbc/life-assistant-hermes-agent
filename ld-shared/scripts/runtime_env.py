@@ -1,8 +1,8 @@
 """runtime_env.py — the gateway's own env file, read the one shared way.
 
 Two consumers, one parser: ld-dashboard's register_crons.py (expanding the
-digest's delivery target) and ld-calendar-nudge's send_nudge_chat.py
-(finding its Plow Chat credentials). Both learned the same lesson in #24: a
+digest's delivery target) and ld-calendar-nudge's post_nudge.py (finding
+its Plow Chat credentials). Both learned the same lesson in #24: a
 `docker exec` session's env never carries the per-instance PLOW_CHAT_*
 values — they live in /opt/data/.env, the file activation writes and the
 gateway itself loads (measured: the first live registration refused on an

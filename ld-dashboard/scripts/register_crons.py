@@ -64,7 +64,7 @@ LD_CONFIG = "/opt/data/ld/config.json"
 #     docker-exec session's env never carries it -- and refuses a blank one.
 #   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
 #     quiet no-op runs, and --deliver relays EVERY final response -- its chat
-#     leg is its committed send_nudge_chat.py, which keeps quiet ticks silent
+#     leg lives in its committed post_nudge.py coordinator, keeping quiet ticks silent
 #     by construction.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
@@ -154,7 +154,7 @@ JOBS = (
         "skill": "ld-calendar-nudge",
         # deliver stays None ON PURPOSE, unlike the digest: --deliver relays
         # EVERY final response, and this producer runs half-hourly with quiet
-        # no-op ticks -- its chat leg is its committed send_nudge_chat.py,
+        # no-op ticks -- its chat leg lives in its post_nudge.py coordinator,
         # which keeps quiet runs silent by construction.
         "deliver": None,
     },
@@ -291,7 +291,7 @@ def create_argv(job, env=None, dotenv_path=DOTENV):
     run has content, where relaying the final response IS the chat leg
     (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
     relays every final response, no-ops included -- which is why the live
-    nudge's deliver is None and its chat leg is send_nudge_chat.py."""
+    nudge's deliver is None and its chat leg lives in post_nudge.py."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]

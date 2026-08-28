@@ -127,7 +127,7 @@ The two producers take different delivery paths, on purpose. `--deliver`
 relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always
 has content, its final response IS the digest — and its live row rides it.
 It does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
-its chat leg is its committed `send_nudge_chat.py` and its row's `deliver`
+its chat leg lives in its committed `post_nudge.py` coordinator and its row's `deliver`
 is `None` (`test_only_the_digest_rides_the_native_deliver_arm` pins the
 divide).
 

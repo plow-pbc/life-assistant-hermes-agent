@@ -178,7 +178,7 @@ def post_bearer_json(url, token, body, label):
         sys.exit(f"error: POST to {label} failed: {exc.reason}")
 
 
-def main(consume=True):
+def main():
     if not CARD:
         sys.exit("error: post_to_kiosk.CARD not set by caller")
     if not BODY_TYPE:
@@ -226,11 +226,9 @@ def main(consume=True):
     # Consume the one-shot handoff. Success path only — left intact on the error
     # exits above so a retry resends it; the module docstring owns the window
     # where that retry reposts a stale body as fresh, and why it is left open.
-    # No-op when the text came from stdin (MESSAGE_FILE None). A caller with a
-    # second delivery leg passes consume=False and owns consumption itself
-    # after its LAST leg succeeds (post_nudge.py), so a transient later-leg
-    # failure stays retryable.
-    if MESSAGE_FILE and consume:
+    # No-op when the text came from stdin (MESSAGE_FILE None) — which is also
+    # how a coordinator that owns its handoff itself posts (post_nudge.py).
+    if MESSAGE_FILE:
         os.unlink(MESSAGE_FILE)
 
 
