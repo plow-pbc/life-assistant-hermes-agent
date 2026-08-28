@@ -68,7 +68,6 @@ def reset_module():
     post_to_kiosk.BODY_TYPE = None
     post_to_kiosk.TITLE = None
     post_to_kiosk.MESSAGE_FILE = None
-    post_to_kiosk.CONSUME = True
     post_to_kiosk.ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
     post_to_kiosk.TOKEN_FILE = "/config/secrets/dashboard-token"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
@@ -189,27 +188,6 @@ def test_env_secrets_message_file_posts_and_consumes_file():
         check("auth header uses the env token", r["auth"] == f"Bearer {TOKEN}")
         check("body card/type from wrapper", (r["body"]["card"], r["body"]["type"]) == ("3", "weather"))
         check("body text is the MESSAGE_FILE contents", r["body"]["text"] == "<div class='weather'>72°</div>")
-
-
-def test_consume_false_leaves_the_handoff_after_success():
-    """A two-leg producer's kiosk leg (CONSUME=False) must leave MESSAGE_FILE
-    for the later chat leg — a logic inversion here starves that leg on every
-    single successful run."""
-    server, base = _start_server()
-    try:
-        with tempfile.TemporaryDirectory() as d:
-            use_env_secrets(Path(d), endpoint=f"{base}/api/message", card="1", body_type="alert")
-            msg = Path(d) / "ld-calendar-nudge-text"
-            msg.write_text("the reminder")
-            post_to_kiosk.MESSAGE_FILE = str(msg)
-            post_to_kiosk.CONSUME = False
-            code, _ = run()
-            file_kept = msg.exists()
-    finally:
-        server.shutdown()
-        reset_module()
-    check("CONSUME=False POST exit zero", code == 0)
-    check("MESSAGE_FILE left in place for the later leg", file_kept)
 
 
 def test_message_file_preserved_on_send_failure():
@@ -405,7 +383,6 @@ def test_redirect_not_followed():
 def main():
     test_file_secrets_stdin_message_posts_correct_payload()
     test_env_secrets_message_file_posts_and_consumes_file()
-    test_consume_false_leaves_the_handoff_after_success()
     test_message_file_preserved_on_send_failure()
     test_optional_title_is_posted_when_set()
     test_dry_run_redacts_body_and_token()

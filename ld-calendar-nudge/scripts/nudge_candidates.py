@@ -3,11 +3,22 @@
 
 Reads the fixed gog `calendar events list --json --results-only` output from
 its gather-file argument, deleting the file as it goes, applies the nudge
-rules — privacy prepass, per-event filter, dedupe — and emits the composed
-≤115-char reminder lines as JSON for the sheet to post verbatim. An empty
-list is a quiet run. Deterministic on purpose: the LLM only relays; it never
-parses calendar JSON or re-derives the rules (they were 200 lines of sheet
-prose upstream; now they are code with a test per rule).
+rules — privacy prepass, per-event filter, dedupe — and writes the composed
+≤115-char reminders STRAIGHT to the two fixed handoffs the posting legs
+consume: the earliest qualifying reminder to KIOSK_FILE (post_nudge.py's
+one-line card) and every reminder to CHAT_FILE (send_nudge_chat.py's
+message). stdout carries only {"qualifying": N} — the model routes on the
+count and never touches reminder content, so the helper chain takes zero
+model-controlled content end to end (the plow#625 shape). Deterministic on
+purpose: the rules were 200 lines of sheet prose upstream; now they are code
+with a test per rule.
+
+The gather path is the one model-supplied argument, so it is validated
+BEFORE any open/unlink: only a runtime-persisted result (under
+/tmp/hermes-results/) or the fixed inline handoff
+(/opt/data/ld/calendar-nudge-gather) is accepted — anything else exits 2
+without touching the file, so an injected turn cannot aim the
+consume-on-read unlink at the config or the dotenv.
 
 Field spellings are pinned against a REAL gather through the live Latch door
 (camelCase: iCalUID, start.dateTime, hangoutLink, attendees[].responseStatus;
@@ -34,6 +45,15 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 LIMIT = 115
+# The only gather locations the model may name (validated before any I/O):
+# the runtime's persisted-result directory, and the fixed file the sheet
+# writes an inline result to. Trailing slash on the root is load-bearing —
+# it is a prefix check, and "/tmp/hermes-results-evil" must not pass.
+PERSISTED_ROOT = "/tmp/hermes-results/"
+GATHER_FILE = "/opt/data/ld/calendar-nudge-gather"
+# The two fixed handoffs this helper writes and the posting legs consume.
+KIOSK_FILE = "/opt/data/ld/calendar-nudge-text"
+CHAT_FILE = "/opt/data/ld/calendar-nudge-chat"
 _MARKERS = re.compile(r'<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
 _URL = re.compile(r"https?://", re.IGNORECASE)
 # Destinations, not people: Google's shared-calendar and booking-resource
@@ -76,7 +96,21 @@ def compose(summary, local_time, minutes_until, where):
     return render((summary[:keep] + "…") if keep > 0 else "…", where)
 
 
-def main() -> int:
+def gather_path_allowed(path):
+    """Whether a model-supplied gather path may be opened (and consumed).
+
+    Checked BEFORE any open/unlink: this script deletes its input as it
+    reads, so an unvalidated path hands an injected turn a deletion oracle
+    over anything the container user can write — the config and the dotenv
+    being the obvious targets."""
+    normalized = os.path.normpath(path)
+    # normpath collapses ../ traversal, and the trailing slash on
+    # PERSISTED_ROOT makes this a directory-prefix check, so neither
+    # "/tmp/hermes-results-evil" nor the bare directory itself passes.
+    return normalized == GATHER_FILE or normalized.startswith(PERSISTED_ROOT)
+
+
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--now", type=int, default=None,
@@ -85,7 +119,14 @@ def main() -> int:
                         help="gather file (raw gog --json --results-only "
                              "output, or the persisted plow_run_command "
                              "result envelope)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if not gather_path_allowed(args.gather):
+        print(f"refusing gather path {args.gather!r}: only a persisted "
+              f"result under {PERSISTED_ROOT} or the fixed {GATHER_FILE} is "
+              "accepted -- this script consumes its input, and an arbitrary "
+              "path would be an arbitrary delete", file=sys.stderr)
+        return 2
 
     # The gather is consumed FIRST: the raw calendar corpus must not outlive
     # this run whatever the outcome, so it's read and deleted before anything
@@ -224,7 +265,7 @@ def main() -> int:
     # reminders for one meeting cost less than one dropped meeting.
     survivors.sort(key=lambda s: s[1])
     seen = set()
-    out = []
+    reminders = []
     for key, start_dt, minutes_until, virtual, location, ev in survivors:
         if key[0]:
             if key in seen:
@@ -233,10 +274,20 @@ def main() -> int:
         local_time = (start_dt.astimezone(tz).strftime("%I:%M%p")
                       .lstrip("0").lower())
         where = "online" if virtual else location
-        out.append({"line": compose(unwrap(ev.get("summary")), local_time,
-                                    minutes_until, where)})
+        reminders.append(compose(unwrap(ev.get("summary")), local_time,
+                                 minutes_until, where))
 
-    json.dump(out, sys.stdout)
+    # The handoffs are written HERE, never by the model: the kiosk card gets
+    # the earliest qualifying reminder (one line, the ≤115 contract enforced
+    # above), the chat message gets them all. Each posting leg consumes its
+    # own file on success. stdout carries only the count the sheet routes on.
+    if reminders:
+        with open(KIOSK_FILE, "w") as f:
+            f.write(reminders[0] + "\n")
+        with open(CHAT_FILE, "w") as f:
+            f.write("\n".join(reminders) + "\n")
+
+    json.dump({"qualifying": len(reminders)}, sys.stdout)
     print()
     return 0
 

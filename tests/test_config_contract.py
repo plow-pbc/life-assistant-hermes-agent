@@ -568,20 +568,20 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
     )
 
 
-def test_the_nudge_legs_share_one_handoff_and_only_the_last_consumes():
-    """Two processes, one file: post_nudge.py (kiosk) runs first and must
-    leave the handoff for send_nudge_chat.py (chat), which owns
-    consume-on-success. A drifted path tells the chat leg to read a file
-    nobody writes; a kiosk leg that consumes starves the chat leg on every
-    single run — both fail unattended, half-hourly, in front of nobody."""
-    kiosk = _handoff("ld-calendar-nudge", "post_nudge.py")
+def test_the_nudge_filter_writes_exactly_what_each_leg_consumes():
+    """nudge_candidates.py writes the two handoffs; post_nudge.py and
+    send_nudge_chat.py each read-and-consume their own. A drifted path on
+    either side tells a leg to read a file nobody writes — an unattended
+    half-hourly failure in front of nobody. Both stay under the write-safe
+    root the whole ld/ data directory lives in."""
+    nc_src = (ROOT / "ld-calendar-nudge" / "scripts" / "nudge_candidates.py").read_text()
+    (kiosk_written,) = re.findall(r'KIOSK_FILE = "([^"]+)"', nc_src)
+    (chat_written,) = re.findall(r'CHAT_FILE = "([^"]+)"', nc_src)
+    assert kiosk_written == _handoff("ld-calendar-nudge", "post_nudge.py")
     chat_src = (ROOT / "ld-calendar-nudge" / "scripts" / "send_nudge_chat.py").read_text()
-    (chat,) = re.findall(r'HANDOFF\s*=\s*"([^"]+)"', chat_src)
-    assert chat == kiosk
-    kiosk_src = (ROOT / "ld-calendar-nudge" / "scripts" / "post_nudge.py").read_text()
-    assert re.search(r"post_to_kiosk\.CONSUME\s*=\s*False", kiosk_src), (
-        "post_nudge.py must leave the handoff for the chat leg"
-    )
+    (chat_read,) = re.findall(r'HANDOFF = "([^"]+)"', chat_src)
+    assert chat_written == chat_read
+    assert chat_written.startswith(WRITE_SAFE_ROOT + "/")
 
 
 def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():

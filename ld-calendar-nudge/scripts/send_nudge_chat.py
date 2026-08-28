@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 """send_nudge_chat.py — message the owner the nudge text over Plow Chat.
 
-The nudge's second surface. No arguments: the text comes from the fixed
-handoff file, the endpoint and chat from PLOW_CHAT_BASE_URL /
-PLOW_CHAT_CHAT_UID, and the bearer from PLOW_CHAT_TOKEN — env first, then
-/opt/data/.env, the file activation writes and the gateway loads (the same
-lesson register_crons.py's resolve_deliver learned in #24: an exec session's
-env never carries the per-instance PLOW_CHAT_* values). The bearer never
-reaches argv, and a prompt-injected turn has no argument to steer.
+The nudge's second surface. No arguments: the text comes from this leg's
+OWN fixed handoff — written by nudge_candidates.py (every qualifying
+reminder), never by the model — the endpoint and chat from
+PLOW_CHAT_BASE_URL / PLOW_CHAT_CHAT_UID, and the bearer from
+PLOW_CHAT_TOKEN — env first, then /opt/data/.env, the file activation
+writes and the gateway loads (the same lesson register_crons.py's
+resolve_deliver learned in #24: an exec session's env never carries the
+per-instance PLOW_CHAT_* values). The bearer never reaches argv, and a
+prompt-injected turn has no argument to steer.
 
 Wire shape is the plow-chat-platform plugin's own send path:
 POST {base}/v1/chats/{uid}/messages with {"body": <text>}. Non-2xx exits 1
 loudly — the kiosk post already succeeded by the time this runs, so a quiet
 failure here would look delivered while the owner's phone stays silent.
 
-Consume-on-success lives HERE, on the LAST leg: post_nudge.py (kiosk, runs
-first) sets post_to_kiosk.CONSUME = False so the same handoff survives to
-feed this send; a successful send then unlinks it (a failure leaves it for a
-retry, the same semantics the kiosk poster has on its own error exits).
+Each leg consumes its own handoff on success: post_nudge.py consumes the
+kiosk file the ordinary way, and a successful send here unlinks this one (a
+failure leaves it for a retry, the same semantics the kiosk poster has on
+its own error exits).
 
 Why not the cron's --deliver arm (the digest's mechanism): --deliver relays
 EVERY final response, and this producer runs half-hourly with quiet no-op
@@ -36,7 +38,7 @@ sys.path.insert(
 )
 import post_to_kiosk  # noqa: E402
 
-HANDOFF = "/opt/data/ld/calendar-nudge-text"
+HANDOFF = "/opt/data/ld/calendar-nudge-chat"
 DOTENV = "/opt/data/.env"
 
 # The shared redirect/bearer-leak guard, not a copy: a followed 3xx forwards
@@ -94,7 +96,7 @@ def main():
         raise SystemExit(f"Plow Chat send failed: {e.reason}") from e
     if not 200 <= status < 300:
         raise SystemExit(f"Plow Chat send failed: HTTP {status}")
-    # Last leg: consume the one-shot handoff so it cannot be reposted stale.
+    # Consume this leg's one-shot handoff so it cannot be resent stale.
     os.unlink(HANDOFF)
     print(f"sent nudge to chat ({len(text)} chars)")
 

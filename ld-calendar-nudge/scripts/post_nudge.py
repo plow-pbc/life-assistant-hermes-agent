@@ -4,13 +4,12 @@
 Thin wrapper over `ld-shared/scripts/post_to_kiosk.py`: sets the
 bundle-specific MESSAGE_FILE + CARD + BODY_TYPE, then dispatches.
 
-MESSAGE_FILE sits under /opt/data (HERMES_WRITE_SAFE_ROOT) per #12. Card 1
-is the slot shared with ld-morning-triage — the store keeps the latest post
-per card, and both are alerts by design.
-
-CONSUME is False: this is the FIRST of two legs (kiosk, then Plow Chat) fed
-by the same handoff, so a successful kiosk post must leave the file for
-send_nudge_chat.py — the last leg, which owns consume-on-success.
+MESSAGE_FILE sits under /opt/data per #12. Card 1 is the slot shared with
+ld-morning-triage — the store keeps the latest post per card, and both are
+alerts by design. The handoff is written by nudge_candidates.py (the
+earliest qualifying reminder), never by the model; the chat leg
+(send_nudge_chat.py) has its OWN handoff, so the default consume-on-success
+applies here like every other wrapper.
 """
 import os
 import sys
@@ -25,7 +24,6 @@ post_to_kiosk.MESSAGE_FILE = "/opt/data/ld/calendar-nudge-text"
 post_to_kiosk.CARD = "1"
 post_to_kiosk.BODY_TYPE = "alert"
 post_to_kiosk.TITLE = ""  # hide the eyebrow — the reminder gets the full card height
-post_to_kiosk.CONSUME = False  # the chat leg still reads this handoff
 
 
 if __name__ == "__main__":
