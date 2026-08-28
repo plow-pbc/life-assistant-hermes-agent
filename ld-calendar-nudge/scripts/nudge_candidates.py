@@ -56,6 +56,7 @@ KIOSK_FILE = "/opt/data/ld/calendar-nudge-text"
 CHAT_FILE = "/opt/data/ld/calendar-nudge-chat"
 _MARKERS = re.compile(r'<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
 _URL = re.compile(r"https?://", re.IGNORECASE)
+_URL_TOKEN = re.compile(r"https?://\S+", re.IGNORECASE)
 # Destinations, not people: Google's shared-calendar and booking-resource
 # suffixes. A mirrored invite or a room is nobody left waiting.
 _NON_HUMAN_SUFFIXES = ("@group.calendar.google.com",
@@ -274,7 +275,10 @@ def main(argv=None) -> int:
         local_time = (start_dt.astimezone(tz).strftime("%I:%M%p")
                       .lstrip("0").lower())
         where = "online" if virtual else location
-        reminders.append(compose(unwrap(ev.get("summary")), local_time,
+        # A URL in the TITLE is the same bearer risk the location rule
+        # guards: strip it rather than post it to a shared surface.
+        summary = " ".join(_URL_TOKEN.sub("", unwrap(ev.get("summary"))).split())
+        reminders.append(compose(summary or "(untitled meeting)", local_time,
                                  minutes_until, where))
 
     # The handoffs are written HERE, never by the model: the kiosk card gets

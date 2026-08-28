@@ -258,6 +258,20 @@ def test_latch_untrusted_markers_never_reach_the_handoffs(rig):
         'Heads up: "Piano recital" at 12:20pm (20m) — School hall.\n')
 
 
+def test_a_url_in_the_title_is_stripped_never_posted(rig):
+    """A URL in the summary is the same bearer risk the location rule guards
+    — a join link pasted into a title must not reach the shared surfaces."""
+    rig.run(gather(
+        event(minutes=20, summary="Join https://meet.example.test/secret now"),
+        event(minutes=25, uid="uid-2@google.com",
+              summary="https://only-a-link.example.test/x"),
+    ))
+    lines = chat_lines(rig)
+    assert lines[0].startswith('Heads up: "Join now" at')
+    assert '"(untitled meeting)"' in lines[1]
+    assert "http" not in "".join(lines)
+
+
 def test_a_private_sibling_drops_every_copy_of_the_invite(rig):
     """One invite, two calendars: the default-visibility copy must not leak
     what the private copy says to keep off the shared display."""
