@@ -570,8 +570,9 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     template's new key must ship as the exact whole-string form the gate
     can see — a mid-string embedding ("/Users/[USER]/...") would pass the
     gate unfilled and reach the 07:05 gather. Template-wide embedded-
-    placeholder scanning was deliberately cut (review round 3): the
-    template has one placeholder key, and this pin is it."""
+    placeholder scanning was deliberately cut (review round 3); this pin
+    covers only the key this feature adds — the template's other
+    placeholders are unpinned by design."""
     spec = importlib.util.spec_from_file_location(
         "ld_config_gate", ROOT / "ld-shared" / "scripts" / "ld_config_gate.py")
     gate = importlib.util.module_from_spec(spec)
