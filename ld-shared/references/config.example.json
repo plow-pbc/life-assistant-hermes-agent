@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical ld-config template for ALL life-dashboard producers, both platforms. Each seed's installer assembles the live config.json from this shape. Platform-specific fields are noted inline: owner/partner.imessage and morning_triage.exclude.imessage_handles are read only by the Plow agent seed (iMessage triage); morning_triage.exclude.slack_handles is read only by the Hermes agent seed (Slack triage). The unused field is harmless on the other platform.",
+  "_comment": "Canonical ld-config template for the life-dashboard producers. The live file is assembled from this shape at install time; every [UPPER_SNAKE] placeholder must be filled or the shared gate (ld_config_gate.py) refuses the config. morning_triage.chat_db_path is the absolute path to the owner Mac's Messages DB, e.g. /Users/<mac-username>/Library/Messages/chat.db, and morning_triage.exclude.imessage_handles is the exclusion list the iMessage triage reads.",
   "family": {
     "owner": { "name": "[OWNER_NAME]", "imessage": "[OWNER_IMESSAGE]" },
     "partner": { "name": "[PARTNER_NAME]", "imessage": "[PARTNER_IMESSAGE]" },
@@ -22,11 +22,10 @@
     "long_lead": [{ "type": "[LONG_LEAD_TYPE]", "lead_days": 7 }]
   },
   "morning_triage": {
+    "chat_db_path": "[CHAT_DB_PATH]",
     "ranking_instructions": "",
     "exclude": {
-      "imessage_handles": [],
-      "slack_handles": [],
-      "email_addresses": []
+      "imessage_handles": []
     }
   },
   "calendar_nudge": {

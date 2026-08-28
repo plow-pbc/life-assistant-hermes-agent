@@ -12,6 +12,7 @@ and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
 import importlib.util
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -482,7 +483,11 @@ WRITE_SAFE_ROOT = "/opt/data"
 # Listed, not globbed: discovery needed a floor (an empty glob SKIPS a
 # parametrized test), a helper exclusion and a sheet-presence rule -- three
 # guards on the finder, none on the contract, and together bigger than it.
-PRODUCERS = [("ld-weather", "post_weather.py"), ("ld-sports", "post_sports.py")]
+PRODUCERS = [
+    ("ld-morning-triage", "post_alert.py"),
+    ("ld-weather", "post_weather.py"),
+    ("ld-sports", "post_sports.py"),
+]
 # The helper ships no sheet; its constant is the docstring example the next
 # producer copies, so it is pinned for the write-safe check alone.
 HANDOFFS = PRODUCERS + [("ld-shared", "post_to_kiosk.py")]
@@ -558,3 +563,22 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
         f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
         "half-applied path change, and the agent is told two different files"
     )
+
+
+def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
+    """The gate's placeholder check matches whole strings only, so the
+    template's new key must ship as the exact whole-string form the gate
+    can see — a mid-string embedding ("/Users/[USER]/...") would pass the
+    gate unfilled and reach the 07:05 gather. Template-wide embedded-
+    placeholder scanning was deliberately cut (review round 3); this pin
+    covers only the key this feature adds — the template's other
+    placeholders are unpinned by design."""
+    spec = importlib.util.spec_from_file_location(
+        "ld_config_gate", ROOT / "ld-shared" / "scripts" / "ld_config_gate.py")
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+
+    template = ROOT / "ld-shared" / "references" / "config.example.json"
+    parsed = json.loads(template.read_text())
+    assert "an unfilled [UPPER_SNAKE] placeholder remains" in gate.gate(parsed)
+    assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"
