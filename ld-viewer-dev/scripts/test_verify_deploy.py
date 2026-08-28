@@ -75,11 +75,6 @@ class _VersionHandler(BaseHTTPRequestHandler):
         pass
 
 
-
-    def log_message(self, *_args):
-        pass
-
-
 def _start_server(handler_cls=_VersionHandler):
     handler_cls.requests = []
     server = HTTPServer(("127.0.0.1", 0), handler_cls)
