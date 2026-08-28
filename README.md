@@ -291,16 +291,17 @@ owner's Gmail, Google Calendar and Slack with the gateway's own
 That is a deliberate trade, not an oversight. It is what lets the life-dashboard
 producers arrive as this agent's own mounted skills instead of a fetched tree,
 and the two that need no account — `ld-weather` (NWS) and `ld-sports` (ESPN) —
-work immediately. The four that read a person's calendar or mail do not:
+work immediately, as does `ld-morning-triage`, rewritten onto the Mac's
+iMessage DB read through Latch. The three that read a person's calendar do
+not:
 
 | producer | card | needs | tracked by |
 |---|---|---|---|
 | `ld-morning-updates` | 2 · affirmation | Google Calendar | `plow-pbc/latch#183` |
 | `ld-weekly-digest` | 4 · digest | Google Calendar | `plow-pbc/latch#183` |
 | `ld-calendar-nudge` | 1 · alert | Google Calendar | `plow-pbc/latch#183` |
-| `ld-morning-triage` | 1 · alert | Gmail + Slack | a rewrite onto the Mac's iMessage DB through Latch |
 
-`ld-dashboard` carries all six schedules and registers only the two that can
+`ld-dashboard` carries all six schedules and registers only the three that can
 run, so the blocked ones are recorded rather than lost. `agent-mgr
 check-connectors` has nothing to report on this instance and asking a turn about
 tomorrow's calendar will not work until `latch#183` lands.
