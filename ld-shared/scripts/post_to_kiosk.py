@@ -83,6 +83,11 @@ BODY_TYPE: str | None = None
 # Optional producer-controlled eyebrow. None → show the card's type as its title
 # (default); "" → HIDE the title (reclaim vertical space); a string → override.
 TITLE: str | None = None
+# Whether a successful post consumes MESSAGE_FILE (default: yes — the one-shot
+# handoff must not survive to be reposted stale). A two-leg producer sets this
+# False on the kiosk leg so the SAME handoff still feeds its second surface;
+# the LAST leg then owns consume-on-success (ld-calendar-nudge's chat send).
+CONSUME: bool = True
 # When set by the wrapper, the message text is read from this fixed path (and
 # consumed after a successful send) instead of stdin. Left None on read-only
 # agent sandboxes, which feed the text on stdin.
@@ -222,8 +227,9 @@ def main():
     # Consume the one-shot handoff. Success path only — left intact on the error
     # exits above so a retry resends it; the module docstring owns the window
     # where that retry reposts a stale body as fresh, and why it is left open.
-    # No-op when the text came from stdin (MESSAGE_FILE None).
-    if MESSAGE_FILE:
+    # No-op when the text came from stdin (MESSAGE_FILE None) or when a two-leg
+    # producer's later leg still needs the file (CONSUME False — see above).
+    if MESSAGE_FILE and CONSUME:
         os.unlink(MESSAGE_FILE)
 
 

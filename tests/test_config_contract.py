@@ -487,6 +487,7 @@ PRODUCERS = [
     ("ld-morning-triage", "post_alert.py"),
     ("ld-morning-updates", "post_message.py"),
     ("ld-weekly-digest", "post_digest.py"),
+    ("ld-calendar-nudge", "post_nudge.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
 ]
@@ -564,6 +565,22 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
     assert not stale, (
         f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
         "half-applied path change, and the agent is told two different files"
+    )
+
+
+def test_the_nudge_legs_share_one_handoff_and_only_the_last_consumes():
+    """Two processes, one file: post_nudge.py (kiosk) runs first and must
+    leave the handoff for send_nudge_chat.py (chat), which owns
+    consume-on-success. A drifted path tells the chat leg to read a file
+    nobody writes; a kiosk leg that consumes starves the chat leg on every
+    single run — both fail unattended, half-hourly, in front of nobody."""
+    kiosk = _handoff("ld-calendar-nudge", "post_nudge.py")
+    chat_src = (ROOT / "ld-calendar-nudge" / "scripts" / "send_nudge_chat.py").read_text()
+    (chat,) = re.findall(r'HANDOFF\s*=\s*"([^"]+)"', chat_src)
+    assert chat == kiosk
+    kiosk_src = (ROOT / "ld-calendar-nudge" / "scripts" / "post_nudge.py").read_text()
+    assert re.search(r"post_to_kiosk\.CONSUME\s*=\s*False", kiosk_src), (
+        "post_nudge.py must leave the handoff for the chat leg"
     )
 
 
