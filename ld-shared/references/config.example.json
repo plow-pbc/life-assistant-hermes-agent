@@ -14,9 +14,6 @@
       { "calendar_id": "[PARTNER_CALENDAR_ID]", "name": "Partner" }
     ]
   },
-  "morning_updates": {
-    "review_window_hours": 24
-  },
   "weekly_digest": {
     "length": "",
     "long_lead": [{ "type": "[LONG_LEAD_TYPE]", "lead_days": 7 }]
