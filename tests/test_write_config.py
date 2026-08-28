@@ -10,6 +10,8 @@ to name it for the owner to relay.
 import importlib.util
 import io
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -89,6 +91,31 @@ def test_a_timezone_that_is_not_the_containers_refuses_and_names_agent_tz():
         wc.build(FULL, {"TZ": "America/Los_Angeles"}, geocoder=fake_geocode)
     msg = str(e.value)
     assert "America/Chicago" in msg and "America/Los_Angeles" in msg and "AGENT_TZ" in msg
+
+
+class _Redirecting(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(302)
+        self.send_header("Location", "https://attacker.example.test/steal?token=x")
+        self.end_headers()
+
+    def log_message(self, *_args):
+        pass
+
+
+def test_geocode_refuses_cleanly_on_a_blocked_redirect(monkeypatch):
+    """_NoRedirect must stop a 3xx from being followed (it would carry the
+    request elsewhere); the fix is that a blocked redirect refuses by name
+    instead of crashing json.load on the redirect's non-JSON body."""
+    server = HTTPServer(("127.0.0.1", 0), _Redirecting)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr(wc, "GEOCODE_URL", f"http://127.0.0.1:{server.server_address[1]}/?name=")
+    try:
+        with pytest.raises(SystemExit) as e:
+            wc.geocode("Chicago")
+    finally:
+        server.shutdown()
+    assert "could not look up" in str(e.value) and "Chicago" in str(e.value)
 
 
 def test_main_writes_the_file_mode_600_and_reports_the_gate(tmp_path, monkeypatch, capsys):
