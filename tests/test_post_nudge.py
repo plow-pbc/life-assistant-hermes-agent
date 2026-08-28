@@ -99,27 +99,20 @@ def test_a_bad_handoff_refuses_before_anything_posts(rig, mutate):
     assert rig.calls == []
 
 
-def test_a_kiosk_failure_stops_before_chat_and_leaves_the_handoff(rig):
-    rig.monkeypatch.setattr(
-        pn.post_to_kiosk, "main",
-        lambda: sys.exit("error: message API returned HTTP 500"))
+@pytest.mark.parametrize(("failing_seam", "calls_before"), [
+    ("main", []),                       # kiosk fails: chat never runs
+    ("post_bearer_json", [("kiosk", LINE1)]),  # chat fails after kiosk
+], ids=["kiosk-fails", "chat-fails"])
+def test_a_delivery_failure_leaves_the_handoff(rig, failing_seam, calls_before):
+    """Either leg failing must leave the handoff for a retry — a chat retry
+    re-posts the kiosk (harmless latest-wins) rather than finding the
+    handoff already consumed."""
+    rig.monkeypatch.setattr(pn.post_to_kiosk, failing_seam,
+                            lambda *a: sys.exit("error: HTTP 500"))
     with pytest.raises(SystemExit):
         pn.main()
-    assert rig.calls == []
+    assert rig.calls == calls_before
     assert rig.handoff.exists()
-
-
-def test_a_chat_failure_leaves_the_handoff_for_a_retry(rig):
-    rig.monkeypatch.setattr(
-        pn.post_to_kiosk, "post_bearer_json",
-        lambda *a: sys.exit("error: Plow Chat returned HTTP 500"))
-    with pytest.raises(SystemExit):
-        pn.main()
-    assert rig.calls == [("kiosk", LINE1)]
-    assert rig.handoff.exists(), (
-        "a chat retry re-posts the kiosk (harmless latest-wins) rather than "
-        "finding the handoff already consumed"
-    )
 
 
 def test_dry_run_previews_without_consuming(rig, capsys):

@@ -200,6 +200,9 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
     (event(minutes=40), True),                       # in-person window is 60
     (event(minutes=70), False),
     (event(minutes=0), False),                       # already started
+    # Sub-minute boundary: a meeting 30 seconds out must not floor to 0 and
+    # read as already-started — the next tick would be too late.
+    (event(minutes=0.5), True),
     # Structural drops.
     (event(status="cancelled"), False),
     (event(date_only=True), False),                  # all-day: start.date only
@@ -234,6 +237,7 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
         "bare-scheme-classifies-virtual", "prose-colon-stays-in-person",
         "colon-slash-shorthand-residual",
         "in-person-in-window", "in-person-past-window", "already-started",
+        "sub-minute-boundary-eligible",
         "cancelled", "all-day", "private", "confidential",
         "owner-as-organizer", "owner-declined", "owner-absent",
         "second-identity", "peer-declined", "resource-only", "group-only",

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -226,7 +227,10 @@ def main(argv=None, now=None) -> int:
             if not start_iso:
                 continue
             start_dt = datetime.fromisoformat(start_iso)
-            minutes_until = int((start_dt - now_dt).total_seconds() // 60)
+            # ceil, not floor: a meeting 30 seconds out floors to 0 and gets
+            # rejected as already-started — and the next tick is too late.
+            # Ceiling reads it as "1 minute until", eligible and truthful.
+            minutes_until = math.ceil((start_dt - now_dt).total_seconds() / 60)
 
             location = unwrap(ev.get("location"))
             # Virtual = a structured video link OR a link in the location.
