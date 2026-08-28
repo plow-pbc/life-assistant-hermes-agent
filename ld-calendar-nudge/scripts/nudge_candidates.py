@@ -281,8 +281,10 @@ def main(argv=None) -> int:
     # the earliest qualifying reminder (one line, the ≤115 contract enforced
     # above), the chat message gets them all. Each posting leg consumes its
     # own file on success. stdout carries only the count the sheet routes on.
-    # Staged then renamed, so a crash mid-run cannot leave one leg's handoff
-    # fresh and the other's stale/half-written alongside a failed exit.
+    # Staged then renamed: the fresh-kiosk/stale-chat crash window narrows
+    # from two full writes to the instants between two renames — not zero,
+    # and deliberately not chased further (the next tick overwrites both,
+    # orphaned .tmp files included).
     if reminders:
         pairs = ((KIOSK_FILE, reminders[0] + "\n"),
                  (CHAT_FILE, "\n".join(reminders) + "\n"))

@@ -63,8 +63,8 @@ VALID = {
 
 # (label, raw-bytes-written-to-file, expected-output, jq_crosscheck) — raw bytes
 # so we can feed malformed JSON too. Expected outputs are the documented (a)-(f)
-# outcomes. jq_crosscheck=False on the lone case where we DELIBERATELY diverge
-# from jq's accidental behavior (see the empty-file case).
+# outcomes. jq_crosscheck=False on the cases where we DELIBERATELY diverge
+# from jq's accidental behavior (the empty-file and Infinity cases).
 CASES = [
     ("(a) fully valid", json.dumps(VALID), "", True),
     ("(b) blank owner name",
@@ -153,11 +153,12 @@ CASES = [
      json.dumps({**VALID, "family": {"owner": {"name": "Sam"}}}),
      "family.timezone is blank", True),
     ("(g) invalid JSON", "{ not json", "not valid JSON", True),
-    # An empty file is the lone DELIBERATE divergence: jq with no input emits
+    # An empty file is the first DELIBERATE divergence: jq with no input emits
     # nothing and exits 0, so the old gate fail-OPEN-passed an empty config (a
     # latent bug — verify.sh's own `jq -e .` pre-check already rejected it). The
     # python gate fail-CLOSES it as "not valid JSON" (empty is not valid JSON),
-    # which is strictly safer; we skip the jq cross-check for this one case only.
+    # which is strictly safer; the jq cross-check is skipped here, as on the
+    # Infinity case below — the two deliberate divergences.
     ("(g') empty file → fail-closed (diverges from jq's fail-open)",
      "", "not valid JSON", False),
     # multiple simultaneous failures join with "; " in filter order.
