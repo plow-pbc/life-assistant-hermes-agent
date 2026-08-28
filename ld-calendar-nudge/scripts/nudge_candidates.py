@@ -61,7 +61,6 @@ GATHER_FILE = "/opt/data/ld/calendar-nudge-gather"
 KIOSK_FILE = "/opt/data/ld/calendar-nudge-text"
 CHAT_FILE = "/opt/data/ld/calendar-nudge-chat"
 _MARKERS = re.compile(r'<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
-_URL = re.compile(r"https?://", re.IGNORECASE)
 _URL_TOKEN = re.compile(r"https?://\S+", re.IGNORECASE)
 # Destinations, not people: Google's shared-calendar and booking-resource
 # suffixes. A mirrored invite or a room is nobody left waiting.
@@ -213,7 +212,7 @@ def main(argv=None) -> int:
             # Only a real link counts — keyword-matching ("Zoom"/"Meet")
             # false-positives on "Meeting Room". The raw URL is a bearer-style
             # join token and never reaches a surface; compose renders `online`.
-            virtual = bool(ev.get("hangoutLink")) or bool(_URL.search(location))
+            virtual = bool(ev.get("hangoutLink")) or bool(_URL_TOKEN.search(location))
             lookahead = lookahead_virtual if virtual else lookahead_in_person
             if not (0 < minutes_until <= lookahead):
                 continue

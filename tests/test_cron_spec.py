@@ -23,8 +23,6 @@ def spec():
     return mod
 
 
-
-
 # The whole job contract, as one table. name -> (card, type).
 #
 # This is what a stack of Markdown parsers used to reach for indirectly: the
