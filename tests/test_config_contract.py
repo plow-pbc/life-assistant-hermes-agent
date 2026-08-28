@@ -12,6 +12,7 @@ and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
 import importlib.util
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -578,11 +579,22 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     spec.loader.exec_module(gate)
 
     template = ROOT / "ld-shared" / "references" / "config.example.json"
-    failures = gate.gate(__import__("json").loads(template.read_text()))
-    assert "an unfilled [UPPER_SNAKE] placeholder remains" in failures
+    parsed = json.loads((template).read_text())
+    assert "an unfilled [UPPER_SNAKE] placeholder remains" in gate.gate(parsed)
 
-    strings = re.findall(r'"((?:[^"\\]|\\.)*)"', template.read_text())
-    embedded = [s for s in strings
-                if "[" in s and not re.fullmatch(r"\[[A-Z][A-Z0-9_]*\]", s)
-                and not s.startswith("_comment") and "placeholder" not in s]
+    def values(node):
+        """Every string value the gate would see, minus _comment prose —
+        the exemption is structural (by key), not a word match."""
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k != "_comment":
+                    yield from values(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from values(v)
+        elif isinstance(node, str):
+            yield node
+
+    embedded = [s for s in values(parsed)
+                if "[" in s and not re.fullmatch(r"\[[A-Z][A-Z0-9_]*\]", s)]
     assert embedded == [], f"gate-invisible embedded placeholder(s): {embedded}"

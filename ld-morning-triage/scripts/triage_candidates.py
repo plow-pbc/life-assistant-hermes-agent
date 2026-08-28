@@ -18,8 +18,9 @@ indistinguishable from a quiet one on the kiosk, so it must fail loudly.
 Framing is what fails loudly — the JSON envelope, missing keys, is_from_me
 outside {0,1}, bad hex. An individual body that yields no text is data, not
 framing: attachment-only and sticker rows routinely carry an attributedBody
-with nothing decodable (and an attachment-only row's hexbody is null), so one
-of them must not abort the whole morning — it just produces no candidate.
+with nothing decodable (and an attachment-only row's hexbody is the empty
+string — sqlite's hex() of NULL is '', never NULL), so one of them must not
+abort the whole morning — it just produces no candidate.
 """
 from __future__ import annotations
 

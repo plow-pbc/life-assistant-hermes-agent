@@ -117,9 +117,12 @@ def test_only_inbound_after_the_last_reply_counts(tmp_path):
     assert cand["excerpt"] == "new ask"
 
 
-def test_attachment_only_inbound_yields_no_candidate(tmp_path):
-    # sqlite's hex() of a NULL body comes through -json as null.
-    r = run(sqljson(msg(7, 0, 1000, None)), BASE_CONFIG, tmp_path)
+@pytest.mark.parametrize("hexbody", ["", None], ids=["real", "tolerated"])
+def test_attachment_only_inbound_yields_no_candidate(tmp_path, hexbody):
+    # sqlite's hex() never returns NULL — hex(coalesce(NULL, NULL)) is the
+    # empty string, so -json frames an attachment-only row as "hexbody":"".
+    # null is tolerated as well, but "" is the shape the producer emits.
+    r = run(sqljson(msg(7, 0, 1000, hexbody)), BASE_CONFIG, tmp_path)
     assert json.loads(r.stdout) == []
 
 
@@ -182,8 +185,8 @@ def test_the_skill_md_sql_agrees_with_the_parser(tmp_path):
                " item_type) values (3, 0, 1, ?, null, 1)", (now_apple + 2,))
     # A second chat answered by an attachment-only reply (text AND
     # attributedBody NULL): the outbound row must survive the SQL — it is the
-    # proof a reply happened — and its null hexbody must survive the framing,
-    # so the chat produces no candidate.
+    # proof a reply happened — and its empty hexbody (hex(NULL) is '') must
+    # survive the framing, so the chat produces no candidate.
     db.execute("insert into message (ROWID, is_from_me, handle_id, date, text)"
                " values (4, 0, 1, ?, 'seen this?')", (now_apple,))
     db.execute("insert into message (ROWID, is_from_me, handle_id, date)"
