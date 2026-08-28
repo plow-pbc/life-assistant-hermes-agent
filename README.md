@@ -156,10 +156,10 @@ producers read their location and teams from it too, as the agent. It goes at
 rather than through a root `exec`, and the live one is mode-600. The dotenv needs `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN`
 alongside it. The `ld-viewer-dev` skill needs three more host-side files in
 the instance home, all landed as the instance owner: `ld-dev/repo-url` (one
-line, the household repo's HTTPS URL), `ld-dev/git-credentials` (mode 600,
-one `https://x-access-token:<PAT>@github.com` line — land it via a
-`read -rs`-style recipe so the token never touches a shell history or
-transcript), and `ld-dev/ssh/pi_key` (mode 600 — OpenSSH refuses a
+line, the household repo's SSH URL), `ld-dev/ssh/deploy_key` (mode 600 —
+a per-repo deploy key registered write-scoped on the household repo; minted
+host-side, the private half never displayed), and `ld-dev/ssh/pi_key`
+(mode 600 — OpenSSH refuses a
 group/world-readable private key; the kiosk-diagnostics SSH key, its `.pub`
 authorized on the Pi). `ld-shared/scripts/ld_config_gate.py` is the single definition of
 a valid config — run it rather than eyeballing the JSON. Its `family.timezone`
