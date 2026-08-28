@@ -135,11 +135,14 @@ CASES = [
     ("(i'''') lookahead true → jq type boolean, not number",
      json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_virtual_minutes": True}}),
      "calendar_nudge.lookahead_virtual_minutes is not a positive number", True),
-    # Python's json accepts Infinity/NaN; jq's strict parser does not. The
-    # gate rejects them via parse_constant so both stay byte-identical.
-    ("(i''''') lookahead Infinity → not valid JSON, matching jq's parser",
+    # A second DELIBERATE divergence (see the empty-file case): both parsers
+    # accept the non-standard Infinity/NaN tokens — measured on jq 1.7.1,
+    # which parses Infinity and calls it > 0 — so parity would let an
+    # Infinity lookahead PASS the gate. The python gate fail-closes them as
+    # "not valid JSON" instead; the jq cross-check is skipped for this case.
+    ("(i''''') lookahead Infinity → fail-closed (diverges from jq's accept)",
      json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_virtual_minutes": float("inf")}}),
-     "not valid JSON", True),
+     "not valid JSON", False),
     ("(e') leftover placeholder (nested)",
      json.dumps({**VALID, "weather": {"location": "[CITY_NAME]"}}),
      "an unfilled [UPPER_SNAKE] placeholder remains", True),

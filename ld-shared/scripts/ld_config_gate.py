@@ -201,10 +201,11 @@ def main(argv):
         return 2
     try:
         with open(argv[1], encoding="utf-8") as f:
-            # parse_constant: Python's json accepts the non-standard NaN /
-            # Infinity tokens jq's strict parser refuses; raising here keeps
-            # the two gates byte-identical ("not valid JSON") on that input —
-            # observable since the number-typed lookahead checks landed.
+            # parse_constant: BOTH parsers accept the non-standard NaN /
+            # Infinity tokens (measured: jq 1.7.1 parses Infinity and calls
+            # it > 0), so an Infinity lookahead would pass the gate. Raising
+            # here fail-closes them as "not valid JSON" — a deliberate
+            # divergence from jq, like the empty-file case.
             config = json.load(
                 f, parse_constant=lambda token: (_ for _ in ()).throw(
                     ValueError(f"non-standard JSON constant {token}")))
