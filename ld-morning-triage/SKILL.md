@@ -34,7 +34,10 @@ uses:
 - `family.owner.imessage` / `family.partner.imessage` — handle→name mapping
   for the composed alert.
 - `morning_triage.chat_db_path` — absolute path to the owner's
-  `~/Library/Messages/chat.db` on the Mac.
+  `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
+  template's `[CHAT_DB_PATH]` placeholder, **stop before calling
+  `plow_run_command`** and say the config has not been migrated — the shared
+  gate rejects the unfilled placeholder for exactly this reason.
 - `morning_triage.ranking_instructions` — free-form prompt context the user
   uses to shape prioritization (e.g. "always prioritize Stephanie;
   deprioritize social pings").
@@ -52,8 +55,8 @@ Read `morning_triage.chat_db_path` from the config, then call
 `plow_run_command` with EXACTLY this argv, substituting only the
 config-supplied path (which never varies between runs):
 
-    ["sqlite3", "-readonly", "<chat_db_path>",
-     "select cmj.chat_id, m.is_from_me, coalesce(h.id,'me'), cast(m.date/1000000000 + 978307200 as integer), hex(coalesce(m.attributedBody, cast(m.text as blob))) from message m join chat_message_join cmj on cmj.message_id = m.ROWID left join handle h on h.ROWID = m.handle_id where m.date/1000000000 + 978307200 > strftime('%s','now') - 129600 and m.associated_message_type = 0 and m.item_type = 0 and (m.is_from_me = 1 or m.attributedBody is not null or m.text is not null) order by m.date"]
+    ["sqlite3", "-readonly", "-json", "<chat_db_path>",
+     "select cmj.chat_id as chat_id, m.is_from_me as is_from_me, coalesce(h.id,'me') as handle, cast(m.date/1000000000 + 978307200 as integer) as sent_at, hex(coalesce(m.attributedBody, cast(m.text as blob))) as hexbody from message m join chat_message_join cmj on cmj.message_id = m.ROWID left join handle h on h.ROWID = m.handle_id where m.date/1000000000 + 978307200 > strftime('%s','now') - 129600 and m.associated_message_type = 0 and m.item_type = 0 and (m.is_from_me = 1 or m.attributedBody is not null or m.text is not null) order by m.date"]
 
 The SQL is a byte-identical literal every run, and that is load-bearing:
 Latch always-allow rules key on the exact argv, so a computed date anywhere
@@ -61,8 +64,11 @@ in it would make every morning's argv novel and strand the 07:05 run on an
 approval card nobody answers (plow-pbc/latch#181). The relative window lives
 *inside* the SQL instead — `strftime('%s','now') - 129600` is 36 hours.
 `chat.db` stores Apple-epoch nanoseconds; the `/1000000000 + 978307200`
-converts them to Unix seconds. Bodies come back hex-encoded so the
-pipe-separated framing survives whatever bytes a message holds.
+converts them to Unix seconds. `-json` frames the rows as a JSON array under
+the aliased column names (macOS's sqlite3 has shipped it since 3.33; the
+owner Mac runs 3.51), and bodies still come back hex-encoded so a message's
+raw bytes never have to survive JSON string escaping. An empty result set
+emits nothing at all — the filter reads that as a quiet day.
 
 Two predicates keep the unaddressed rule honest. `associated_message_type = 0`
 and `item_type = 0` drop tapbacks/reactions, edit records, and group events —
@@ -77,15 +83,18 @@ file tool, exactly as returned.
 
 ## Filter
 
-Run the deterministic filter and use its JSON output verbatim:
+Run the deterministic filter and use its JSON output verbatim. The gather
+file is the raw 36-hour message corpus, so it must not outlive this step:
+the command below removes it whether the filter succeeds or fails — only
+the filtered candidates (and later the ≤115-char alert) survive.
 
-    /opt/data/skills/ld-morning-triage/scripts/triage_candidates.py --config /opt/data/ld/config.json < /opt/data/ld/morning-triage-gather
+    sh -c '/opt/data/skills/ld-morning-triage/scripts/triage_candidates.py --config /opt/data/ld/config.json < /opt/data/ld/morning-triage-gather; rc=$?; rm -f /opt/data/ld/morning-triage-gather; exit $rc'
 
 It decodes each body (typedstream or plain UTF-8), applies the unaddressed
-rule per chat — keep a chat only if its latest message is inbound, with no
-outbound after it — and drops excluded handles. Do not re-implement that
-rule in prose; the script owns it, so the LLM never parses sqlite output or
-message framing.
+rule per chat — every inbound after the chat's last outbound is a candidate;
+an outbound as the latest message means the chat was answered — and drops
+excluded handles. Do not re-implement that rule in prose; the script owns
+it, so the LLM never parses sqlite output or message framing.
 
 If it emits zero candidates — **post nothing**. The kiosk has no expiry, so
 yesterday's alert stays up until a newer one replaces it; a quiet day is a

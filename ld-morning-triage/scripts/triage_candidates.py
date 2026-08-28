@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """triage_candidates.py — decode + filter the iMessage gather for ld-morning-triage.
 
-Reads the fixed sqlite3 query's stdout on stdin (rows
-`chat_id|is_from_me|handle|ts|hexbody`), decodes each body (typedstream via
-the NSString marker, else plain UTF-8), applies the unaddressed rule per chat
-— latest message inbound, no outbound after it — drops excluded handles, and
-emits JSON candidates for the LLM to rank. Deterministic on purpose: the LLM
-only ranks; it never parses sqlite output or message framing.
+Reads the fixed sqlite3 query's `-json` stdout on stdin (an array of
+`{chat_id, is_from_me, handle, sent_at, hexbody}` objects), decodes each body
+(typedstream via the NSString marker, else plain UTF-8), applies the
+unaddressed rule per chat — every inbound message after the chat's last
+outbound is a candidate; an outbound as the latest message means the chat was
+answered — drops excluded handles, and emits JSON candidates for the LLM to
+rank. Deterministic on purpose: the LLM only ranks; it never parses sqlite
+output or message framing.
+
+The whole unanswered burst is emitted, not just the newest message: an urgent
+ask followed by a "you there?" nudge must not hide the ask behind the nudge.
 
 Exit 2 on malformed input rather than skipping rows: a half-parsed morning is
 indistinguishable from a quiet one on the kiosk, so it must fail loudly.
-Framing is what fails loudly — field count, the ints, the hex, is_from_me. An
-individual body that yields no text is data, not framing: attachment-only and
-sticker rows routinely carry an attributedBody with nothing decodable, so one
-of them must not abort the whole morning. Such a body decodes to None and
-drops its chat only when it is the chat's latest message — the same outcome
-as "nothing to excerpt".
+Framing is what fails loudly — the JSON envelope, missing keys, is_from_me
+outside {0,1}, bad hex. An individual body that yields no text is data, not
+framing: attachment-only and sticker rows routinely carry an attributedBody
+with nothing decodable (and an attachment-only row's hexbody is null), so one
+of them must not abort the whole morning — it just produces no candidate.
 """
 from __future__ import annotations
 
@@ -61,42 +65,47 @@ def main() -> int:
             json.load(f)["morning_triage"]["exclude"]["imessage_handles"]
         )
 
+    # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
+    raw = sys.stdin.read().strip()
+    try:
+        rows = json.loads(raw) if raw else []
+    except json.JSONDecodeError as e:
+        print(f"malformed sqlite json: {e}", file=sys.stderr)
+        return 2
+
     chats: dict[int, list[tuple[int, bool, str, str | None]]] = {}
-    for lineno, line in enumerate(sys.stdin, 1):
-        line = line.rstrip("\n")
-        if not line:
-            continue
-        parts = line.split("|", 4)
-        if len(parts) != 5:
-            print(f"malformed sqlite row {lineno}: {len(parts)} fields",
-                  file=sys.stderr)
-            return 2
-        chat_id_s, is_from_me_s, handle, ts_s, hexbody = parts
-        if is_from_me_s not in ("0", "1"):
-            print(f"malformed sqlite row {lineno}: is_from_me={is_from_me_s!r}",
-                  file=sys.stderr)
-            return 2
+    for n, row in enumerate(rows, 1):
         try:
-            chat_id, ts = int(chat_id_s), int(ts_s)
-            inbound = is_from_me_s == "0"
-            body = decode_body(bytes.fromhex(hexbody))
-        except ValueError:
-            print(f"malformed sqlite row {lineno}", file=sys.stderr)
+            direction = row["is_from_me"]
+            if direction not in (0, 1):
+                raise ValueError(f"is_from_me={direction!r}")
+            hexbody = row["hexbody"]
+            body = decode_body(bytes.fromhex(hexbody)) if hexbody else None
+            chats.setdefault(row["chat_id"], []).append(
+                (row["sent_at"], direction == 0, row["handle"], body)
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            # Never echo the row itself: it may hold private message bytes.
+            print(f"malformed sqlite row {n}: {e}", file=sys.stderr)
             return 2
-        chats.setdefault(chat_id, []).append((ts, inbound, handle, body))
 
     candidates = []
     for chat_id, msgs in chats.items():
         msgs.sort(key=lambda m: m[0])
-        ts, inbound, handle, body = msgs[-1]
-        if not inbound or handle in excluded or not body:
-            continue
-        candidates.append({
-            "chat_id": chat_id,
-            "handle": handle,
-            "sent_at": ts,
-            "excerpt": body[:EXCERPT_CAP],
-        })
+        # Everything after the chat's last outbound is the unanswered burst;
+        # no outbound anywhere means the whole chat is the burst.
+        unanswered_from = max(
+            (i + 1 for i, m in enumerate(msgs) if not m[1]), default=0
+        )
+        for ts, _, handle, body in msgs[unanswered_from:]:
+            if handle in excluded or not body:
+                continue
+            candidates.append({
+                "chat_id": chat_id,
+                "handle": handle,
+                "sent_at": ts,
+                "excerpt": body[:EXCERPT_CAP],
+            })
 
     candidates.sort(key=lambda c: c["sent_at"], reverse=True)
     json.dump(candidates, sys.stdout)
