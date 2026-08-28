@@ -98,20 +98,27 @@ def _reset():
     verify_deploy.POLL_INTERVAL = 5.0
 
 
+@contextlib.contextmanager
+def _kiosk(handler_cls=_VersionHandler):
+    """One lifecycle for every HTTP scenario: start, point the env, tear down."""
+    server, base = _start_server(handler_cls)
+    try:
+        _use_endpoint(base)
+        yield server
+    finally:
+        server.shutdown()
+        _reset()
+
+
 # ────────────────────────── tests ──────────────────────────
 
 
 def test_success_on_live_sha_match_and_base_url_derivation():
     """Exit 0 when /api/version reports the SHA — and the polled path proves the
     base URL came from DASHBOARD_ENDPOINT_URL minus its /api/message suffix."""
-    server, base = _start_server()
-    try:
-        _use_endpoint(base)
+    with _kiosk():
         _VersionHandler.payload = {"sha": "abc123", "deployedAt": "2026-08-28T00:00:00Z"}
         code, out = run("abc123", "--timeout", "5")
-    finally:
-        server.shutdown()
-        _reset()
     check("live SHA match exits zero", code == 0)
     check("polled path is exactly /api/version (suffix stripped, not appended)",
           _VersionHandler.requests and set(_VersionHandler.requests) == {"/api/version"})
@@ -123,14 +130,9 @@ def test_success_on_live_sha_match_and_base_url_derivation():
 def test_timeout_on_mismatch_prints_last_response():
     """A kiosk stuck on another SHA (a rollback) → exit 1, last response shown
     verbatim so the report can carry what the kiosk actually said."""
-    server, base = _start_server()
-    try:
-        _use_endpoint(base)
+    with _kiosk():
         _VersionHandler.payload = {"sha": "old111", "deployedAt": "2026-08-27T00:00:00Z"}
         code, out = run("new222", "--timeout", "0.2")
-    finally:
-        server.shutdown()
-        _reset()
     check("mismatch exits 1 on timeout", code == 1)
     check("timeout output carries the last response verbatim", "old111" in out)
 
@@ -179,16 +181,13 @@ class _StallHandler(BaseHTTPRequestHandler):
 def test_mid_read_stall_keeps_polling_to_clean_timeout():
     """A kiosk that accepts the connection but stalls mid-response must read as
     a failed probe — poll on and exit 1 at --timeout, never raise."""
-    server, base = _start_server(_StallHandler)
     saved = verify_deploy.REQUEST_TIMEOUT
     verify_deploy.REQUEST_TIMEOUT = 0.2
     try:
-        _use_endpoint(base)
-        code, out = run("abc123", "--timeout", "0.5")
+        with _kiosk(_StallHandler):
+            code, out = run("abc123", "--timeout", "0.5")
     finally:
         verify_deploy.REQUEST_TIMEOUT = saved
-        server.shutdown()
-        _reset()
     check("stalling kiosk exits 1 on timeout", code == 1)
     check("last response names the stall", "timed out mid-response" in out)
 
@@ -218,13 +217,8 @@ class _RedirectHandler(BaseHTTPRequestHandler):
 def test_redirect_refused_bearer_never_forwarded():
     """A 302 must not be followed: the opener would forward the household
     bearer to the redirect target. The probe reads as failed and times out."""
-    server, base = _start_server(_RedirectHandler)
-    try:
-        _use_endpoint(base)
+    with _kiosk(_RedirectHandler):
         code, _ = run("abc123", "--timeout", "0.2")
-    finally:
-        server.shutdown()
-        _reset()
     check("redirected probe never claims success", code == 1)
     check("redirect target never fetched", "/elsewhere" not in _RedirectHandler.requests)
 
@@ -249,13 +243,8 @@ class _TruncatingHandler(BaseHTTPRequestHandler):
 def test_truncated_response_keeps_polling_to_clean_timeout():
     """A connection closed before the declared body finishes (IncompleteRead)
     must read as a failed probe — poll on and exit 1, never raise."""
-    server, base = _start_server(_TruncatingHandler)
-    try:
-        _use_endpoint(base)
+    with _kiosk(_TruncatingHandler):
         code, out = run("abc123", "--timeout", "0.3")
-    finally:
-        server.shutdown()
-        _reset()
     check("truncated response exits 1 on timeout", code == 1)
     check("last response names the truncation", "connection closed mid-response" in out)
 
@@ -263,14 +252,10 @@ def test_truncated_response_keeps_polling_to_clean_timeout():
 def test_unreachable_kiosk_times_out_cleanly():
     """A down Pi (connection refused) is this tool's most likely real failure —
     every probe must record it and keep polling to a clean exit 1, never raise."""
-    server, base = _start_server()
-    server.shutdown()
-    server.server_close()  # port now closed → URLError on every probe
-    try:
-        _use_endpoint(base)
+    with _kiosk() as server:
+        server.shutdown()
+        server.server_close()  # port now closed → URLError on every probe
         code, out = run("abc123", "--timeout", "0.2")
-    finally:
-        _reset()
     check("unreachable kiosk exits 1 on timeout", code == 1)
     check("last response names the transport failure", "unreachable" in out)
 
