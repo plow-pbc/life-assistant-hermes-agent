@@ -12,10 +12,12 @@ deploy it by pushing, and **prove it went live**.
 
 ## Repos
 
-- **Household repo** — what this kiosk deploys from. A push to its `main` IS
+- **Household repo** — what this kiosk deploys from; **public** (a fork/copy
+  of the template), so the privacy hard rule below governs everything you
+  commit to it. A push to its `main` IS
   the deploy: a systemd user timer on the Pi fetches every 2 minutes, builds
   into a fresh release dir, health-checks, and atomically flips `~/ld-current`.
-- **Upstream template** — `plow-pbc/life-dashboard`: canonical viewer code,
+- **Upstream template** — `plow-pbc/life-dashboard` (public): canonical viewer code,
   the Pi-side updater, and the canonical wire protocol at
   `docs/kiosk-protocol.md`. The copy at
   `/opt/data/skills/ld-shared/references/kiosk-protocol.md` is vendored from
@@ -23,18 +25,32 @@ deploy it by pushing, and **prove it went live**.
 
 ## Workspace & credentials
 
-- Workspace clone: `/opt/data/ld-dev/repo`
-- Deploy key (push access to the household repo): `/opt/data/ld-dev/ssh/deploy_key`
-- Pi SSH key: `/opt/data/ld-dev/ssh/pi_key`
+- Workspace clone: `/opt/data/ld-dev/repo`; its `origin` is the household
+  repo. If the clone is absent, the household repo's HTTPS URL is the one
+  line in `/opt/data/ld-dev/repo-url`:
 
-Git over the deploy key — always via `GIT_SSH_COMMAND`, never a hosted-key
-assumption:
+      git clone "$(cat /opt/data/ld-dev/repo-url)" /opt/data/ld-dev/repo
 
-    GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes' \
+  A pre-existing clone may carry a stale (SSH-era) origin — canonicalize it
+  before any pull/push:
+
+      git -C /opt/data/ld-dev/repo remote set-url origin "$(cat /opt/data/ld-dev/repo-url)"
+- Push credential: `/opt/data/ld-dev/git-credentials` (mode 600, provisioned
+  on the host). The repo is public so **fetches need no credential**; pushes
+  go through the git credential store — never paste the token into a URL or
+  argv:
+
       git -C /opt/data/ld-dev/repo pull --ff-only
 
-    GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes' \
-      git -C /opt/data/ld-dev/repo push origin main
+      git -C /opt/data/ld-dev/repo \
+        -c credential.helper='store --file /opt/data/ld-dev/git-credentials' \
+        push origin main
+
+  If the push fails on authentication in any form — an interactive prompt or
+  a `could not read Username … terminal prompts disabled` fatal — the store
+  file is missing or stale: report that for re-provisioning; never type
+  credentials interactively.
+- Pi SSH key: `/opt/data/ld-dev/ssh/pi_key`
 
 SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
 `--user` unit or a file in the home):
@@ -43,8 +59,9 @@ SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
 
 ## The development loop
 
-1. **Refresh the workspace.** Clone into `/opt/data/ld-dev/repo` if absent,
-   else pull `--ff-only` (recipes above).
+1. **Refresh the workspace.** Clone into `/opt/data/ld-dev/repo` if absent;
+   else `remote set-url origin` from `repo-url`, then pull `--ff-only`
+   (recipes above).
 2. **Edit.** Run `npm test` locally when node is available in this container;
    otherwise rely on the updater's build gate — it runs `npm ci`,
    `npm run build`, and `npm test` on the Pi before anything flips.
@@ -62,6 +79,16 @@ SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
    plus a build.
 5. **On exit 1 (timeout), diagnose** — see below — and report what the Pi
    recorded, verbatim.
+
+## Hard rule — the household repo is PUBLIC
+
+Anyone can read its code, diffs, and commit messages. **Never put personal
+data in any of them**: no names, schedules, addresses, school/team names, or
+message contents — not in code, comments, filenames, or commit messages.
+Personalization always flows through Pi-side config and env (`~/ld-data/`),
+which never enters the repo. Write the generic mechanism ("card 5 shows a
+configurable schedule feed"), configure the personal part on the Pi, and keep
+commit messages about the mechanism.
 
 ## Hard rule — what counts as success
 
@@ -95,7 +122,9 @@ When asked to sync from upstream, merge the template into the household repo —
 it is an ordinary deploy afterwards:
 
     cd /opt/data/ld-dev/repo
-    git remote add template git@github.com:plow-pbc/life-dashboard.git 2>/dev/null || true
-    GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes' git fetch template
+    git remote set-url template https://github.com/plow-pbc/life-dashboard.git 2>/dev/null \
+      || git remote add template https://github.com/plow-pbc/life-dashboard.git
+    git fetch template
     git merge template/main
-    # resolve, push (= deploy), then verify the merge SHA like any change.
+    # resolve, push (= deploy, credential recipe above), then verify the
+    # merge SHA like any change.
