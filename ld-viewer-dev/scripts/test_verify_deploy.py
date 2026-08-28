@@ -62,9 +62,11 @@ class _VersionHandler(BaseHTTPRequestHandler):
 
     payload = {"sha": None, "deployedAt": None}
     requests = []
+    auth_headers = []
 
     def do_GET(self):
         type(self).requests.append(self.path)
+        type(self).auth_headers.append(self.headers.get("Authorization"))
         body = json.dumps(type(self).payload).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -77,6 +79,7 @@ class _VersionHandler(BaseHTTPRequestHandler):
 
 def _start_server(handler_cls=_VersionHandler):
     handler_cls.requests = []
+    handler_cls.auth_headers = []
     server = HTTPServer(("127.0.0.1", 0), handler_cls)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
@@ -85,11 +88,13 @@ def _start_server(handler_cls=_VersionHandler):
 def _use_endpoint(base):
     """Point the env at a kiosk and make polling test-fast."""
     os.environ[verify_deploy.ENDPOINT_ENV] = f"{base}/api/message"
+    os.environ[verify_deploy.TOKEN_ENV] = "test-token"
     verify_deploy.POLL_INTERVAL = 0.05
 
 
 def _reset():
     os.environ.pop(verify_deploy.ENDPOINT_ENV, None)
+    os.environ.pop(verify_deploy.TOKEN_ENV, None)
     verify_deploy.POLL_INTERVAL = 5.0
 
 
@@ -110,6 +115,8 @@ def test_success_on_live_sha_match_and_base_url_derivation():
     check("live SHA match exits zero", code == 0)
     check("polled path is exactly /api/version (suffix stripped, not appended)",
           _VersionHandler.requests and set(_VersionHandler.requests) == {"/api/version"})
+    check("every probe carries the household bearer",
+          set(_VersionHandler.auth_headers) == {"Bearer test-token"})
     check("success output names the live sha", "abc123" in out)
 
 
@@ -129,8 +136,8 @@ def test_timeout_on_mismatch_prints_last_response():
 
 
 def test_exit_2_on_missing_or_malformed_env():
-    """No env, empty env, a URL without the /api/message suffix, and a
-    non-http(s) scheme all fail fast with exit 2 — before any polling."""
+    """No env, empty env, a URL without the /api/message suffix, a non-http(s)
+    scheme, and a missing bearer all fail fast with exit 2 — before polling."""
     _reset()
     for label, value in (
         ("unset env", None),
@@ -138,12 +145,17 @@ def test_exit_2_on_missing_or_malformed_env():
         ("no /api/message suffix", "http://kiosk.test/api/other"),
         ("non-http scheme", "ftp://kiosk.test/api/message"),
     ):
+        os.environ[verify_deploy.TOKEN_ENV] = "test-token"
         if value is None:
             os.environ.pop(verify_deploy.ENDPOINT_ENV, None)
         else:
             os.environ[verify_deploy.ENDPOINT_ENV] = value
         code, _ = run("abc123", "--timeout", "1")
         check(f"{label} exits 2", code == 2)
+    os.environ[verify_deploy.ENDPOINT_ENV] = "http://kiosk.test/api/message"
+    os.environ.pop(verify_deploy.TOKEN_ENV, None)
+    code, _ = run("abc123", "--timeout", "1")
+    check("missing DASHBOARD_TOKEN exits 2", code == 2)
     _reset()
 
 

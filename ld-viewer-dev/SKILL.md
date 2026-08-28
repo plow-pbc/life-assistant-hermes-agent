@@ -55,7 +55,9 @@ SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
        /opt/data/skills/ld-viewer-dev/scripts/verify_deploy.py <sha>
 
    It polls `GET <kiosk>/api/version` (base URL = `DASHBOARD_ENDPOINT_URL`
-   minus its `/api/message` suffix) until the kiosk reports your SHA.
+   minus its `/api/message` suffix, sent with the `DASHBOARD_TOKEN` bearer —
+   the kiosk 401s off-box version reads without it) until the kiosk reports
+   your SHA.
    Exit 0 = live. The default `--timeout 600` covers the 2-minute fetch cycle
    plus a build.
 5. **On exit 1 (timeout), diagnose** — see below — and report what the Pi

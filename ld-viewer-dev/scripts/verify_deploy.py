@@ -6,16 +6,20 @@ Usage: verify_deploy.py <sha> [--timeout 600]
 Polls GET <base>/api/version every POLL_INTERVAL seconds, where <base> is
 DASHBOARD_ENDPOINT_URL (the producers' POST endpoint, read from the agent's
 dotenv) with its `/api/message` suffix stripped — one env var, two surfaces.
+The kiosk admits the off-box version read only with the household bearer, so
+the request carries DASHBOARD_TOKEN — same dotenv as the endpoint.
 
   exit 0  the kiosk reports exactly {"sha": <sha>} — the deploy is live.
   exit 1  timeout: the SHA never went live (the Pi's updater built, failed a
           health check, and rolled back — or never picked the push up). The
           last response is printed verbatim so the report can carry it.
-  exit 2  DASHBOARD_ENDPOINT_URL missing/malformed, or a blank <sha>.
+  exit 2  DASHBOARD_ENDPOINT_URL or DASHBOARD_TOKEN missing/malformed, or a
+          blank <sha>.
 """
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -24,6 +28,7 @@ import urllib.error
 import urllib.request
 
 ENDPOINT_ENV = "DASHBOARD_ENDPOINT_URL"
+TOKEN_ENV = "DASHBOARD_TOKEN"
 MESSAGE_SUFFIX = "/api/message"
 # Rebound by the test suite; the updater fires every 2 min, so 5s is plenty.
 POLL_INTERVAL = 5.0
@@ -48,10 +53,11 @@ def base_url():
     return url[: -len(MESSAGE_SUFFIX)]
 
 
-def probe(url):
+def probe(url, token):
     """One GET of /api/version → its body text, or the failure as text."""
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
     try:
-        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
             return resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         return f"HTTP {exc.code} {exc.reason}"
@@ -61,6 +67,9 @@ def probe(url):
         # A kiosk that accepts the connection but stalls mid-read; treat it
         # like unreachable so the poll loop keeps going until --timeout.
         return "unreachable: timed out mid-response"
+    except http.client.IncompleteRead:
+        # Connection closed before the declared body finished — same story.
+        return "unreachable: connection closed mid-response"
 
 
 def main():
@@ -73,11 +82,14 @@ def main():
     args = parser.parse_args()
     if not args.sha.strip():
         die_malformed("a blank SHA can never match a live deploy")
+    token = os.environ.get(TOKEN_ENV, "").strip()
+    if not token:
+        die_malformed(f"${TOKEN_ENV} is unset/empty — the kiosk 401s the off-box version read without it")
 
     url = base_url() + "/api/version"
     deadline = time.monotonic() + args.timeout
     while True:
-        last = probe(url)
+        last = probe(url, token)
         try:
             reported = json.loads(last).get("sha")
         except (json.JSONDecodeError, AttributeError):
