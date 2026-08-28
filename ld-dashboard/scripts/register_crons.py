@@ -287,7 +287,10 @@ def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
     the digest's chat leg would drop silently, every Sunday, in front of
     nobody -- the exact trap the old tripwire test existed to catch.
     """
-    values = dotenv_values(dotenv_path) if env is None else env
+    if env is None:
+        values, source = dotenv_values(dotenv_path), f"{dotenv_path} (the file activation writes it to)"
+    else:
+        values, source = env, "the injected env"
 
     def expand(match):
         name = match.group(1)
@@ -295,9 +298,8 @@ def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
         if not value:
             raise SystemExit(
                 f"refusing to register: deliver target {deliver!r} needs {name}, "
-                f"which is unset or blank in {dotenv_path} (the file activation "
-                "writes it to). Registering without it would create a chat leg "
-                "that silently delivers nowhere."
+                f"which is unset or blank in {source}. Registering without it "
+                "would create a chat leg that silently delivers nowhere."
             )
         return value
 

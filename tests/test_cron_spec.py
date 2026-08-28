@@ -370,13 +370,23 @@ def test_an_unexpandable_deliver_target_refuses_by_name(env, tmp_path):
     """The silent-drop trap: hermes accepts an empty or half-expanded target,
     so the digest would post its card and message nobody, every Sunday, in
     front of nobody. Registration must stop and say which variable to fix.
-    The dotenv fallback points at an absent file here, so the refusal is
-    proven against BOTH sources being empty, not against this machine's."""
+    These rows prove the injected-env refusals; the production shape --
+    env=None with the dotenv as the sole source -- refuses the same way when
+    that file is absent or lacks the value (last row below)."""
     mod = spec()
     digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
     with pytest.raises(SystemExit) as excinfo:
         mod.create_argv(digest, env, dotenv_path=tmp_path / "absent.env")
     assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
+
+
+def test_a_dotenv_without_the_uid_refuses_and_names_the_file(tmp_path):
+    mod = spec()
+    digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
+    with pytest.raises(SystemExit) as excinfo:
+        mod.create_argv(digest, None, dotenv_path=tmp_path / "absent.env")
+    assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
+    assert "absent.env" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("source", ["env", "dotenv"])
