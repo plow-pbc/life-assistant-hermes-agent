@@ -10,6 +10,12 @@ only ranks; it never parses sqlite output or message framing.
 
 Exit 2 on malformed input rather than skipping rows: a half-parsed morning is
 indistinguishable from a quiet one on the kiosk, so it must fail loudly.
+Framing is what fails loudly — field count, the ints, the hex, is_from_me. An
+individual body that yields no text is data, not framing: attachment-only and
+sticker rows routinely carry an attributedBody with nothing decodable, so one
+of them must not abort the whole morning. Such a body decodes to None and
+drops its chat only when it is the chat's latest message — the same outcome
+as "nothing to excerpt".
 """
 from __future__ import annotations
 
@@ -66,6 +72,10 @@ def main() -> int:
                   file=sys.stderr)
             return 2
         chat_id_s, is_from_me_s, handle, ts_s, hexbody = parts
+        if is_from_me_s not in ("0", "1"):
+            print(f"malformed sqlite row {lineno}: is_from_me={is_from_me_s!r}",
+                  file=sys.stderr)
+            return 2
         try:
             chat_id, ts = int(chat_id_s), int(ts_s)
             inbound = is_from_me_s == "0"
