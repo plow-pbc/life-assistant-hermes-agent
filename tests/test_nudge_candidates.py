@@ -31,7 +31,8 @@ spec = importlib.util.spec_from_file_location("nudge_candidates", SCRIPT)
 nc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nc)
 
-# A fixed "now" (12:00 PDT) so windows are deterministic; --now pins the clock.
+# A fixed "now" (12:00 PDT) so windows are deterministic; main()'s now= kwarg
+# pins the clock (an importer-only seam — the CLI deliberately has no flag).
 NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=timezone(timedelta(hours=-7)))
 
 BASE_CONFIG = {
@@ -308,9 +309,11 @@ def test_overflow_truncates_variable_fields_never_the_time(rig, overflow):
     rig.run(gather(event(minutes=20, **overflow)))
     (line,) = rig.kiosk.read_text().splitlines()
     assert len(line) <= 115
-    assert "at 12:20pm (20m)" in line
     if "summary" not in overflow:
-        assert '"Standup"' in line
+        # The untouched title stays contiguous with the fixed portion.
+        assert 'Heads up: "Standup" at 12:20pm (20m)' in line
+    else:
+        assert "at 12:20pm (20m)" in line
 
 
 def test_a_newline_in_untrusted_text_cannot_spoof_a_second_line(rig):
