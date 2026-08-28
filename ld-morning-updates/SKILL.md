@@ -72,8 +72,8 @@ A busy window's result is too large to fit in context, so the runtime
 persists it to a file (e.g. `/tmp/hermes-results/call_<id>.txt`) and gives
 you that path in place of the content. Read that file with the file-reading
 tool to consume the events — do not re-save, re-read through the shell, or
-transform it. After composing, delete it with a plain argv (`rm -f <that
-path>`) so the raw calendar corpus does not outlive the run. Cron runs have
+transform it, and do not try to delete it: the runtime owns its persisted
+results (the sandbox blocks a shell `rm` there). Cron runs have
 no user present to approve flagged commands, so every command must be a
 single plain argv line — no `sh -c`, no heredocs, no interpreter `-c`
 one-liners.
