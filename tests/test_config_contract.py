@@ -429,15 +429,15 @@ def test_the_hermes_volumes_are_exactly_these():
         f":/opt/data/skills/{name}:ro"
         for name in SKILL_DIRS
     } | {
-        # The one non-skill bind: the shared ld-config pinned read-only over
-        # itself. /opt/data is the agent's writable home, so without this a
-        # prompt-injected turn could rewrite the config every producer
-        # trusts; the single-FILE bind keeps the fixed reader path while the
-        # ld/ handoff directory stays writable. Same exact-string discipline:
-        # drop :ro, widen it to the directory, or reroot the source and this
-        # fails with both sets printed.
-        "${AGENT_HOME:?set by agent-mgr from the instance descriptor}"
-        "/ld/config.json:/opt/data/ld/config.json:ro"
+        # The one non-skill bind: the repo's SOUL.md pinned read-only over the
+        # gateway's own copy (HERMES_HOME is /opt/data), so the setup rule it
+        # carries survives anything a turn writes into the home. The old
+        # config.json:ro bind is gone on purpose: the agent writes that file
+        # now (ld-setup), and pinning it was what forced "land it before up".
+        # Same exact-string discipline: drop :ro, reroot the source, or mount
+        # a directory and this fails with both sets printed.
+        "${AGENT_DIR:?set by agent-mgr from the registry}"
+        "/runtime/SOUL.md:/opt/data/SOUL.md:ro"
     }
 
 
