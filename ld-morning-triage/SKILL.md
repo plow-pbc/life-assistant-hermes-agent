@@ -97,10 +97,8 @@ query output) as its argument so none of that is needed:
     /opt/data/skills/ld-morning-triage/scripts/triage_candidates.py --config /opt/data/ld/config.json <gather file path>
 
 The gather file is the raw 36-hour message corpus, so it must not outlive
-this step — only the filtered candidates (and later the ≤115-char alert)
-survive. Whether or not the filter succeeded, remove it before continuing:
-
-    rm -f <gather file path>
+this step — the filter deletes it as it reads it, whatever the outcome;
+only the filtered candidates (and later the ≤115-char alert) survive.
 
 It decodes each body (typedstream or plain UTF-8), applies the unaddressed
 rule per chat — every inbound after the chat's last outbound is a candidate;

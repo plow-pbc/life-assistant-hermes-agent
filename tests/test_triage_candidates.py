@@ -96,10 +96,16 @@ def test_gather_file_argument_yields_the_same_candidates(tmp_path, wrap):
     assert cand["excerpt"] == "sign the form?"
 
 
-def test_failed_gather_envelope_fails_loudly_not_quietly(tmp_path):
-    # exit_code != 0 must exit 2: a failed gather read as a quiet day would
-    # silently leave yesterday's alert up with no sign anything broke.
-    r = run_gather_file(envelope(1, ""), BASE_CONFIG, tmp_path)
+@pytest.mark.parametrize("content", [
+    envelope(1, ""),
+    json.dumps({"result": json.dumps({"exit_code": 0, "handle": "h"})}),
+    json.dumps({"result": "not json"}),
+], ids=["gather-failed", "missing-output", "unparseable-result"])
+def test_broken_gather_envelope_fails_loudly_not_quietly(tmp_path, content):
+    # Every broken-envelope shape must exit 2: a failed gather read as a
+    # quiet day would silently leave yesterday's alert up with no sign
+    # anything broke.
+    r = run_gather_file(content, BASE_CONFIG, tmp_path)
     assert r.returncode == 2
     assert r.stdout == ""
 

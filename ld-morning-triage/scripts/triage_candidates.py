@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 EXCERPT_CAP = 500
@@ -74,6 +75,10 @@ def main() -> int:
     if args.gather:
         with open(args.gather) as f:
             raw = f.read().strip()
+        # The raw 36-hour corpus must not outlive this run, whatever the
+        # outcome — deleting it here (content already in memory) beats a
+        # separate cleanup instruction an agent might never reach.
+        os.unlink(args.gather)
     else:
         raw = sys.stdin.read().strip()
     # An oversized plow_run_command result reaches the model as a persisted
