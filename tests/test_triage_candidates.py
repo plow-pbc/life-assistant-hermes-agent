@@ -152,7 +152,16 @@ def test_the_skill_md_sql_agrees_with_the_parser(tmp_path):
                (now_apple + 1,))
     db.execute("insert into message (ROWID, is_from_me, handle_id, date, text,"
                " item_type) values (3, 0, 1, ?, null, 1)", (now_apple + 2,))
-    db.execute("insert into chat_message_join values (7, 1), (7, 2), (7, 3)")
+    # A second chat answered by an attachment-only reply (text AND
+    # attributedBody NULL): the outbound row must survive the SQL — it is the
+    # proof a reply happened — and its empty hexbody field must survive the
+    # framing, so the chat produces no candidate.
+    db.execute("insert into message (ROWID, is_from_me, handle_id, date, text)"
+               " values (4, 0, 1, ?, 'seen this?')", (now_apple,))
+    db.execute("insert into message (ROWID, is_from_me, handle_id, date)"
+               " values (5, 1, null, ?)", (now_apple + 3,))
+    db.execute("insert into chat_message_join values (7, 1), (7, 2), (7, 3),"
+               " (8, 4), (8, 5)")
 
     rows = "".join(
         "|".join("" if v is None else str(v) for v in r) + "\n"
