@@ -60,6 +60,7 @@ services:
   hermes:
     volumes:
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-morning-triage:/opt/data/skills/ld-morning-triage:ro
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-morning-updates:/opt/data/skills/ld-morning-updates:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-weather:/opt/data/skills/ld-weather:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-sports:/opt/data/skills/ld-sports:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-shared:/opt/data/skills/ld-shared:ro

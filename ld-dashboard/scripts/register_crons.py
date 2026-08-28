@@ -89,12 +89,13 @@ JOBS = (
         "type": "affirmation",
         "schedule": "0 7 * * *",
         "prompt": (
-            "Run the ld-morning-updates affirmation producer now: compose the "
-            "morning affirmation and post it to the kiosk as card 2, type affirmation."
+            "Run the ld-morning-updates affirmation producer now: gather today's "
+            "calendar through Latch gog, compose the morning affirmation, and "
+            "post it to the kiosk as card 2, type affirmation."
         ),
         "skill": "ld-morning-updates",
         "deliver": None,
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
+        "blocked": None,
     },
     {
         "name": "ld-morning-triage",

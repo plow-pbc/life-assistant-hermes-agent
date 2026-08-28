@@ -21,18 +21,29 @@ the "installed" verdict with the shared runtime precondition loadLdConfig — th
 jq reference in test_ld_config_gate.py is updated in lockstep so the equivalence
 proof still holds):
   - Prints the failing invariant name(s) to stdout, joined by "; ".
-  - Empty stdout == PASS. Never prints PII (the owner name / calendar account).
+  - Empty stdout == PASS. Never prints PII (the owner name / calendar ids).
   - Prints exactly "not valid JSON" (and nothing else) when the file does not
     parse as JSON OR when the structure would make the jq filter itself error
     (indexing a non-object, or testing a non-string field) — jq's gate ran with
     `2>/dev/null || echo "not valid JSON"`, collapsing both into that one line.
 
-The five checks, matching the (updated) jq filter exactly:
+The six checks, matching the (updated) jq filter exactly:
   1. family.owner.name must contain a non-whitespace char  (jq: (.family.owner.name // "") | test("\\S"))
   2. family.timezone must contain a non-whitespace char    (jq: (.family.timezone // "") | test("\\S"))
   3. calendar.sources must be a non-empty array            (jq: (type) == "array" and length >= 1)
-  4. no calendar.sources[].account may be blank            (jq: select(((.account // "") | test("\\S")) | not))
-  5. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
+  4. no calendar.sources[].calendar_id may be blank        (jq: select(((.calendar_id // "") | test("\\S")) | not))
+  5. calendar.sources[].calendar_id values must be unique  (jq: length == (unique | length))
+  6. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
+
+Checks 4-5 replaced the old "no calendar.sources[].account may be blank": the
+runtime reads every source under the ONE gog identity Latch is authenticated
+as and consumes only calendar_id, so per-source account validated an identity
+nothing uses -- while several sources saying "primary" all resolved to the
+authenticated account's own calendar, silently omitting the rest. The id IS
+the whole address, so it must be present and unique (which also caps a bare
+"primary" at one source). Owner identity is a nudge concern, not a source
+concern: ld-calendar-nudge will carry its own calendar_nudge.owner_identities
+key when it lands.
 """
 import json
 import re
@@ -118,23 +129,34 @@ def gate(config):
     if not (isinstance(sources, list) and len(sources) >= 1):
         failures.append("calendar.sources is not a non-empty array")
 
-    # 4. no calendar.sources[].account is blank. jq's `.calendar.sources[]?`
-    #    iterates only when sources is an array; each element's `.account` errors
-    #    if the element is not an object (caught as 'not valid JSON'). jq's `?`
-    #    suppresses only the `.[]` iteration error, NOT the downstream `.account`
-    #    index — so we must visit EVERY element (no early break): a later
-    #    non-object element still raises GateError and collapses to "not valid
-    #    JSON", exactly as jq does. We record the blank-account failure at most
-    #    once, after the full sweep.
+    # 4. no calendar.sources[].calendar_id is blank, and 5. the ids are unique.
+    #    One gog identity reads every source, so the id is a calendar's entire
+    #    address: a blank one reads nothing, and duplicates (several "primary")
+    #    silently collapse onto the authenticated account's one calendar.
+    #    jq's `.calendar.sources[]?` iterates only when sources is an array;
+    #    each element's `.calendar_id` errors if the element is not an object
+    #    (caught as 'not valid JSON'). jq's `?` suppresses only the `.[]`
+    #    iteration error, NOT the downstream index — so we must visit EVERY
+    #    element (no early break): a later non-object element still raises
+    #    GateError and collapses to "not valid JSON", exactly as jq does. Each
+    #    failure is recorded at most once, after the full sweep.
     if isinstance(sources, list):
-        blank_account = False
+        ids = []
+        blank_id = False
         for src in sources:
-            if not _test_nonblank(_index(src, "account")):
-                blank_account = True
-        if blank_account:
-            failures.append("a calendar.sources[].account is blank")
+            id_ = _coalesce(_index(src, "calendar_id"))
+            if not isinstance(id_, str):
+                # jq's test() raises on a number/object/array — 'not valid JSON'.
+                raise GateError("test() on non-string")
+            if not _NONBLANK_RE.search(id_):
+                blank_id = True
+            ids.append(id_)
+        if blank_id:
+            failures.append("a calendar.sources[].calendar_id is blank")
+        if len(ids) != len(set(ids)):
+            failures.append("calendar.sources[].calendar_id values are not unique")
 
-    # 5. no leftover [UPPER_SNAKE] placeholder anywhere
+    # 6. no leftover [UPPER_SNAKE] placeholder anywhere
     if any(_PLACEHOLDER_RE.match(s) for s in _all_strings(config)):
         failures.append("an unfilled [UPPER_SNAKE] placeholder remains")
 
