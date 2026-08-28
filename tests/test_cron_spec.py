@@ -391,7 +391,7 @@ def test_the_deliver_target_expands_from_either_source(source, tmp_path):
     if source == "env":
         env, _ = ENV_OK, dotenv.write_text("")
     else:
-        env = {"TZ": "America/Los_Angeles"}
+        env = None  # production shape: no injection, the dotenv IS the source
         dotenv.write_text("# activation writes this shape\nPLOW_CHAT_CHAT_UID=cht_test\n")
     argv = mod.create_argv(digest, env, dotenv_path=dotenv)
     assert argv[-2:] == ["--deliver", "plow_chat:cht_test"]

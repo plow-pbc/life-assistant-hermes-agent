@@ -276,34 +276,28 @@ def dotenv_values(path=DOTENV):
 
 
 def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
-    """Expand every ${VAR} in a delivery target, env first, then the dotenv.
+    """Expand every ${VAR} in a delivery target from ONE source.
 
     The chat uid is minted by this instance's own activation, so it can never
-    be a literal in a repo more than one person runs -- it reaches the
-    container in /opt/data/.env as PLOW_CHAT_CHAT_UID (the process env is
-    checked first so tests inject values without touching disk). An unset or
-    blank variable REFUSES loudly: hermes would accept the half-expanded or
-    empty target and the digest's chat leg would drop silently, every Sunday,
-    in front of nobody -- the exact trap the old tripwire test existed to
-    catch.
+    be a literal in a repo more than one person runs -- in production it lives
+    in /opt/data/.env, the file the gateway loads (a docker-exec session's env
+    never carries it -- measured). That file IS the source; an explicit `env`
+    is the test-injection override, taken alone. An unset or blank variable
+    REFUSES loudly: hermes would accept the half-expanded or empty target and
+    the digest's chat leg would drop silently, every Sunday, in front of
+    nobody -- the exact trap the old tripwire test existed to catch.
     """
-    env = os.environ if env is None else env
-    fallback = None  # read at most once, and only when needed
+    values = dotenv_values(dotenv_path) if env is None else env
 
     def expand(match):
-        nonlocal fallback
         name = match.group(1)
-        value = (env.get(name) or "").strip()
-        if not value:
-            if fallback is None:
-                fallback = dotenv_values(dotenv_path)
-            value = (fallback.get(name) or "").strip()
+        value = (values.get(name) or "").strip()
         if not value:
             raise SystemExit(
                 f"refusing to register: deliver target {deliver!r} needs {name}, "
-                f"which is unset or blank in both this session's env and {DOTENV} "
-                "(the file activation writes it to). Registering without it would "
-                "create a chat leg that silently delivers nowhere."
+                f"which is unset or blank in {dotenv_path} (the file activation "
+                "writes it to). Registering without it would create a chat leg "
+                "that silently delivers nowhere."
             )
         return value
 
