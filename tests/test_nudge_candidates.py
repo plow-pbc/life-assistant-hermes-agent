@@ -279,6 +279,24 @@ def test_copies_collapse_and_the_kiosk_gets_only_the_earliest(rig):
     assert '"A"' in rig.kiosk.read_text() and '"B"' not in rig.kiosk.read_text()
 
 
+def test_a_failed_swap_leaves_the_previous_handoffs_untouched(rig, monkeypatch):
+    """The staging guarantee: both bodies land in .tmp files before either
+    rename, so a failure at swap time must leave the prior handoffs exactly
+    as they were — never one leg fresh and the other stale. Direct writes
+    would fail this."""
+    rig.kiosk.write_text("old kiosk\n")
+    rig.chat.write_text("old chat\n")
+
+    def boom(*_a, **_k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(nc.os, "replace", boom)
+    with pytest.raises(OSError):
+        rig.run(gather(event()))
+    assert rig.kiosk.read_text() == "old kiosk\n"
+    assert rig.chat.read_text() == "old chat\n"
+
+
 def test_overflow_truncates_location_then_title_never_the_time(rig):
     rig.run(gather(event(minutes=20, location="Building 42, " * 12)))
     (line,) = rig.kiosk.read_text().splitlines()
