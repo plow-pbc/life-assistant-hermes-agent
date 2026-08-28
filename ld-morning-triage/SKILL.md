@@ -53,7 +53,7 @@ Read `morning_triage.chat_db_path` from the config, then call
 config-supplied path (which never varies between runs):
 
     ["sqlite3", "-readonly", "<chat_db_path>",
-     "select cmj.chat_id, m.is_from_me, coalesce(h.id,'me'), cast(m.date/1000000000 + 978307200 as integer), hex(coalesce(m.attributedBody, cast(m.text as blob))) from message m join chat_message_join cmj on cmj.message_id = m.ROWID left join handle h on h.ROWID = m.handle_id where m.date/1000000000 + 978307200 > strftime('%s','now') - 129600 and (m.attributedBody is not null or m.text is not null) order by m.date"]
+     "select cmj.chat_id, m.is_from_me, coalesce(h.id,'me'), cast(m.date/1000000000 + 978307200 as integer), hex(coalesce(m.attributedBody, cast(m.text as blob))) from message m join chat_message_join cmj on cmj.message_id = m.ROWID left join handle h on h.ROWID = m.handle_id where m.date/1000000000 + 978307200 > strftime('%s','now') - 129600 and m.associated_message_type = 0 and m.item_type = 0 and (m.is_from_me = 1 or m.attributedBody is not null or m.text is not null) order by m.date"]
 
 The SQL is a byte-identical literal every run, and that is load-bearing:
 Latch always-allow rules key on the exact argv, so a computed date anywhere
@@ -63,6 +63,14 @@ approval card nobody answers (plow-pbc/latch#181). The relative window lives
 `chat.db` stores Apple-epoch nanoseconds; the `/1000000000 + 978307200`
 converts them to Unix seconds. Bodies come back hex-encoded so the
 pipe-separated framing survives whatever bytes a message holds.
+
+Two predicates keep the unaddressed rule honest. `associated_message_type = 0`
+and `item_type = 0` drop tapbacks/reactions, edit records, and group events —
+an inbound "Loved …" reaction would otherwise read as a fresh unaddressed
+message, and an outbound tapback would read as a reply. The body requirement
+is scoped to inbound rows (`m.is_from_me = 1 or …`) because an outbound row
+matters only as proof a reply happened — an attachment-only reply with no
+text must still count as one.
 
 Save the command's stdout to `/opt/data/ld/morning-triage-gather` with the
 file tool, exactly as returned.
