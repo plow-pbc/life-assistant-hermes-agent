@@ -164,8 +164,9 @@ two surfaces, in this order:
    `DASHBOARD_TOKEN` env vars the other ld- bundles use (from `data/.env`,
    mode 600 — the credentials never reach argv), posts the digest to the
    kiosk as card 4 with `type: "digest"` and the eyebrow `This week`, and
-   consumes the handoff file on success. The kiosk card clamps long text —
-   the chat copy is the one for reading. Fails loudly on any non-200
+   consumes the handoff file on success. The digest card is sized for the
+   full weekly summary (the viewer's clamp is the backstop) — do not
+   pre-truncate the text. Fails loudly on any non-200
    response — surface that and stop; do not continue to the chat step on a
    failed kiosk post.
 

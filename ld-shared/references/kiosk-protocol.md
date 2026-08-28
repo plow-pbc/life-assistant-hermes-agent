@@ -34,7 +34,7 @@ Every producer POSTs ONE message to the household's Pi message API:
 | 1 | `alert` | ld-morning-triage (and ld-calendar-nudge reminders) | plain text, ≤115 chars |
 | 2 | `affirmation` | ld-morning-updates | plain text, ≤115 chars |
 | 3 | `weather` | ld-weather | self-contained HTML tile |
-| 4 | `digest` | ld-weekly-digest | plain text, ≤115 chars |
+| 4 | `digest` | ld-weekly-digest | plain text, long-form (viewer-clamped) |
 | 5 | `sports` | ld-sports | self-contained HTML tile |
 
 Card 1 is shared: a calendar nudge and the morning triage alert both land in
@@ -42,10 +42,15 @@ the alert slot; latest-per-card means the newest of the two shows.
 
 ## Plain-text cards (1, 2, 4)
 
-`text` is a short paraphrased line, **≤115 chars** to match the kiosk's visible
-budget. Producers paraphrase private mail/iMessage/Slack content — they never
-quote it verbatim, and `--dry-run` always redacts the body to
-`<redacted, N chars>` so agent-visible stdout stays non-sensitive.
+For cards 1 and 2, `text` is a short paraphrased line, **≤115 chars** to match
+the kiosk's visible budget. Card 4 is the exception: the viewer gives the
+digest a full-width 2× row sized for the full weekly summary, well above the
+shared 5-line clamp (`life-dashboard-viewer/src/index.css:324` is the
+enforcer), so long digest text is the contract and the viewer's clamp is the
+backstop — do not pre-truncate it. On every plain-text card, producers
+paraphrase private mail/iMessage/Slack content — they never quote it
+verbatim, and `--dry-run` always redacts the body to `<redacted, N chars>`
+so agent-visible stdout stays non-sensitive.
 
 ## HTML tile cards (3 weather, 5 sports)
 
