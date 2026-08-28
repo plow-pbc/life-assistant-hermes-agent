@@ -11,11 +11,12 @@
 #
 # Google Calendar arrives another way: a vendored `gog` driven through Latch —
 # i.e. through the mcp_server below rather than a connector skill, which is
-# why nothing is being held open for it here (plow-pbc/latch#183). FOUR of the
-# six life-dashboard producers are live: ld-morning-updates reads the calendar
-# through that door, ld-morning-triage the Mac's iMessage DB through the same
-# one; the remaining two calendar producers come back as their ports land. See
-# the repo README, "No connectors, and what that costs".
+# why nothing is being held open for it here (plow-pbc/latch#183). FIVE of the
+# six life-dashboard producers are live: ld-morning-updates and
+# ld-weekly-digest read the calendar through that door, ld-morning-triage the
+# Mac's iMessage DB through the same one; the last calendar producer comes
+# back as its port lands. See the repo README, "No connectors, and what that
+# costs".
 model:
   default: gpt-5.5
   provider: openai-codex

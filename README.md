@@ -292,17 +292,16 @@ That is a deliberate trade, not an oversight. It is what lets the life-dashboard
 producers arrive as this agent's own mounted skills instead of a fetched tree,
 and the two that need no account — `ld-weather` (NWS) and `ld-sports` (ESPN) —
 work immediately, as do `ld-morning-triage`, rewritten onto the Mac's
-iMessage DB read through Latch, and `ld-morning-updates`, its calendar read
-through Latch's vendored `gog`. The two calendar producers not yet ported
-onto that door do not:
+iMessage DB read through Latch, and `ld-morning-updates` and
+`ld-weekly-digest`, their calendar reads through Latch's vendored `gog`.
+The one calendar producer not yet ported onto that door does not:
 
 | producer | card | needs | tracked by |
 |---|---|---|---|
-| `ld-weekly-digest` | 4 · digest | Google Calendar | `plow-pbc/latch#183` |
 | `ld-calendar-nudge` | 1 · alert | Google Calendar | `plow-pbc/latch#183` |
 
-`ld-dashboard` carries all six schedules and registers only the four that can
-run, so the blocked ones are recorded rather than lost. `agent-mgr
+`ld-dashboard` carries all six schedules and registers only the five that can
+run, so the blocked one is recorded rather than lost. `agent-mgr
 check-connectors` has nothing to report on this instance; calendar access is
 Latch's vendored `gog`, not a connector.
 
@@ -330,7 +329,7 @@ ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
 ld-shared/      the POST helper, the ld-config gate and the wire protocol
-ld-dashboard/   the six cron schedules; four registered, two blocked
+ld-dashboard/   the six cron schedules; five registered, one blocked
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 ```
@@ -375,6 +374,6 @@ installs it and reloads the gateway only if the file actually changed.
   `plow-connectors`, so Gmail and Slack are unreachable however linked the
   owner's Plow account is, and `agent-mgr check-connectors <agent>` has nothing
   to probe. Google Calendar is back — through a vendored `gog` behind Latch
-  rather than a connector skill; `plow-pbc/latch#183` now covers only the two
-  calendar producers not yet ported onto it. See [No connectors, and what
+  rather than a connector skill; `plow-pbc/latch#183` now covers only the one
+  calendar producer not yet ported onto it. See [No connectors, and what
   that costs](#no-connectors-and-what-that-costs).

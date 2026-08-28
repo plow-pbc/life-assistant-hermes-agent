@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -46,11 +47,16 @@ LD_CONFIG = "/opt/data/ld/config.json"
 # The spec. One row per producer, live or not.
 #
 # `deliver` is None for every card-only producer: the card IS the delivery, over
-# the kiosk POST. ld-calendar-nudge also messages the owner, and it is blocked --
-# so its target is recorded as the ${VAR} it will need and nothing expands it.
-# The resolver that used to live here was reachable only from this one blocked
-# row; see create_argv() for why it went, and
-# test_no_live_job_needs_a_delivery_target for what fires when it is needed.
+# the kiosk POST. Two producers also message the owner, and they diverge on
+# purpose:
+#   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
+#     weekly and ALWAYS has content, so relaying its final response is exactly
+#     the chat leg the sheet promises. create_argv() expands the ${VAR} from
+#     the container env at registration time and refuses a blank one.
+#   - ld-calendar-nudge (blocked) will NOT use --deliver when it lands: it is
+#     half-hourly with quiet no-op runs, and --deliver relays EVERY final
+#     response -- its chat leg goes through a committed script instead (the
+#     plan's C2 task). Its target stays recorded as data on the blocked row.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
 # the container's zone, which is agent-mgr's AGENT_TZ.
@@ -117,12 +123,17 @@ JOBS = (
         "type": "digest",
         "schedule": "0 17 * * 0",
         "prompt": (
-            "Run the ld-weekly-digest producer now: compose the week-ahead "
-            "digest and post it to the kiosk as card 4, type digest."
+            "Run the ld-weekly-digest producer now: gather the week's calendar "
+            "through Latch gog, compose the week-ahead digest, post it to the "
+            "kiosk as card 4, type digest, and return the digest text as the "
+            "final response."
         ),
         "skill": "ld-weekly-digest",
-        "deliver": None,
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
+        # Native --deliver, unlike the future nudge: the digest is weekly and
+        # always has content, so relaying every final response fits; the
+        # half-hourly nudge has quiet no-op runs and gets a script leg (C2).
+        "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
+        "blocked": None,
     },
     {
         "name": "ld-calendar-nudge",
@@ -238,18 +249,44 @@ def registered_jobs(jobs_path=JOBS_FILE):
     }
 
 
-def create_argv(job):
-    """No --deliver arm, because no job that reaches here has one.
+def resolve_deliver(deliver, env=None):
+    """Expand every ${VAR} in a delivery target from the container env.
 
-    Only LIVE jobs are ever created, and all of them post their card over the
-    kiosk POST -- the card IS the delivery. `ld-calendar-nudge` is the one
-    producer that also messages the owner, and it is blocked, so the expansion
-    machinery its `deliver` field needed was unreachable code. The field stays as
-    DATA on the blocked row so the requirement is not lost, and
-    test_no_live_job_needs_a_delivery_target fires the day one becomes live."""
+    The chat uid is minted by this instance's own activation, so it can never
+    be a literal in a repo more than one person runs -- it reaches the
+    container as PLOW_CHAT_CHAT_UID in the env. An unset or blank variable
+    REFUSES loudly: hermes would accept the half-expanded or empty target and
+    the digest's chat leg would drop silently, every Sunday, in front of
+    nobody -- the exact trap the old tripwire test existed to catch.
+    """
+    env = os.environ if env is None else env
+
+    def expand(match):
+        name = match.group(1)
+        value = (env.get(name) or "").strip()
+        if not value:
+            raise SystemExit(
+                f"refusing to register: deliver target {deliver!r} needs {name}, "
+                "which is unset or blank in this container. It lands in the env "
+                "at activation time; registering without it would create a chat "
+                "leg that silently delivers nowhere."
+            )
+        return value
+
+    return re.sub(r"\$\{(\w+)\}", expand, deliver)
+
+
+def create_argv(job, env=None):
+    """The --deliver arm serves exactly one live shape: a producer whose every
+    run has content, where relaying the final response IS the chat leg
+    (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
+    relays every final response, no-ops included -- which is why the nudge's
+    target stays data on its blocked row until its script leg lands."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]
+    if job["deliver"]:
+        argv += ["--deliver", resolve_deliver(job["deliver"], env)]
     return argv
 
 
@@ -287,7 +324,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
                 )
                 paused.append(job["name"])
             continue
-        proc = runner(create_argv(job))
+        proc = runner(create_argv(job, env))
         if proc.returncode != 0:
             raise SystemExit(
                 f"could not register {job['name']}:\n{proc.stdout}\n{proc.stderr}"
