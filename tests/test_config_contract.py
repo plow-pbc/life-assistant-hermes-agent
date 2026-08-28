@@ -407,7 +407,7 @@ def override():
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
 
 
-def test_every_skill_is_mounted_flat_and_read_only():
+def test_the_hermes_volumes_are_exactly_these():
     """Four declarative strings, asserted exactly.
 
     This replaces a brace-aware volume parser, its own unit test, and four
@@ -453,7 +453,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     container, as an agent that cannot find the contract it was told to read.
 
     The check is only worth anything because the mapping is earned:
-    test_every_skill_is_mounted_flat_and_read_only pins
+    test_the_hermes_volumes_are_exactly_these pins
     ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
     ROOT really does mean the agent can open them.
 

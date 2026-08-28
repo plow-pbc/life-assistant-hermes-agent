@@ -185,6 +185,12 @@ agent-mgr activate <agent>           # prints a code — its owner texts it from
 # host's `sh` that collapses to one literal directory and exits 0.
 mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 
+# ALSO before `up`: the ld-config must be a real FILE at this path.
+# compose.override.yml binds it read-only over /opt/data/ld/config.json, and
+# Docker materializes a missing bind source as a root-owned DIRECTORY at both
+# ends -- bring-up then fails on a config nothing can read or replace.
+test -f ~/.hermes-<agent>/ld/config.json || echo 'land ld/config.json first (see above)'
+
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 just check-latch <agent>             # can this container reach that owner's Mac?
