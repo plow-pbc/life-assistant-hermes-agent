@@ -100,7 +100,9 @@ def test_gather_file_argument_yields_the_same_candidates(tmp_path, wrap):
     envelope(1, ""),
     json.dumps({"result": json.dumps({"exit_code": 0, "handle": "h"})}),
     json.dumps({"result": "not json"}),
-], ids=["gather-failed", "missing-output", "unparseable-result"])
+    envelope(0, None),
+], ids=["gather-failed", "missing-output", "unparseable-result",
+        "null-output"])
 def test_broken_gather_envelope_fails_loudly_not_quietly(tmp_path, content):
     # Every broken-envelope shape must exit 2: a failed gather read as a
     # quiet day would silently leave yesterday's alert up with no sign
