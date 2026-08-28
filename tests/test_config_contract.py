@@ -562,3 +562,27 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
         f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
         "half-applied path change, and the agent is told two different files"
     )
+
+
+def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
+    """The gate's placeholder check matches whole strings only, so a
+    placeholder embedded mid-string ("/Users/[OWNER_MAC_USERNAME]/...")
+    passes the gate unfilled — the exact drift that once let an unmigrated
+    config reach the 07:05 gather. Two assertions pin the contract from both
+    sides: the unfilled template must FAIL the gate (every placeholder is
+    gate-visible), and no template string may embed a bracket form the
+    whole-string regex cannot see."""
+    spec = importlib.util.spec_from_file_location(
+        "ld_config_gate", ROOT / "ld-shared" / "scripts" / "ld_config_gate.py")
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+
+    template = ROOT / "ld-shared" / "references" / "config.example.json"
+    failures = gate.gate(__import__("json").loads(template.read_text()))
+    assert "an unfilled [UPPER_SNAKE] placeholder remains" in failures
+
+    strings = re.findall(r'"((?:[^"\\]|\\.)*)"', template.read_text())
+    embedded = [s for s in strings
+                if "[" in s and not re.fullmatch(r"\[[A-Z][A-Z0-9_]*\]", s)
+                and not s.startswith("_comment") and "placeholder" not in s]
+    assert embedded == [], f"gate-invisible embedded placeholder(s): {embedded}"
