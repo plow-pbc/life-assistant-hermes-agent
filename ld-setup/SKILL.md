@@ -17,6 +17,13 @@ already there and isn't active" is a perfectly honest sentence describing a
 run that failed, and nobody can tell. Do not paraphrase, and do not call a
 phase done on a non-zero exit.
 
+**Never `cat`, `echo`, or otherwise paste `/opt/data/.env` or any line
+containing `TOKEN` into chat.** The dotenv carries this agent's own Plow
+bearer and the kiosk's dashboard token; the scripts in this skill read it for
+you and never need you to. If you find yourself about to inspect the dotenv
+by hand, that is the wrong move — reach for the script's own idempotent
+output instead.
+
 ## Phase 1 — Interview, then the config
 
 Skip when `/opt/data/ld/config.json` exists **and** this prints nothing:
@@ -37,7 +44,8 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | `timezone` | confirm the zone you gave them: the container's is `echo $TZ` | `family.timezone` |
 | `has_mac` | do you have a Mac? (Plow Latch runs there; without it the calendar and message cards stay empty — the weather and sports cards do not need it) | gates `mac_username` |
 | `mac_username` | your Mac login name (only with a Mac) | `morning_triage.chat_db_path` |
-| `owner_imessage`, `people`, `teams`, `digest_length` | optional: your number, household names, teams (ESPN abbreviation + sport + league, e.g. `chc` / `baseball` / `mlb`), how long the Sunday digest should be | `family`, `sports.followed`, `weekly_digest.length` |
+| `owner_imessage`, `people`, `digest_length` | optional: your number, household names, how long the Sunday digest should be | `family`, `weekly_digest.length` |
+| `teams` | optional: teams to follow, each as ESPN abbreviation + sport + league, e.g. `[{"abbr":"chc","sport":"baseball","league":"mlb"}]` | `sports.followed` |
 
 **The timezone is not negotiable here.** If the owner's zone is not `$TZ`,
 the script below refuses and says why: the container's zone is `AGENT_TZ`
@@ -47,8 +55,8 @@ Tell the owner to ask their operator to set `AGENT_TZ` to their zone and run
 agrees with the container instead — the cards would land at the wrong hour.
 
 Compose ONE JSON object from the answers (keys exactly as the table's first
-column; `has_mac` a boolean; list keys as lists) and feed it on stdin —
-never on argv — to:
+column; `has_mac` a boolean; list keys as lists, `teams` a list of objects
+shaped as above) and feed it on stdin — never on argv — to:
 
     /opt/data/skills/ld-setup/scripts/write_config.py <<'EOF'
     { ...the answers... }
@@ -61,24 +69,29 @@ writes is `/opt/data/skills/ld-shared/references/config.example.json`.
 
 ## Phase 2 — The kiosk
 
-Skip when `/opt/data/.env` already has a `DASHBOARD_ENDPOINT_URL` line **and**
-the `--status` poll at the end of Phase 2b exits 0.
+Idempotent, so there is no dotenv to inspect by hand — just run it (never
+`cat` the dotenv to check first: see the standing rule above):
 
     /opt/data/skills/ld-setup/scripts/mint_kiosk.py
 
 It mints this agent's kiosk on Plow with its own token, writes
 `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN` into the dotenv (no restart
-needed — the producers read the file on every run), and prints two lines,
-`pi_line_1=…` (the `apt install`) and `pi_line_2=…` (the `curl … --pair
-<code>`) — bare, one per line, nothing shell-wrapped around the value, so
-the value drops straight into an `ssh` argv element in the next phase. The
-code expires in 30 minutes — if it has, run the script again and it
-re-mints one. Re-running never mints a second kiosk.
+needed — the producers read the file on every run), and prints the pairing
+code's expiry followed by two lines, `pi_line_1=…` (the `apt install`) and
+`pi_line_2=…` (the `curl … --pair <code>`) — bare, one per line, nothing
+shell-wrapped around the value, so the value drops straight into an `ssh`
+argv element in the next phase. The code expires in 30 minutes — if it has,
+run the script again and it re-mints one. Re-running never mints a second
+kiosk.
+
+If its output says the kiosk is **already minted and paired**, the Pi is
+already up — skip Phase 2b entirely and go to Phase 3. Otherwise Phase 2b
+runs next.
 
 ## Phase 2b — bring the Pi up through Latch
 
-Skip when `mint_kiosk.py --status` (at the end of this phase) already exits
-0. The agent is in the cloud and cannot reach the Pi's LAN address; the
+Skip when Phase 2's own output above already said the kiosk is minted and
+paired. The agent is in the cloud and cannot reach the Pi's LAN address; the
 owner's Mac, on the same LAN, can — so when the owner has one, this phase
 runs the two lines *on the Pi, from the Mac*, over Plow Latch, rather than
 asking the owner to type them.
@@ -105,13 +118,19 @@ and lands in the audit record, so there is no channel a password could ride
 through the agent. Once they confirm it ran, re-probe; do not proceed on a
 refused probe.
 
-Once the probe succeeds, run each Pi line the same way, `network=True` and
-a `timeout` of `600000` (ten minutes — `apt` is slow on a Pi; a run this
-long comes back as a job handle, so poll it with `plow_get_output` rather
-than waiting on the call):
+Once the probe succeeds, run each Pi line the same way, `-o BatchMode=yes` so
+a key-auth regression fails fast instead of hanging on a password prompt with
+no tty, `network=True`, and a `timeout` of `600000` (ten minutes — `apt` is
+slow on a Pi; a run this long comes back as a job handle, so poll it with
+`plow_get_output` rather than waiting on the call):
 
-    plow_run_command(argv=["ssh", "<pi_user>@<pi_address>", "<pi_line_1>"], network=True, timeout=600000)
-    plow_run_command(argv=["ssh", "<pi_user>@<pi_address>", "<pi_line_2>"], network=True, timeout=600000)
+    plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_1>"], network=True, timeout=600000)
+    plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_2>"], network=True, timeout=600000)
+
+`pi_line_2` carries the one-shot pairing code, and that code lands in the
+same approval card and audit record as everything else in this phase — that
+is intended, not a leak to work around: the code is short-lived (30 minutes),
+single-use, and not a credential the way a password is.
 
 Paste each command's output verbatim, same as every other script in this
 skill. Raspberry Pi OS grants the Imager's primary user passwordless sudo
@@ -135,18 +154,24 @@ the command output above for what went wrong) and wait.
 
 ## Phase 3 — Crons, and one card
 
-Skip when `hermes cron list` already names all six `ld-*` jobs, none paused.
+Create-if-missing and safe to re-run, so there is no skip condition — always
+run it:
 
     /opt/data/skills/ld-dashboard/scripts/register_crons.py
 
 Paste its output; `refusing to register`, `WARNING` or `PAUSED` means this
 phase did not finish (see `/opt/data/skills/ld-dashboard/SKILL.md`). Then
-force the weather card:
+force the weather card. `hermes cron run` takes a job id, not a name, and ids
+are opaque hex, so look the id up from `/opt/data/cron/jobs.json` (the same
+file `register_crons.py` itself trusts, not `hermes cron list`'s human
+rendering) first:
 
-    /opt/hermes/bin/hermes cron run ld-weather
+    ID=$(python3 -c 'import json;print(next(j["id"] for j in json.load(open("/opt/data/cron/jobs.json"))["jobs"] if j["name"]=="ld-weather"))')
+    /opt/hermes/bin/hermes cron run "$ID"
 
-and run `mint_kiosk.py --status` once more. **Plow's status route does not
-return cards**, so what this proves is that the Pi is paired, deployed and
-the producer posted without error — the card itself is on the wall, not in
-anything you can read. Tell the owner: "your wall is live — the weather card
-should be showing; is it?" and take their answer as the proof.
+and run `/opt/data/skills/ld-setup/scripts/mint_kiosk.py --status` once more.
+**Plow's status route does not return cards**, so what this proves is that
+the Pi is paired, deployed and the producer posted without error — the card
+itself is on the wall, not in anything you can read. Tell the owner: "your
+wall is live — the weather card should be showing; is it?" and take their
+answer as the proof.
