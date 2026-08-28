@@ -98,6 +98,10 @@ source; this table summarises it.
 | `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
 | `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored gog |
 
+All six rows register unconditionally. The blocked/LIVE partition machinery
+left with the last blocked row — no blocked producer is on any roadmap, and
+git history keeps the pattern if one ever loses its data source again.
+
 ## Two values that are never literals
 
 **The timezone.** `hermes cron create` takes no per-job zone — every job fires in
@@ -113,7 +117,7 @@ Los_Angeles container, silently.
 **The Plow Chat delivery target.** Two producers message the owner as well as
 posting a card, and which chat that is was minted by this instance's own
 activation — so it can never be a literal here, on a repo more than one person
-runs. The digest's sits in `JOBS` as `plow_chat:${PLOW_CHAT_CHAT_UID}`, and
+runs. It sits in `JOBS` as `plow_chat:${PLOW_CHAT_CHAT_UID}`, and
 `resolve_deliver()` expands it from `/opt/data/.env` — the file activation
 writes and the gateway loads; a `docker exec` session's env never carries it —
 refusing an unset or blank variable by name — an empty target is a chat leg
@@ -121,12 +125,11 @@ that silently delivers nowhere.
 
 The two producers take different delivery paths, on purpose. `--deliver`
 relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always
-has content, its final response IS the digest — and its row rides it. It
-does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
-the nudge's chat leg lives in its committed post script
-(`ld-calendar-nudge/scripts/post_nudge.py`), which reads `PLOW_CHAT_*` from
-the gateway env at run time and refuses an absent one by name
-(`test_only_the_digest_rides_the_native_deliver_arm` pins the divide).
+has content, its final response IS the digest — and its live row rides it.
+It does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
+its chat leg lives in its committed `post_nudge.py` coordinator and its row's `deliver`
+is `None` (`test_only_the_digest_rides_the_native_deliver_arm` pins the
+divide).
 
 ## Unattended runs
 

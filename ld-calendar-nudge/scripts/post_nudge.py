@@ -1,30 +1,29 @@
 #!/usr/bin/env python3
-"""post_nudge.py — post ld-calendar-nudge's reminder to both surfaces, in order.
+"""post_nudge.py — the nudge's one posting command: kiosk card 1, then chat.
 
-Wrapper over `ld-shared/scripts/post_to_kiosk.py` (sets the bundle-specific
-MESSAGE_FILE + CARD + BODY_TYPE, then dispatches) plus this producer's second
-leg: the same reminder text to the owner over the Plow Chat gateway, only
-after the kiosk post succeeded. One command enforces that ordering and keeps
-the text on one fixed handoff path — the cron's turn never rebuilds it.
+The sheet runs only this. One handoff, written by nudge_candidates.py (never
+by the model): every qualifying reminder, earliest first. Order is the
+data-integrity contract:
 
-The chat leg is a committed script rather than the cron's native --deliver
-arm on purpose: --deliver relays EVERY final response, and this producer's
-half-hourly runs are mostly quiet no-ops (see register_crons.py's divide).
-
-The chat env is resolved BEFORE the kiosk leg runs, so a half-configured
-install is a no-op on both surfaces instead of a posted card with a silently
-dropped chat reminder. The handoff is consumed only after the LAST leg
-succeeds (the kiosk leg runs with consume=False): a transient chat failure
-leaves the file on disk, so a retry resends it — without that, a :20 failure
-for a :30 meeting is unrecoverable, because the :50 recompose has already
-moved past the event.
-
-MESSAGE_FILE sits under /opt/data (HERMES_WRITE_SAFE_ROOT) per #12. The chat
-env values live in /opt/data/.env, which the GATEWAY loads — a docker-exec
-shell does not carry them (the #24 gotcha); test from a real agent turn or
-source that file first.
+1. Resolve + validate the Plow Chat config FIRST — env, then /opt/data/.env
+   (the #24 lesson) — refusing by name before ANYTHING posts, so a blank
+   chat config can never leave a qualifying run half-delivered (kiosk up,
+   owner never messaged).
+2. Read the handoff once through post_to_kiosk's fixed-file read/refusal
+   seam (missing or empty refuses loudly, nothing consumed).
+3. Kiosk: the FIRST line — the earliest reminder, ≤115 enforced by the
+   filter — goes to card 1, `type: "alert"` (the slot shared with
+   ld-morning-triage; latest post per card wins), over post_to_kiosk's
+   stdin transport: MESSAGE_FILE stays None, so the shared helper neither
+   reads nor consumes the handoff — this coordinator owns both.
+4. Chat: the whole body goes to the owner over
+   {base}/v1/chats/{uid}/messages through the shared post_bearer_json —
+   no-redirect guard on every bearer request, bearer never in argv.
+5. Consume the handoff once, only after both legs succeeded: a failure at
+   either leg leaves it for a retry (a kiosk re-post on a chat retry is a
+   harmless latest-wins replace).
 """
-import json
+import io
 import os
 import sys
 
@@ -33,65 +32,60 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 import post_to_kiosk  # noqa: E402
+from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
-post_to_kiosk.MESSAGE_FILE = "/opt/data/ld/calendar-nudge-text"
 post_to_kiosk.CARD = "1"
 post_to_kiosk.BODY_TYPE = "alert"
-post_to_kiosk.TITLE = ""  # hide the eyebrow — calendar reminders carry no title
+post_to_kiosk.TITLE = ""  # hide the eyebrow — the reminder gets the full card height
+
+# The one handoff, written by nudge_candidates.py and consumed here.
+HANDOFF = "/opt/data/ld/calendar-nudge-text"
 
 
-def require_env(name):
-    value = os.environ.get(name, "").strip()
+def require(name, dotenv):
+    value = (os.environ.get(name) or dotenv.get(name) or "").strip()
     if not value:
         sys.exit(
-            f"error: ${name} is unset or empty — it lands in /opt/data/.env at "
-            "activation time, which the gateway loads; a docker-exec shell "
-            "must source it first"
+            f"{name} is unset or blank in the env and {DOTENV} -- activation "
+            "writes it there; refusing BEFORE the kiosk post so a half-"
+            "delivered run cannot happen"
         )
     return value
 
 
-def resolve_chat_env():
-    return tuple(
-        require_env(n)
-        for n in ("PLOW_CHAT_BASE_URL", "PLOW_CHAT_CHAT_UID", "PLOW_CHAT_TOKEN")
-    )
-
-
-def send_chat(text, dry_run, base_url, chat_uid, token):
-    url = f"{base_url.rstrip('/')}/v1/chats/{chat_uid}/messages"
-
-    if dry_run:
-        print(
-            json.dumps(
-                {
-                    "method": "POST",
-                    "url": url,
-                    "authorization": "Bearer <redacted>",
-                    "body": {"body": f"<redacted, {len(text)} chars>"},
-                },
-                indent=2,
-            )
-        )
-        return
-
-    post_to_kiosk.post_bearer_json(url, token, {"body": text}, "Plow Chat")
+def resolve_chat():
+    """The chat endpoint + bearer, validated before anything posts."""
+    dotenv = dotenv_values(DOTENV)
+    base = require("PLOW_CHAT_BASE_URL", dotenv).rstrip("/")
+    uid = require("PLOW_CHAT_CHAT_UID", dotenv)
+    token = require("PLOW_CHAT_TOKEN", dotenv)
+    return f"{base}/v1/chats/{uid}/messages", token
 
 
 def main():
-    dry_run = "--dry-run" in sys.argv[1:]
-    # Read before the kiosk leg consumes the file on success; both legs send
-    # the identical text.
-    text = post_to_kiosk.read_required_file(
-        post_to_kiosk.MESSAGE_FILE, "alert text file"
-    )
-    chat = resolve_chat_env()  # refuse BEFORE the kiosk leg posts anything
-    post_to_kiosk.main(consume=False)  # exits non-zero on kiosk failure — chat never runs
-    send_chat(text, dry_run, *chat)
-    # Consume only after BOTH legs succeeded; a dry run keeps the file, same
-    # as post_to_kiosk's own dry-run semantics.
-    if not dry_run:
-        os.unlink(post_to_kiosk.MESSAGE_FILE)
+    chat_url, token = resolve_chat()
+    text = post_to_kiosk.read_required_file(HANDOFF, "reminder text")
+
+    # The kiosk leg takes its one line over the stdin transport — an
+    # importer-only seam (the CLI feeds no stdin), so the shared helper
+    # never touches the handoff.
+    saved_stdin = sys.stdin
+    sys.stdin = io.StringIO(text.splitlines()[0])
+    try:
+        post_to_kiosk.main()
+    finally:
+        sys.stdin = saved_stdin
+
+    if "--dry-run" in sys.argv:
+        # main() printed the redacted kiosk envelope; nothing was consumed.
+        print(f"dry-run: would then POST the reminder body to {chat_url}")
+        return
+
+    post_to_kiosk.post_bearer_json(chat_url, token, {"body": text}, "Plow Chat")
+
+    # Both legs succeeded: consume the one-shot handoff.
+    os.unlink(HANDOFF)
+    print(f"posted kiosk card and chat nudge ({len(text)} chars)")
 
 
 if __name__ == "__main__":

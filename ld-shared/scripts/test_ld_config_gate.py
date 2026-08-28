@@ -9,7 +9,9 @@ the gate's output to the EXACT contract of that old jq filter:
     that replaced the per-source account one — see ld_config_gate.py's
     docstring): valid → pass; blank owner name; blank/missing family.timezone;
     sources not a non-empty array; blank source calendar_id; duplicate
-    calendar_id values; leftover placeholder; invalid JSON.
+    calendar_id values; missing/empty/blank calendar_nudge.owner_identities;
+    missing/zero/negative/non-number nudge lookaheads; leftover placeholder;
+    invalid JSON.
   - whenever jq IS available on the test machine (it is on the dev box; it is
     NOT on the Pi), every fixture below is ALSO run through the original jq
     filter and asserted byte-identical — proving the port is faithful, not just
@@ -38,10 +40,13 @@ JQ_FILTER = r"""
         then empty else "a calendar.sources[].calendar_id is blank" end,
       if ([.calendar.sources[]? | (.calendar_id // "")] | length) == ([.calendar.sources[]? | (.calendar_id // "")] | unique | length)
         then empty else "calendar.sources[].calendar_id values are not unique" end,
-      if ((.calendar_nudge.owner_identities | type) == "array" and (.calendar_nudge.owner_identities | length) >= 1)
-        then empty else "calendar_nudge.owner_identities is not a non-empty array" end,
-      if ([.calendar_nudge.owner_identities[]? | select((test("\\S")) | not)] | length) == 0
-        then empty else "a calendar_nudge.owner_identities entry is blank" end,
+      if ((.calendar_nudge.owner_identities | type) == "array" and (.calendar_nudge.owner_identities | length) >= 1
+          and ([.calendar_nudge.owner_identities[] | select(((. // "") | test("\\S")) | not)] | length) == 0)
+        then empty else "calendar_nudge.owner_identities is not a non-empty list of nonblank strings" end,
+      if ((.calendar_nudge.lookahead_virtual_minutes | type) == "number" and .calendar_nudge.lookahead_virtual_minutes > 0)
+        then empty else "calendar_nudge.lookahead_virtual_minutes is not a positive number" end,
+      if ((.calendar_nudge.lookahead_in_person_minutes | type) == "number" and .calendar_nudge.lookahead_in_person_minutes > 0)
+        then empty else "calendar_nudge.lookahead_in_person_minutes is not a positive number" end,
       if ([.. | strings | select(test("^\\[[A-Z][A-Z0-9_]*\\]$"))] | length) == 0
         then empty else "an unfilled [UPPER_SNAKE] placeholder remains" end
     ] | join("; ")
@@ -50,14 +55,16 @@ JQ_FILTER = r"""
 VALID = {
     "family": {"owner": {"name": "Sam"}, "timezone": "America/Los_Angeles"},
     "calendar": {"sources": [{"calendar_id": "primary", "name": "Personal"}]},
-    "calendar_nudge": {"owner_identities": ["sam@example.com"]},
+    "calendar_nudge": {"owner_identities": ["owner@example.test"],
+                       "lookahead_virtual_minutes": 30,
+                       "lookahead_in_person_minutes": 60},
     "weather": {"location": "Mountain View", "lat": 37.386, "lon": -122.083},
 }
 
 # (label, raw-bytes-written-to-file, expected-output, jq_crosscheck) — raw bytes
 # so we can feed malformed JSON too. Expected outputs are the documented (a)-(f)
-# outcomes. jq_crosscheck=False on the lone case where we DELIBERATELY diverge
-# from jq's accidental behavior (see the empty-file case).
+# outcomes. jq_crosscheck=False on the cases where we DELIBERATELY diverge
+# from jq's accidental behavior (the empty-file and Infinity cases).
 CASES = [
     ("(a) fully valid", json.dumps(VALID), "", True),
     ("(b) blank owner name",
@@ -70,7 +77,8 @@ CASES = [
      json.dumps({**VALID, "calendar": {"sources": []}}),
      "calendar.sources is not a non-empty array", True),
     ("(c') sources missing",
-     json.dumps({"family": VALID["family"], "calendar_nudge": VALID["calendar_nudge"]}),
+     json.dumps({"family": VALID["family"],
+                 "calendar_nudge": VALID["calendar_nudge"]}),
      "calendar.sources is not a non-empty array", True),
     ("(c'') sources non-array",
      json.dumps({**VALID, "calendar": {"sources": "primary"}}),
@@ -92,6 +100,49 @@ CASES = [
     ("(e) leftover placeholder (calendar_id)",
      json.dumps({**VALID, "calendar": {"sources": [{"calendar_id": "[FAMILY_CALENDAR_ID]"}]}}),
      "an unfilled [UPPER_SNAKE] placeholder remains", True),
+    # The nudge's identity home: an empty/blank set is an eternally quiet
+    # nudge that looks installed, so the gate refuses it by name.
+    ("(h) calendar_nudge missing → identity and both lookaheads flagged",
+     json.dumps({k: v for k, v in VALID.items() if k != "calendar_nudge"}),
+     "calendar_nudge.owner_identities is not a non-empty list of nonblank strings; "
+     "calendar_nudge.lookahead_virtual_minutes is not a positive number; "
+     "calendar_nudge.lookahead_in_person_minutes is not a positive number", True),
+    ("(h') owner_identities empty list",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "owner_identities": []}}),
+     "calendar_nudge.owner_identities is not a non-empty list of nonblank strings", True),
+    ("(h'') owner_identities blank element",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "owner_identities": ["owner@example.test", "  "]}}),
+     "calendar_nudge.owner_identities is not a non-empty list of nonblank strings", True),
+    ("(h''') owner_identities non-string element → not valid JSON",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "owner_identities": ["  ", 5]}}),
+     "not valid JSON", True),
+    # The lookaheads the filter hard-requires: missing, zero/negative, and
+    # non-number shapes must all be named, or a gate-passing config fails
+    # every scheduled run.
+    ("(i) lookahead missing",
+     json.dumps({**VALID, "calendar_nudge": {k: v for k, v in VALID["calendar_nudge"].items()
+                                             if k != "lookahead_virtual_minutes"}}),
+     "calendar_nudge.lookahead_virtual_minutes is not a positive number", True),
+    ("(i') lookahead zero",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_in_person_minutes": 0}}),
+     "calendar_nudge.lookahead_in_person_minutes is not a positive number", True),
+    ("(i'') lookahead negative",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_virtual_minutes": -30}}),
+     "calendar_nudge.lookahead_virtual_minutes is not a positive number", True),
+    ("(i''') lookahead a string",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_virtual_minutes": "30"}}),
+     "calendar_nudge.lookahead_virtual_minutes is not a positive number", True),
+    ("(i'''') lookahead true → jq type boolean, not number",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_virtual_minutes": True}}),
+     "calendar_nudge.lookahead_virtual_minutes is not a positive number", True),
+    # A second DELIBERATE divergence (see the empty-file case): both parsers
+    # accept the non-standard Infinity/NaN tokens — measured on jq 1.7.1,
+    # which parses Infinity and calls it > 0 — so parity would let an
+    # Infinity lookahead PASS the gate. The python gate fail-closes them as
+    # "not valid JSON" instead; the jq cross-check is skipped for this case.
+    ("(i''''') lookahead Infinity → fail-closed (diverges from jq's accept)",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_virtual_minutes": float("inf")}}),
+     "not valid JSON", False),
     ("(e') leftover placeholder (nested)",
      json.dumps({**VALID, "weather": {"location": "[CITY_NAME]"}}),
      "an unfilled [UPPER_SNAKE] placeholder remains", True),
@@ -101,33 +152,23 @@ CASES = [
     ("(f') missing timezone",
      json.dumps({**VALID, "family": {"owner": {"name": "Sam"}}}),
      "family.timezone is blank", True),
-    # The upgraded-install trap: a live config from before the nudge landed has
-    # no calendar_nudge.owner_identities at all -- gate it here, or the cron
-    # registers and every half-hourly run refuses before gathering.
-    ("(h) missing owner_identities",
-     json.dumps({k: v for k, v in VALID.items() if k != "calendar_nudge"}),
-     "calendar_nudge.owner_identities is not a non-empty array", True),
-    ("(h') empty owner_identities",
-     json.dumps({**VALID, "calendar_nudge": {"owner_identities": []}}),
-     "calendar_nudge.owner_identities is not a non-empty array", True),
-    ("(h'') blank owner_identities entry",
-     json.dumps({**VALID, "calendar_nudge": {"owner_identities": ["  "]}}),
-     "a calendar_nudge.owner_identities entry is blank", True),
-    ("(h''') non-string owner_identities entry → not valid JSON",
-     json.dumps({**VALID, "calendar_nudge": {"owner_identities": [5]}}),
-     "not valid JSON", True),
     ("(g) invalid JSON", "{ not json", "not valid JSON", True),
-    # An empty file is the lone DELIBERATE divergence: jq with no input emits
+    # An empty file is the first DELIBERATE divergence: jq with no input emits
     # nothing and exits 0, so the old gate fail-OPEN-passed an empty config (a
     # latent bug — verify.sh's own `jq -e .` pre-check already rejected it). The
     # python gate fail-CLOSES it as "not valid JSON" (empty is not valid JSON),
-    # which is strictly safer; we skip the jq cross-check for this one case only.
+    # which is strictly safer; the jq cross-check is skipped here, as on the
+    # Infinity case below — the two deliberate divergences.
     ("(g') empty file → fail-closed (diverges from jq's fail-open)",
      "", "not valid JSON", False),
     # multiple simultaneous failures join with "; " in filter order.
-    ("multi: blank name + missing tz + empty sources + missing identities",
+    ("multi: blank name + missing tz + empty sources + no calendar_nudge",
      json.dumps({"family": {"owner": {"name": ""}}, "calendar": {"sources": []}}),
-     "family.owner.name is blank; family.timezone is blank; calendar.sources is not a non-empty array; calendar_nudge.owner_identities is not a non-empty array", True),
+     "family.owner.name is blank; family.timezone is blank; "
+     "calendar.sources is not a non-empty array; "
+     "calendar_nudge.owner_identities is not a non-empty list of nonblank strings; "
+     "calendar_nudge.lookahead_virtual_minutes is not a positive number; "
+     "calendar_nudge.lookahead_in_person_minutes is not a positive number", True),
     # jq // "" semantics: a false value coalesces to "" (blank), not an error.
     ("name false → blank",
      json.dumps({**VALID, "family": {**VALID["family"], "owner": {"name": False}}}),

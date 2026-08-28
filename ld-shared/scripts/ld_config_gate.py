@@ -33,8 +33,10 @@ The eight checks, matching the (updated) jq filter exactly:
   3. calendar.sources must be a non-empty array            (jq: (type) == "array" and length >= 1)
   4. no calendar.sources[].calendar_id may be blank        (jq: select(((.calendar_id // "") | test("\\S")) | not))
   5. calendar.sources[].calendar_id values must be unique  (jq: length == (unique | length))
-  6. calendar_nudge.owner_identities must be a non-empty array (jq: (type) == "array" and length >= 1)
-  7. no calendar_nudge.owner_identities entry may be blank (jq: select((test("\\S")) | not))
+  6. calendar_nudge.owner_identities must be a non-empty list of nonblank
+     strings                                               (jq: (type) == "array", length >= 1, each (. // "") | test("\\S"))
+  7. calendar_nudge.lookahead_virtual_minutes and
+     lookahead_in_person_minutes must be positive numbers  (jq: (type) == "number" and . > 0)
   8. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
 
 Checks 4-5 replaced the old "no calendar.sources[].account may be blank": the
@@ -44,9 +46,10 @@ nothing uses -- while several sources saying "primary" all resolved to the
 authenticated account's own calendar, silently omitting the rest. The id IS
 the whole address, so it must be present and unique (which also caps a bare
 "primary" at one source). Owner identity is a nudge concern, not a source
-concern: checks 6-7 gate calendar_nudge.owner_identities, the email set the
-nudge's owner-participation filter matches against -- an upgraded config
-without it would register a live cron whose every run fails.
+concern: check 6 is its home -- calendar_nudge.owner_identities is the
+owner's email identity set (one per connected calendar) that
+nudge_candidates.py's owner-participation rule reads; an empty set would
+fail that rule on every event, an eternally quiet nudge that looks installed.
 """
 import json
 import re
@@ -159,24 +162,31 @@ def gate(config):
         if len(ids) != len(set(ids)):
             failures.append("calendar.sources[].calendar_id values are not unique")
 
-    # 6. calendar_nudge.owner_identities is a non-empty array, and 7. no entry
-    #    is blank. The nudge's owner-participation filter matches against this
-    #    set; an upgraded config without it registers a live half-hourly cron
-    #    whose every run refuses before gathering. Same sweep discipline as
-    #    checks 4-5: visit every element, so a later non-string entry still
-    #    collapses to "not valid JSON" exactly as jq's test() would.
-    identities = _index(_index(config, "calendar_nudge"), "owner_identities")
-    if not (isinstance(identities, list) and len(identities) >= 1):
-        failures.append("calendar_nudge.owner_identities is not a non-empty array")
-    if isinstance(identities, list):
-        blank_entry = False
-        for ident in identities:
-            if not isinstance(ident, str):
-                raise GateError("test() on non-string")
-            if not _NONBLANK_RE.search(ident):
-                blank_entry = True
-        if blank_entry:
-            failures.append("a calendar_nudge.owner_identities entry is blank")
+    # 6. calendar_nudge.owner_identities is a non-empty list of nonblank
+    #    strings. One gog identity fetches every calendar, so the nudge's
+    #    owner-participation rule cannot be derived from the sources (the
+    #    per-source account/self keys are gone; this key is identity's home).
+    #    The full comprehension (no all()-short-circuit) matches jq, which
+    #    evaluates test() on every element -- a blank element followed by a
+    #    non-string one must still collapse to "not valid JSON".
+    idents = _index(_index(config, "calendar_nudge"), "owner_identities")
+    if not (isinstance(idents, list)
+            and len(idents) >= 1
+            and all([_test_nonblank(i) for i in idents])):
+        failures.append(
+            "calendar_nudge.owner_identities is not a non-empty list of "
+            "nonblank strings")
+
+    # 7. the two nudge lookaheads are positive numbers. nudge_candidates.py
+    #    hard-requires both, so a gate-passing config missing either would
+    #    fail every scheduled half-hourly run -- installed-looking, never
+    #    nudging. bool is excluded: JSON true is jq type "boolean", but
+    #    Python bool passes isinstance(int).
+    for key in ("lookahead_virtual_minutes", "lookahead_in_person_minutes"):
+        value = _index(_index(config, "calendar_nudge"), key)
+        if not (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and value > 0):
+            failures.append(f"calendar_nudge.{key} is not a positive number")
 
     # 8. no leftover [UPPER_SNAKE] placeholder anywhere
     if any(_PLACEHOLDER_RE.match(s) for s in _all_strings(config)):
@@ -191,7 +201,14 @@ def main(argv):
         return 2
     try:
         with open(argv[1], encoding="utf-8") as f:
-            config = json.load(f)
+            # parse_constant: BOTH parsers accept the non-standard NaN /
+            # Infinity tokens (measured: jq 1.7.1 parses Infinity and calls
+            # it > 0), so an Infinity lookahead would pass the gate. Raising
+            # here fail-closes them as "not valid JSON" — a deliberate
+            # divergence from jq, like the empty-file case.
+            config = json.load(
+                f, parse_constant=lambda token: (_ for _ in ()).throw(
+                    ValueError(f"non-standard JSON constant {token}")))
         failures = gate(config)
     except (OSError, ValueError, GateError):
         # jq's gate emitted "not valid JSON" on any read/parse/filter failure.
