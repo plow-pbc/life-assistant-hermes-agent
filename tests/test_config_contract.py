@@ -482,7 +482,11 @@ WRITE_SAFE_ROOT = "/opt/data"
 # Listed, not globbed: discovery needed a floor (an empty glob SKIPS a
 # parametrized test), a helper exclusion and a sheet-presence rule -- three
 # guards on the finder, none on the contract, and together bigger than it.
-PRODUCERS = [("ld-weather", "post_weather.py"), ("ld-sports", "post_sports.py")]
+PRODUCERS = [
+    ("ld-morning-triage", "post_alert.py"),
+    ("ld-weather", "post_weather.py"),
+    ("ld-sports", "post_sports.py"),
+]
 # The helper ships no sheet; its constant is the docstring example the next
 # producer copies, so it is pinned for the write-safe check alone.
 HANDOFFS = PRODUCERS + [("ld-shared", "post_to_kiosk.py")]

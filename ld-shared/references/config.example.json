@@ -22,6 +22,7 @@
     "long_lead": [{ "type": "[LONG_LEAD_TYPE]", "lead_days": 7 }]
   },
   "morning_triage": {
+    "chat_db_path": "/Users/[OWNER_MAC_USERNAME]/Library/Messages/chat.db",
     "ranking_instructions": "",
     "exclude": {
       "imessage_handles": [],
