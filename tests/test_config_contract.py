@@ -465,7 +465,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
     seen = 0
-    for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
+    for skill_md in [*sorted(ROOT.glob("ld-*/SKILL.md")), ROOT / "runtime" / "SOUL.md"]:
         text = skill_md.read_text()
         for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
             ref = ref.rstrip(".").rstrip("/")

@@ -34,9 +34,17 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?count=1&name="
 REQUIRED = ("owner_name", "owner_email", "city", "timezone", "has_mac")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Same reason as mint_kiosk.py: a followed 3xx re-issues the request elsewhere."""
+
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+
 def geocode(city):
     """city -> (lat, lon), or a refusal the agent can relay."""
-    with urllib.request.urlopen(GEOCODE_URL + urllib.parse.quote(city), timeout=30) as resp:
+    opener = urllib.request.build_opener(_NoRedirect)
+    with opener.open(GEOCODE_URL + urllib.parse.quote(city), timeout=30) as resp:
         results = json.load(resp).get("results") or []
     if not results:
         raise SystemExit(f"refusing to write: no place matches {city!r} -- ask the owner for a nearby city")
@@ -45,7 +53,11 @@ def geocode(city):
 
 def build(answers, env, geocoder=None):
     """The config for a set of answers, or SystemExit naming what is wrong."""
+    # has_mac gates the Messages db path, so a truthy non-bool ("no", 0) would
+    # decide it silently -- it has to arrive as a real boolean or not at all.
     missing = [k for k in REQUIRED if answers.get(k) in (None, "")]
+    if "has_mac" not in missing and not isinstance(answers["has_mac"], bool):
+        missing.append("has_mac")
     if missing:
         raise SystemExit(f"refusing to write: missing required answer(s): {', '.join(missing)}")
     container = (env.get("TZ") or "").strip()

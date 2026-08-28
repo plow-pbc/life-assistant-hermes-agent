@@ -46,20 +46,18 @@ def fake_geocode(city):
     return 41.85, -87.65
 
 
-@pytest.mark.parametrize("answers", [FULL, MINIMAL], ids=["every-answer", "required-only"])
-def test_answers_become_a_config_the_shared_gate_accepts(answers):
+@pytest.mark.parametrize("answers,expected_chat_db", [
+    (FULL, "/Users/rowan/Library/Messages/chat.db"),
+    (MINIMAL, ""),
+], ids=["every-answer", "required-only"])
+def test_answers_become_a_config_the_shared_gate_accepts(answers, expected_chat_db):
     config = wc.build(answers, ENV, geocoder=fake_geocode)
     assert gate(config) == ""
     assert config["calendar"]["sources"][0]["calendar_id"] == "rowan@example.test"
     assert config["calendar_nudge"]["owner_identities"] == ["rowan@example.test"]
     assert config["weather"] == {"location": "Chicago", "lat": 41.85, "lon": -87.65}
     assert config["family"]["timezone"] == TZ
-
-
-def test_a_mac_owner_gets_a_messages_db_path_and_a_mac_less_one_does_not():
-    assert (wc.build(FULL, ENV, geocoder=fake_geocode)["morning_triage"]["chat_db_path"]
-            == "/Users/rowan/Library/Messages/chat.db")
-    assert wc.build(MINIMAL, ENV, geocoder=fake_geocode)["morning_triage"]["chat_db_path"] == ""
+    assert config["morning_triage"]["chat_db_path"] == expected_chat_db
 
 
 @pytest.mark.parametrize("drop", sorted(wc.REQUIRED))
@@ -67,6 +65,15 @@ def test_a_missing_required_answer_refuses_by_name(drop):
     with pytest.raises(SystemExit) as e:
         wc.build({k: v for k, v in FULL.items() if k != drop}, ENV, geocoder=fake_geocode)
     assert drop in str(e.value)
+
+
+@pytest.mark.parametrize("has_mac", ["yes", "false", 1], ids=["yes", "false-string", "one"])
+def test_a_non_boolean_has_mac_refuses_by_name(has_mac):
+    """has_mac decides whether the Messages db path is written at all, so a
+    truthy string or a 1 must refuse rather than quietly resolve as a Mac."""
+    with pytest.raises(SystemExit) as e:
+        wc.build({**FULL, "has_mac": has_mac}, ENV, geocoder=fake_geocode)
+    assert "has_mac" in str(e.value)
 
 
 def test_a_timezone_that_is_not_the_containers_refuses_and_names_agent_tz():
