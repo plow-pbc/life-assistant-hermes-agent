@@ -182,16 +182,9 @@ agent-mgr activate <agent>           # prints a code — its owner texts it from
 # each skill UNDER /opt/data, which is already the home bind, so the runtime
 # creates the missing mountpoint inside that bind's source on the host -- as
 # root, and no later `restore` can install into it. plow-pbc/agent-mgr#44 is the
-# fleet-level fix; until it lands this line stands in for it. `ld/`: nothing
-# mounts there, so it is instead whoever first lands config.json in it who owns
-# it -- and `agent-mgr compose ... exec` is root (see below). The agent writes
-# each composed tile to /opt/data/ld/<bundle>-text with its file tool for the
-# wrapper to read back, so a root-owned `ld/` costs every card and does it
-# quietly: a blocked file tool is the kind of thing an agent improvises around,
-# and intermittent posting looks fine from the kiosk. Nothing downstream
-# re-checks either one: `register_crons.py` refuses on a config it cannot read,
-# but an `ld/` the agent can read and not write passes bring-up clean and
-# surfaces later as a card that stopped updating. This line is the only defence.
+# fleet-level fix; until it lands this line stands in for it. `ld/`: the agent
+# writes its config and every composed tile there with its file tool, so a
+# root-owned `ld/` costs every card, quietly -- nothing downstream re-checks it.
 # Two paths, not `{skills,ld}` -- brace expansion is bash/zsh, and under the
 # host's `sh` that collapses to one literal directory and exits 0.
 mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld

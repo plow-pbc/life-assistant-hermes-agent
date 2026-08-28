@@ -12,17 +12,14 @@ rebuilt home or an interrupted chat all pick up from here.
 **Every script's output is pasted verbatim with its exit status, and a phase
 is not done until you have.** The scripts signal every refusal through their
 output and a non-zero exit, and a chat turn does not propagate an exit code.
-If you summarise instead of pasting, "set up the crons, though one was
-already there and isn't active" is a perfectly honest sentence describing a
-run that failed, and nobody can tell. Do not paraphrase, and do not call a
-phase done on a non-zero exit.
+Do not paraphrase, and do not call a phase done on a non-zero exit. The one
+exception is `mint_kiosk.py --status`, whose exit 1 means "not yet paired" --
+a poll result, not a failure.
 
 **Never `cat`, `echo`, or otherwise paste `/opt/data/.env` or any line
 containing `TOKEN` into chat.** The dotenv carries this agent's own Plow
 bearer and the kiosk's dashboard token; the scripts in this skill read it for
-you and never need you to. If you find yourself about to inspect the dotenv
-by hand, that is the wrong move — reach for the script's own idempotent
-output instead.
+you and never need you to.
 
 ## Phase 1 — Interview, then the config
 
@@ -41,7 +38,7 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | `owner_email` | the Google account whose calendar you live by (the email) | `calendar.sources[0].calendar_id` **and** `calendar_nudge.owner_identities[0]` |
 | `extra_calendar_ids` | any shared calendars? — the full id, `…@group.calendar.google.com` | more `calendar.sources[]` |
 | `city` | which city is home? | `weather.location`, geocoded to `lat`/`lon` |
-| `timezone` | confirm the zone you gave them: the container's is `echo $TZ` | `family.timezone` |
+| `timezone` | run `echo $TZ`, tell the owner that zone, ask them to confirm it is theirs | `family.timezone` |
 | `has_mac` | do you have a Mac? (Plow Latch runs there; without it the calendar and message cards stay empty — the weather and sports cards do not need it) | gates `mac_username` |
 | `mac_username` | your Mac login name (only with a Mac) | `morning_triage.chat_db_path` |
 | `owner_imessage`, `people`, `digest_length` | optional: your number, household names, how long the Sunday digest should be | `family`, `weekly_digest.length` |
@@ -69,15 +66,16 @@ writes is `/opt/data/skills/ld-shared/references/config.example.json`.
 
 ## Phase 2 — The kiosk
 
-Idempotent, so there is no dotenv to inspect by hand — just run it (never
-`cat` the dotenv to check first: see the standing rule above):
+Idempotent, so there is no dotenv to inspect by hand — just run it:
 
     /opt/data/skills/ld-setup/scripts/mint_kiosk.py
 
 It mints this agent's kiosk on Plow with its own token, writes
 `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN` into the dotenv (no restart
-needed — the producers read the file on every run), and prints the pairing
-code's expiry followed by two lines, `pi_line_1=…` (the `apt install`) and
+needed — `post_to_kiosk.py` reads that dotenv itself as its third secret
+source, because the container env is the gateway's start-time load and never
+sees an appended line), and prints the pairing
+code's expiry followed by two lines, `pi_line_1=…` (the `apt-get install`) and
 `pi_line_2=…` (the `curl … --pair <code>`) — bare, one per line, nothing
 shell-wrapped around the value, so the value drops straight into an `ssh`
 argv element in the next phase. The code expires in 30 minutes — if it has,
@@ -90,8 +88,7 @@ runs next.
 
 ## Phase 2b — bring the Pi up through Latch
 
-Skip when Phase 2's own output above already said the kiosk is minted and
-paired. The agent is in the cloud and cannot reach the Pi's LAN address; the
+The agent is in the cloud and cannot reach the Pi's LAN address; the
 owner's Mac, on the same LAN, can — so when the owner has one, this phase
 runs the two lines *on the Pi, from the Mac*, over Plow Latch, rather than
 asking the owner to type them.
@@ -102,7 +99,7 @@ Ask, alongside (or right after) the Phase 1 interview:
 |---|---|---|
 | `pi_address` | the Pi's address on your home network — the IP, or `raspberrypi.local` | the `ssh` target |
 | `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the `ssh` target |
-| has a Mac with Latch | do you have a Mac with Plow Latch running on it? | which path below runs |
+| — | the Phase 1 `has_mac` answer (do not re-ask); confirm Plow Latch is running on it | which path below runs |
 
 **With a Mac:** probe key auth first — no password should ever need to
 cross chat.
@@ -111,26 +108,19 @@ cross chat.
                             "<pi_user>@<pi_address>", "true"], network=True)
 
 If that fails, the **one hands-on moment**: tell the owner to run
-`ssh-copy-id <pi_user>@<pi_address>` in their own Mac terminal. The
-password has to be typed there and nowhere else — `plow_run_command` takes
-no stdin and no env, and its `argv` is shown on the owner's approval card
-and lands in the audit record, so there is no channel a password could ride
-through the agent. Once they confirm it ran, re-probe; do not proceed on a
+`ssh-copy-id <pi_user>@<pi_address>` in their own Mac terminal. The password
+has to be typed there and nowhere else — no stdin/env, and argv is on the
+approval card. Once they confirm it ran, re-probe; do not proceed on a
 refused probe.
 
 Once the probe succeeds, run each Pi line the same way, `-o BatchMode=yes` so
 a key-auth regression fails fast instead of hanging on a password prompt with
-no tty, `network=True`, and a `timeout` of `600000` (ten minutes — `apt` is
+no tty, `network=True`, and a `timeout` of `600000` (ten minutes — `apt-get` is
 slow on a Pi; a run this long comes back as a job handle, so poll it with
 `plow_get_output` rather than waiting on the call):
 
     plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_1>"], network=True, timeout=600000)
     plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_2>"], network=True, timeout=600000)
-
-`pi_line_2` carries the one-shot pairing code, and that code lands in the
-same approval card and audit record as everything else in this phase — that
-is intended, not a leak to work around: the code is short-lived (30 minutes),
-single-use, and not a credential the way a password is.
 
 Paste each command's output verbatim, same as every other script in this
 skill. Raspberry Pi OS grants the Imager's primary user passwordless sudo
@@ -150,7 +140,9 @@ when the Pi is done; check every few minutes at most):
 
 Exit 0 — `paired_at` and `sha` both set — is the Pi paired and running the
 viewer. Exit 1 is "not yet": tell the owner (or, on the Latch path, check
-the command output above for what went wrong) and wait.
+the command output above for what went wrong) and wait. Bound the wait: after
+about 30 minutes the pairing code has expired, so run `mint_kiosk.py` (no
+flags) for a fresh one and redo `pi_line_2` rather than polling a dead code.
 
 ## Phase 3 — Crons, and one card
 
@@ -166,12 +158,11 @@ are opaque hex, so look the id up from `/opt/data/cron/jobs.json` (the same
 file `register_crons.py` itself trusts, not `hermes cron list`'s human
 rendering) first:
 
-    ID=$(python3 -c 'import json;print(next(j["id"] for j in json.load(open("/opt/data/cron/jobs.json"))["jobs"] if j["name"]=="ld-weather"))')
+    ID=$(python3 -c 'import json,sys;j=next((j["id"] for j in json.load(open("/opt/data/cron/jobs.json"))["jobs"] if j["name"]=="ld-weather"),None);sys.exit("no ld-weather job in /opt/data/cron/jobs.json -- re-run register_crons.py") if j is None else print(j)')
     /opt/hermes/bin/hermes cron run "$ID"
 
 and run `/opt/data/skills/ld-setup/scripts/mint_kiosk.py --status` once more.
-**Plow's status route does not return cards**, so what this proves is that
-the Pi is paired, deployed and the producer posted without error — the card
-itself is on the wall, not in anything you can read. Tell the owner: "your
-wall is live — the weather card should be showing; is it?" and take their
-answer as the proof.
+Its `cards=` list is the gate: **`'3'` present** means the weather producer's
+card is on the kiosk. Then tell the owner: "your wall is live — the weather
+card should be showing; is it?" — their answer confirms the screen itself,
+which is the one thing the route cannot show you.
