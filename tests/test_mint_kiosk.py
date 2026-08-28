@@ -27,6 +27,7 @@ class _Plow(BaseHTTPRequestHandler):
     paired_at = None
     cards = {}
     mint_uid = "kio_test"
+    pairing_code = "ABC123"
     calls = []
 
     def _send(self, obj):
@@ -40,7 +41,7 @@ class _Plow(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", "0"))
         type(self).calls.append(("POST", self.path, self.headers.get("Authorization"),
                                  json.loads(self.rfile.read(n) or b"{}")))
-        self._send({"uid": type(self).mint_uid, "pairing_code": "ABC123",
+        self._send({"uid": type(self).mint_uid, "pairing_code": type(self).pairing_code,
                     "expires_at": "2026-08-28T20:00:00Z"})
 
     def do_GET(self):
@@ -57,7 +58,8 @@ class _Plow(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def plow(tmp_path):
-    _Plow.calls, _Plow.paired_at, _Plow.cards, _Plow.mint_uid = [], None, {}, "kio_test"
+    _Plow.calls, _Plow.paired_at, _Plow.cards = [], None, {}
+    _Plow.mint_uid, _Plow.pairing_code = "kio_test", "ABC123"
     server = HTTPServer(("127.0.0.1", 0), _Plow)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -138,3 +140,13 @@ def test_a_re_mint_that_returns_a_different_kiosk_refuses_and_leaves_the_dotenv(
         mk.main([], dotenv_path=str(plow.dotenv))
     assert "kio_other" in str(e.value) and "kio_test" in str(e.value)
     assert plow.dotenv.read_text() == after_first
+
+
+def test_a_pairing_code_with_shell_metacharacters_refuses_before_printing(plow, capsys):
+    """pi_line_2 lands verbatim in an ssh argv element -- an unvalidated code
+    from the server is a remote command injection sink, not just a typo risk."""
+    plow.handler.pairing_code = "ABC; rm -rf /"
+    with pytest.raises(SystemExit) as e:
+        mk.main([], dotenv_path=str(plow.dotenv))
+    assert "pairing_code" in str(e.value)
+    assert "pi_line_2" not in capsys.readouterr().out

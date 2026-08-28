@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -44,8 +45,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 def geocode(city):
     """city -> (lat, lon), or a refusal the agent can relay."""
     opener = urllib.request.build_opener(_NoRedirect)
-    with opener.open(GEOCODE_URL + urllib.parse.quote(city), timeout=30) as resp:
-        results = json.load(resp).get("results") or []
+    try:
+        with opener.open(GEOCODE_URL + urllib.parse.quote(city), timeout=30) as resp:
+            results = json.load(resp).get("results") or []
+    except (urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"refusing to write: could not look up {city!r}: {exc}") from None
     if not results:
         raise SystemExit(f"refusing to write: no place matches {city!r} -- ask the owner for a nearby city")
     return results[0]["latitude"], results[0]["longitude"]
@@ -58,6 +62,8 @@ def build(answers, env, geocoder=None):
     missing = [k for k in REQUIRED if answers.get(k) in (None, "")]
     if "has_mac" not in missing and not isinstance(answers["has_mac"], bool):
         missing.append("has_mac")
+    if answers.get("has_mac") is True and not (answers.get("mac_username") or "").strip():
+        missing.append("mac_username")
     if missing:
         raise SystemExit(f"refusing to write: missing required answer(s): {', '.join(missing)}")
     container = (env.get("TZ") or "").strip()
@@ -69,23 +75,23 @@ def build(answers, env, geocoder=None):
         )
     lat, lon = (geocoder or geocode)(answers["city"])
     sources = [{"calendar_id": answers["owner_email"], "name": "Personal"}]
-    sources += [{"calendar_id": c, "name": c} for c in answers.get("extra_calendar_ids", [])]
+    sources += [{"calendar_id": c, "name": c} for c in (answers.get("extra_calendar_ids") or [])]
     chat_db = (f"/Users/{answers['mac_username']}/Library/Messages/chat.db"
                if answers["has_mac"] and answers.get("mac_username") else "")
     return {
         "family": {
-            "owner": {"name": answers["owner_name"], "imessage": answers.get("owner_imessage", "")},
-            "people": list(answers.get("people", [])),
+            "owner": {"name": answers["owner_name"], "imessage": answers.get("owner_imessage") or ""},
+            "people": list(answers.get("people") or []),
             "timezone": answers["timezone"],
         },
         "calendar": {"sources": sources},
-        "weekly_digest": {"length": answers.get("digest_length", ""), "long_lead": []},
+        "weekly_digest": {"length": answers.get("digest_length") or "", "long_lead": []},
         "morning_triage": {"chat_db_path": chat_db, "ranking_instructions": "",
                            "exclude": {"imessage_handles": []}},
         "calendar_nudge": {"lookahead_virtual_minutes": 30, "lookahead_in_person_minutes": 60,
                            "owner_identities": [answers["owner_email"]]},
         "weather": {"location": answers["city"], "lat": lat, "lon": lon},
-        "sports": {"followed": list(answers.get("teams", []))},
+        "sports": {"followed": list(answers.get("teams") or [])},
     }
 
 
@@ -103,12 +109,14 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     if verdict:
         raise SystemExit(f"refusing to write: the gate says: {verdict}")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    # O_CREAT's mode only applies to a NEW file; chmod covers a rewrite.
+    # O_CREAT's mode only applies to a NEW file; a rewrite of an existing,
+    # looser-permissioned file needs fchmod BEFORE the PII-bearing write, not
+    # after -- otherwise the content is briefly readable at the old mode.
     fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
         f.write("\n")
-    os.chmod(config_path, 0o600)
     print(f"wrote {config_path} (mode 600); gate: PASS")
     return 0
 

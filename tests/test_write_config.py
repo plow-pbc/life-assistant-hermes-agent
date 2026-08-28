@@ -76,6 +76,14 @@ def test_a_non_boolean_has_mac_refuses_by_name(has_mac):
     assert "has_mac" in str(e.value)
 
 
+def test_has_mac_true_without_mac_username_refuses_by_name():
+    """Silently dropping to an empty chat_db_path would disable morning_triage
+    with no diagnostic, unlike every other missing-answer case in this file."""
+    with pytest.raises(SystemExit) as e:
+        wc.build({k: v for k, v in FULL.items() if k != "mac_username"}, ENV, geocoder=fake_geocode)
+    assert "mac_username" in str(e.value)
+
+
 def test_a_timezone_that_is_not_the_containers_refuses_and_names_agent_tz():
     with pytest.raises(SystemExit) as e:
         wc.build(FULL, {"TZ": "America/Los_Angeles"}, geocoder=fake_geocode)

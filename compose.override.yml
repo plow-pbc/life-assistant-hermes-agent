@@ -69,6 +69,13 @@
 # (ld-setup/scripts/write_config.py, mode 600, as the gateway's own uid), so
 # a read-only overlay would refuse the one writer the file now has. Host-side
 # edits still work: edit it in the instance home, then `agent-mgr restart`.
+#
+# Residual: this reopens config.json to the agent's own runtime for its whole
+# post-setup lifetime, not just the one write during ld-setup. ld_config_gate.py
+# only checks structure -- a prompt-injected turn that rewrites
+# calendar_nudge.owner_identities (or another field) to something
+# structurally valid still passes it. No mitigation for that exists yet;
+# accepted for this PR rather than solved (README, Bring-up).
 services:
   hermes:
     volumes:

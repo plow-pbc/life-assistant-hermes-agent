@@ -158,8 +158,7 @@ are opaque hex, so look the id up from `/opt/data/cron/jobs.json` (the same
 file `register_crons.py` itself trusts, not `hermes cron list`'s human
 rendering) first:
 
-    ID=$(python3 -c 'import json,sys;j=next((j["id"] for j in json.load(open("/opt/data/cron/jobs.json"))["jobs"] if j["name"]=="ld-weather"),None);sys.exit("no ld-weather job in /opt/data/cron/jobs.json -- re-run register_crons.py") if j is None else print(j)')
-    /opt/hermes/bin/hermes cron run "$ID"
+    ID=$(python3 -c 'import json,sys;j=next((j["id"] for j in json.load(open("/opt/data/cron/jobs.json"))["jobs"] if j["name"]=="ld-weather"),None);sys.exit("no ld-weather job in /opt/data/cron/jobs.json -- re-run register_crons.py") if j is None else print(j)') && /opt/hermes/bin/hermes cron run "$ID"
 
 and run `/opt/data/skills/ld-setup/scripts/mint_kiosk.py --status` once more.
 Its `cards=` list is the gate: **`'3'` present** means the weather producer's

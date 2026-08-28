@@ -160,7 +160,11 @@ Host-side edits to `~/.hermes-<agent>/ld/config.json` still work — it is the
 instance owner's file, mode 600; edit it, then `agent-mgr restart <agent>`.
 `ld-shared/scripts/ld_config_gate.py <path>` is the single definition of a
 valid config: empty output is a pass, anything else is the list of what is
-wrong (its exit code is always 0).
+wrong (its exit code is always 0). Host-side edits are not the only way it
+changes: the file stays writable by the agent's own runtime for the rest of
+its life, and the gate only catches structurally-wrong config, not a
+structurally-valid rewrite from a prompt-injected turn (compose.override.yml
+has the detail; no mitigation for that gap exists yet).
 
 The `ld-viewer-dev` skill is an operator tool, not part of setup, and needs
 three more host-side files in the instance home, all landed as the instance
@@ -325,7 +329,7 @@ ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
 ld-shared/      the POST helper, the ld-config gate and the wire protocol
 ld-dashboard/   the six cron schedules, all registered
-ld-setup/       first-run setup: the interview, write_config.py, mint_kiosk.py
+ld-setup/       first-run setup end-to-end: config -> kiosk -> Pi over Latch -> crons
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 ```

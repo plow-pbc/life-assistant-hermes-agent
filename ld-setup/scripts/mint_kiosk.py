@@ -17,6 +17,12 @@ makes the append take effect without a gateway restart.
 cards the kiosk holds. The pairing code rides in `pi_line_2`, so it lands on
 the owner's approval card and in the audit record -- intended: it is
 short-lived and single-use, not a credential the way a password is.
+
+Idempotent: a dotenv that already names a kiosk is re-read, not re-POSTed --
+a second POST would mint a kiosk the wall was never paired to. Re-minting an
+UNPAIRED kiosk's code is safe because Plow returns the same uid for a
+bearer-scoped re-mint; `main()` asserts that (refusing by name on a
+mismatch) rather than trusting it silently.
 """
 from __future__ import annotations
 
@@ -83,10 +89,19 @@ def append_dotenv(path, pairs):
         f.write("\n" + "".join(f"{k}={v}\n" for k, v in pairs))
 
 
+PAIRING_CODE_RE = re.compile(r"[A-Za-z0-9-]+")
+
+
 def _owner_lines(minted):
+    code = minted["pairing_code"]
+    if not PAIRING_CODE_RE.fullmatch(code):
+        raise SystemExit(
+            f"refusing: pairing_code {code!r} from the mint response is not [A-Za-z0-9-] -- "
+            "it lands in an ssh argv element in the next phase and is not safe to run as-is"
+        )
     print(f"pairing code expires {minted['expires_at']}.")
     print(f"pi_line_1={APT_LINE}")
-    print(f"pi_line_2={BOOTSTRAP.format(code=minted['pairing_code'])}")
+    print(f"pi_line_2={BOOTSTRAP.format(code=code)}")
 
 
 def main(argv=None, dotenv_path=DOTENV):
