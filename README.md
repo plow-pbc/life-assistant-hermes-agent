@@ -158,7 +158,10 @@ alongside it. The `ld-viewer-dev` skill needs three more host-side files in
 the instance home, all landed as the instance owner: `ld-dev/repo-url` (one
 line, the household repo's SSH URL), `ld-dev/ssh/deploy_key` (mode 600 —
 a per-repo deploy key registered write-scoped on the household repo; minted
-host-side, the private half never displayed), and `ld-dev/ssh/pi_key`
+host-side, the private half never displayed), `ld-dev/ssh/known_hosts`
+(GitHub's published SSH host keys — `gh api meta --jq '.ssh_keys[]' | sed
+'s/^/github.com /'` — so git-over-ssh runs strict, no trust-on-first-use),
+and `ld-dev/ssh/pi_key`
 (mode 600 — OpenSSH refuses a
 group/world-readable private key; the kiosk-diagnostics SSH key, its `.pub`
 authorized on the Pi). `ld-shared/scripts/ld_config_gate.py` is the single definition of

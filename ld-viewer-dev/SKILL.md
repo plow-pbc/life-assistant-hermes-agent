@@ -30,7 +30,7 @@ deploy it by pushing, and **prove it went live**.
   repo. If the clone is absent, the household repo's SSH URL is the one
   line in `/opt/data/ld-dev/repo-url`:
 
-      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' \
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/data/ld-dev/ssh/known_hosts -o StrictHostKeyChecking=yes' \
         git clone "$(cat /opt/data/ld-dev/repo-url)" /opt/data/ld-dev/repo
 
   A pre-existing clone may carry a stale origin from an earlier auth model —
@@ -43,15 +43,18 @@ deploy it by pushing, and **prove it went live**.
   household repo alone). `repo-url` is the SSH URL, so clone/pull/push all
   ride it via `GIT_SSH_COMMAND` — never a hosted-key assumption:
 
-      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' \
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/data/ld-dev/ssh/known_hosts -o StrictHostKeyChecking=yes' \
         git -C /opt/data/ld-dev/repo pull --ff-only
 
-      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' \
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/data/ld-dev/ssh/known_hosts -o StrictHostKeyChecking=yes' \
         git -C /opt/data/ld-dev/repo push origin main
 
   If any of these fails on authentication (`Permission denied (publickey)`),
-  the key is missing or its registration was revoked: report that for
-  re-provisioning; never improvise another credential.
+  the key is missing or its registration was revoked; a
+  `Host key verification failed` means `known_hosts` (GitHub's published
+  keys, pinned at provisioning) is missing or GitHub rotated keys. Either
+  way: report for re-provisioning; never improvise another credential and
+  never weaken host checking to get through.
 - Pi SSH key: `/opt/data/ld-dev/ssh/pi_key`
 
 SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
