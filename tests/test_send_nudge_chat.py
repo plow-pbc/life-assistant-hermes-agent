@@ -22,6 +22,7 @@ SCRIPT = ROOT / "ld-calendar-nudge" / "scripts" / "send_nudge_chat.py"
 spec = importlib.util.spec_from_file_location("send_nudge_chat", SCRIPT)
 snc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(snc)
+REAL_OPENER = snc._no_redirect_opener  # kept so the redirect test can restore it
 
 
 class FakeOpener:
@@ -119,10 +120,38 @@ def test_an_empty_handoff_sends_nothing(rig):
     assert not opener.requests
 
 
-def test_the_opener_refuses_redirects():
+def test_a_real_redirect_fails_loud_and_is_never_followed(rig):
     """A 3xx must surface as an error, never a re-POST of the bearer to the
-    redirect target — the same threat post_to_kiosk's opener guards."""
-    handler = snc.urllib.request.HTTPRedirectHandler
-    opener = snc._no_redirect_opener()
-    redirect = next(h for h in opener.handlers if isinstance(h, handler))
-    assert redirect.redirect_request(None, None, None, None, None, None) is None
+    redirect target — the same threat post_to_kiosk's opener guards, proven
+    against a real 302 through the REAL opener (the fake is bypassed)."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import threading
+
+    followed = []
+
+    class _Redirect(BaseHTTPRequestHandler):
+        def do_POST(self):
+            if self.path.startswith("/stolen"):
+                followed.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/stolen")
+            self.end_headers()
+
+        def log_message(self, *_):
+            pass
+
+    handoff, dotenv, _, monkeypatch = rig
+    server = HTTPServer(("127.0.0.1", 0), _Redirect)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        dotenv.write_text(
+            f"PLOW_CHAT_BASE_URL=http://127.0.0.1:{server.server_port}\n"
+            "PLOW_CHAT_CHAT_UID=cht_x\nPLOW_CHAT_TOKEN=tok_x\n")
+        monkeypatch.setattr(snc, "_no_redirect_opener", REAL_OPENER)
+        with pytest.raises(SystemExit) as excinfo:
+            snc.main()
+    finally:
+        server.shutdown()
+    assert "Plow Chat send failed" in str(excinfo.value)
+    assert not followed, "the bearer must never chase the redirect target"
+    assert handoff.exists()
