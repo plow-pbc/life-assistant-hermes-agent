@@ -193,6 +193,42 @@ def test_mid_read_stall_keeps_polling_to_clean_timeout():
     check("last response names the stall", "timed out mid-response" in out)
 
 
+class _RedirectHandler(BaseHTTPRequestHandler):
+    """302s /api/version to /elsewhere, which would report the wanted SHA."""
+
+    requests = []
+
+    def do_GET(self):
+        type(self).requests.append(self.path)
+        if self.path == "/elsewhere":
+            body = json.dumps({"sha": "abc123", "deployedAt": "x"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(302)
+        self.send_header("Location", "/elsewhere")
+        self.end_headers()
+
+    def log_message(self, *_args):
+        pass
+
+
+def test_redirect_refused_bearer_never_forwarded():
+    """A 302 must not be followed: the opener would forward the household
+    bearer to the redirect target. The probe reads as failed and times out."""
+    server, base = _start_server(_RedirectHandler)
+    try:
+        _use_endpoint(base)
+        code, _ = run("abc123", "--timeout", "0.2")
+    finally:
+        server.shutdown()
+        _reset()
+    check("redirected probe never claims success", code == 1)
+    check("redirect target never fetched", "/elsewhere" not in _RedirectHandler.requests)
+
+
 class _TruncatingHandler(BaseHTTPRequestHandler):
     """Declares a 64-byte body, writes 10, then closes the connection."""
 
@@ -243,6 +279,7 @@ def main():
     test_success_on_live_sha_match_and_base_url_derivation()
     test_timeout_on_mismatch_prints_last_response()
     test_exit_2_on_missing_or_malformed_env()
+    test_redirect_refused_bearer_never_forwarded()
     test_mid_read_stall_keeps_polling_to_clean_timeout()
     test_truncated_response_keeps_polling_to_clean_timeout()
     test_unreachable_kiosk_times_out_cleanly()
