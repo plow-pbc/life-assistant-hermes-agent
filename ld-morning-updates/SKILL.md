@@ -55,10 +55,15 @@ gog in local time, so the same bytes ask the right question every morning.
 `--max=250` matters: a small default page silently truncates events for a
 busy household with multiple connected sources across a multi-day lookahead.
 
-One call covers every source — the `--calendars` list is the merge.
-Including non-primary calendars (the household's shared "Family Calendar"
-etc.) is the whole point — omitting them silently drops events from the
-kiosk message. Note anything a family member might be excited or nervous
+One call covers every source — the `--calendars` list is the merge, read
+under the one account Latch's gog is authenticated as. That is why the
+config's `calendar_id` values must be the globally-unique calendar ids
+(the `...@group.calendar.google.com` / email forms), visible to that
+account; `primary` names only the gog account's own calendar, so another
+source relying on it silently reads the wrong calendar. Including
+non-primary calendars (the household's shared "Family Calendar" etc.) is
+the whole point — omitting them silently drops events from the kiosk
+message. Note anything a family member might be excited or nervous
 about — a game, a recital, a trip, a test, a visitor.
 
 A busy window's result is too large to fit in context, so the runtime
