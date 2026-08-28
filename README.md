@@ -189,12 +189,14 @@ mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 # compose.override.yml binds it read-only over /opt/data/ld/config.json, and
 # Docker materializes a missing bind source as a root-owned DIRECTORY at both
 # ends -- bring-up then fails on a config nothing can read or replace. The
-# same test GATES `up` on the next line (an `exit` here would close the shell
-# this block is pasted into), so a missing config stops the sequence instead
-# of warning past it.
-[ -f ~/.hermes-<agent>/ld/config.json ] || echo 'STOP: land ld/config.json first (see above)'
-[ -f ~/.hermes-<agent>/ld/config.json ] && \
-agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
+# guard keeps `up` from creating that directory (an `exit` would close the
+# shell this block is pasted into); the later steps still run and fail
+# loudly against the missing container, which needs no fence.
+if [ -f ~/.hermes-<agent>/ld/config.json ]; then
+  agent-mgr up <agent>               # must precede sign-in: that runs inside this container
+else
+  echo 'STOP: land ld/config.json first (see above)'
+fi
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 just check-latch <agent>             # can this container reach that owner's Mac?
 agent-mgr agent <agent> 'what is the weather today?'          # a turn without the phone
