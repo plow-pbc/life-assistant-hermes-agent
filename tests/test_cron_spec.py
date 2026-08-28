@@ -84,9 +84,9 @@ def test_every_blocked_producer_names_why(job):
     is waiting on."""
     reason = job["blocked"]
     assert reason and reason.strip()
-    assert "latch#183" in reason or "iMessage" in reason, (
-        f"{job['name']} must name its blocker: latch#183 for the Google "
-        f"producers, the iMessage rewrite for triage -- got {reason!r}"
+    assert "latch#183" in reason, (
+        f"{job['name']} must name its tracked blocker -- latch#183, the only "
+        f"one left now triage is live -- got {reason!r}"
     )
 
 
@@ -332,7 +332,7 @@ def test_a_paused_job_is_not_runnable(tmp_path):
 def test_no_live_job_needs_a_delivery_target():
     """The tripwire that replaced the resolver.
 
-    Both live producers post their card over the kiosk POST -- the card IS the
+    Every live producer posts its card over the kiosk POST -- the card IS the
     delivery -- so the ${VAR} expansion machinery `ld-calendar-nudge` needed was
     reachable only from a blocked row. It was deleted rather than carried as
     roadmap inventory, and this is what fires on the day a job carrying a
