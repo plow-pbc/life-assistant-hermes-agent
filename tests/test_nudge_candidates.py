@@ -18,7 +18,6 @@ spellings and structural shapes are real.
 """
 import importlib.util
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -292,47 +291,6 @@ def test_copies_collapse_and_the_kiosk_gets_only_the_earliest(rig):
     assert rig.run(gather(*bare))[1] == 2
     assert len(chat_lines(rig)) == 2
     assert '"A"' in rig.kiosk.read_text() and '"B"' not in rig.kiosk.read_text()
-
-
-def test_a_failed_swap_never_leaves_a_half_written_handoff(rig, monkeypatch):
-    """What staging actually guarantees, both halves. A failure BEFORE any
-    rename (both bodies still in .tmp) leaves both handoffs untouched —
-    direct writes would fail this. A failure BETWEEN the renames leaves each
-    handoff either fully old or fully new, never truncated: the fresh-kiosk/
-    stale-chat pairing seen here is the documented, accepted residual window
-    the production comment names — one tick wide, self-healing."""
-    fresh = 'Heads up: "Standup" at 12:20pm (20m).\n'
-    real = os.replace  # captured before any patch, or phase 2 replays phase 1's raiser
-
-    def reset():
-        rig.kiosk.write_text("old kiosk\n")
-        rig.chat.write_text("old chat\n")
-
-    calls = []
-
-    def fails_on(n):
-        def fake_replace(src, dst):
-            calls.append(src)
-            if len(calls) == n:
-                raise OSError("full")
-            return real(src, dst)
-        return fake_replace
-
-    reset()
-    monkeypatch.setattr(nc.os, "replace", fails_on(1))
-    with pytest.raises(OSError):
-        rig.run(gather(event()))
-    assert rig.kiosk.read_text() == "old kiosk\n"
-    assert rig.chat.read_text() == "old chat\n"
-
-    reset()
-    calls.clear()
-
-    monkeypatch.setattr(nc.os, "replace", fails_on(2))
-    with pytest.raises(OSError):
-        rig.run(gather(event()))
-    assert rig.kiosk.read_text() == fresh, "the swapped leg is fully new"
-    assert rig.chat.read_text() == "old chat\n", "the unswapped leg is fully old"
 
 
 def test_overflow_truncates_location_then_title_never_the_time(rig):
