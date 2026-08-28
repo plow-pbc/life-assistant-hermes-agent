@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical ld-config template for the life-dashboard producers. The live file is assembled from this shape at install time; every [UPPER_SNAKE] placeholder must be filled or the shared gate (ld_config_gate.py) refuses the config. morning_triage.chat_db_path is the absolute path to the owner Mac's Messages DB, e.g. /Users/<mac-username>/Library/Messages/chat.db, and morning_triage.exclude.imessage_handles is the exclusion list the iMessage triage reads.",
+  "_comment": "Canonical ld-config template for the life-dashboard producers. The live file is assembled from this shape at install time; every [UPPER_SNAKE] placeholder must be filled or the shared gate (ld_config_gate.py) refuses the config. morning_triage.chat_db_path is the absolute path to the owner Mac's Messages DB, e.g. /Users/<mac-username>/Library/Messages/chat.db, and morning_triage.exclude.imessage_handles is the exclusion list the iMessage triage reads. calendar.sources[].calendar_id must be a globally-unique calendar id (the ...@group.calendar.google.com / email form) visible to the account Latch's gog is authenticated as; 'primary' is valid only for that one account's own calendar.",
   "family": {
     "owner": { "name": "[OWNER_NAME]", "imessage": "[OWNER_IMESSAGE]" },
     "partner": { "name": "[PARTNER_NAME]", "imessage": "[PARTNER_IMESSAGE]" },
@@ -10,8 +10,8 @@
     "sources": [
       { "account": "[CALENDAR_ACCOUNT_1]", "calendar_id": "primary", "name": "Personal" },
       { "account": "[CALENDAR_ACCOUNT_1]", "calendar_id": "[FAMILY_CALENDAR_ID]", "name": "Family shared" },
-      { "account": "[CALENDAR_ACCOUNT_2]", "calendar_id": "primary", "name": "Work" },
-      { "account": "[PARTNER_CALENDAR_ACCOUNT]", "calendar_id": "primary", "name": "Partner", "self": false }
+      { "account": "[CALENDAR_ACCOUNT_2]", "calendar_id": "[WORK_CALENDAR_ID]", "name": "Work" },
+      { "account": "[PARTNER_CALENDAR_ACCOUNT]", "calendar_id": "[PARTNER_CALENDAR_ID]", "name": "Partner", "self": false }
     ]
   },
   "morning_updates": {
