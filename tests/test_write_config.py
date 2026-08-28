@@ -93,10 +93,31 @@ def test_a_timezone_that_is_not_the_containers_refuses_and_names_agent_tz():
     assert "America/Chicago" in msg and "America/Los_Angeles" in msg and "AGENT_TZ" in msg
 
 
+class _RedirectTarget(BaseHTTPRequestHandler):
+    """A real, reachable server that WOULD answer the redirect if it were
+    followed -- so a broken/removed _NoRedirect makes geocode() succeed
+    with these bogus coordinates instead of raising, discriminating "the
+    redirect was blocked" from "the redirect was followed and then failed"."""
+    hits = []
+
+    def do_GET(self):
+        type(self).hits.append(self.path)
+        body = json.dumps({"results": [{"latitude": 99.0, "longitude": 99.0}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args):
+        pass
+
+
 class _Redirecting(BaseHTTPRequestHandler):
+    location = ""
+
     def do_GET(self):
         self.send_response(302)
-        self.send_header("Location", "https://attacker.example.test/steal?token=x")
+        self.send_header("Location", type(self).location)
         self.end_headers()
 
     def log_message(self, *_args):
@@ -107,6 +128,10 @@ def test_geocode_refuses_cleanly_on_a_blocked_redirect(monkeypatch):
     """_NoRedirect must stop a 3xx from being followed (it would carry the
     request elsewhere); the fix is that a blocked redirect refuses by name
     instead of crashing json.load on the redirect's non-JSON body."""
+    _RedirectTarget.hits = []
+    target = HTTPServer(("127.0.0.1", 0), _RedirectTarget)
+    threading.Thread(target=target.serve_forever, daemon=True).start()
+    _Redirecting.location = f"http://127.0.0.1:{target.server_address[1]}/steal"
     server = HTTPServer(("127.0.0.1", 0), _Redirecting)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     monkeypatch.setattr(wc, "GEOCODE_URL", f"http://127.0.0.1:{server.server_address[1]}/?name=")
@@ -116,7 +141,10 @@ def test_geocode_refuses_cleanly_on_a_blocked_redirect(monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+        target.shutdown()
+        target.server_close()
     assert "could not look up" in str(e.value) and "Chicago" in str(e.value)
+    assert _RedirectTarget.hits == []
 
 
 def test_main_writes_the_file_mode_600_and_reports_the_gate(tmp_path, monkeypatch, capsys):
