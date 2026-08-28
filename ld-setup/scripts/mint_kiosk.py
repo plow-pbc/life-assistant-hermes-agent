@@ -104,6 +104,16 @@ def _owner_lines(minted):
     print(f"pi_line_2={BOOTSTRAP.format(code=code)}")
 
 
+def resolve_base():
+    """The API base this instance mints against -- the gateway's own startup
+    environment, or the hardcoded default. Never the dotenv: /opt/data/.env is
+    agent-writable at runtime, so trusting a PLOW_API_BASE line there would let
+    an injected turn redirect this instance's own account-wide bearer to an
+    attacker host.
+    """
+    return (os.environ.get("PLOW_API_BASE") or DEFAULT_BASE).strip().rstrip("/")
+
+
 def main(argv=None, dotenv_path=DOTENV):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--status", action="store_true", help="has the Pi paired, and what did it deploy?")
@@ -116,7 +126,7 @@ def main(argv=None, dotenv_path=DOTENV):
             f"refusing: PLOW_AGENT_TOKEN is unset or blank in {dotenv_path} -- activation writes "
             "it; has `agent-mgr activate` completed for this instance?"
         )
-    base = (values.get("PLOW_API_BASE") or DEFAULT_BASE).strip().rstrip("/")
+    base = resolve_base()
     uid = kiosk_uid(values, base)
 
     if args.status:

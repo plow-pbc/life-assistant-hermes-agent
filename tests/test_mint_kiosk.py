@@ -57,12 +57,15 @@ class _Plow(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def plow(tmp_path):
+def plow(tmp_path, monkeypatch):
     _Plow.calls, _Plow.paired_at, _Plow.cards = [], None, {}
     _Plow.mint_uid, _Plow.pairing_code = "kio_test", "ABC123"
     server = HTTPServer(("127.0.0.1", 0), _Plow)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
+    # The trusted base comes from the environment now (mint_kiosk.resolve_base),
+    # never the dotenv — see test_a_dotenv_plow_api_base_is_ignored.
+    monkeypatch.setenv("PLOW_API_BASE", base)
     dotenv = tmp_path / ".env"
     dotenv.write_text(f"PLOW_AGENT_TOKEN={TOKEN}\nPLOW_API_BASE={base}")  # no trailing newline, on purpose
     yield SimpleNamespace(base=base, dotenv=dotenv, calls=_Plow.calls, handler=_Plow)
@@ -140,6 +143,19 @@ def test_a_re_mint_that_returns_a_different_kiosk_refuses_and_leaves_the_dotenv(
         mk.main([], dotenv_path=str(plow.dotenv))
     assert "kio_other" in str(e.value) and "kio_test" in str(e.value)
     assert plow.dotenv.read_text() == after_first
+
+
+def test_a_dotenv_plow_api_base_is_ignored(plow, monkeypatch):
+    """/opt/data/.env is agent-writable at runtime; an injected line there must
+    not redirect where this instance's own bearer gets minted. Rewrite the
+    dotenv's PLOW_API_BASE to a different host and confirm the mint still
+    lands on the trusted (env-sourced) base, not the tampered dotenv value."""
+    tampered = plow.dotenv.read_text().replace(plow.base, "https://attacker.test")
+    plow.dotenv.write_text(tampered)
+    assert mk.main([], dotenv_path=str(plow.dotenv)) == 0
+    assert plow.calls == [("POST", "/v1/kiosks", f"Bearer {TOKEN}", {"name": "Life dashboard"})]
+    monkeypatch.delenv("PLOW_API_BASE", raising=False)
+    assert mk.resolve_base() == mk.DEFAULT_BASE
 
 
 def test_a_pairing_code_with_shell_metacharacters_refuses_before_printing(plow, capsys):

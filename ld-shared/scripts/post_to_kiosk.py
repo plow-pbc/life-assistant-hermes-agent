@@ -47,7 +47,11 @@ via argv:
       This third source is what makes ld-setup work on a live instance:
       mint_kiosk.py APPENDS the two lines after `up`, so they are absent from
       the env the gateway loaded and would stay invisible to every cron-spawned
-      producer until a restart.
+      producer until a restart. Unlike the other two, this dotenv is
+      agent-writable at runtime, so a dotenv-sourced endpoint URL is held to
+      one exact shape (_validate_dotenv_endpoint) — the trusted
+      PLOW_API_BASE (env, or the hardcoded default)'s /v1/kiosks/<uid>/cards
+      route — before the bearer is ever attached to a request against it.
   All three are fixed, non-argv, non-caller-steerable; all three empty is a
   loud refusal.
 
@@ -76,6 +80,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -102,6 +107,10 @@ TOKEN_ENV = "DASHBOARD_TOKEN"
 # The Pi backend rides the household LAN/tailnet, not the public internet —
 # http:// is an accepted trade-off for that trust zone.
 REQUIRED_URL_PREFIXES = ("http://", "https://")
+# Duplicated one-liner from ld-setup/scripts/mint_kiosk.py's DEFAULT_BASE:
+# ld-shared is imported standalone by every producer repo and cannot import
+# ld-setup.
+DEFAULT_BASE = "https://api.plow.co"
 
 
 def read_required_file(path, label):
@@ -128,16 +137,41 @@ def read_secret(file_path, env_name, label):
     itself, which is the only source that sees a line ld-setup appended after
     the gateway started. Fails loud when all three are empty, so a
     misconfigured install never half-posts to an unknown endpoint.
+
+    Returns (value, source) — source is "file", "env" or "dotenv". The caller
+    uses the source to decide whether extra validation applies: unlike the
+    read-only secrets mount or the gateway's startup env, /opt/data/.env is
+    agent-writable at runtime (see _validate_dotenv_endpoint).
     """
     if Path(file_path).exists():
-        return read_required_file(file_path, label)
-    value = os.environ.get(env_name, "").strip() or dotenv_values(DOTENV).get(env_name, "").strip()
-    if not value:
+        return read_required_file(file_path, label), "file"
+    env_value = os.environ.get(env_name, "").strip()
+    if env_value:
+        return env_value, "env"
+    dotenv_value = dotenv_values(DOTENV).get(env_name, "").strip()
+    if not dotenv_value:
         sys.exit(
             f"error: {label} missing — no file at {file_path}, ${env_name} is unset/empty, "
             f"and {DOTENV} does not set it"
         )
-    return value
+    return dotenv_value, "dotenv"
+
+
+def _validate_dotenv_endpoint(url):
+    """A dotenv-sourced endpoint URL must be exactly the trusted kiosk-cards
+    route. /opt/data/.env is agent-writable at runtime, so an injected turn
+    appending a second PLOW_API_BASE=/DASHBOARD_ENDPOINT_URL= line (last
+    duplicate wins in dotenv_values) must not be able to steer the bearer to
+    an attacker host. The secrets file and the startup env are trusted as
+    today — this only gates the third, writable source.
+    """
+    base = (os.environ.get("PLOW_API_BASE") or DEFAULT_BASE).strip().rstrip("/")
+    pattern = re.escape(base) + r"/v1/kiosks/kio_[A-Za-z0-9_-]+/cards"
+    if not re.fullmatch(pattern, url):
+        sys.exit(
+            f"error: endpoint URL from {DOTENV} is not the trusted "
+            f"{base}/v1/kiosks/<uid>/cards — refusing to send the bearer to {url}"
+        )
 
 
 def read_message():
@@ -203,10 +237,12 @@ def main():
     args = parser.parse_args()
 
     text = read_message()
-    url = read_secret(ENDPOINT_FILE, ENDPOINT_ENV, "endpoint URL")
+    url, url_source = read_secret(ENDPOINT_FILE, ENDPOINT_ENV, "endpoint URL")
     if not any(url.startswith(p) for p in REQUIRED_URL_PREFIXES):
         sys.exit(f"error: endpoint URL must start with http:// or https://, got: {url}")
-    token = read_secret(TOKEN_FILE, TOKEN_ENV, "token")
+    if url_source == "dotenv":
+        _validate_dotenv_endpoint(url)
+    token, _ = read_secret(TOKEN_FILE, TOKEN_ENV, "token")
 
     body = {"card": CARD, "type": BODY_TYPE, "text": text}
     if TITLE is not None:

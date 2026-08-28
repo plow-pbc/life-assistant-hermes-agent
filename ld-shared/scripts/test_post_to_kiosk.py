@@ -76,6 +76,7 @@ def reset_module():
     post_to_kiosk.DOTENV = "/nonexistent/dotenv-for-tests/.env"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
     os.environ.pop(post_to_kiosk.TOKEN_ENV, None)
+    os.environ.pop("PLOW_API_BASE", None)
 
 
 def use_file_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", body_type="alert"):
@@ -215,7 +216,10 @@ def test_env_secrets_message_file_posts_and_consumes_file():
 
 
 def test_dotenv_secrets_are_the_third_source():
-    """No secret file and no env var: the endpoint + bearer come from the dotenv.
+    """No secret file and no env var: the bearer comes from the dotenv, and its
+    endpoint URL matches the trusted PLOW_API_BASE (set here to the loopback
+    server) — see test_dotenv_endpoint_off_the_trusted_base_is_refused for the
+    case where it doesn't.
 
     Without this source, every line mint_kiosk.py appends after `up` stays
     invisible to the producers until the gateway restarts.
@@ -223,7 +227,8 @@ def test_dotenv_secrets_are_the_third_source():
     server, base = _start_server()
     try:
         with tempfile.TemporaryDirectory() as d:
-            use_dotenv_secrets(Path(d), endpoint=f"{base}/api/message", card="3", body_type="weather")
+            use_dotenv_secrets(Path(d), endpoint=f"{base}/v1/kiosks/kio_test/cards", card="3", body_type="weather")
+            os.environ["PLOW_API_BASE"] = base  # after reset_module(), which clears it
             code, _ = run(stdin_text="72 and clear")
     finally:
         server.shutdown()
@@ -232,8 +237,26 @@ def test_dotenv_secrets_are_the_third_source():
     check("server received exactly one POST", len(_CapturingHandler.received) == 1)
     if _CapturingHandler.received:
         r = _CapturingHandler.received[0]
-        check("POST went to the dotenv's endpoint URL", r["path"] == "/api/message")
+        check("POST went to the dotenv's endpoint URL", r["path"] == "/v1/kiosks/kio_test/cards")
         check("auth header uses the dotenv's bearer", r["auth"] == f"Bearer {TOKEN}")
+
+
+def test_dotenv_endpoint_off_the_trusted_base_is_refused():
+    """/opt/data/.env is agent-writable at runtime; an injected endpoint line
+    there must not steer the bearer anywhere but the trusted PLOW_API_BASE
+    (env, or the hardcoded default) — even a path that otherwise looks like a
+    legitimate kiosk-cards route."""
+    server, base = _start_server()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            use_dotenv_secrets(Path(d), endpoint=f"{base}/v1/kiosks/kio_test/cards", card="3", body_type="weather")
+            code, out = run(stdin_text="x")
+    finally:
+        server.shutdown()
+        reset_module()
+    check("dotenv endpoint off the trusted base exits non-zero", code != 0)
+    check("no request reached the server (refused before any send)", len(_CapturingHandler.received) == 0)
+    check("bearer token not echoed on refusal", TOKEN not in out)
 
 
 def test_message_file_preserved_on_send_failure():
@@ -430,6 +453,7 @@ def main():
     test_file_secrets_stdin_message_posts_correct_payload()
     test_env_secrets_message_file_posts_and_consumes_file()
     test_dotenv_secrets_are_the_third_source()
+    test_dotenv_endpoint_off_the_trusted_base_is_refused()
     test_message_file_preserved_on_send_failure()
     test_optional_title_is_posted_when_set()
     test_dry_run_redacts_body_and_token()
