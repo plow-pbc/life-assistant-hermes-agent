@@ -428,6 +428,16 @@ def test_every_skill_is_mounted_flat_and_read_only():
         f"${{AGENT_DIR:?set by agent-mgr from the registry}}/{name}"
         f":/opt/data/skills/{name}:ro"
         for name in SKILL_DIRS
+    } | {
+        # The one non-skill bind: the shared ld-config pinned read-only over
+        # itself. /opt/data is the agent's writable home, so without this a
+        # prompt-injected turn could rewrite the config every producer
+        # trusts; the single-FILE bind keeps the fixed reader path while the
+        # ld/ handoff directory stays writable. Same exact-string discipline:
+        # drop :ro, widen it to the directory, or reroot the source and this
+        # fails with both sets printed.
+        "${AGENT_HOME:?set by agent-mgr from the instance descriptor}"
+        "/ld/config.json:/opt/data/ld/config.json:ro"
     }
 
 
