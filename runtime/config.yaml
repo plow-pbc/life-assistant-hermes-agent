@@ -26,7 +26,10 @@ display:
   # absorbs (hermes-plow-chat#30) — so this config key is its one off switch.
   # This agent's only chat surface is the owner's iMessage thread, where the
   # typing indicator already shows a turn in progress.
-  memory_notifications: off
+  # Quoted: the key is a tri-state ("off" / "on" / "verbose"), and bare `off`
+  # is a YAML 1.1 boolean that a 1.2 parser would read as a string anyway —
+  # the quotes make it the documented string form under every parser.
+  memory_notifications: "off"
 mcp_servers:
   # Plow Latch, reached over the Plow relay: the browser and the filesystem this
   # agent drives are THE INSTANCE OWNER's Mac, not this container. The relay authorises the
