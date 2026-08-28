@@ -486,6 +486,7 @@ WRITE_SAFE_ROOT = "/opt/data"
 PRODUCERS = [
     ("ld-morning-triage", "post_alert.py"),
     ("ld-morning-updates", "post_message.py"),
+    ("ld-weekly-digest", "post_digest.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
 ]
