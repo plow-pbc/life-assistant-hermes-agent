@@ -17,7 +17,7 @@ deploy it by pushing, and **prove it went live**.
   commit to it. A push to its `main` IS
   the deploy: a systemd user timer on the Pi fetches every 2 minutes, builds
   into a fresh release dir, health-checks, and atomically flips `~/ld-current`.
-- **Upstream template** — `plow-pbc/life-dashboard`: canonical viewer code,
+- **Upstream template** — `plow-pbc/life-dashboard` (public): canonical viewer code,
   the Pi-side updater, and the canonical wire protocol at
   `docs/kiosk-protocol.md`. The copy at
   `/opt/data/skills/ld-shared/references/kiosk-protocol.md` is vendored from
@@ -27,7 +27,9 @@ deploy it by pushing, and **prove it went live**.
 
 - Workspace clone: `/opt/data/ld-dev/repo`; its `origin` is the household
   repo. If the clone is absent, the household repo's HTTPS URL is the one
-  line in `/opt/data/ld-dev/repo-url` — clone from that.
+  line in `/opt/data/ld-dev/repo-url`:
+
+      git clone "$(cat /opt/data/ld-dev/repo-url)" /opt/data/ld-dev/repo
 - Push credential: `/opt/data/ld-dev/git-credentials` (mode 600, provisioned
   on the host). The repo is public so **fetches need no credential**; pushes
   go through the git credential store — never paste the token into a URL or
