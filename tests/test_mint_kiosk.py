@@ -25,6 +25,8 @@ TOKEN = "tok_test"
 
 class _Plow(BaseHTTPRequestHandler):
     paired_at = None
+    cards = {}
+    mint_uid = "kio_test"
     calls = []
 
     def _send(self, obj):
@@ -38,12 +40,14 @@ class _Plow(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", "0"))
         type(self).calls.append(("POST", self.path, self.headers.get("Authorization"),
                                  json.loads(self.rfile.read(n) or b"{}")))
-        self._send({"uid": "kio_test", "pairing_code": "ABC123", "expires_at": "2026-08-28T20:00:00Z"})
+        self._send({"uid": type(self).mint_uid, "pairing_code": "ABC123",
+                    "expires_at": "2026-08-28T20:00:00Z"})
 
     def do_GET(self):
         type(self).calls.append(("GET", self.path, self.headers.get("Authorization"), None))
         paired = type(self).paired_at
         self._send({"uid": "kio_test", "name": "Life dashboard", "paired_at": paired,
+                    "cards": type(self).cards,
                     "status": {"sha": "abc1234" if paired else None, "deployed_at": paired,
                                "last_result": "ok" if paired else None, "reported_at": paired}})
 
@@ -53,7 +57,7 @@ class _Plow(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def plow(tmp_path):
-    _Plow.calls, _Plow.paired_at = [], None
+    _Plow.calls, _Plow.paired_at, _Plow.cards, _Plow.mint_uid = [], None, {}, "kio_test"
     server = HTTPServer(("127.0.0.1", 0), _Plow)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -74,7 +78,10 @@ def test_a_first_run_mints_appends_two_lines_and_prints_the_owner_lines(plow, ca
     # Bare `key=value` lines, one per line, nothing shell-wrapped around the
     # value: the agent lifts the value straight into an ssh argv element
     # (["ssh", "<user>@<pi>", "<line>"]) with no further parsing.
-    assert "pi_line_1=sudo apt install -y nodejs npm git chromium fonts-noto-color-emoji" in out
+    # apt-get (not apt, whose "WARNING: ... stable CLI interface" the skill reads
+    # as a failed phase), and `sudo env` so env_reset cannot drop the frontend.
+    assert ("pi_line_1=sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y"
+            " nodejs npm git chromium fonts-noto-color-emoji") in out
     assert ("pi_line_2=curl -fsSL https://raw.githubusercontent.com/plow-pbc/life-dashboard/main/updater/bootstrap.sh"
             " | sh -s -- --pair ABC123") in out
 
@@ -106,11 +113,28 @@ def test_a_blank_token_refuses_before_any_request(plow, dotenv_text):
     assert plow.calls == [] and plow.dotenv.read_text() == dotenv_text
 
 
-@pytest.mark.parametrize("paired_at,rc", [(None, 1), ("2026-08-28T19:00:00Z", 0)],
-                         ids=["not-yet", "paired-and-deployed"])
-def test_status_reports_pairing_and_the_deployed_sha(plow, capsys, paired_at, rc):
+@pytest.mark.parametrize("paired_at,cards,rc", [
+    (None, {}, 1),
+    ("2026-08-28T19:00:00Z", {"3": {"type": "weather"}}, 0),
+], ids=["not-yet", "paired-deployed-and-carrying-a-card"])
+def test_status_reports_pairing_the_deployed_sha_and_the_cards(plow, capsys, paired_at, cards, rc):
+    """The cards are the point: Phase 3's proof is card 3 on the kiosk, and the
+    status route returns them, so the agent never has to take the wall on faith."""
     mk.main([], dotenv_path=str(plow.dotenv))
-    plow.handler.paired_at = paired_at
+    plow.handler.paired_at, plow.handler.cards = paired_at, cards
     assert mk.main(["--status"], dotenv_path=str(plow.dotenv)) == rc
     out = capsys.readouterr().out
     assert f"paired_at={paired_at}" in out and ("sha=abc1234" in out) == bool(paired_at)
+    assert f"cards={sorted(cards)}" in out
+
+
+def test_a_re_mint_that_returns_a_different_kiosk_refuses_and_leaves_the_dotenv(plow):
+    """The re-POST on an unpaired kiosk must come back as the SAME kiosk. A
+    different uid means the dotenv now points at a kiosk nobody will pair."""
+    mk.main([], dotenv_path=str(plow.dotenv))
+    after_first = plow.dotenv.read_text()
+    plow.handler.mint_uid = "kio_other"
+    with pytest.raises(SystemExit) as e:
+        mk.main([], dotenv_path=str(plow.dotenv))
+    assert "kio_other" in str(e.value) and "kio_test" in str(e.value)
+    assert plow.dotenv.read_text() == after_first

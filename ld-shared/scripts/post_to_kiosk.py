@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """post_to_kiosk.py — shared POST helper for every ld- producer, on any platform.
 
-This is the ONE canonical copy. It lives in `plow-pbc/life-dashboard-skills`
-and is pulled into each life-dashboard seed's bundle set at install time (as
-`ld-shared`), so a fix here reaches the Plow agent seed AND the Hermes agent
-seed without being hand-applied twice.
+This repo owns `ld-shared` outright — nothing syncs it in or out any more — so
+this file is edited here and nowhere else.
 
 Each producer ships a tiny wrapper (`post_message.py`, `post_alert.py`,
 `post_digest.py`, `post_nudge.py`, `post_weather.py`, `post_sports.py`) that
@@ -39,16 +37,22 @@ via argv:
       cannot create a handoff at all): read stdin, fed by the caller's quoted
       heredoc, so an injected body is inert data, never parsed as shell.
 
-  endpoint URL + bearer token — file-first, env fallback:
+  endpoint URL + bearer token — three fixed sources, in this order:
     - /config/secrets/dashboard-{endpoint-url,token} files when present (Plow
       lands these mode-600 on a read-only secrets mount), else
-    - DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN env vars (Hermes has no per-agent
-      secrets mount; it exports these into the container env from data/.env —
-      the same mechanism the plow-connectors skill reads its bearer from).
-  Both are fixed, non-argv, non-caller-steerable.
+    - DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN in the process env (Hermes has no
+      per-agent secrets mount; the gateway loads /opt/data/.env once at start
+      and the container env is that load), else
+    - the same two names read straight out of that dotenv (runtime_env.DOTENV).
+      This third source is what makes ld-setup work on a live instance:
+      mint_kiosk.py APPENDS the two lines after `up`, so they are absent from
+      the env the gateway loaded and would stay invisible to every cron-spawned
+      producer until a restart.
+  All three are fixed, non-argv, non-caller-steerable; all three empty is a
+  loud refusal.
 
 The test suite imports this module and rebinds these constants (the secret-file
-paths, MESSAGE_FILE) and feeds stdin — a seam reachable only by an importer,
+paths, DOTENV, MESSAGE_FILE) and feeds stdin — a seam reachable only by an importer,
 not by the CLI a scheduled agent invokes.
 
 Caller contract — the viewer requires all of card/type/text; `card` picks the
@@ -77,6 +81,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from runtime_env import DOTENV, dotenv_values
+
 # Bundle-specific — the wrapper sets these before calling main().
 CARD: str | None = None
 BODY_TYPE: str | None = None
@@ -88,7 +94,7 @@ TITLE: str | None = None
 # agent sandboxes, which feed the text on stdin.
 MESSAGE_FILE: str | None = None
 
-# Shared across all producers — file-first, then env fallback (see module docstring).
+# Shared across all producers — file, then env, then the dotenv (module docstring).
 ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
 TOKEN_FILE = "/config/secrets/dashboard-token"
 ENDPOINT_ENV = "DASHBOARD_ENDPOINT_URL"
@@ -115,18 +121,22 @@ def read_required_file(path, label):
 
 
 def read_secret(file_path, env_name, label):
-    """Read a required secret, file-first then env (see module docstring).
+    """Read a required secret: file, then env, then the dotenv (module docstring).
 
-    Both sources are fixed and non-argv. The file path is tried first (Plow's
-    read-only /config/secrets mount); when absent, the env var is used (Hermes
-    populates it from data/.env). Fails loud if neither is populated, so a
+    All three sources are fixed and non-argv. The file is tried first (Plow's
+    read-only /config/secrets mount); then the process env; then /opt/data/.env
+    itself, which is the only source that sees a line ld-setup appended after
+    the gateway started. Fails loud when all three are empty, so a
     misconfigured install never half-posts to an unknown endpoint.
     """
     if Path(file_path).exists():
         return read_required_file(file_path, label)
-    value = os.environ.get(env_name, "").strip()
+    value = os.environ.get(env_name, "").strip() or dotenv_values(DOTENV).get(env_name, "").strip()
     if not value:
-        sys.exit(f"error: {label} missing — no file at {file_path} and ${env_name} is unset/empty")
+        sys.exit(
+            f"error: {label} missing — no file at {file_path}, ${env_name} is unset/empty, "
+            f"and {DOTENV} does not set it"
+        )
     return value
 
 

@@ -2,18 +2,21 @@
 """mint_kiosk.py -- give this instance a kiosk on Plow, and the owner a way to pair a Pi to it.
 
 POST /v1/kiosks with this instance's OWN Plow bearer (PLOW_AGENT_TOKEN, the
-line activation wrote to /opt/data/.env), then append the two lines every
-producer already reads -- DASHBOARD_ENDPOINT_URL and DASHBOARD_TOKEN -- to
-that same dotenv. No new credential: the bearer the producers post with IS
-the agent's, and Plow's /v1/kiosks/<uid>/cards speaks the wire body
-post_to_kiosk.py already sends. runtime_env.dotenv_values() re-reads the
-file on every run, so no gateway restart.
+line activation wrote to /opt/data/.env), then append the two names the
+producers read -- DASHBOARD_ENDPOINT_URL and DASHBOARD_TOKEN -- to that same
+dotenv. No new credential: the bearer the producers post with IS the agent's,
+and Plow's /v1/kiosks/<uid>/cards speaks the wire body post_to_kiosk.py
+already sends.
 
-Idempotent: a dotenv already naming a kiosk is re-READ, never re-minted --
-a second POST would create a kiosk the wall is not paired to. On an
-unpaired one the POST is repeated on purpose: Plow re-mints the pairing
-code (they expire), and the code is the only thing that crosses to the
-owner. `--status` asks whether the Pi has paired and what it last deployed.
+These lines are appended AFTER the gateway loaded the dotenv, so the container
+env a cron-spawned producer inherits does not have them; post_to_kiosk.py
+therefore reads this dotenv itself as its third secret source, which is what
+makes the append take effect without a gateway restart.
+
+`--status` asks whether the Pi has paired, what it last deployed, and which
+cards the kiosk holds. The pairing code rides in `pi_line_2`, so it lands on
+the owner's approval card and in the audit record -- intended: it is
+short-lived and single-use, not a credential the way a password is.
 """
 from __future__ import annotations
 
@@ -32,7 +35,13 @@ sys.path.insert(
 from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 DEFAULT_BASE = "https://api.plow.co"
-APT_LINE = "sudo apt install -y nodejs npm git chromium fonts-noto-color-emoji"
+KIOSK_NAME = "Life dashboard"
+# apt-get, not apt: apt prints "WARNING: apt does not have a stable CLI
+# interface", and the skill reads any WARNING as "this phase did not finish".
+# `sudo env ...`, not a bare prefix: sudo's env_reset drops a caller-set
+# DEBIAN_FRONTEND before apt-get ever sees it.
+APT_LINE = ("sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y"
+            " nodejs npm git chromium fonts-noto-color-emoji")
 BOOTSTRAP = ("curl -fsSL https://raw.githubusercontent.com/plow-pbc/life-dashboard/main/updater/bootstrap.sh"
              " | sh -s -- --pair {code}")
 
@@ -75,11 +84,6 @@ def append_dotenv(path, pairs):
 
 
 def _owner_lines(minted):
-    # pi_line_1 / pi_line_2, bare `key=value`, one per line: the primary
-    # consumer is the agent itself, lifting the value straight into an ssh
-    # argv element for plow_run_command (ld-setup/SKILL.md Phase 2b) -- no
-    # shell wrapping to strip first. The no-Mac fallback in that same phase
-    # relays the same two values to the owner to type on the Pi by hand.
     print(f"pairing code expires {minted['expires_at']}.")
     print(f"pi_line_1={APT_LINE}")
     print(f"pi_line_2={BOOTSTRAP.format(code=minted['pairing_code'])}")
@@ -88,7 +92,6 @@ def _owner_lines(minted):
 def main(argv=None, dotenv_path=DOTENV):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--status", action="store_true", help="has the Pi paired, and what did it deploy?")
-    parser.add_argument("--name", default="Life dashboard", help="the household label Plow shows")
     args = parser.parse_args(argv)
 
     values = dotenv_values(dotenv_path)
@@ -106,8 +109,10 @@ def main(argv=None, dotenv_path=DOTENV):
             raise SystemExit(f"no kiosk yet: {dotenv_path} has no DASHBOARD_ENDPOINT_URL -- run without --status first")
         kiosk = request_json("GET", f"{base}/v1/kiosks/{uid}", token)
         status = kiosk.get("status") or {}
+        cards = sorted((kiosk.get("cards") or {}))
         print(f"kiosk {uid}: paired_at={kiosk.get('paired_at')} sha={status.get('sha')} "
-              f"deployed_at={status.get('deployed_at')} last_result={status.get('last_result')}")
+              f"deployed_at={status.get('deployed_at')} last_result={status.get('last_result')} "
+              f"cards={cards}")
         return 0 if kiosk.get("paired_at") and status.get("sha") else 1
 
     if uid:
@@ -116,10 +121,15 @@ def main(argv=None, dotenv_path=DOTENV):
             print(f"kiosk {uid} is already minted and paired ({kiosk['paired_at']}); nothing to do.")
             return 0
         print(f"kiosk {uid} is minted but not paired yet; re-minting its pairing code.")
-        _owner_lines(request_json("POST", f"{base}/v1/kiosks", token, {"name": args.name}))
+        minted = request_json("POST", f"{base}/v1/kiosks", token, {"name": KIOSK_NAME})
+        if minted["uid"] != uid:
+            raise SystemExit(
+                f"refusing: re-mint returned kiosk {minted['uid']}, not {uid} in {dotenv_path}"
+            )
+        _owner_lines(minted)
         return 0
 
-    minted = request_json("POST", f"{base}/v1/kiosks", token, {"name": args.name})
+    minted = request_json("POST", f"{base}/v1/kiosks", token, {"name": KIOSK_NAME})
     append_dotenv(dotenv_path, [
         ("DASHBOARD_ENDPOINT_URL", f"{base}/v1/kiosks/{minted['uid']}/cards"),
         ("DASHBOARD_TOKEN", token),
