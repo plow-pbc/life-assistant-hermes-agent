@@ -281,11 +281,16 @@ def main(argv=None) -> int:
     # the earliest qualifying reminder (one line, the ≤115 contract enforced
     # above), the chat message gets them all. Each posting leg consumes its
     # own file on success. stdout carries only the count the sheet routes on.
+    # Staged then renamed, so a crash mid-run cannot leave one leg's handoff
+    # fresh and the other's stale/half-written alongside a failed exit.
     if reminders:
-        with open(KIOSK_FILE, "w") as f:
-            f.write(reminders[0] + "\n")
-        with open(CHAT_FILE, "w") as f:
-            f.write("\n".join(reminders) + "\n")
+        pairs = ((KIOSK_FILE, reminders[0] + "\n"),
+                 (CHAT_FILE, "\n".join(reminders) + "\n"))
+        for path, body in pairs:
+            with open(path + ".tmp", "w") as f:
+                f.write(body)
+        for path, _ in pairs:
+            os.replace(path + ".tmp", path)
 
     json.dump({"qualifying": len(reminders)}, sys.stdout)
     print()
