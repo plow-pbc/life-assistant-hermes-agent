@@ -1,3 +1,8 @@
+> **Vendored copy.** The canonical protocol lives in `plow-pbc/life-dashboard`
+> at `docs/kiosk-protocol.md`; this pinned copy is what this agent's producers
+> read. When the two disagree, the canonical copy governs — sync this one from
+> it rather than editing it independently.
+
 # Kiosk wire protocol + tile contract
 
 The single source of truth for **what every ld- producer posts to the kiosk**,
