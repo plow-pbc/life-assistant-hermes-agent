@@ -370,13 +370,13 @@ def test_the_deliver_target_expands_from_either_source(source, tmp_path):
 
 
 def test_the_live_nudge_delivers_by_script_not_by_deliver_arm():
-    """The nudge's chat leg is a script, never the cron's relay: the chat
-    leg is send_nudge_chat.py (quiet ticks stay silent by construction), so
-    the row's deliver must be None -- a target here would ALSO relay every
-    no-op final response through the cron."""
+    """The nudge's chat leg is a script, never the cron's relay: post_nudge.py
+    coordinates kiosk-then-chat itself (quiet ticks stay silent by
+    construction), so the row's deliver must be None -- a target here would
+    ALSO relay every no-op final response through the cron."""
     nudge = next(j for j in spec().JOBS if j["name"] == "ld-calendar-nudge")
     assert nudge["deliver"] is None
-    assert (ROOT / "ld-calendar-nudge" / "scripts" / "send_nudge_chat.py").is_file()
+    assert (ROOT / "ld-calendar-nudge" / "scripts" / "post_nudge.py").is_file()
 
 
 def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):

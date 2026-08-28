@@ -86,25 +86,25 @@ nudge this tick" summary. A quiet half-hour is a deliberate no-op on both
 surfaces (the kiosk keeps its last card; a "no meetings" chat ping every 30
 minutes is noise).
 
-## Post — kiosk first, then chat
+## Post — one command, both surfaces
 
-If `qualifying` is 1 or more, run, by absolute path, in this order — no
-arguments, no text (each leg reads and consumes its own fixed handoff, so a
-prompt-injected turn has nothing to steer):
+If `qualifying` is 1 or more, run ONE command, by absolute path — no
+arguments, no text (it reads the fixed handoffs, so a prompt-injected turn
+has nothing to steer):
 
-1. `/opt/data/skills/ld-calendar-nudge/scripts/post_nudge.py` — posts card 1,
-   `type: "alert"` (the slot shared with `ld-morning-triage`; the store keeps
-   the latest post per card), endpoint + token from the `DASHBOARD_*` env
-   vars, consuming its handoff on success. Fails loudly on any non-200 —
-   surface that and stop; do not continue to chat on a failed kiosk post.
-   Preview with `--dry-run` (body redacted).
-2. `/opt/data/skills/ld-calendar-nudge/scripts/send_nudge_chat.py` — messages
-   the owner every qualifying reminder over Plow Chat (`PLOW_CHAT_*`
-   credentials, bearer never in argv), consuming its own handoff on success.
-   Fails loudly on any non-2xx — surface that; the kiosk copy is already up.
+    /opt/data/skills/ld-calendar-nudge/scripts/post_nudge.py
 
-After both legs, emit a one-line summary naming the count — "posted N
-meeting reminder(s)"; the content itself stays out of your hands by design.
+It validates the Plow Chat config FIRST (a broken chat config refuses
+before anything posts — never a half-delivered run), then posts card 1,
+`type: "alert"` (the slot shared with `ld-morning-triage`; the store keeps
+the latest post per card; `DASHBOARD_*` env vars), then messages the owner
+every qualifying reminder over Plow Chat (`PLOW_CHAT_*` credentials, bearer
+never in argv), consuming both handoffs only after both legs succeed. Fails
+loudly at whichever leg breaks — surface that in the final response.
+Preview with `--dry-run` (body redacted, nothing consumed).
+
+Then emit a one-line summary naming the count — "posted N meeting
+reminder(s)"; the content itself stays out of your hands by design.
 
 ## Scheduling
 
