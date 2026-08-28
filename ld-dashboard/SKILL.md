@@ -5,8 +5,7 @@ description: The life-dashboard's cron spec — the six producer schedules as re
 
 # Life Dashboard — the cron spec
 
-The six producer schedules, versioned. Five are registered; one is blocked
-and says why.
+The six producer schedules, versioned. All six are registered.
 
 ## Why a skill and not a note
 
@@ -97,13 +96,12 @@ source; this table summarises it.
 | `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | **live** — Google Calendar via Latch's vendored gog |
 | `ld-morning-triage` | `5 7 * * *` | 1 · alert | **live** — iMessage through Latch |
 | `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
-| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | blocked — Google Calendar, `plow-pbc/latch#183` |
+| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored gog |
 
-Blocked means the producer body is not in this repo and its cron is not
-registered: `plow-connectors` was dropped, so the nudge has no data source
-on this agent until `plow-pbc/latch#183`'s port lands. Its body stays
-fetchable in the archived upstream repo, and its card number stays
-reserved here so the mapping cannot silently renumber when it lands.
+A row re-acquiring a `blocked` reason drops off the schedule at the next
+registration — the spec keeps blocked rows as data rather than deleting
+them, and `test_exactly_the_producers_with_a_data_source_are_live` pins the
+count so that cannot happen silently.
 
 ## Two values that are never literals
 
@@ -130,9 +128,9 @@ The two producers take different delivery paths, on purpose. `--deliver`
 relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always
 has content, its final response IS the digest — and its live row rides it.
 It does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
-when the nudge lands its chat leg goes through a committed script and its
-row's `deliver` stays data recording the target
-(`test_only_the_digest_rides_the_native_deliver_arm` pins the divide).
+its chat leg is its committed `send_nudge_chat.py` and its row's `deliver`
+is `None` (`test_only_the_digest_rides_the_native_deliver_arm` pins the
+divide).
 
 ## Unattended runs
 

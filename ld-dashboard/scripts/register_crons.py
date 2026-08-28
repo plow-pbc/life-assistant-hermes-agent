@@ -54,10 +54,10 @@ LD_CONFIG = "/opt/data/ld/config.json"
 #     the chat leg the sheet promises. create_argv() expands the ${VAR} from
 #     /opt/data/.env -- the file activation writes and the gateway loads; a
 #     docker-exec session's env never carries it -- and refuses a blank one.
-#   - ld-calendar-nudge (blocked) will NOT use --deliver when it lands: it is
-#     half-hourly with quiet no-op runs, and --deliver relays EVERY final
-#     response -- its chat leg goes through a committed script instead (the
-#     plan's C2 task). Its target stays recorded as data on the blocked row.
+#   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
+#     quiet no-op runs, and --deliver relays EVERY final response -- its chat
+#     leg is its committed send_nudge_chat.py, which keeps quiet ticks silent
+#     by construction.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
 # the container's zone, which is agent-mgr's AGENT_TZ.
@@ -142,13 +142,19 @@ JOBS = (
         "type": "alert",
         "schedule": "20,50 * * * *",
         "prompt": (
-            "Run the ld-calendar-nudge producer now: if a meeting with other "
-            "attendees starts within the lookahead window, post a kiosk reminder "
-            "and message the owner over Plow Chat."
+            "Run the ld-calendar-nudge producer now: gather the next day's "
+            "calendar through Latch gog, run the nudge filter, and if a "
+            "meeting with other attendees starts within the lookahead window, "
+            "post a kiosk reminder and message the owner over Plow Chat; a "
+            "quiet tick is a no-op on both surfaces."
         ),
         "skill": "ld-calendar-nudge",
-        "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
+        # deliver stays None ON PURPOSE, unlike the digest: --deliver relays
+        # EVERY final response, and this producer runs half-hourly with quiet
+        # no-op ticks -- its chat leg is its committed send_nudge_chat.py,
+        # which keeps quiet runs silent by construction.
+        "deliver": None,
+        "blocked": None,
     },
 )
 
@@ -311,8 +317,8 @@ def create_argv(job, env=None, dotenv_path=DOTENV):
     """The --deliver arm serves exactly one live shape: a producer whose every
     run has content, where relaying the final response IS the chat leg
     (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
-    relays every final response, no-ops included -- which is why the nudge's
-    target stays data on its blocked row until its script leg lands."""
+    relays every final response, no-ops included -- which is why the live
+    nudge's deliver is None and its chat leg is send_nudge_chat.py."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]
