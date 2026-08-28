@@ -36,6 +36,12 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
+)
+from runtime_env import DOTENV, dotenv_values  # noqa: E402
+
 HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
 # reason this skill exists, because `agent-mgr restore` does not replay it.
@@ -44,21 +50,22 @@ JOBS_FILE = "/opt/data/cron/jobs.json"
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
 LD_CONFIG = "/opt/data/ld/config.json"
 
-# The spec. One row per producer.
+# The spec. One row per producer — all six are live; the blocked/LIVE
+# partition machinery left with the last blocked row (git history keeps the
+# pattern if a producer ever loses its data source again).
 #
 # `deliver` is None for every card-only producer: the card IS the delivery, over
 # the kiosk POST. Two producers also message the owner, and they diverge on
 # purpose:
-#   - ld-weekly-digest rides the cron's native --deliver arm: it is weekly and
-#     ALWAYS has content, so relaying its final response is exactly the chat
-#     leg the sheet promises. create_argv() expands the ${VAR} from
+#   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
+#     weekly and ALWAYS has content, so relaying its final response is exactly
+#     the chat leg the sheet promises. create_argv() expands the ${VAR} from
 #     /opt/data/.env -- the file activation writes and the gateway loads; a
 #     docker-exec session's env never carries it -- and refuses a blank one.
-#   - ld-calendar-nudge does NOT: it is half-hourly with quiet no-op runs, and
-#     --deliver relays EVERY final response. Its chat leg is its committed
-#     post script (ld-calendar-nudge/scripts/post_nudge.py), which reads
-#     PLOW_CHAT_* from the gateway env at run time -- so its row carries no
-#     deliver target at all.
+#   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
+#     quiet no-op runs, and --deliver relays EVERY final response -- its chat
+#     leg lives in its committed post_nudge.py coordinator, keeping quiet ticks silent
+#     by construction.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
 # the container's zone, which is agent-mgr's AGENT_TZ.
@@ -127,9 +134,9 @@ JOBS = (
             "final response."
         ),
         "skill": "ld-weekly-digest",
-        # Native --deliver, unlike the nudge: the digest is weekly and always
-        # has content, so relaying every final response fits; the half-hourly
-        # nudge has quiet no-op runs and its chat leg is post_nudge.py.
+        # Native --deliver, unlike the nudge: the digest is weekly and
+        # always has content, so relaying every final response fits; the
+        # half-hourly nudge has quiet no-op runs and rides its script leg.
         "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
     },
     {
@@ -138,13 +145,17 @@ JOBS = (
         "type": "alert",
         "schedule": "20,50 * * * *",
         "prompt": (
-            "Run the ld-calendar-nudge producer now: if a meeting with other "
-            "attendees starts within the lookahead window, post a kiosk reminder "
-            "and message the owner over Plow Chat."
+            "Run the ld-calendar-nudge producer now: gather the next day's "
+            "calendar through Latch gog, run the nudge filter, and if a "
+            "meeting with other attendees starts within the lookahead window, "
+            "post a kiosk reminder and message the owner over Plow Chat; a "
+            "quiet tick is a no-op on both surfaces."
         ),
         "skill": "ld-calendar-nudge",
-        # No --deliver: the chat leg lives in post_nudge.py (see the divide
-        # comment above JOBS).
+        # deliver stays None ON PURPOSE, unlike the digest: --deliver relays
+        # EVERY final response, and this producer runs half-hourly with quiet
+        # no-op ticks -- its chat leg lives in its post_nudge.py coordinator,
+        # which keeps quiet runs silent by construction.
         "deliver": None,
     },
 )
@@ -244,32 +255,6 @@ def registered_jobs(jobs_path=JOBS_FILE):
     }
 
 
-DOTENV = "/opt/data/.env"
-
-
-def dotenv_values(path=DOTENV):
-    """The gateway's own env file, parsed with one spelling: NAME=value.
-
-    Registration runs via `docker exec`, and an exec session's env never
-    carries the per-instance PLOW_CHAT_* values -- they live in /opt/data/.env,
-    the file the gateway itself loads (measured: the first live registration
-    refused on an unset uid that sat one file-read away). No quoting, no
-    `export`, no substitution -- the file is machine-written by activation in
-    exactly this shape, and a second accepted spelling is a second thing that
-    can drift. Absent file reads as empty: the refusal in resolve_deliver
-    names what's missing either way.
-    """
-    try:
-        lines = pathlib.Path(path).read_text().splitlines()
-    except FileNotFoundError:
-        return {}
-    return {
-        name: value
-        for name, _, value in (line.partition("=") for line in lines)
-        if name.isidentifier()  # a '#'-comment line fails this on its own
-    }
-
-
 def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
     """Expand every ${VAR} in a delivery target from ONE source.
 
@@ -305,8 +290,8 @@ def create_argv(job, env=None, dotenv_path=DOTENV):
     """The --deliver arm serves exactly one live shape: a producer whose every
     run has content, where relaying the final response IS the chat leg
     (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
-    relays every final response, no-ops included -- which is why the nudge's
-    chat leg is its committed post script, not a deliver target here."""
+    relays every final response, no-ops included -- which is why the live
+    nudge's deliver is None and its chat leg lives in post_nudge.py."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]

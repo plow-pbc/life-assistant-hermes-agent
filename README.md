@@ -147,10 +147,13 @@ registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
 
 Land `/opt/data/ld/config.json` before you start, not after: the last step below
 registers the crons, and `register_crons.py` reads `family.timezone` from that
-file and refuses without it. The producers read their location and teams from it
-too, as the agent. It goes at `~/.hermes-<agent>/ld/config.json` on the host,
-landed as the instance owner rather than through a root `exec`, and the live one
-is mode-600. The dotenv needs `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN`
+file and refuses without it — and `compose.override.yml` binds the file
+read-only over itself, so it must exist on the host before `agent-mgr up`
+(Docker would otherwise create a root-owned directory in its place) and the
+agent can read but never rewrite it; edits happen host-side, then `up`. The
+producers read their location and teams from it too, as the agent. It goes at
+`~/.hermes-<agent>/ld/config.json` on the host, landed as the instance owner
+rather than through a root `exec`, and the live one is mode-600. The dotenv needs `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN`
 alongside it. `ld-shared/scripts/ld_config_gate.py` is the single definition of
 a valid config — run it rather than eyeballing the JSON. Its `family.timezone`
 must match the container's `AGENT_TZ`, because `hermes cron create` takes no
@@ -182,7 +185,18 @@ agent-mgr activate <agent>           # prints a code — its owner texts it from
 # host's `sh` that collapses to one literal directory and exits 0.
 mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 
-agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
+# ALSO before `up`: the ld-config must be a real FILE at this path.
+# compose.override.yml binds it read-only over /opt/data/ld/config.json, and
+# Docker materializes a missing bind source as a root-owned DIRECTORY at both
+# ends -- bring-up then fails on a config nothing can read or replace. The
+# guard keeps `up` from creating that directory (an `exit` would close the
+# shell this block is pasted into); the later steps still run and fail
+# loudly against the missing container, which needs no fence.
+if [ -f ~/.hermes-<agent>/ld/config.json ]; then
+  agent-mgr up <agent>               # must precede sign-in: that runs inside this container
+else
+  echo 'STOP: land ld/config.json first (see above)'
+fi
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 just check-latch <agent>             # can this container reach that owner's Mac?
 agent-mgr agent <agent> 'what is the weather today?'          # a turn without the phone
@@ -293,10 +307,10 @@ producers arrive as this agent's own mounted skills instead of a fetched tree,
 and the two that need no account — `ld-weather` (NWS) and `ld-sports` (ESPN) —
 work immediately, as do `ld-morning-triage`, rewritten onto the Mac's
 iMessage DB read through Latch, and the three calendar producers —
-`ld-morning-updates`, `ld-weekly-digest` and `ld-calendar-nudge` — their
+`ld-morning-updates`, `ld-weekly-digest`, `ld-calendar-nudge` — their
 calendar reads through Latch's vendored `gog`.
 
-`ld-dashboard` carries and registers all six schedules. `agent-mgr
+`ld-dashboard` carries all six schedules, all six registered. `agent-mgr
 check-connectors` has nothing to report on this instance; calendar access is
 Latch's vendored `gog`, not a connector.
 
@@ -323,8 +337,6 @@ skills.tsv      empty -- no connectors on this instance (see above)
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
-ld-weekly-digest/   the week-ahead digest producer; ld-calendar-nudge/ the
-                    half-hourly meeting reminder -- both gog through Latch
 ld-shared/      the POST helper, the ld-config gate and the wire protocol
 ld-dashboard/   the six cron schedules, all registered
 scripts/        latch-verdict.py -- the one thing this repo owns outright
@@ -371,5 +383,6 @@ installs it and reloads the gateway only if the file actually changed.
   `plow-connectors`, so Gmail and Slack are unreachable however linked the
   owner's Plow account is, and `agent-mgr check-connectors <agent>` has nothing
   to probe. Google Calendar is back — through a vendored `gog` behind Latch
-  rather than a connector skill; every calendar producer now rides it. See
-  [No connectors, and what that costs](#no-connectors-and-what-that-costs).
+  rather than a connector skill; all three calendar producers ride it, and
+  `plow-pbc/latch#183`'s port work is done. See [No connectors, and what
+  that costs](#no-connectors-and-what-that-costs).

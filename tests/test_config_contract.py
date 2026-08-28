@@ -407,7 +407,7 @@ def override():
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
 
 
-def test_every_skill_is_mounted_flat_and_read_only():
+def test_the_hermes_volumes_are_exactly_these():
     """Four declarative strings, asserted exactly.
 
     This replaces a brace-aware volume parser, its own unit test, and four
@@ -428,6 +428,16 @@ def test_every_skill_is_mounted_flat_and_read_only():
         f"${{AGENT_DIR:?set by agent-mgr from the registry}}/{name}"
         f":/opt/data/skills/{name}:ro"
         for name in SKILL_DIRS
+    } | {
+        # The one non-skill bind: the shared ld-config pinned read-only over
+        # itself. /opt/data is the agent's writable home, so without this a
+        # prompt-injected turn could rewrite the config every producer
+        # trusts; the single-FILE bind keeps the fixed reader path while the
+        # ld/ handoff directory stays writable. Same exact-string discipline:
+        # drop :ro, widen it to the directory, or reroot the source and this
+        # fails with both sets printed.
+        "${AGENT_HOME:?set by agent-mgr from the instance descriptor}"
+        "/ld/config.json:/opt/data/ld/config.json:ro"
     }
 
 
@@ -443,7 +453,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     container, as an agent that cannot find the contract it was told to read.
 
     The check is only worth anything because the mapping is earned:
-    test_every_skill_is_mounted_flat_and_read_only pins
+    test_the_hermes_volumes_are_exactly_these pins
     ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
     ROOT really does mean the agent can open them.
 
@@ -487,9 +497,9 @@ PRODUCERS = [
     ("ld-morning-triage", "post_alert.py"),
     ("ld-morning-updates", "post_message.py"),
     ("ld-weekly-digest", "post_digest.py"),
+    ("ld-calendar-nudge", "post_nudge.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
-    ("ld-calendar-nudge", "post_nudge.py"),
 ]
 # The helper ships no sheet; its constant is the docstring example the next
 # producer copies, so it is pinned for the write-safe check alone.
@@ -499,13 +509,17 @@ BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
 
 def _handoff(skill, wrapper):
     source = (ROOT / skill / "scripts" / wrapper).read_text()
-    paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', source)
+    # Two spellings, one contract: a thin wrapper hands its path to the
+    # shared helper (MESSAGE_FILE = "..."), while post_nudge.py owns its
+    # handoff itself and declares it as its own HANDOFF constant.
+    paths = re.findall(r'(?:MESSAGE_FILE\s*=|^HANDOFF =)\s*"([^"]+)"',
+                       source, re.MULTILINE)
     # ld-shared's only quoted assignment is its docstring EXAMPLE -- the real
     # constant is `MESSAGE_FILE: str | None = None`, which this cannot see. So a
     # reworded docstring lands here, and a bare unpack would blame neither the
     # file nor the contract.
     assert len(paths) == 1, (
-        f"{skill}/scripts/{wrapper} declares {len(paths)} quoted MESSAGE_FILE "
+        f"{skill}/scripts/{wrapper} declares {len(paths)} quoted handoff "
         "assignments; expected exactly 1"
     )
     return paths[0]
@@ -566,6 +580,16 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
         f"{skill}/SKILL.md still names {sorted(stale)} alongside {path} -- a "
         "half-applied path change, and the agent is told two different files"
     )
+
+
+def test_the_nudge_filter_writes_exactly_what_the_coordinator_consumes():
+    """nudge_candidates.py writes the one handoff; post_nudge.py (the one
+    posting command) reads and consumes it. A drifted path on either side
+    tells a leg to read a file nobody writes — an unattended half-hourly
+    failure in front of nobody."""
+    nc_src = (ROOT / "ld-calendar-nudge" / "scripts" / "nudge_candidates.py").read_text()
+    (written,) = re.findall(r'^HANDOFF = "([^"]+)"', nc_src, re.MULTILINE)
+    assert written == _handoff("ld-calendar-nudge", "post_nudge.py")
 
 
 def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():

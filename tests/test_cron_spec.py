@@ -2,8 +2,8 @@
 
 Every assertion here is about a failure that is quiet at registration time and
 only shows up as a dashboard behaving wrongly hours later -- a job that fires on
-the wrong clock, a delivery target that would be silently dropped because the
-machinery to expand it was deleted as unreachable.
+the wrong clock, a producer writing another producer's tile, a delivery target
+that would be silently dropped or expanded from an empty variable.
 """
 import importlib.util
 import json
@@ -56,8 +56,8 @@ def test_the_job_contract_is_exactly_this():
     overwriting another's tile), a retyped one (the right slot rendering the
     wrong way), and a producer added or dropped -- the things every separate
     check here used to cover between them, without reading a single Markdown
-    file. Every row registers; the blocked-state machinery left with its last
-    occupant (the nudge, live since its gog port landed)."""
+    file. All six rows register; the blocked/LIVE partition left with the
+    last blocked row (git history keeps the pattern)."""
     assert {
         (j["name"], j["card"], j["type"]) for j in spec().JOBS
     } == {(name, card, type_) for name, (card, type_) in JOB_CONTRACT.items()}
@@ -126,7 +126,7 @@ def test_a_paused_job_counts_as_registered_but_not_as_runnable(tmp_path):
     }
 
 
-def test_each_live_job_attaches_its_own_skill():
+def test_each_job_attaches_its_own_skill():
     """Without --skill the scheduled turn has to find the producer by name in a
     directory of skills, and a near-miss posts nothing rather than failing."""
     for job in spec().JOBS:
@@ -215,10 +215,9 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     assert "PAUSED" in out and "/opt/hermes/bin/hermes cron resume ld-weather" in out
 
 
-def test_a_fresh_instance_registers_every_producer(monkeypatch, tmp_path):
-    """A fresh instance (no jobs.json) gets all six schedules -- a producer
-    silently missing from a bring-up is a card that never updates, with
-    nothing to diff against."""
+def test_a_fresh_instance_registers_every_job(monkeypatch, tmp_path):
+    """No jobs.json at all — the rebuilt-instance case this script exists
+    for — must end with all six producers scheduled."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
@@ -245,10 +244,8 @@ def test_no_prompt_names_a_card_other_than_the_one_the_spec_assigns(job):
 
     Conditional, because upstream is not uniform: five prompts name their card
     and ld-calendar-nudge's does not -- it says "post a kiosk reminder" and
-    leaves the slot to its SKILL.md. Requiring a card in every prompt would mean
-    rewording a ported producer's reviewed instruction to satisfy a test, which
-    is the tail wagging the dog. Disagreement is the real risk, and that is what
-    this catches."""
+    leaves the slot to its SKILL.md. Disagreement is the real risk, and that
+    is what this catches."""
     named = {int(n) for n in re.findall(r"\bcard (\d+)", job["prompt"])}
     assert named <= {job["card"]}, (
         f"{job['name']} is card {job['card']} in the spec but its prompt names "
@@ -319,11 +316,11 @@ def test_only_the_digest_rides_the_native_deliver_arm():
     """The card IS the delivery for every other live producer, and the shape
     divide is deliberate: --deliver relays EVERY final response, which fits
     the weekly always-has-content digest and would spam from the half-hourly
-    quiet-no-op nudge -- the nudge's chat leg is its committed post script
-    (post_nudge.py), reading env at run time, so its row carries no target.
-    This replaces the old tripwire that fired when a job with a target went
-    live: the resolver it demanded is back (resolve_deliver), so the pin is
-    now on WHICH jobs use it."""
+    quiet-no-op nudge -- so the NOW-LIVE nudge's chat leg is its committed
+    post_nudge.py coordinator and its deliver stays None (the row comment
+    records this). This replaces the old tripwire that fired when a job with
+    a target went live: the resolver it demanded is back (resolve_deliver),
+    so the pin is on WHICH jobs use it."""
     mod = spec()
     assert {j["name"] for j in mod.JOBS if j["deliver"]} == {"ld-weekly-digest"}
 

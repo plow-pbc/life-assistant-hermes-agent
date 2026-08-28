@@ -56,14 +56,28 @@
 # the checkout's own machinery, not untracked files in general.
 #
 # Read-only: the agent runs these, it does not edit them.
+#
+# The last line is different in kind: a single-FILE :ro bind of the shared
+# ld-config over itself. /opt/data is the agent's writable home (the base
+# template's ${AGENT_HOME} mount), so hermes's file tool can write anywhere
+# under it — including, without this bind, the config every producer trusts:
+# an injected event could rewrite calendar_nudge.owner_identities or the
+# lookaheads before the filter reads them. The nested single-file bind keeps
+# the fixed in-container path for every reader while making writes fail; the
+# ld/ handoff DIRECTORY stays writable — only the config is pinned. The
+# source must exist before `agent-mgr up` (Docker would otherwise create a
+# root-owned directory at both ends) — README's bring-up already lands the
+# config first, and it uses ${AGENT_HOME}, the same variable and guard the
+# base template mounts the home with.
 services:
   hermes:
     volumes:
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-morning-triage:/opt/data/skills/ld-morning-triage:ro
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-calendar-nudge:/opt/data/skills/ld-calendar-nudge:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-morning-updates:/opt/data/skills/ld-morning-updates:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-weather:/opt/data/skills/ld-weather:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-sports:/opt/data/skills/ld-sports:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-shared:/opt/data/skills/ld-shared:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-weekly-digest:/opt/data/skills/ld-weekly-digest:ro
-      - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-calendar-nudge:/opt/data/skills/ld-calendar-nudge:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-dashboard:/opt/data/skills/ld-dashboard:ro
+      - ${AGENT_HOME:?set by agent-mgr from the instance descriptor}/ld/config.json:/opt/data/ld/config.json:ro

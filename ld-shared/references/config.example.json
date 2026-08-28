@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical ld-config template for the life-dashboard producers. The live file is assembled from this shape at install time; every [UPPER_SNAKE] placeholder must be filled or the shared gate (ld_config_gate.py) refuses the config. morning_triage.chat_db_path is the absolute path to the owner Mac's Messages DB, e.g. /Users/<mac-username>/Library/Messages/chat.db, and morning_triage.exclude.imessage_handles is the exclusion list the iMessage triage reads. Every calendar.sources[] read happens under the ONE account Latch's gog is authenticated as, so there is no per-source account key: calendar_id is a calendar's whole address and must be the globally-unique id (the ...@group.calendar.google.com / email form) visible to that account. 'primary' names only that account's own calendar, so at most one source may use it — the gate refuses blank or duplicate ids. Owner identity is not a source concern; it lives in calendar_nudge.owner_identities — the owner's email set (one per connected calendar world) that ld-calendar-nudge's owner-participation filter matches against.",
+  "_comment": "Canonical ld-config template for the life-dashboard producers. The live file is assembled from this shape at install time; every [UPPER_SNAKE] placeholder must be filled or the shared gate (ld_config_gate.py) refuses the config. morning_triage.chat_db_path is the absolute path to the owner Mac's Messages DB, e.g. /Users/<mac-username>/Library/Messages/chat.db, and morning_triage.exclude.imessage_handles is the exclusion list the iMessage triage reads. Every calendar.sources[] read happens under the ONE account Latch's gog is authenticated as, so there is no per-source account key: calendar_id is a calendar's whole address and must be the globally-unique id (the ...@group.calendar.google.com / email form) visible to that account. 'primary' names only that account's own calendar, so at most one source may use it — the gate refuses blank or duplicate ids. Owner identity is not a source concern; calendar_nudge.owner_identities is its home — the owner's email addresses (one per connected calendar), which the nudge's owner-participation rule reads.",
   "family": {
     "owner": { "name": "[OWNER_NAME]", "imessage": "[OWNER_IMESSAGE]" },
     "partner": { "name": "[PARTNER_NAME]", "imessage": "[PARTNER_IMESSAGE]" },
@@ -28,7 +28,7 @@
   "calendar_nudge": {
     "lookahead_virtual_minutes": 30,
     "lookahead_in_person_minutes": 60,
-    "owner_identities": ["[OWNER_EMAIL_1]"]
+    "owner_identities": ["[OWNER_CALENDAR_EMAIL]"]
   },
   "weather": {
     "location": "Mountain View",
