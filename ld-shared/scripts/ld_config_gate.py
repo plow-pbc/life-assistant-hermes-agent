@@ -27,13 +27,15 @@ proof still holds):
     (indexing a non-object, or testing a non-string field) — jq's gate ran with
     `2>/dev/null || echo "not valid JSON"`, collapsing both into that one line.
 
-The six checks, matching the (updated) jq filter exactly:
+The eight checks, matching the (updated) jq filter exactly:
   1. family.owner.name must contain a non-whitespace char  (jq: (.family.owner.name // "") | test("\\S"))
   2. family.timezone must contain a non-whitespace char    (jq: (.family.timezone // "") | test("\\S"))
   3. calendar.sources must be a non-empty array            (jq: (type) == "array" and length >= 1)
   4. no calendar.sources[].calendar_id may be blank        (jq: select(((.calendar_id // "") | test("\\S")) | not))
   5. calendar.sources[].calendar_id values must be unique  (jq: length == (unique | length))
-  6. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
+  6. calendar_nudge.owner_identities must be a non-empty array (jq: (type) == "array" and length >= 1)
+  7. no calendar_nudge.owner_identities entry may be blank (jq: select((test("\\S")) | not))
+  8. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
 
 Checks 4-5 replaced the old "no calendar.sources[].account may be blank": the
 runtime reads every source under the ONE gog identity Latch is authenticated
@@ -42,8 +44,9 @@ nothing uses -- while several sources saying "primary" all resolved to the
 authenticated account's own calendar, silently omitting the rest. The id IS
 the whole address, so it must be present and unique (which also caps a bare
 "primary" at one source). Owner identity is a nudge concern, not a source
-concern: ld-calendar-nudge will carry its own calendar_nudge.owner_identities
-key when it lands.
+concern: checks 6-7 gate calendar_nudge.owner_identities, the email set the
+nudge's owner-participation filter matches against -- an upgraded config
+without it would register a live cron whose every run fails.
 """
 import json
 import re
@@ -156,7 +159,26 @@ def gate(config):
         if len(ids) != len(set(ids)):
             failures.append("calendar.sources[].calendar_id values are not unique")
 
-    # 6. no leftover [UPPER_SNAKE] placeholder anywhere
+    # 6. calendar_nudge.owner_identities is a non-empty array, and 7. no entry
+    #    is blank. The nudge's owner-participation filter matches against this
+    #    set; an upgraded config without it registers a live half-hourly cron
+    #    whose every run refuses before gathering. Same sweep discipline as
+    #    checks 4-5: visit every element, so a later non-string entry still
+    #    collapses to "not valid JSON" exactly as jq's test() would.
+    identities = _index(_index(config, "calendar_nudge"), "owner_identities")
+    if not (isinstance(identities, list) and len(identities) >= 1):
+        failures.append("calendar_nudge.owner_identities is not a non-empty array")
+    if isinstance(identities, list):
+        blank_entry = False
+        for ident in identities:
+            if not isinstance(ident, str):
+                raise GateError("test() on non-string")
+            if not _NONBLANK_RE.search(ident):
+                blank_entry = True
+        if blank_entry:
+            failures.append("a calendar_nudge.owner_identities entry is blank")
+
+    # 8. no leftover [UPPER_SNAKE] placeholder anywhere
     if any(_PLACEHOLDER_RE.match(s) for s in _all_strings(config)):
         failures.append("an unfilled [UPPER_SNAKE] placeholder remains")
 

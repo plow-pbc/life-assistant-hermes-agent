@@ -5,8 +5,7 @@ description: The life-dashboard's cron spec — the six producer schedules as re
 
 # Life Dashboard — the cron spec
 
-The six producer schedules, versioned. Five are registered; one is blocked
-and says why.
+The six producer schedules, versioned. All six are registered.
 
 ## Why a skill and not a note
 
@@ -97,13 +96,7 @@ source; this table summarises it.
 | `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | **live** — Google Calendar via Latch's vendored gog |
 | `ld-morning-triage` | `5 7 * * *` | 1 · alert | **live** — iMessage through Latch |
 | `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
-| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | blocked — Google Calendar, `plow-pbc/latch#183` |
-
-Blocked means the producer body is not in this repo and its cron is not
-registered: `plow-connectors` was dropped, so the nudge has no data source
-on this agent until `plow-pbc/latch#183`'s port lands. Its body stays
-fetchable in the archived upstream repo, and its card number stays
-reserved here so the mapping cannot silently renumber when it lands.
+| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored gog |
 
 ## Two values that are never literals
 
@@ -120,7 +113,7 @@ Los_Angeles container, silently.
 **The Plow Chat delivery target.** Two producers message the owner as well as
 posting a card, and which chat that is was minted by this instance's own
 activation — so it can never be a literal here, on a repo more than one person
-runs. It sits in `JOBS` as `plow_chat:${PLOW_CHAT_CHAT_UID}`, and
+runs. The digest's sits in `JOBS` as `plow_chat:${PLOW_CHAT_CHAT_UID}`, and
 `resolve_deliver()` expands it from `/opt/data/.env` — the file activation
 writes and the gateway loads; a `docker exec` session's env never carries it —
 refusing an unset or blank variable by name — an empty target is a chat leg
@@ -128,10 +121,11 @@ that silently delivers nowhere.
 
 The two producers take different delivery paths, on purpose. `--deliver`
 relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always
-has content, its final response IS the digest — and its live row rides it.
-It does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
-when the nudge lands its chat leg goes through a committed script and its
-row's `deliver` stays data recording the target
+has content, its final response IS the digest — and its row rides it. It
+does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
+the nudge's chat leg lives in its committed post script
+(`ld-calendar-nudge/scripts/post_nudge.py`), which reads `PLOW_CHAT_*` from
+the gateway env at run time and refuses an absent one by name
 (`test_only_the_digest_rides_the_native_deliver_arm` pins the divide).
 
 ## Unattended runs
