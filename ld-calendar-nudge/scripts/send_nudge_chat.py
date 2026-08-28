@@ -37,9 +37,9 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 import post_to_kiosk  # noqa: E402
+from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 HANDOFF = "/opt/data/ld/calendar-nudge-chat"
-DOTENV = "/opt/data/.env"
 
 # The shared redirect/bearer-leak guard, not a copy: a followed 3xx forwards
 # the Authorization header to the new origin (post_to_kiosk's docstring owns
@@ -59,18 +59,7 @@ def require(name, dotenv):
 
 
 def main():
-    # One accepted spelling (NAME=value), same as register_crons.dotenv_values:
-    # the file is machine-written by activation, and a second spelling is a
-    # second thing that can drift.
-    try:
-        lines = pathlib.Path(DOTENV).read_text().splitlines()
-    except FileNotFoundError:
-        lines = []
-    dotenv = {
-        name: value
-        for name, _, value in (line.partition("=") for line in lines)
-        if name.isidentifier()
-    }
+    dotenv = dotenv_values(DOTENV)
 
     text = pathlib.Path(HANDOFF).read_text().strip()
     if not text:

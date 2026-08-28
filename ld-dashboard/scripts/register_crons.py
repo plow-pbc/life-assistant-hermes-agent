@@ -36,6 +36,12 @@ import shutil
 import subprocess
 import sys
 
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
+)
+from runtime_env import DOTENV, dotenv_values  # noqa: E402
+
 HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
 # reason this skill exists, because `agent-mgr restore` does not replay it.
@@ -253,32 +259,6 @@ def registered_jobs(jobs_path=JOBS_FILE):
     return {
         job["name"]: bool(job["enabled"]) and not job["paused_at"]
         for job in jobs
-    }
-
-
-DOTENV = "/opt/data/.env"
-
-
-def dotenv_values(path=DOTENV):
-    """The gateway's own env file, parsed with one spelling: NAME=value.
-
-    Registration runs via `docker exec`, and an exec session's env never
-    carries the per-instance PLOW_CHAT_* values -- they live in /opt/data/.env,
-    the file the gateway itself loads (measured: the first live registration
-    refused on an unset uid that sat one file-read away). No quoting, no
-    `export`, no substitution -- the file is machine-written by activation in
-    exactly this shape, and a second accepted spelling is a second thing that
-    can drift. Absent file reads as empty: the refusal in resolve_deliver
-    names what's missing either way.
-    """
-    try:
-        lines = pathlib.Path(path).read_text().splitlines()
-    except FileNotFoundError:
-        return {}
-    return {
-        name: value
-        for name, _, value in (line.partition("=") for line in lines)
-        if name.isidentifier()  # a '#'-comment line fails this on its own
     }
 
 
