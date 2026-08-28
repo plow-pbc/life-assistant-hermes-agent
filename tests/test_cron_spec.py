@@ -361,32 +361,24 @@ def test_only_the_digest_rides_the_native_deliver_arm():
 ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"}
 
 
-@pytest.mark.parametrize("env", [
-    {"TZ": "America/Los_Angeles"},
-    {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": ""},
-    {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "   "},
-], ids=["unset", "empty", "blank"])
-def test_an_unexpandable_deliver_target_refuses_by_name(env, tmp_path):
+@pytest.mark.parametrize(("env", "named_source"), [
+    ({"TZ": "America/Los_Angeles"}, "the injected env"),
+    ({"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": ""}, "the injected env"),
+    ({"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "   "}, "the injected env"),
+    (None, "absent.env"),
+], ids=["unset", "empty", "blank", "absent-dotenv"])
+def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path):
     """The silent-drop trap: hermes accepts an empty or half-expanded target,
     so the digest would post its card and message nobody, every Sunday, in
-    front of nobody. Registration must stop and say which variable to fix.
-    These rows prove the injected-env refusals; the production shape --
-    env=None with the dotenv as the sole source -- refuses the same way when
-    that file is absent or lacks the value (last row below)."""
+    front of nobody. Registration must stop, say which variable to fix, and
+    name the source it actually consulted — the last row is the production
+    shape (env=None, the dotenv as the sole source, here an absent file)."""
     mod = spec()
     digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
     with pytest.raises(SystemExit) as excinfo:
         mod.create_argv(digest, env, dotenv_path=tmp_path / "absent.env")
     assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
-
-
-def test_a_dotenv_without_the_uid_refuses_and_names_the_file(tmp_path):
-    mod = spec()
-    digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
-    with pytest.raises(SystemExit) as excinfo:
-        mod.create_argv(digest, None, dotenv_path=tmp_path / "absent.env")
-    assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
-    assert "absent.env" in str(excinfo.value)
+    assert named_source in str(excinfo.value)
 
 
 @pytest.mark.parametrize("source", ["env", "dotenv"])

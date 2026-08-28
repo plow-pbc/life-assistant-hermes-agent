@@ -52,7 +52,8 @@ LD_CONFIG = "/opt/data/ld/config.json"
 #   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
 #     weekly and ALWAYS has content, so relaying its final response is exactly
 #     the chat leg the sheet promises. create_argv() expands the ${VAR} from
-#     the container env at registration time and refuses a blank one.
+#     /opt/data/.env -- the file activation writes and the gateway loads; a
+#     docker-exec session's env never carries it -- and refuses a blank one.
 #   - ld-calendar-nudge (blocked) will NOT use --deliver when it lands: it is
 #     half-hourly with quiet no-op runs, and --deliver relays EVERY final
 #     response -- its chat leg goes through a committed script instead (the
