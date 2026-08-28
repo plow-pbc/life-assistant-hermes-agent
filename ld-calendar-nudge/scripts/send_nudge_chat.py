@@ -26,24 +26,24 @@ runs — the script leg keeps quiet runs silent by construction.
 import json
 import os
 import pathlib
+import sys
 import urllib.error
 import urllib.request
+
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
+)
+import post_to_kiosk  # noqa: E402
 
 HANDOFF = "/opt/data/ld/calendar-nudge-text"
 DOTENV = "/opt/data/.env"
 
-
-def _no_redirect_opener():
-    """urllib opener that refuses 3xx redirects — same threat post_to_kiosk
-    guards: default urllib follows redirects AND forwards the Authorization
-    header to the new origin, steering the bearer to wherever a rewritten
-    endpoint or compromised host points."""
-
-    class _NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *_args, **_kwargs):
-            return None
-
-    return urllib.request.build_opener(_NoRedirect)
+# The shared redirect/bearer-leak guard, not a copy: a followed 3xx forwards
+# the Authorization header to the new origin (post_to_kiosk's docstring owns
+# the threat model), and a security helper duplicated across two files is one
+# a future fix silently misses.
+_no_redirect_opener = post_to_kiosk._no_redirect_opener
 
 
 def require(name, dotenv):
