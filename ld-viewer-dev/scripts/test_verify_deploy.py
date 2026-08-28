@@ -158,7 +158,7 @@ class _StallHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", "64")  # promise a body, never send it
         self.end_headers()
-        threading.Event().wait(2)  # outlast the rebound REQUEST_TIMEOUT
+        threading.Event().wait(1)  # outlast the rebound REQUEST_TIMEOUT + poll window
 
     def log_message(self, *_args):
         pass
