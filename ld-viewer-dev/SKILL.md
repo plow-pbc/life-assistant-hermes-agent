@@ -77,9 +77,13 @@ until a new push — so the fix is always another commit, never a re-run.
 
 ## Diagnostics (SSH, `so@rpi5`, plain user)
 
-    ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'journalctl --user -u life-dashboard-viewer -n 200'
+    ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'journalctl _SYSTEMD_USER_UNIT=life-dashboard-viewer.service -n 200 --no-pager'
     ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'systemctl --user restart life-dashboard-viewer'
     ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'cat ~/ld-releases/state/last-result.json'
+
+(`_SYSTEMD_USER_UNIT=`, not `--user -u`: the Pi keeps no per-user journal
+files, so the `--user` form returns "No journal files were found" — measured
+on rpi5; the system journal carries the user units' output.)
 
 The SSH key is for reads, restarts, and repair — **never the deploy path**.
 Deploying by editing files on the Pi directly leaves the kiosk running code no
