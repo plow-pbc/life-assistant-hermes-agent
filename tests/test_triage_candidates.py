@@ -1,6 +1,6 @@
 """tests/test_triage_candidates.py — behavior tests for the triage gather filter.
 
-Feeds the script sqlite3 `-json`-shaped output on stdin and asserts on the
+Feeds the script sqlite3 `-json`-shaped output as a gather file and asserts on the
 JSON it emits — the contract the SKILL.md's ranking step consumes.
 """
 import json
