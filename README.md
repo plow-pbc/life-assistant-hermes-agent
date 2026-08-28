@@ -372,8 +372,9 @@ installs it and reloads the gateway only if the file actually changed.
 ## Open
 
 - **Connectors are gone, not unlinked.** This instance installs no
-  `plow-connectors`, so Google and Slack are unreachable however linked the
+  `plow-connectors`, so Gmail and Slack are unreachable however linked the
   owner's Plow account is, and `agent-mgr check-connectors <agent>` has nothing
-  to probe. `plow-pbc/latch#183` is what brings Google back — through a vendored
-  `gog` behind Latch rather than a connector skill. See [No connectors, and what
+  to probe. Google Calendar is back — through a vendored `gog` behind Latch
+  rather than a connector skill; `plow-pbc/latch#183` now covers only the two
+  calendar producers not yet ported onto it. See [No connectors, and what
   that costs](#no-connectors-and-what-that-costs).
