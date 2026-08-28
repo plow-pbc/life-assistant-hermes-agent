@@ -294,24 +294,27 @@ def test_a_failed_swap_never_leaves_a_half_written_handoff(rig, monkeypatch):
         rig.kiosk.write_text("old kiosk\n")
         rig.chat.write_text("old chat\n")
 
+    calls = []
+
+    def fails_on(n):
+        def fake_replace(src, dst):
+            calls.append(src)
+            if len(calls) == n:
+                raise OSError("full")
+            return real(src, dst)
+        return fake_replace
+
     reset()
-    monkeypatch.setattr(nc.os, "replace",
-                        lambda *_a: (_ for _ in ()).throw(OSError("full")))
+    monkeypatch.setattr(nc.os, "replace", fails_on(1))
     with pytest.raises(OSError):
         rig.run(gather(event()))
     assert rig.kiosk.read_text() == "old kiosk\n"
     assert rig.chat.read_text() == "old chat\n"
 
     reset()
-    calls = []
+    calls.clear()
 
-    def second_fails(src, dst):
-        calls.append(src)
-        if len(calls) == 2:
-            raise OSError("full")
-        return real(src, dst)
-
-    monkeypatch.setattr(nc.os, "replace", second_fails)
+    monkeypatch.setattr(nc.os, "replace", fails_on(2))
     with pytest.raises(OSError):
         rig.run(gather(event()))
     assert rig.kiosk.read_text() == fresh, "the swapped leg is fully new"
