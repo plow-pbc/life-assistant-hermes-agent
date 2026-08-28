@@ -11,15 +11,13 @@ The chat leg is a committed script rather than the cron's native --deliver
 arm on purpose: --deliver relays EVERY final response, and this producer's
 half-hourly runs are mostly quiet no-ops (see register_crons.py's divide).
 
-The chat env is resolved BEFORE the kiosk leg runs: post_to_kiosk consumes
-MESSAGE_FILE on success, so a half-configured install refusing only at the
-chat step would have already posted the card and burned the handoff — the
-owner silently misses the chat reminder, every tick. Refusing up front makes
-a misconfiguration a no-op on both surfaces. A chat-leg NETWORK failure after
-a successful kiosk post still exits non-zero with the file consumed; the
-reminder is already on the shared kiosk, and the next half-hourly tick
-recomposes from live calendar state — a retry file would only repost a stale
-reminder.
+The chat env is resolved BEFORE the kiosk leg runs, so a half-configured
+install is a no-op on both surfaces instead of a posted card with a silently
+dropped chat reminder. The handoff is consumed only after the LAST leg
+succeeds (the kiosk leg runs with consume=False): a transient chat failure
+leaves the file on disk, so a retry resends it — without that, a :20 failure
+for a :30 meeting is unrecoverable, because the :50 recompose has already
+moved past the event.
 
 MESSAGE_FILE sits under /opt/data (HERMES_WRITE_SAFE_ROOT) per #12. The chat
 env values live in /opt/data/.env, which the GATEWAY loads — a docker-exec
@@ -87,9 +85,13 @@ def main():
     text = post_to_kiosk.read_required_file(
         post_to_kiosk.MESSAGE_FILE, "alert text file"
     )
-    chat = resolve_chat_env()  # refuse BEFORE the kiosk leg posts and consumes
-    post_to_kiosk.main()  # exits non-zero on any kiosk failure — chat never runs
+    chat = resolve_chat_env()  # refuse BEFORE the kiosk leg posts anything
+    post_to_kiosk.main(consume=False)  # exits non-zero on kiosk failure — chat never runs
     send_chat(text, dry_run, *chat)
+    # Consume only after BOTH legs succeeded; a dry run keeps the file, same
+    # as post_to_kiosk's own dry-run semantics.
+    if not dry_run:
+        os.unlink(post_to_kiosk.MESSAGE_FILE)
 
 
 if __name__ == "__main__":

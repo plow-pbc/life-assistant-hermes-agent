@@ -61,12 +61,36 @@ def test_a_failed_kiosk_post_never_reaches_chat(tmp_path, monkeypatch):
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(
         mod.post_to_kiosk, "main",
-        lambda: sys.exit("error: message API returned HTTP 500"))
+        lambda consume=True: sys.exit("error: message API returned HTTP 500"))
     sent = []
     monkeypatch.setattr(mod, "send_chat", lambda *a, **k: sent.append(a))
     with pytest.raises(SystemExit):
         mod.main()
     assert sent == []
+
+
+def test_the_handoff_survives_a_chat_failure_and_is_consumed_on_success(
+    tmp_path, monkeypatch
+):
+    """The :20 run of a :30 meeting gets exactly one shot at composing; if the
+    chat leg fails transiently after the kiosk leg, the handoff must stay on
+    disk so a retry resends it -- the :50 recompose has already moved past the
+    event. Only a fully successful run consumes it."""
+    mod = load(tmp_path)
+    for name, value in CHAT_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(mod.post_to_kiosk, "main", lambda consume=True: None)
+
+    monkeypatch.setattr(
+        mod.post_to_kiosk, "post_bearer_json",
+        lambda *a, **k: sys.exit("error: Plow Chat returned HTTP 502"))
+    with pytest.raises(SystemExit):
+        mod.main()
+    assert Path(mod.post_to_kiosk.MESSAGE_FILE).exists(), "retry needs the file"
+
+    monkeypatch.setattr(mod.post_to_kiosk, "post_bearer_json", lambda *a, **k: None)
+    mod.main()
+    assert not Path(mod.post_to_kiosk.MESSAGE_FILE).exists()
 
 
 def test_dry_run_prints_a_redacted_envelope_and_sends_nothing(

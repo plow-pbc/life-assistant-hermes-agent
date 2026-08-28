@@ -252,6 +252,9 @@ credentials come from env (`DASHBOARD_ENDPOINT_URL`, `DASHBOARD_TOKEN`,
 `PLOW_CHAT_BASE_URL`, `PLOW_CHAT_CHAT_UID`, `PLOW_CHAT_TOKEN` — all from
 `/opt/data/.env`, loaded by the gateway; none ever reach argv). It fails
 loudly on any non-200 from either surface — surface that and stop. The
+handoff file is consumed only after both legs succeed, so on a chat-leg
+failure re-running the helper resends the same reminder without
+recomposing. The
 half-hourly cron does NOT use the cron's native `--deliver` arm: that relays
 every final response, and this producer's runs are mostly quiet no-ops.
 
