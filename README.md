@@ -327,8 +327,9 @@ agent.env       what is true of every instance: where its config lives
 runtime/        config.yaml: model, plugins, mcp_servers
 skills.tsv      empty -- no connectors on this instance (see above)
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
+ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-shared/      the POST helper, the ld-config gate and the wire protocol
-ld-dashboard/   the six cron schedules; two registered, four blocked
+ld-dashboard/   the six cron schedules; three registered, three blocked
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 ```
