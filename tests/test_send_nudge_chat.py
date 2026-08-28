@@ -141,17 +141,19 @@ def test_a_real_redirect_fails_loud_and_is_never_followed(rig):
             pass
 
     handoff, dotenv, _, monkeypatch = rig
-    server = HTTPServer(("127.0.0.1", 0), _Redirect)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        dotenv.write_text(
-            f"PLOW_CHAT_BASE_URL=http://127.0.0.1:{server.server_port}\n"
-            "PLOW_CHAT_CHAT_UID=cht_x\nPLOW_CHAT_TOKEN=tok_x\n")
-        monkeypatch.setattr(snc, "_no_redirect_opener", REAL_OPENER)
-        with pytest.raises(SystemExit) as excinfo:
-            snc.main()
-    finally:
-        server.shutdown()
+    with HTTPServer(("127.0.0.1", 0), _Redirect) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            dotenv.write_text(
+                f"PLOW_CHAT_BASE_URL=http://127.0.0.1:{server.server_port}\n"
+                "PLOW_CHAT_CHAT_UID=cht_x\nPLOW_CHAT_TOKEN=tok_x\n")
+            monkeypatch.setattr(snc, "_no_redirect_opener", REAL_OPENER)
+            with pytest.raises(SystemExit) as excinfo:
+                snc.main()
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
     assert "Plow Chat send failed" in str(excinfo.value)
     assert not followed, "the bearer must never chase the redirect target"
     assert handoff.exists()
