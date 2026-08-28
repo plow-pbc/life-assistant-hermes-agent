@@ -7,7 +7,9 @@ Polls GET <base>/api/version every POLL_INTERVAL seconds, where <base> is
 DASHBOARD_ENDPOINT_URL (the producers' POST endpoint, read from the agent's
 dotenv) with its `/api/message` suffix stripped — one env var, two surfaces.
 The kiosk admits the off-box version read only with the household bearer, so
-the request carries DASHBOARD_TOKEN — same dotenv as the endpoint.
+the request carries DASHBOARD_TOKEN — same dotenv as the endpoint. Plain
+http:// is expected: the endpoint is a tailnet address, and every producer
+POST already sends this bearer over it.
 
   exit 0  the kiosk reports exactly {"sha": <sha>} — the deploy is live.
   exit 1  timeout: the SHA never went live (the Pi's updater built, failed a
