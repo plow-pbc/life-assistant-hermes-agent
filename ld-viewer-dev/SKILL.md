@@ -41,6 +41,9 @@ deploy it by pushing, and **prove it went live**.
         -c credential.helper='store --file /opt/data/ld-dev/git-credentials' \
         push origin main
 
+  If the push prompts for a username/password, the store file is missing or
+  stale — report that for re-provisioning; never type credentials
+  interactively.
 - Pi SSH key: `/opt/data/ld-dev/ssh/pi_key`
 
 SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
