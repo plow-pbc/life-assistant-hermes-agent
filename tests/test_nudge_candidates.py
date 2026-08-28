@@ -288,6 +288,7 @@ def test_a_failed_swap_never_leaves_a_half_written_handoff(rig, monkeypatch):
     stale-chat pairing seen here is the documented, accepted residual window
     the production comment names — one tick wide, self-healing."""
     fresh = 'Heads up: "Standup" at 12:20pm (20m).\n'
+    real = os.replace  # captured before any patch, or phase 2 replays phase 1's raiser
 
     def reset():
         rig.kiosk.write_text("old kiosk\n")
@@ -302,7 +303,7 @@ def test_a_failed_swap_never_leaves_a_half_written_handoff(rig, monkeypatch):
     assert rig.chat.read_text() == "old chat\n"
 
     reset()
-    real, calls = os.replace, []
+    calls = []
 
     def second_fails(src, dst):
         calls.append(src)
