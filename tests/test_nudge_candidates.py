@@ -18,6 +18,7 @@ spellings and structural shapes are real.
 """
 import importlib.util
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -279,22 +280,41 @@ def test_copies_collapse_and_the_kiosk_gets_only_the_earliest(rig):
     assert '"A"' in rig.kiosk.read_text() and '"B"' not in rig.kiosk.read_text()
 
 
-def test_a_failed_swap_leaves_the_previous_handoffs_untouched(rig, monkeypatch):
-    """The staging guarantee: both bodies land in .tmp files before either
-    rename, so a failure at swap time must leave the prior handoffs exactly
-    as they were — never one leg fresh and the other stale. Direct writes
-    would fail this."""
-    rig.kiosk.write_text("old kiosk\n")
-    rig.chat.write_text("old chat\n")
+def test_a_failed_swap_never_leaves_a_half_written_handoff(rig, monkeypatch):
+    """What staging actually guarantees, both halves. A failure BEFORE any
+    rename (both bodies still in .tmp) leaves both handoffs untouched —
+    direct writes would fail this. A failure BETWEEN the renames leaves each
+    handoff either fully old or fully new, never truncated: the fresh-kiosk/
+    stale-chat pairing seen here is the documented, accepted residual window
+    the production comment names — one tick wide, self-healing."""
+    fresh = 'Heads up: "Standup" at 12:20pm (20m).\n'
 
-    def boom(*_a, **_k):
-        raise OSError("disk full")
+    def reset():
+        rig.kiosk.write_text("old kiosk\n")
+        rig.chat.write_text("old chat\n")
 
-    monkeypatch.setattr(nc.os, "replace", boom)
+    reset()
+    monkeypatch.setattr(nc.os, "replace",
+                        lambda *_a: (_ for _ in ()).throw(OSError("full")))
     with pytest.raises(OSError):
         rig.run(gather(event()))
     assert rig.kiosk.read_text() == "old kiosk\n"
     assert rig.chat.read_text() == "old chat\n"
+
+    reset()
+    real, calls = os.replace, []
+
+    def second_fails(src, dst):
+        calls.append(src)
+        if len(calls) == 2:
+            raise OSError("full")
+        return real(src, dst)
+
+    monkeypatch.setattr(nc.os, "replace", second_fails)
+    with pytest.raises(OSError):
+        rig.run(gather(event()))
+    assert rig.kiosk.read_text() == fresh, "the swapped leg is fully new"
+    assert rig.chat.read_text() == "old chat\n", "the unswapped leg is fully old"
 
 
 def test_overflow_truncates_location_then_title_never_the_time(rig):
