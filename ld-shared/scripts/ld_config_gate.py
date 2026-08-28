@@ -35,7 +35,9 @@ The seven checks, matching the (updated) jq filter exactly:
   5. calendar.sources[].calendar_id values must be unique  (jq: length == (unique | length))
   6. calendar_nudge.owner_identities must be a non-empty list of nonblank
      strings                                               (jq: (type) == "array", length >= 1, each (. // "") | test("\\S"))
-  7. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
+  7. calendar_nudge.lookahead_virtual_minutes and
+     lookahead_in_person_minutes must be positive numbers  (jq: (type) == "number" and . > 0)
+  8. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
 
 Checks 4-5 replaced the old "no calendar.sources[].account may be blank": the
 runtime reads every source under the ONE gog identity Latch is authenticated
@@ -175,7 +177,18 @@ def gate(config):
             "calendar_nudge.owner_identities is not a non-empty list of "
             "nonblank strings")
 
-    # 7. no leftover [UPPER_SNAKE] placeholder anywhere
+    # 7. the two nudge lookaheads are positive numbers. nudge_candidates.py
+    #    hard-requires both, so a gate-passing config missing either would
+    #    fail every scheduled half-hourly run -- installed-looking, never
+    #    nudging. bool is excluded: JSON true is jq type "boolean", but
+    #    Python bool passes isinstance(int).
+    for key in ("lookahead_virtual_minutes", "lookahead_in_person_minutes"):
+        value = _index(_index(config, "calendar_nudge"), key)
+        if not (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and value > 0):
+            failures.append(f"calendar_nudge.{key} is not a positive number")
+
+    # 8. no leftover [UPPER_SNAKE] placeholder anywhere
     if any(_PLACEHOLDER_RE.match(s) for s in _all_strings(config)):
         failures.append("an unfilled [UPPER_SNAKE] placeholder remains")
 
