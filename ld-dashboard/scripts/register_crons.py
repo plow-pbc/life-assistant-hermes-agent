@@ -44,19 +44,20 @@ JOBS_FILE = "/opt/data/cron/jobs.json"
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
 LD_CONFIG = "/opt/data/ld/config.json"
 
-# The spec. One row per producer, live or not.
+# The spec. One row per producer.
 #
 # `deliver` is None for every card-only producer: the card IS the delivery, over
 # the kiosk POST. Two producers also message the owner, and they diverge on
 # purpose:
-#   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
-#     weekly and ALWAYS has content, so relaying its final response is exactly
-#     the chat leg the sheet promises. create_argv() expands the ${VAR} from
-#     the container env at registration time and refuses a blank one.
-#   - ld-calendar-nudge (blocked) will NOT use --deliver when it lands: it is
-#     half-hourly with quiet no-op runs, and --deliver relays EVERY final
-#     response -- its chat leg goes through a committed script instead (the
-#     plan's C2 task). Its target stays recorded as data on the blocked row.
+#   - ld-weekly-digest rides the cron's native --deliver arm: it is weekly and
+#     ALWAYS has content, so relaying its final response is exactly the chat
+#     leg the sheet promises. create_argv() expands the ${VAR} from the
+#     container env at registration time and refuses a blank one.
+#   - ld-calendar-nudge does NOT: it is half-hourly with quiet no-op runs, and
+#     --deliver relays EVERY final response. Its chat leg is its committed
+#     post script (ld-calendar-nudge/scripts/post_nudge.py), which reads
+#     PLOW_CHAT_* from the gateway env at run time -- so its row carries no
+#     deliver target at all.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
 # the container's zone, which is agent-mgr's AGENT_TZ.
@@ -146,8 +147,10 @@ JOBS = (
             "and message the owner over Plow Chat."
         ),
         "skill": "ld-calendar-nudge",
-        "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
+        # No --deliver: the chat leg lives in post_nudge.py (see the divide
+        # comment above JOBS).
+        "deliver": None,
+        "blocked": None,
     },
 )
 
@@ -281,7 +284,7 @@ def create_argv(job, env=None):
     run has content, where relaying the final response IS the chat leg
     (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
     relays every final response, no-ops included -- which is why the nudge's
-    target stays data on its blocked row until its script leg lands."""
+    chat leg is its committed post script, not a deliver target here."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]

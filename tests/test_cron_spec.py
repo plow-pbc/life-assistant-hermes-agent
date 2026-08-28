@@ -26,7 +26,7 @@ def spec():
 
 LIVE_NAMES = {
     "ld-weather", "ld-sports", "ld-morning-triage", "ld-morning-updates",
-    "ld-weekly-digest",
+    "ld-weekly-digest", "ld-calendar-nudge",
 }
 
 
@@ -51,7 +51,7 @@ JOB_CONTRACT = {
     "ld-morning-updates": (2, "affirmation", False),
     "ld-morning-triage":  (1, "alert",       False),
     "ld-weekly-digest":   (4, "digest",      False),
-    "ld-calendar-nudge":  (1, "alert",       True),
+    "ld-calendar-nudge":  (1, "alert",       False),
 }
 
 
@@ -70,28 +70,14 @@ def test_the_job_contract_is_exactly_this():
 
 
 def test_exactly_the_producers_with_a_data_source_are_live():
-    """The one still-blocked producer reads Google Calendar and is not yet
-    ported onto Latch's vendored gog. Registering it would schedule a turn
-    that cannot succeed, and its failure would read as a producer bug rather
-    than a missing port. Triage is live on the Mac's iMessage DB through
-    Latch; morning-updates and weekly-digest are live on gog, the same door."""
+    """Every producer now has a data door: triage on the Mac's iMessage DB
+    through Latch; morning-updates, weekly-digest and calendar-nudge on
+    Latch's vendored gog. A producer re-blocked without a reason would drop
+    out of LIVE silently, so the exact set is the assertion."""
     mod = spec()
     assert {j["name"] for j in mod.LIVE} == LIVE_NAMES
-    assert len(mod.JOBS) == 6, "all six stay in the spec; only five are registered"
-    assert len(mod.BLOCKED) == 1
-
-
-@pytest.mark.parametrize("job", spec().BLOCKED, ids=lambda j: j["name"])
-def test_every_blocked_producer_names_why(job):
-    """A blocked entry with no reason is indistinguishable from an oversight, and
-    the next person to read this has to rediscover which of the two blockers it
-    is waiting on."""
-    reason = job["blocked"]
-    assert reason and reason.strip()
-    assert "latch#183" in reason, (
-        f"{job['name']} must name its tracked blocker -- latch#183, the only "
-        f"one left now triage is live -- got {reason!r}"
-    )
+    assert len(mod.JOBS) == 6, "all six registered; none blocked"
+    assert len(mod.BLOCKED) == 0
 
 
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
@@ -214,7 +200,8 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
     fake = FakeHermes(path)
     mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
     assert fake.created == [
-        "ld-sports", "ld-morning-updates", "ld-morning-triage", "ld-weekly-digest"
+        "ld-sports", "ld-morning-updates", "ld-morning-triage",
+        "ld-weekly-digest", "ld-calendar-nudge",
     ], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -238,24 +225,23 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
         mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == [
-        "ld-sports", "ld-morning-updates", "ld-morning-triage", "ld-weekly-digest"
+        "ld-sports", "ld-morning-updates", "ld-morning-triage",
+        "ld-weekly-digest", "ld-calendar-nudge",
     ], "a paused job must not be re-registered"
     out = capsys.readouterr().out
     assert "PAUSED" in out and "/opt/hermes/bin/hermes cron resume ld-weather" in out
 
 
-def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
-    """A blocked producer's body is not in this repo; scheduling it would fire a
-    turn that cannot succeed, and the 06:00 failure would read as a producer bug
-    rather than a missing connector."""
+def test_a_fresh_instance_registers_every_producer(monkeypatch, tmp_path):
+    """A fresh instance (no jobs.json) gets all six schedules -- a producer
+    silently missing from a bring-up is a card that never updates, with
+    nothing to diff against."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
     mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
     assert set(fake.created) == LIVE_NAMES
-    blocked = {j["name"] for j in mod.BLOCKED}
-    assert not blocked & set(fake.created)
 
 
 def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
@@ -350,10 +336,11 @@ def test_only_the_digest_rides_the_native_deliver_arm():
     """The card IS the delivery for every other live producer, and the shape
     divide is deliberate: --deliver relays EVERY final response, which fits
     the weekly always-has-content digest and would spam from the half-hourly
-    quiet-no-op nudge -- the nudge's chat leg is a committed script when it
-    lands (the row comment records this). This replaces the old tripwire that
-    fired when a job with a target went live: the resolver it demanded is
-    back (resolve_deliver), so the pin is now on WHICH jobs use it."""
+    quiet-no-op nudge -- the nudge's chat leg is its committed post script
+    (post_nudge.py), reading env at run time, so its row carries no target.
+    This replaces the old tripwire that fired when a job with a target went
+    live: the resolver it demanded is back (resolve_deliver), so the pin is
+    now on WHICH jobs use it."""
     mod = spec()
     assert {j["name"] for j in mod.LIVE if j["deliver"]} == {"ld-weekly-digest"}
 
@@ -387,12 +374,6 @@ def test_the_deliver_target_expands_from_env_and_card_only_jobs_get_no_arm():
 
     weather = next(j for j in mod.LIVE if j["name"] == "ld-weather")
     assert "--deliver" not in mod.create_argv(weather, ENV_OK)
-
-
-def test_the_blocked_nudge_still_records_the_target_it_will_need():
-    """Deleting the resolver must not delete the requirement."""
-    nudge = next(j for j in spec().JOBS if j["name"] == "ld-calendar-nudge")
-    assert nudge["blocked"] and nudge["deliver"] == "plow_chat:${PLOW_CHAT_CHAT_UID}"
 
 
 def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):

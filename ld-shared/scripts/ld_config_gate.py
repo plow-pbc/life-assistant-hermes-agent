@@ -42,8 +42,10 @@ nothing uses -- while several sources saying "primary" all resolved to the
 authenticated account's own calendar, silently omitting the rest. The id IS
 the whole address, so it must be present and unique (which also caps a bare
 "primary" at one source). Owner identity is a nudge concern, not a source
-concern: ld-calendar-nudge will carry its own calendar_nudge.owner_identities
-key when it lands.
+concern: it lives in calendar_nudge.owner_identities. The gate does not check
+it structurally -- the template ships it as an [OWNER_EMAIL_1] placeholder, so
+check 6 already refuses an unfilled one, and the skill refuses a missing/empty
+set loudly at run time.
 """
 import json
 import re
