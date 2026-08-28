@@ -78,17 +78,29 @@ is scoped to inbound rows (`m.is_from_me = 1 or …`) because an outbound row
 matters only as proof a reply happened — an attachment-only reply with no
 text must still count as one.
 
-Save the command's stdout to `/opt/data/ld/morning-triage-gather` with the
-file tool, exactly as returned.
+A full morning's result is too large to fit in context, so the runtime
+persists it to a file (e.g. `/tmp/hermes-results/call_<id>.txt`) and gives
+you that path in place of the content — that file IS the gather; do not
+try to re-save, re-read, or transform it. Only if the result came back
+inline (a very quiet window) write it to `/opt/data/ld/morning-triage-gather`
+with the file tool, exactly as returned. Either way, one file path carries
+the gather into the next step.
 
 ## Filter
 
-Run the deterministic filter and use its JSON output verbatim. The gather
-file is the raw 36-hour message corpus, so it must not outlive this step:
-the command below removes it whether the filter succeeds or fails — only
-the filtered candidates (and later the ≤115-char alert) survive.
+Run the deterministic filter and use its JSON output verbatim. Cron runs
+have no user present to approve flagged commands, so every command must be
+a single plain argv line — no `sh -c`, no heredocs, no interpreter `-c`
+one-liners; the filter accepts the gather file (persisted envelope or raw
+query output) as its argument so none of that is needed:
 
-    sh -c '/opt/data/skills/ld-morning-triage/scripts/triage_candidates.py --config /opt/data/ld/config.json < /opt/data/ld/morning-triage-gather; rc=$?; rm -f /opt/data/ld/morning-triage-gather; exit $rc'
+    /opt/data/skills/ld-morning-triage/scripts/triage_candidates.py --config /opt/data/ld/config.json <gather file path>
+
+The gather file is the raw 36-hour message corpus, so it must not outlive
+this step — only the filtered candidates (and later the ≤115-char alert)
+survive. Whether or not the filter succeeded, remove it before continuing:
+
+    rm -f <gather file path>
 
 It decodes each body (typedstream or plain UTF-8), applies the unaddressed
 rule per chat — every inbound after the chat's last outbound is a candidate;

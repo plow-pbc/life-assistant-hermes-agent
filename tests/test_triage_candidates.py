@@ -63,6 +63,45 @@ def typedstream_fixture(s, marker=None):
 BASE_CONFIG = {"morning_triage": {"exclude": {"imessage_handles": []}}}
 
 
+def run_gather_file(content, config, tmp_path):
+    """Invoke the filter with a gather FILE argument (the cron path: the
+    runtime persists an oversized plow_run_command result and hands the
+    model a path, and the sandbox allows only plain-argv commands)."""
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps(config))
+    gather = tmp_path / "gather"
+    gather.write_text(content)
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--config", str(cfg), str(gather)],
+        capture_output=True, text=True,
+    )
+
+
+def envelope(exit_code, output):
+    """The persisted plow_run_command result: the query's stdout nested as
+    a JSON string inside a JSON string."""
+    return json.dumps(
+        {"result": json.dumps({"exit_code": exit_code, "handle": "h",
+                               "output": output})})
+
+
+def test_persisted_envelope_unwraps_to_the_same_candidates(tmp_path):
+    r = run_gather_file(
+        envelope(0, sqljson(msg(7, 0, 1000, hexutf8("sign the form?")))),
+        BASE_CONFIG, tmp_path)
+    assert r.returncode == 0
+    (cand,) = json.loads(r.stdout)
+    assert cand["excerpt"] == "sign the form?"
+
+
+def test_failed_gather_envelope_fails_loudly_not_quietly(tmp_path):
+    # exit_code != 0 must exit 2: a failed gather read as a quiet day would
+    # silently leave yesterday's alert up with no sign anything broke.
+    r = run_gather_file(envelope(1, ""), BASE_CONFIG, tmp_path)
+    assert r.returncode == 2
+    assert r.stdout == ""
+
+
 def test_unaddressed_inbound_chat_survives(tmp_path):
     r = run(sqljson(msg(7, 0, 1000, hexutf8("are you coming tonight?"))),
             BASE_CONFIG, tmp_path)

@@ -59,6 +59,10 @@ def decode_body(blob: bytes) -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("gather", nargs="?",
+                        help="gather file (raw sqlite3 -json output, or the "
+                             "persisted plow_run_command result envelope); "
+                             "stdin when omitted")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -67,7 +71,27 @@ def main() -> int:
         )
 
     # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
-    raw = sys.stdin.read().strip()
+    if args.gather:
+        with open(args.gather) as f:
+            raw = f.read().strip()
+    else:
+        raw = sys.stdin.read().strip()
+    # An oversized plow_run_command result reaches the model as a persisted
+    # envelope — {"result": "<json of {exit_code, handle, output}>"} — not as
+    # raw query stdout. Unwrap it here so the model passes the persisted path
+    # untouched; a query result itself is always an array (or empty), never
+    # an object, so the sniff cannot misfire on real rows.
+    if raw.startswith("{"):
+        try:
+            inner = json.loads(json.loads(raw)["result"])
+            if inner["exit_code"] != 0:
+                print(f"gather failed: exit_code={inner['exit_code']}",
+                      file=sys.stderr)
+                return 2
+            raw = inner["output"].strip()
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"malformed gather envelope: {e}", file=sys.stderr)
+            return 2
     try:
         rows = json.loads(raw) if raw else []
     except json.JSONDecodeError as e:
