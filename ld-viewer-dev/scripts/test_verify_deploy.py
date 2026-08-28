@@ -193,6 +193,37 @@ def test_mid_read_stall_keeps_polling_to_clean_timeout():
     check("last response names the stall", "timed out mid-response" in out)
 
 
+class _TruncatingHandler(BaseHTTPRequestHandler):
+    """Declares a 64-byte body, writes 10, then closes the connection."""
+
+    requests = []
+
+    def do_GET(self):
+        type(self).requests.append(self.path)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", "64")
+        self.end_headers()
+        self.wfile.write(b'{"sha": "a')  # 10 bytes, then the socket closes
+
+    def log_message(self, *_args):
+        pass
+
+
+def test_truncated_response_keeps_polling_to_clean_timeout():
+    """A connection closed before the declared body finishes (IncompleteRead)
+    must read as a failed probe — poll on and exit 1, never raise."""
+    server, base = _start_server(_TruncatingHandler)
+    try:
+        _use_endpoint(base)
+        code, out = run("abc123", "--timeout", "0.3")
+    finally:
+        server.shutdown()
+        _reset()
+    check("truncated response exits 1 on timeout", code == 1)
+    check("last response names the truncation", "connection closed mid-response" in out)
+
+
 def test_unreachable_kiosk_times_out_cleanly():
     """A down Pi (connection refused) is this tool's most likely real failure —
     every probe must record it and keep polling to a clean exit 1, never raise."""
@@ -213,6 +244,7 @@ def main():
     test_timeout_on_mismatch_prints_last_response()
     test_exit_2_on_missing_or_malformed_env()
     test_mid_read_stall_keeps_polling_to_clean_timeout()
+    test_truncated_response_keeps_polling_to_clean_timeout()
     test_unreachable_kiosk_times_out_cleanly()
     print(f"\n{passed} passed, {failed} failed")
     sys.exit(0 if failed == 0 else 1)
