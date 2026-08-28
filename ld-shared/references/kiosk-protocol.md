@@ -5,8 +5,9 @@
 
 # Kiosk wire protocol + tile contract
 
-The single source of truth for **what every ld- producer posts to the kiosk**,
-on any platform. Both the Plow agent seed (deterministic JS runners + Python
+What every ld- producer posts to the kiosk, on any platform — pinned from the
+canonical copy in `plow-pbc/life-dashboard` `docs/kiosk-protocol.md` (see the
+header above). Both the Plow agent seed (deterministic JS runners + Python
 wrappers) and the Hermes agent seed (LLM producers + Python wrappers) MUST emit
 exactly this. The `seed-life-dashboard-viewer` kiosk is the consumer; this
 contract is what keeps producers and viewer in lockstep.
@@ -72,8 +73,9 @@ tile and theme. A producer MUST NOT invent new global CSS the viewer would have
 to carry.
 
 Whatever generates the tile (Plow's `scheduled/compose.js`, or a Hermes LLM
-producer following its SKILL.md) MUST emit the markup + `<style>` below. This
-file is canonical; a tile change lands here and propagates to both platforms.
+producer following its SKILL.md) MUST emit the markup + `<style>` below. A tile
+change lands in the canonical copy in `plow-pbc/life-dashboard` and is synced
+here; it propagates to both platforms from there.
 
 ### Weather tile (card 3)
 
