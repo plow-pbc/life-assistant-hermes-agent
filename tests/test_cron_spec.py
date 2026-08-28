@@ -2,9 +2,8 @@
 
 Every assertion here is about a failure that is quiet at registration time and
 only shows up as a dashboard behaving wrongly hours later -- a job that fires on
-the wrong clock, a blocked producer registered against a data source it does not
-have, a delivery target that would be silently dropped because the machinery to
-expand it was deleted as unreachable.
+the wrong clock, a producer writing another producer's tile, a delivery target
+that would be silently dropped or expanded from an empty variable.
 """
 import importlib.util
 import json
@@ -24,13 +23,9 @@ def spec():
     return mod
 
 
-LIVE_NAMES = {
-    "ld-weather", "ld-sports", "ld-morning-triage", "ld-morning-updates",
-    "ld-weekly-digest", "ld-calendar-nudge",
-}
 
 
-# The whole job contract, as one table. name -> (card, type, is-blocked).
+# The whole job contract, as one table. name -> (card, type).
 #
 # This is what a stack of Markdown parsers used to reach for indirectly: the
 # viewer's card map read out of kiosk-protocol.md, SKILL.md's and README's
@@ -46,41 +41,28 @@ LIVE_NAMES = {
 # in-tree, so there is no re-vendor to drift from. Card 1 is the only one a
 # producer shares, and only because triage and calendar-nudge are both alerts.
 JOB_CONTRACT = {
-    "ld-weather":         (3, "weather",     False),
-    "ld-sports":          (5, "sports",      False),
-    "ld-morning-updates": (2, "affirmation", False),
-    "ld-morning-triage":  (1, "alert",       False),
-    "ld-weekly-digest":   (4, "digest",      False),
-    "ld-calendar-nudge":  (1, "alert",       False),
+    "ld-weather":         (3, "weather"),
+    "ld-sports":          (5, "sports"),
+    "ld-morning-updates": (2, "affirmation"),
+    "ld-morning-triage":  (1, "alert"),
+    "ld-weekly-digest":   (4, "digest"),
+    "ld-calendar-nudge":  (1, "alert"),
 }
 
 
 def test_the_job_contract_is_exactly_this():
-    """One assertion for the whole spec: which producers exist, which slot each
-    writes, and which can run.
+    """One assertion for the whole spec: which producers exist and which slot
+    each writes.
 
     An exact set, so it catches a renumbered card (a producer silently
     overwriting another's tile), a retyped one (the right slot rendering the
-    wrong way), a producer added or dropped, and a blocker cleared or
-    introduced -- the things every separate check here used to cover between
-    them, without reading a single Markdown file."""
+    wrong way), and a producer added or dropped -- the things every separate
+    check here used to cover between them, without reading a single Markdown
+    file. All six rows register; the blocked/LIVE partition left with the
+    last blocked row (git history keeps the pattern)."""
     assert {
-        (j["name"], j["card"], j["type"], bool(j["blocked"])) for j in spec().JOBS
-    } == {(name, card, type_, blocked) for name, (card, type_, blocked) in JOB_CONTRACT.items()}
-
-
-def test_exactly_the_producers_with_a_data_source_are_live():
-    """All six, at last: triage on the Mac's iMessage DB through Latch, the
-    three calendar producers on Latch's vendored gog, weather and sports on
-    their public APIs. BLOCKED pinned empty so a row quietly re-acquiring a
-    blocker (and dropping off the schedule) cannot pass as the status quo.
-
-    The every-blocked-row-names-why test left with the last blocked row; it
-    is in git history if a row ever re-blocks."""
-    mod = spec()
-    assert {j["name"] for j in mod.LIVE} == LIVE_NAMES
-    assert len(mod.JOBS) == 6
-    assert len(mod.BLOCKED) == 0
+        (j["name"], j["card"], j["type"]) for j in spec().JOBS
+    } == {(name, card, type_) for name, (card, type_) in JOB_CONTRACT.items()}
 
 
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
@@ -146,10 +128,10 @@ def test_a_paused_job_counts_as_registered_but_not_as_runnable(tmp_path):
     }
 
 
-def test_each_live_job_attaches_its_own_skill():
+def test_each_job_attaches_its_own_skill():
     """Without --skill the scheduled turn has to find the producer by name in a
     directory of skills, and a near-miss posts nothing rather than failing."""
-    for job in spec().LIVE:
+    for job in spec().JOBS:
         assert job["skill"] == job["name"]
         assert (ROOT / job["skill"] / "SKILL.md").is_file()
 
@@ -235,18 +217,15 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     assert "PAUSED" in out and "/opt/hermes/bin/hermes cron resume ld-weather" in out
 
 
-def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
-    """A blocked producer's body is not in this repo; scheduling it would fire a
-    turn that cannot succeed, and the 06:00 failure would read as a producer bug
-    rather than a missing connector."""
+def test_a_fresh_instance_registers_every_job(monkeypatch, tmp_path):
+    """No jobs.json at all — the rebuilt-instance case this script exists
+    for — must end with all six producers scheduled."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
     mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
-    assert set(fake.created) == LIVE_NAMES
-    blocked = {j["name"] for j in mod.BLOCKED}
-    assert not blocked & set(fake.created)
+    assert set(fake.created) == set(JOB_CONTRACT)
 
 
 def test_a_failed_create_aborts_rather_than_continuing(monkeypatch, tmp_path):
@@ -267,10 +246,8 @@ def test_no_prompt_names_a_card_other_than_the_one_the_spec_assigns(job):
 
     Conditional, because upstream is not uniform: five prompts name their card
     and ld-calendar-nudge's does not -- it says "post a kiosk reminder" and
-    leaves the slot to its SKILL.md. Requiring a card in every prompt would mean
-    rewording a blocked producer's instruction to satisfy a test, which is the
-    tail wagging the dog. Disagreement is the real risk, and that is what this
-    catches."""
+    leaves the slot to its SKILL.md. Disagreement is the real risk, and that
+    is what this catches."""
     named = {int(n) for n in re.findall(r"\bcard (\d+)", job["prompt"])}
     assert named <= {job["card"]}, (
         f"{job['name']} is card {job['card']} in the spec but its prompt names "
@@ -347,7 +324,7 @@ def test_only_the_digest_rides_the_native_deliver_arm():
     a target went live: the resolver it demanded is back (resolve_deliver),
     so the pin is on WHICH jobs use it."""
     mod = spec()
-    assert {j["name"] for j in mod.LIVE if j["deliver"]} == {"ld-weekly-digest"}
+    assert {j["name"] for j in mod.JOBS if j["deliver"]} == {"ld-weekly-digest"}
 
 
 ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"}
@@ -366,7 +343,7 @@ def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_p
     name the source it actually consulted — the last row is the production
     shape (env=None, the dotenv as the sole source, here an absent file)."""
     mod = spec()
-    digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
+    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     with pytest.raises(SystemExit) as excinfo:
         mod.create_argv(digest, env, dotenv_path=tmp_path / "absent.env")
     assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
@@ -380,7 +357,7 @@ def test_the_deliver_target_expands_from_either_source(source, tmp_path):
     the file the gateway loads. Both routes must yield the same argv; the
     card-only job gets no --deliver arm either way."""
     mod = spec()
-    digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
+    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     dotenv = tmp_path / "agent.env"
     if source == "env":
         env, _ = ENV_OK, dotenv.write_text("")
@@ -390,17 +367,17 @@ def test_the_deliver_target_expands_from_either_source(source, tmp_path):
     argv = mod.create_argv(digest, env, dotenv_path=dotenv)
     assert argv[-2:] == ["--deliver", "plow_chat:cht_test"]
 
-    weather = next(j for j in mod.LIVE if j["name"] == "ld-weather")
+    weather = next(j for j in mod.JOBS if j["name"] == "ld-weather")
     assert "--deliver" not in mod.create_argv(weather, env, dotenv_path=dotenv)
 
 
 def test_the_live_nudge_delivers_by_script_not_by_deliver_arm():
-    """The requirement the blocked row recorded is implemented now: the chat
+    """The nudge's chat leg is a script, never the cron's relay: the chat
     leg is send_nudge_chat.py (quiet ticks stay silent by construction), so
     the row's deliver must be None -- a target here would ALSO relay every
     no-op final response through the cron."""
     nudge = next(j for j in spec().JOBS if j["name"] == "ld-calendar-nudge")
-    assert nudge["blocked"] is None and nudge["deliver"] is None
+    assert nudge["deliver"] is None
     assert (ROOT / "ld-calendar-nudge" / "scripts" / "send_nudge_chat.py").is_file()
 
 

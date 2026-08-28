@@ -98,10 +98,9 @@ source; this table summarises it.
 | `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
 | `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored gog |
 
-A row re-acquiring a `blocked` reason drops off the schedule at the next
-registration — the spec keeps blocked rows as data rather than deleting
-them, and `test_exactly_the_producers_with_a_data_source_are_live` pins the
-count so that cannot happen silently.
+All six rows register unconditionally. The blocked/LIVE partition machinery
+left with the last blocked row — no blocked producer is on any roadmap, and
+git history keeps the pattern if one ever loses its data source again.
 
 ## Two values that are never literals
 

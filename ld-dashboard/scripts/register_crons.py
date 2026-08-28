@@ -50,7 +50,9 @@ JOBS_FILE = "/opt/data/cron/jobs.json"
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
 LD_CONFIG = "/opt/data/ld/config.json"
 
-# The spec. One row per producer, live or not.
+# The spec. One row per producer — all six are live; the blocked/LIVE
+# partition machinery left with the last blocked row (git history keeps the
+# pattern if a producer ever loses its data source again).
 #
 # `deliver` is None for every card-only producer: the card IS the delivery, over
 # the kiosk POST. Two producers also message the owner, and they diverge on
@@ -81,7 +83,6 @@ JOBS = (
         ),
         "skill": "ld-weather",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-sports",
@@ -94,7 +95,6 @@ JOBS = (
         ),
         "skill": "ld-sports",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-morning-updates",
@@ -108,7 +108,6 @@ JOBS = (
         ),
         "skill": "ld-morning-updates",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-morning-triage",
@@ -122,7 +121,6 @@ JOBS = (
         ),
         "skill": "ld-morning-triage",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-weekly-digest",
@@ -136,11 +134,10 @@ JOBS = (
             "final response."
         ),
         "skill": "ld-weekly-digest",
-        # Native --deliver, unlike the future nudge: the digest is weekly and
+        # Native --deliver, unlike the nudge: the digest is weekly and
         # always has content, so relaying every final response fits; the
-        # half-hourly nudge has quiet no-op runs and gets a script leg (C2).
+        # half-hourly nudge has quiet no-op runs and rides its script leg.
         "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
-        "blocked": None,
     },
     {
         "name": "ld-calendar-nudge",
@@ -160,12 +157,8 @@ JOBS = (
         # no-op ticks -- its chat leg is its committed send_nudge_chat.py,
         # which keeps quiet runs silent by construction.
         "deliver": None,
-        "blocked": None,
     },
 )
-
-LIVE = tuple(j for j in JOBS if not j["blocked"])
-BLOCKED = tuple(j for j in JOBS if j["blocked"])
 
 
 def require_timezone_agreement(config_path=LD_CONFIG, env=None):
@@ -315,9 +308,6 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.parse_args(argv)
 
-    for job in BLOCKED:
-        print(f"blocked, not registered: {job['name']} ({job['schedule']}) -- {job['blocked']}")
-
     if not shutil.which(HERMES) and not os.path.exists(HERMES):
         raise SystemExit(f"{HERMES} not found -- run this inside the agent container")
 
@@ -325,7 +315,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
     registered = registered_jobs(jobs_path)
     paused = []
 
-    for job in LIVE:
+    for job in JOBS:
         if job["name"] in registered:
             if registered[job["name"]]:
                 print(f"already present, skipped: {job['name']}")
