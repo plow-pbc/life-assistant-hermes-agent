@@ -65,7 +65,10 @@ CHAT_FILE = "/opt/data/ld/calendar-nudge-chat"
 # JSON whose identities/lookaheads make a non-qualifying event publish.
 CONFIG_FILE = "/opt/data/ld/config.json"
 _MARKERS = re.compile(r'<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
-_URL_TOKEN = re.compile(r"https?://\S+", re.IGNORECASE)
+# Any URI scheme, not just http(s): native join links (zoommtg://, msteams://)
+# carry the same bearer-style credentials. The `://` requirement keeps prose
+# colons ("Room 3:10") out of it.
+_URL_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 # Destinations, not people: Google's shared-calendar and booking-resource
 # suffixes. A mirrored invite or a room is nobody left waiting.
 _NON_HUMAN_SUFFIXES = ("@group.calendar.google.com",

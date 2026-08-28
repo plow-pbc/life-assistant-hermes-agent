@@ -241,13 +241,15 @@ def test_a_virtual_meeting_renders_online_never_the_join_url(rig):
         event(minutes=10, hangout="https://meet.example.test/secret-token"),
         event(minutes=15, uid="uid-2@google.com",
               location="Zoom: https://zoom.example.test/j/22"),
+        event(minutes=12, uid="uid-3@google.com",
+              location="zoommtg://zoom.example.test/join?confno=1&pwd=s3cret"),
     ))
-    assert (code, count) == (0, 2)
+    assert (code, count) == (0, 3)
     lines = chat_lines(rig)
-    assert len(lines) == 2
+    assert len(lines) == 3
     for line in lines:
         assert line.endswith("— online.")
-        assert "http" not in line
+        assert "http" not in line and "zoommtg" not in line and "pwd" not in line
 
 
 def test_latch_untrusted_markers_never_reach_the_handoffs(rig):
@@ -268,11 +270,15 @@ def test_a_url_in_the_title_is_stripped_never_posted(rig):
         event(minutes=20, summary="Join https://meet.example.test/secret now"),
         event(minutes=25, uid="uid-2@google.com",
               summary="https://only-a-link.example.test/x"),
+        event(minutes=22, uid="uid-3@google.com",
+              summary="Sync zoommtg://zoom.example.test/join?pwd=s3cret today"),
     ))
     lines = chat_lines(rig)
     assert lines[0].startswith('Heads up: "Join now" at')
-    assert '"(untitled meeting)"' in lines[1]
-    assert "http" not in "".join(lines)
+    assert '"Sync today"' in lines[1]  # native scheme stripped the same way
+    assert '"(untitled meeting)"' in lines[2]
+    joined = "".join(lines)
+    assert "http" not in joined and "zoommtg" not in joined and "pwd" not in joined
 
 
 def test_a_private_sibling_drops_every_copy_of_the_invite(rig):
