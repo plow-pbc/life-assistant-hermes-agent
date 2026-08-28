@@ -65,10 +65,10 @@ HANDOFF = "/opt/data/ld/calendar-nudge-text"
 CONFIG_FILE = "/opt/data/ld/config.json"
 # gog 0.36 (openclaw/gogcli internal/outfmt/untrusted.go) wraps each field as
 #   <<<EXTERNAL_UNTRUSTED_CONTENT id="x">>>\nSource: google_api\n---\n<value>\n<<<END_...>>>
-# The open marker carries a metadata line and a `---` rule. Stripping the
-# marker alone left `Source: google_api ---` on a live card (2026-08-28).
+# The open marker carries that exact metadata line and a `---` rule; stripping
+# the marker alone left `Source: google_api ---` on a live card (2026-08-28).
 _MARKERS = re.compile(
-    r'<<<EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>\s*(?:Source:[^\n]*\n---\n?)?'
+    r'<<<EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>\nSource: google_api\n---\n'
     r'|<<<END_EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
 # Two patterns for two opposite risk profiles.
 #
