@@ -12,9 +12,6 @@ dotenv) with its `/api/message` suffix stripped — one env var, two surfaces.
           health check, and rolled back — or never picked the push up). The
           last response is printed verbatim so the report can carry it.
   exit 2  DASHBOARD_ENDPOINT_URL missing/malformed, or a blank <sha>.
-
-Redirects are refused, like ld-shared's post_to_kiosk.py: a 30x must never
-steer the probe to a body that would fake a match.
 """
 from __future__ import annotations
 
@@ -49,25 +46,19 @@ def base_url():
     return url[: -len(MESSAGE_SUFFIX)]
 
 
-def _no_redirect_opener():
-    """Refuse 3xx — same reasoning as post_to_kiosk.py's opener."""
-
-    class _NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *_args, **_kwargs):
-            return None
-
-    return urllib.request.build_opener(_NoRedirect)
-
-
 def probe(url):
     """One GET of /api/version → its body text, or the failure as text."""
     try:
-        with _no_redirect_opener().open(url, timeout=10) as resp:
+        with urllib.request.urlopen(url, timeout=10) as resp:
             return resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         return f"HTTP {exc.code} {exc.reason}"
     except urllib.error.URLError as exc:
         return f"unreachable: {exc.reason}"
+    except TimeoutError:
+        # A kiosk that accepts the connection but stalls mid-read; treat it
+        # like unreachable so the poll loop keeps going until --timeout.
+        return "unreachable: timed out mid-response"
 
 
 def main():

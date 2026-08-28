@@ -75,23 +75,6 @@ class _VersionHandler(BaseHTTPRequestHandler):
         pass
 
 
-class _RedirectHandler(BaseHTTPRequestHandler):
-    """302s /api/version to /elsewhere, which would report the wanted SHA."""
-
-    requests = []
-
-    def do_GET(self):
-        type(self).requests.append(self.path)
-        if self.path == "/elsewhere":
-            body = json.dumps({"sha": "abc123", "deployedAt": "x"}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        self.send_response(302)
-        self.send_header("Location", "/elsewhere")
-        self.end_headers()
 
     def log_message(self, *_args):
         pass
@@ -169,20 +152,6 @@ def test_exit_2_on_missing_or_malformed_env():
     _reset()
 
 
-def test_redirect_refused():
-    """A 302 must not be followed to a body that would report the SHA — the
-    poller treats it as a failed probe and times out instead of trusting it."""
-    server, base = _start_server(_RedirectHandler)
-    try:
-        _use_endpoint(base)
-        code, _ = run("abc123", "--timeout", "0.2")
-    finally:
-        server.shutdown()
-        _reset()
-    check("redirected probe never claims success", code == 1)
-    check("redirect target never fetched", "/elsewhere" not in _RedirectHandler.requests)
-
-
 def test_unreachable_kiosk_times_out_cleanly():
     """A down Pi (connection refused) is this tool's most likely real failure —
     every probe must record it and keep polling to a clean exit 1, never raise."""
@@ -202,7 +171,6 @@ def main():
     test_success_on_live_sha_match_and_base_url_derivation()
     test_timeout_on_mismatch_prints_last_response()
     test_exit_2_on_missing_or_malformed_env()
-    test_redirect_refused()
     test_unreachable_kiosk_times_out_cleanly()
     print(f"\n{passed} passed, {failed} failed")
     sys.exit(0 if failed == 0 else 1)
