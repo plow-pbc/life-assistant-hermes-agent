@@ -1,11 +1,13 @@
 # life-assistant
 
-> [!CAUTION]
-> **This repository is private and must stay private.** It holds runtime
-> configuration for agents that read and send a person's mail, read their
-> calendar, and hold their Plow credential. Do not make it public, fork it
-> publicly, or paste its contents anywhere public — including into tools that
-> retain what they are shown.
+> [!IMPORTANT]
+> **This repo is code only.** An instance holds a person's Plow credential and
+> drives their own Mac through Latch — [Latch — whose Mac an instance
+> reaches](#latch--whose-mac-an-instance-reaches) says what that grants, and
+> [No connectors, and what that costs](#no-connectors-and-what-that-costs) what
+> it no longer does. All of it lives in the instance's home on the host, never
+> here. Keep it that way:
+> nothing under this tree may carry a credential, a chat id, or a person's data.
 
 A [Hermes](https://howto.plow.co/hermes) agent — texted from iMessage over the
 Plow Chat platform — scoped to life and family logistics. Siblings on `wakeup`
@@ -19,7 +21,7 @@ an instance.
 | instance | registry name | home | container | may be registered? |
 |---|---|---|---|---|
 | the operator's | `life` | `~/.hermes-life` | `hermes-life` | yes — command below |
-| Rowan's | `rowan` | `~/.hermes-rowan` | `hermes-rowan` | **no** — see [Migrating `rowan`](#migrating-rowan) |
+| a second person's | `<name>` | `~/.hermes-<name>` | `hermes-<name>` | **not yet** — see [Adding a second instance](#adding-a-second-instance) |
 
 None of it is declared in this repo. For a *registered* instance `agent-mgr`
 derives home and container from the **registry name**, so any number of them run
@@ -28,14 +30,12 @@ resolve to separate homes and containers.
 
 **Neither row is state.** Both are what `agent-mgr` *would* derive from the
 registry name; this table says what each instance is permitted, not what the
-registry holds, because nothing in this tree can check that. `rowan`'s values
-happen to be live today — supplied by its own pre-agent-mgr compose file in
-another repo, not by anything here.
+registry holds, because nothing in this tree can check that.
 
 ```sh
 agent-mgr register life ~/services/life-assistant-hermes-agent
-# agent-mgr register rowan ~/services/life-assistant-hermes-agent   # same directory
-#   DO NOT RUN YET -- see README "Migrating rowan" for the preconditions.
+# agent-mgr register <name> ~/services/life-assistant-hermes-agent   # same directory
+#   NOT YET -- see README "Adding a second instance" for the preconditions.
 ```
 
 That is why `agent.env` declares no `AGENT_HOME`, `AGENT_CONTAINER` or
@@ -53,26 +53,25 @@ It runs the upstream `nousresearch/hermes-agent` image directly, pinned by
 digest, with no derived layer. State lives in the instance's own home on the
 host, mounted at `/opt/data`; the image is stateless.
 
-## Migrating `rowan`
+## Adding a second instance
 
-`rowan` is the second instance and it is **not registered**. Everything blocking
-it lives here — the table, the register block, the bring-up line and the
+A second person's instance is **not registered yet**. Everything blocking it
+lives here — the table, the register block, the bring-up line and the
 `justfile` all point at this section rather than carrying their own copy, so
 there is one place to correct when it changes.
 
 **Precondition 1 — the timezone.** `agent.env` is a closed set (above) and could
 not carry `AGENT_TZ` even if it were open: a shared descriptor holds one value
 and every instance would read it. Instances therefore inherit `agent-mgr`'s fleet
-default, `America/Los_Angeles`. `rowan` needs `America/Chicago`, so it cannot be
-registered until [`plow-pbc/agent-mgr#14`](https://github.com/plow-pbc/agent-mgr/issues/14)
+default, `America/Los_Angeles`. A person in another zone cannot be registered
+until [`plow-pbc/agent-mgr#14`](https://github.com/plow-pbc/agent-mgr/issues/14)
 adds a per-instance overlay. This is not cosmetic — a life assistant resolves
-"tomorrow morning" and every scheduled thing against its clock, so a two-hour
-offset is wrong in exactly the place the agent exists for.
+"tomorrow morning" and every scheduled thing against its clock, so an offset is
+wrong in exactly the place the agent exists for.
 
-**Precondition 2 — the home is already occupied, and nothing would stop you.**
-`rowan`'s live pre-agent-mgr stack owns `~/.hermes-rowan` right now, serving it
-from its own compose file in another repo — and it is not registered, which is
-precisely the gap described in
+**Precondition 2 — the home must be unowned, and nothing would stop you.** A
+pre-agent-mgr stack that already serves `~/.hermes-<name>` from its own compose
+file is not registered, which is precisely the gap described in
 [What an instance cannot reach](#what-an-instance-cannot-reach). Registering and
 restoring while that stack runs is that case. Precondition 1 does not
 imply this one: #14 landing makes it *more* reachable, not less.
@@ -80,16 +79,15 @@ imply this one: #14 landing makes it *more* reachable, not less.
 **The order, therefore:**
 
 1. `agent-mgr#14` lands
-2. write `~/.config/agent-mgr/rowan.env` with `AGENT_TZ=America/Chicago`
-3. **bring the pre-agent-mgr stack down** and confirm `~/.hermes-rowan` is unowned
-4. `agent-mgr register rowan`, then the ordinary [Bring-up](#bring-up) — a
+2. write `~/.config/agent-mgr/<name>.env` with their `AGENT_TZ`
+3. **bring any pre-agent-mgr stack down** and confirm `~/.hermes-<name>` is unowned
+4. `agent-mgr register <name>`, then the ordinary [Bring-up](#bring-up) — a
    pointer rather than a copy, deliberately: this section's whole premise is
    that everything points here instead of carrying its own sequence, and the
    abbreviated `restore` → `up` chain that used to sit on this line was already
    missing the `mkdir` that keeps `skills/` and `ld/` from landing root-owned.
 
-Step 1 retires precondition 1. Step 3 is the one that outlives it, so this
-section stays until `rowan` is actually migrated — not until #14 closes.
+Step 1 retires precondition 1. Step 3 is the one that outlives it.
 
 ## The account boundary — how one repo serves two people
 
@@ -143,7 +141,7 @@ not an omission to be tidied up later.
 ## Bring-up
 
 `<agent>` is the registry name. `life` is the only instance that *may* be
-registered today; see [Migrating `rowan`](#migrating-rowan) for the other.
+registered today; see [Adding a second instance](#adding-a-second-instance) for the other.
 
 Land `/opt/data/ld/config.json` before you start, not after: the last step below
 registers the crons, and `register_crons.py` reads `family.timezone` from that
