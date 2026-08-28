@@ -27,13 +27,14 @@ deploy it by pushing, and **prove it went live**.
 ## Workspace & credentials
 
 - Workspace clone: `/opt/data/ld-dev/repo`; its `origin` is the household
-  repo. If the clone is absent, the household repo's HTTPS URL is the one
+  repo. If the clone is absent, the household repo's SSH URL is the one
   line in `/opt/data/ld-dev/repo-url`:
 
       GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' \
         git clone "$(cat /opt/data/ld-dev/repo-url)" /opt/data/ld-dev/repo
 
-  A pre-existing clone may carry a stale (SSH-era) origin — canonicalize it
+  A pre-existing clone may carry a stale origin from an earlier auth model —
+  canonicalize it
   before any pull/push:
 
       git -C /opt/data/ld-dev/repo remote set-url origin "$(cat /opt/data/ld-dev/repo-url)"
@@ -42,10 +43,10 @@ deploy it by pushing, and **prove it went live**.
   household repo alone). `repo-url` is the SSH URL, so clone/pull/push all
   ride it via `GIT_SSH_COMMAND` — never a hosted-key assumption:
 
-      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes' \
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' \
         git -C /opt/data/ld-dev/repo pull --ff-only
 
-      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes' \
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new' \
         git -C /opt/data/ld-dev/repo push origin main
 
   If any of these fails on authentication (`Permission denied (publickey)`),
