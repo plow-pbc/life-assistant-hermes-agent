@@ -89,7 +89,7 @@ def main() -> int:
                       file=sys.stderr)
                 return 2
             raw = inner["output"].strip()
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
             print(f"malformed gather envelope: {e}", file=sys.stderr)
             return 2
     try:
