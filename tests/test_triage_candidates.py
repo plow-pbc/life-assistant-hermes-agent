@@ -17,13 +17,21 @@ REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "ld-morning-triage" / "scripts" / "triage_candidates.py"
 
 
-def run(stdin_text, config, tmp_path):
+def run(content, config, tmp_path):
+    """Invoke the filter the way the cron does: the gather as a file
+    argument (the sandbox allows only plain-argv commands)."""
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps(config))
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), "--config", str(cfg)],
-        input=stdin_text, capture_output=True, text=True,
+    gather = tmp_path / "gather"
+    gather.write_text(content)
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--config", str(cfg), str(gather)],
+        capture_output=True, text=True,
     )
+    # The raw corpus must not outlive the run, success or failure — asserted
+    # here so every row pins it.
+    assert not gather.exists()
+    return r
 
 
 def msg(chat_id, is_from_me, sent_at, hexbody, handle="+15550001111"):
@@ -63,24 +71,6 @@ def typedstream_fixture(s, marker=None):
 BASE_CONFIG = {"morning_triage": {"exclude": {"imessage_handles": []}}}
 
 
-def run_gather_file(content, config, tmp_path):
-    """Invoke the filter with a gather FILE argument (the cron path: the
-    runtime persists an oversized plow_run_command result and hands the
-    model a path, and the sandbox allows only plain-argv commands)."""
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps(config))
-    gather = tmp_path / "gather"
-    gather.write_text(content)
-    r = subprocess.run(
-        [sys.executable, str(SCRIPT), "--config", str(cfg), str(gather)],
-        capture_output=True, text=True,
-    )
-    # The raw corpus must not outlive the run, success or failure — asserted
-    # here so every file-argument row pins it.
-    assert not gather.exists()
-    return r
-
-
 def envelope(exit_code, output):
     """The persisted plow_run_command result: the query's stdout nested as
     a JSON string inside a JSON string."""
@@ -89,12 +79,9 @@ def envelope(exit_code, output):
                                "output": output})})
 
 
-@pytest.mark.parametrize("wrap", [lambda s: envelope(0, s), lambda s: s],
-                         ids=["persisted-envelope", "raw-query-output"])
-def test_gather_file_argument_yields_the_same_candidates(tmp_path, wrap):
-    r = run_gather_file(
-        wrap(sqljson(msg(7, 0, 1000, hexutf8("sign the form?")))),
-        BASE_CONFIG, tmp_path)
+def test_persisted_envelope_unwraps_to_the_same_candidates(tmp_path):
+    r = run(envelope(0, sqljson(msg(7, 0, 1000, hexutf8("sign the form?")))),
+            BASE_CONFIG, tmp_path)
     assert r.returncode == 0
     (cand,) = json.loads(r.stdout)
     assert cand["excerpt"] == "sign the form?"
@@ -111,7 +98,7 @@ def test_broken_gather_envelope_fails_loudly_not_quietly(tmp_path, content):
     # Every broken-envelope shape must exit 2: a failed gather read as a
     # quiet day would silently leave yesterday's alert up with no sign
     # anything broke.
-    r = run_gather_file(content, BASE_CONFIG, tmp_path)
+    r = run(content, BASE_CONFIG, tmp_path)
     assert r.returncode == 2
     assert r.stdout == ""
 
