@@ -12,9 +12,10 @@ deploy it by pushing, and **prove it went live**.
 
 ## Repos
 
-- **Household repo** — what this kiosk deploys from; **public** (a fork/copy
-  of the template), so the privacy hard rule below governs everything you
-  commit to it. A push to its `main` IS
+- **Household repo** — `srosro/life-dashboard-odio`, what this kiosk deploys
+  from; **public** (a fork of the template under the operator's personal
+  account, where deploy keys are allowed), so the privacy hard rule below
+  governs everything you commit to it. A push to its `main` IS
   the deploy: a systemd user timer on the Pi fetches every 2 minutes, builds
   into a fresh release dir, health-checks, and atomically flips `~/ld-current`.
 - **Upstream template** — `plow-pbc/life-dashboard` (public): canonical viewer code,
@@ -26,30 +27,34 @@ deploy it by pushing, and **prove it went live**.
 ## Workspace & credentials
 
 - Workspace clone: `/opt/data/ld-dev/repo`; its `origin` is the household
-  repo. If the clone is absent, the household repo's HTTPS URL is the one
+  repo. If the clone is absent, the household repo's SSH URL is the one
   line in `/opt/data/ld-dev/repo-url`:
 
-      git clone "$(cat /opt/data/ld-dev/repo-url)" /opt/data/ld-dev/repo
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/data/ld-dev/ssh/known_hosts -o StrictHostKeyChecking=yes' \
+        git clone "$(cat /opt/data/ld-dev/repo-url)" /opt/data/ld-dev/repo
 
-  A pre-existing clone may carry a stale (SSH-era) origin — canonicalize it
+  A pre-existing clone may carry a stale origin from an earlier auth model —
+  canonicalize it
   before any pull/push:
 
       git -C /opt/data/ld-dev/repo remote set-url origin "$(cat /opt/data/ld-dev/repo-url)"
-- Push credential: `/opt/data/ld-dev/git-credentials` (mode 600, provisioned
-  on the host). The repo is public so **fetches need no credential**; pushes
-  go through the git credential store — never paste the token into a URL or
-  argv:
+- Push credential: the per-repo deploy key `/opt/data/ld-dev/ssh/deploy_key`
+  (mode 600, provisioned on the host; registered write-scoped on the
+  household repo alone). `repo-url` is the SSH URL, so clone/pull/push all
+  ride it via `GIT_SSH_COMMAND` — never a hosted-key assumption:
 
-      git -C /opt/data/ld-dev/repo pull --ff-only
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/data/ld-dev/ssh/known_hosts -o StrictHostKeyChecking=yes' \
+        git -C /opt/data/ld-dev/repo pull --ff-only
 
-      git -C /opt/data/ld-dev/repo \
-        -c credential.helper='store --file /opt/data/ld-dev/git-credentials' \
-        push origin main
+      GIT_SSH_COMMAND='ssh -i /opt/data/ld-dev/ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/opt/data/ld-dev/ssh/known_hosts -o StrictHostKeyChecking=yes' \
+        git -C /opt/data/ld-dev/repo push origin main
 
-  If the push fails on authentication in any form — an interactive prompt or
-  a `could not read Username … terminal prompts disabled` fatal — the store
-  file is missing or stale: report that for re-provisioning; never type
-  credentials interactively.
+  If any of these fails on authentication (`Permission denied (publickey)`),
+  the key is missing or its registration was revoked; a
+  `Host key verification failed` means `known_hosts` (GitHub's published
+  keys, pinned at provisioning) is missing or GitHub rotated keys. Either
+  way: report for re-provisioning; never improvise another credential and
+  never weaken host checking to get through.
 - Pi SSH key: `/opt/data/ld-dev/ssh/pi_key`
 
 SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
