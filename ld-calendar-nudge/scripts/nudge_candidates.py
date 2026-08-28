@@ -75,8 +75,11 @@ _URL_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S+")
 # CLASSIFICATION (virtual vs in-person) must not over-match: flipping a
 # prose-colon location ("Floor:3") to virtual would silently shrink its
 # window from 60 to 30 minutes and drop real reminders. It requires a slash
-# after the colon, which every real join link has — double (zoommtg://...)
-# or single (msteams:/l/meetup-join/...) — and prose colons never do.
+# directly after the colon, which every real join link has — double
+# (zoommtg://...) or single (msteams:/l/meetup-join/...) — and ordinary
+# prose colons do not. Residual, accepted and pinned: a colon-slash
+# shorthand with no space ("Note:/parking") still reads as a link; requiring
+# // would misclassify real single-slash joins, the worse direction.
 _LINK_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:/\S+")
 # Destinations, not people: Google's shared-calendar and booking-resource
 # suffixes. A mirrored invite or a room is nobody left waiting.
