@@ -61,16 +61,15 @@ def rig(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(nc, "PERSISTED_ROOT", str(results) + "/")
     monkeypatch.setattr(nc, "KIOSK_FILE", str(kiosk))
     monkeypatch.setattr(nc, "CHAT_FILE", str(chat))
+    cfg = tmp_path / "config.json"
+    monkeypatch.setattr(nc, "CONFIG_FILE", str(cfg))
 
     def run(content, config=None, now=NOW):
-        cfg = tmp_path / "config.json"
         cfg.write_text(json.dumps(BASE_CONFIG if config is None else config))
         gather_file = results / "call_test.txt"
         gather_file.write_text(content)
-        argv = ["--config", str(cfg)]
-        if now is not None:
-            argv += ["--now", str(int(now.timestamp()))]
-        code = nc.main(argv + [str(gather_file)])
+        code = nc.main([str(gather_file)],
+                       now=None if now is None else int(now.timestamp()))
         # The raw corpus must not outlive the run, success or failure.
         assert not gather_file.exists()
         out, err = capsys.readouterr()
@@ -367,10 +366,8 @@ def test_a_disallowed_gather_path_is_refused_before_any_io(path, tmp_path, capsy
     file untouched. Runs against the REAL default constants."""
     victim = tmp_path / "victim"
     victim.write_text("must survive")
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps(BASE_CONFIG))
     assert not nc.gather_path_allowed(path)
-    code = nc.main(["--config", str(cfg), str(victim)])
+    code = nc.main([str(victim)])
     assert code == 2
     assert victim.exists(), "a refused path must never be opened or deleted"
     assert "refusing gather path" in capsys.readouterr().err

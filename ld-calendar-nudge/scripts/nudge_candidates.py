@@ -60,6 +60,10 @@ GATHER_FILE = "/opt/data/ld/calendar-nudge-gather"
 # The two fixed handoffs this helper writes and the posting legs consume.
 KIOSK_FILE = "/opt/data/ld/calendar-nudge-text"
 CHAT_FILE = "/opt/data/ld/calendar-nudge-chat"
+# The shared ld-config, fixed here rather than taken as a flag: the model
+# builds the argv, and a steerable --config could point at a model-written
+# JSON whose identities/lookaheads make a non-qualifying event publish.
+CONFIG_FILE = "/opt/data/ld/config.json"
 _MARKERS = re.compile(r'<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
 _URL_TOKEN = re.compile(r"https?://\S+", re.IGNORECASE)
 # Destinations, not people: Google's shared-calendar and booking-resource
@@ -116,11 +120,13 @@ def gather_path_allowed(path):
     return normalized == GATHER_FILE or normalized.startswith(PERSISTED_ROOT)
 
 
-def main(argv=None) -> int:
+def main(argv=None, now=None) -> int:
+    """CLI surface: the gather path, nothing else. `now` (unix seconds) is
+    reachable only by an importer — as a flag it was a model-steerable clock
+    an injected invite could use to publish an out-of-window title, and
+    --config the same class of knob (a steered path to a model-written JSON
+    could widen the windows or the identity set). Both are pinned."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--now", type=int, default=None,
-                        help="unix seconds; tests only, defaults to time.time()")
     parser.add_argument("gather",
                         help="gather file (raw gog --json --results-only "
                              "output, or the persisted plow_run_command "
@@ -145,7 +151,7 @@ def main(argv=None) -> int:
     # Same exit-2 contract as the gather below: a broken config must fail
     # loudly, never surface as a traceback-with-exit-1 or a quiet run.
     try:
-        with open(args.config) as f:
+        with open(CONFIG_FILE) as f:
             config = json.load(f)
         tz = ZoneInfo(config["family"]["timezone"])
         nudge_cfg = config["calendar_nudge"]
@@ -154,7 +160,7 @@ def main(argv=None) -> int:
         identities = {str(e).strip().lower()
                       for e in nudge_cfg["owner_identities"] if str(e).strip()}
     except (OSError, ValueError, KeyError, TypeError) as e:
-        print(f"bad config {args.config}: {e!r}", file=sys.stderr)
+        print(f"bad config {CONFIG_FILE}: {e!r}", file=sys.stderr)
         return 2
     if not identities:
         # An empty identity set fails owner-participation on EVERY event — a
@@ -176,7 +182,7 @@ def main(argv=None) -> int:
         print(f"malformed gog json: {e}", file=sys.stderr)
         return 2
 
-    now = args.now if args.now is not None else int(time.time())
+    now = int(time.time()) if now is None else now
     now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
 
     try:
