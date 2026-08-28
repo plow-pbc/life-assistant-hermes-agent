@@ -186,6 +186,9 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
     (event(minutes=20, hangout="https://meet.example.test/abc"), True),
     (event(minutes=40, hangout="https://meet.example.test/abc"), False),
     (event(minutes=40, location="Zoom: https://zoom.example.test/j/1"), False),
+    # A bare scheme with no link content is not a join link: only a real URL
+    # counts, so this stays in-person (kept at 40m, inside the 60m window).
+    (event(minutes=40, location="Join at http://"), True),
     (event(minutes=40), True),                       # in-person window is 60
     (event(minutes=70), False),
     (event(minutes=0), False),                       # already started
@@ -219,6 +222,7 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
     (event(organizer="peer@example.test",
            attendees=(attendee("owner@example.test"),)), True),
 ], ids=["virtual-in-window", "virtual-past-window", "location-url-is-virtual",
+        "bare-scheme-is-not-virtual",
         "in-person-in-window", "in-person-past-window", "already-started",
         "cancelled", "all-day", "private", "confidential",
         "owner-as-organizer", "owner-declined", "owner-absent",
