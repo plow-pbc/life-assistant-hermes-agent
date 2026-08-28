@@ -1,11 +1,10 @@
 # life-assistant
 
-> [!CAUTION]
-> **This repository is private and must stay private.** It holds runtime
-> configuration for agents that read and send a person's mail, read their
-> calendar, and hold their Plow credential. Do not make it public, fork it
-> publicly, or paste its contents anywhere public — including into tools that
-> retain what they are shown.
+> [!IMPORTANT]
+> **This repo is code only.** The instances it configures read and send a
+> person's mail, read their calendar, and hold their Plow credential — all of
+> that lives in the instance's home on the host, never here. Keep it that way:
+> nothing under this tree may carry a credential, a chat id, or a person's data.
 
 A [Hermes](https://howto.plow.co/hermes) agent — texted from iMessage over the
 Plow Chat platform — scoped to life and family logistics. Siblings on `wakeup`
