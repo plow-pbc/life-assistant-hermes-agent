@@ -211,6 +211,11 @@ event (no markdown):
 
 Where:
 
+- `<summary>` is the event title with any `https?://` URL inside it replaced
+  by `…` before composing — a join link pasted into a title is the same
+  bearer-style token as `hangoutLink`, and the title reaches both surfaces
+  verbatim otherwise. Titles are external-sender data; never let one carry a
+  URL to the kiosk or chat.
 - `<local_time>` is the start time in `family.timezone`, e.g. `3:50pm`.
 - `<minutes_until>` is integer minutes from now to the event start.
 - `<where>` is `online` if the event is virtual; otherwise the `location`

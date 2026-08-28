@@ -156,6 +156,28 @@ def _no_redirect_opener():
     return urllib.request.build_opener(_NoRedirect)
 
 
+def post_bearer_json(url, token, body, label):
+    """One bearer-token JSON POST, shared by every producer leg.
+
+    Refuses redirects (see _no_redirect_opener), exits loudly on any failure,
+    and discards the response body — the endpoint may echo submitted text on
+    success, and that text can derive from private content.
+    """
+    req = urllib.request.Request(
+        url=url,
+        method="POST",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    try:
+        _no_redirect_opener().open(req, timeout=30).close()
+    except urllib.error.HTTPError as exc:
+        # Don't decode exc.read() — the same echoed-text concern.
+        sys.exit(f"error: {label} returned HTTP {exc.code} {exc.reason}")
+    except urllib.error.URLError as exc:
+        sys.exit(f"error: POST to {label} failed: {exc.reason}")
+
+
 def main():
     if not CARD:
         sys.exit("error: post_to_kiosk.CARD not set by caller")
@@ -199,25 +221,7 @@ def main():
         )
         return
 
-    req = urllib.request.Request(
-        url=url,
-        method="POST",
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-    )
-    opener = _no_redirect_opener()
-    try:
-        # urllib's default HTTPErrorProcessor raises HTTPError on any non-2xx,
-        # so reaching this block means success — discard the response body
-        # rather than echoing it to stdout. The endpoint may echo submitted
-        # text on success, and that text can be derived from private content
-        # (e.g. ld-morning-triage's paraphrased mail bodies).
-        opener.open(req, timeout=30).close()
-    except urllib.error.HTTPError as exc:
-        # Don't decode exc.read() — same echoed-text concern as the success path.
-        sys.exit(f"error: message API returned HTTP {exc.code} {exc.reason}")
-    except urllib.error.URLError as exc:
-        sys.exit(f"error: POST to {url} failed: {exc.reason}")
+    post_bearer_json(url, token, body, "message API")
 
     # Consume the one-shot handoff. Success path only — left intact on the error
     # exits above so a retry resends it; the module docstring owns the window

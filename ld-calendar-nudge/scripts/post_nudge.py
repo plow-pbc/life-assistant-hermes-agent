@@ -11,11 +11,15 @@ The chat leg is a committed script rather than the cron's native --deliver
 arm on purpose: --deliver relays EVERY final response, and this producer's
 half-hourly runs are mostly quiet no-ops (see register_crons.py's divide).
 
-The kiosk leg consumes MESSAGE_FILE on success (post_to_kiosk's semantics),
-so the text is read here first. A chat-leg failure after a successful kiosk
-post exits non-zero with the file already consumed; the reminder is already
-on the shared kiosk, and the next half-hourly tick recomposes from live
-calendar state — a retry file would only repost a stale reminder.
+The chat env is resolved BEFORE the kiosk leg runs: post_to_kiosk consumes
+MESSAGE_FILE on success, so a half-configured install refusing only at the
+chat step would have already posted the card and burned the handoff — the
+owner silently misses the chat reminder, every tick. Refusing up front makes
+a misconfiguration a no-op on both surfaces. A chat-leg NETWORK failure after
+a successful kiosk post still exits non-zero with the file consumed; the
+reminder is already on the shared kiosk, and the next half-hourly tick
+recomposes from live calendar state — a retry file would only repost a stale
+reminder.
 
 MESSAGE_FILE sits under /opt/data (HERMES_WRITE_SAFE_ROOT) per #12. The chat
 env values live in /opt/data/.env, which the GATEWAY loads — a docker-exec
@@ -25,8 +29,6 @@ source that file first.
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
 
 sys.path.insert(
     0,
@@ -51,10 +53,14 @@ def require_env(name):
     return value
 
 
-def send_chat(text, dry_run):
-    base_url = require_env("PLOW_CHAT_BASE_URL")
-    chat_uid = require_env("PLOW_CHAT_CHAT_UID")
-    token = require_env("PLOW_CHAT_TOKEN")
+def resolve_chat_env():
+    return tuple(
+        require_env(n)
+        for n in ("PLOW_CHAT_BASE_URL", "PLOW_CHAT_CHAT_UID", "PLOW_CHAT_TOKEN")
+    )
+
+
+def send_chat(text, dry_run, base_url, chat_uid, token):
     url = f"{base_url.rstrip('/')}/v1/chats/{chat_uid}/messages"
 
     if dry_run:
@@ -71,21 +77,7 @@ def send_chat(text, dry_run):
         )
         return
 
-    req = urllib.request.Request(
-        url=url,
-        method="POST",
-        data=json.dumps({"body": text}).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-    )
-    # Same posture as the kiosk leg: a redirect would forward the bearer to a
-    # new origin, so refuse it and let the HTTPError path fail loudly.
-    opener = post_to_kiosk._no_redirect_opener()
-    try:
-        opener.open(req, timeout=30).close()
-    except urllib.error.HTTPError as exc:
-        sys.exit(f"error: Plow Chat returned HTTP {exc.code} {exc.reason}")
-    except urllib.error.URLError as exc:
-        sys.exit(f"error: POST to Plow Chat failed: {exc.reason}")
+    post_to_kiosk.post_bearer_json(url, token, {"body": text}, "Plow Chat")
 
 
 def main():
@@ -95,8 +87,9 @@ def main():
     text = post_to_kiosk.read_required_file(
         post_to_kiosk.MESSAGE_FILE, "alert text file"
     )
+    chat = resolve_chat_env()  # refuse BEFORE the kiosk leg posts and consumes
     post_to_kiosk.main()  # exits non-zero on any kiosk failure — chat never runs
-    send_chat(text, dry_run)
+    send_chat(text, dry_run, *chat)
 
 
 if __name__ == "__main__":

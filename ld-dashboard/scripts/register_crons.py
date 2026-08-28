@@ -76,7 +76,6 @@ JOBS = (
         ),
         "skill": "ld-weather",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-sports",
@@ -89,7 +88,6 @@ JOBS = (
         ),
         "skill": "ld-sports",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-morning-updates",
@@ -103,7 +101,6 @@ JOBS = (
         ),
         "skill": "ld-morning-updates",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-morning-triage",
@@ -117,7 +114,6 @@ JOBS = (
         ),
         "skill": "ld-morning-triage",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-weekly-digest",
@@ -131,11 +127,10 @@ JOBS = (
             "final response."
         ),
         "skill": "ld-weekly-digest",
-        # Native --deliver, unlike the future nudge: the digest is weekly and
-        # always has content, so relaying every final response fits; the
-        # half-hourly nudge has quiet no-op runs and gets a script leg (C2).
+        # Native --deliver, unlike the nudge: the digest is weekly and always
+        # has content, so relaying every final response fits; the half-hourly
+        # nudge has quiet no-op runs and its chat leg is post_nudge.py.
         "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
-        "blocked": None,
     },
     {
         "name": "ld-calendar-nudge",
@@ -151,12 +146,8 @@ JOBS = (
         # No --deliver: the chat leg lives in post_nudge.py (see the divide
         # comment above JOBS).
         "deliver": None,
-        "blocked": None,
     },
 )
-
-LIVE = tuple(j for j in JOBS if not j["blocked"])
-BLOCKED = tuple(j for j in JOBS if j["blocked"])
 
 
 def require_timezone_agreement(config_path=LD_CONFIG, env=None):
@@ -332,9 +323,6 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.parse_args(argv)
 
-    for job in BLOCKED:
-        print(f"blocked, not registered: {job['name']} ({job['schedule']}) -- {job['blocked']}")
-
     if not shutil.which(HERMES) and not os.path.exists(HERMES):
         raise SystemExit(f"{HERMES} not found -- run this inside the agent container")
 
@@ -342,7 +330,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
     registered = registered_jobs(jobs_path)
     paused = []
 
-    for job in LIVE:
+    for job in JOBS:
         if job["name"] in registered:
             if registered[job["name"]]:
                 print(f"already present, skipped: {job['name']}")

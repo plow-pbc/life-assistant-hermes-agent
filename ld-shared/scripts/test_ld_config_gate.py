@@ -38,6 +38,10 @@ JQ_FILTER = r"""
         then empty else "a calendar.sources[].calendar_id is blank" end,
       if ([.calendar.sources[]? | (.calendar_id // "")] | length) == ([.calendar.sources[]? | (.calendar_id // "")] | unique | length)
         then empty else "calendar.sources[].calendar_id values are not unique" end,
+      if ((.calendar_nudge.owner_identities | type) == "array" and (.calendar_nudge.owner_identities | length) >= 1)
+        then empty else "calendar_nudge.owner_identities is not a non-empty array" end,
+      if ([.calendar_nudge.owner_identities[]? | select((test("\\S")) | not)] | length) == 0
+        then empty else "a calendar_nudge.owner_identities entry is blank" end,
       if ([.. | strings | select(test("^\\[[A-Z][A-Z0-9_]*\\]$"))] | length) == 0
         then empty else "an unfilled [UPPER_SNAKE] placeholder remains" end
     ] | join("; ")
@@ -46,6 +50,7 @@ JQ_FILTER = r"""
 VALID = {
     "family": {"owner": {"name": "Sam"}, "timezone": "America/Los_Angeles"},
     "calendar": {"sources": [{"calendar_id": "primary", "name": "Personal"}]},
+    "calendar_nudge": {"owner_identities": ["sam@example.com"]},
     "weather": {"location": "Mountain View", "lat": 37.386, "lon": -122.083},
 }
 
@@ -65,7 +70,7 @@ CASES = [
      json.dumps({**VALID, "calendar": {"sources": []}}),
      "calendar.sources is not a non-empty array", True),
     ("(c') sources missing",
-     json.dumps({"family": VALID["family"]}),
+     json.dumps({"family": VALID["family"], "calendar_nudge": VALID["calendar_nudge"]}),
      "calendar.sources is not a non-empty array", True),
     ("(c'') sources non-array",
      json.dumps({**VALID, "calendar": {"sources": "primary"}}),
@@ -96,6 +101,21 @@ CASES = [
     ("(f') missing timezone",
      json.dumps({**VALID, "family": {"owner": {"name": "Sam"}}}),
      "family.timezone is blank", True),
+    # The upgraded-install trap: a live config from before the nudge landed has
+    # no calendar_nudge.owner_identities at all -- gate it here, or the cron
+    # registers and every half-hourly run refuses before gathering.
+    ("(h) missing owner_identities",
+     json.dumps({k: v for k, v in VALID.items() if k != "calendar_nudge"}),
+     "calendar_nudge.owner_identities is not a non-empty array", True),
+    ("(h') empty owner_identities",
+     json.dumps({**VALID, "calendar_nudge": {"owner_identities": []}}),
+     "calendar_nudge.owner_identities is not a non-empty array", True),
+    ("(h'') blank owner_identities entry",
+     json.dumps({**VALID, "calendar_nudge": {"owner_identities": ["  "]}}),
+     "a calendar_nudge.owner_identities entry is blank", True),
+    ("(h''') non-string owner_identities entry → not valid JSON",
+     json.dumps({**VALID, "calendar_nudge": {"owner_identities": [5]}}),
+     "not valid JSON", True),
     ("(g) invalid JSON", "{ not json", "not valid JSON", True),
     # An empty file is the lone DELIBERATE divergence: jq with no input emits
     # nothing and exits 0, so the old gate fail-OPEN-passed an empty config (a
@@ -105,9 +125,9 @@ CASES = [
     ("(g') empty file → fail-closed (diverges from jq's fail-open)",
      "", "not valid JSON", False),
     # multiple simultaneous failures join with "; " in filter order.
-    ("multi: blank name + missing tz + empty sources",
+    ("multi: blank name + missing tz + empty sources + missing identities",
      json.dumps({"family": {"owner": {"name": ""}}, "calendar": {"sources": []}}),
-     "family.owner.name is blank; family.timezone is blank; calendar.sources is not a non-empty array", True),
+     "family.owner.name is blank; family.timezone is blank; calendar.sources is not a non-empty array; calendar_nudge.owner_identities is not a non-empty array", True),
     # jq // "" semantics: a false value coalesces to "" (blank), not an error.
     ("name false → blank",
      json.dumps({**VALID, "family": {**VALID["family"], "owner": {"name": False}}}),
