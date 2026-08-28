@@ -117,12 +117,14 @@ JOBS = (
         "type": "digest",
         "schedule": "0 17 * * 0",
         "prompt": (
-            "Run the ld-weekly-digest producer now: compose the week-ahead "
-            "digest and post it to the kiosk as card 4, type digest."
+            "Run the ld-weekly-digest producer now: gather the week's calendar "
+            "through Latch gog, compose the week-ahead digest, post it to the "
+            "kiosk as card 4, type digest, and return the digest text as the "
+            "final response."
         ),
         "skill": "ld-weekly-digest",
         "deliver": None,
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
+        "blocked": None,
     },
     {
         "name": "ld-calendar-nudge",

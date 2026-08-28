@@ -5,8 +5,8 @@ description: The life-dashboard's cron spec — the six producer schedules as re
 
 # Life Dashboard — the cron spec
 
-The six producer schedules, versioned. Four are registered; two are blocked
-and say why.
+The six producer schedules, versioned. Five are registered; one is blocked
+and says why.
 
 ## Why a skill and not a note
 
@@ -96,14 +96,14 @@ source; this table summarises it.
 | `ld-sports` | `0 6 * * *` | 5 · sports | **live** |
 | `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | **live** — Google Calendar via Latch's vendored gog |
 | `ld-morning-triage` | `5 7 * * *` | 1 · alert | **live** — iMessage through Latch |
-| `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | blocked — Google Calendar, `plow-pbc/latch#183` |
+| `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
 | `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | blocked — Google Calendar, `plow-pbc/latch#183` |
 
 Blocked means the producer body is not in this repo and its cron is not
-registered: `plow-connectors` was dropped, so those two have no data source
-on this agent until `plow-pbc/latch#183`'s calendar producers land. Their
-bodies stay fetchable in the archived upstream repos, and their card numbers
-stay reserved here so the mapping cannot silently renumber when they land.
+registered: `plow-connectors` was dropped, so the nudge has no data source
+on this agent until `plow-pbc/latch#183`'s port lands. Its body stays
+fetchable in the archived upstream repo, and its card number stays
+reserved here so the mapping cannot silently renumber when it lands.
 
 ## Two values that are never literals
 
