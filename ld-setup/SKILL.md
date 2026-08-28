@@ -9,6 +9,13 @@ Four phases. Each is gated on the artifact it produces, so a phase that has
 already landed is skipped and the run resumes where it stopped — a reset, a
 rebuilt home or an interrupted chat all pick up from here.
 
+`/opt/data/ld/setup-complete` is the one thing that marks the whole run done
+— nothing else writes it, and it lands only at the end of Phase 3, after the
+card-3 proof. `runtime/SOUL.md` checks it (alongside the config gate) before
+skipping this skill, so an interruption after Phase 1 still resumes here
+rather than stopping at a blank wall. Deleting the marker re-runs setup from
+whichever phase's own artifact is missing or stale.
+
 **Every script's output is pasted verbatim with its exit status, and a phase
 is not done until you have.** The scripts signal every refusal through their
 output and a non-zero exit, and a chat turn does not propagate an exit code.
@@ -165,3 +172,8 @@ Its `cards=` list is the gate: **`'3'` present** means the weather producer's
 card is on the kiosk. Then tell the owner: "your wall is live — the weather
 card should be showing; is it?" — their answer confirms the screen itself,
 which is the one thing the route cannot show you.
+
+Only now, after that proof, mark the whole run done — this is the only thing
+that writes this file, and nothing before this line should:
+
+    date -u +%FT%TZ > /opt/data/ld/setup-complete
