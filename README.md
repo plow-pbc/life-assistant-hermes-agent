@@ -143,32 +143,35 @@ not an omission to be tidied up later.
 `<agent>` is the registry name. `life` is the only instance that *may* be
 registered today; see [Adding a second instance](#adding-a-second-instance) for the other.
 
-Land `/opt/data/ld/config.json` before you start, not after: the last step below
-registers the crons, and `register_crons.py` reads `family.timezone` from that
-file and refuses without it — and `compose.override.yml` binds the file
-read-only over itself, so it must exist on the host before `agent-mgr up`
-(Docker would otherwise create a root-owned directory in its place) and the
-agent can read but never rewrite it; edits happen host-side, then `up`. The
-producers read their location and teams from it too, as the agent. It goes at
-`~/.hermes-<agent>/ld/config.json` on the host, landed as the instance owner
-rather than through a root `exec`, and the live one is mode-600. The dotenv needs `DASHBOARD_ENDPOINT_URL` and `DASHBOARD_TOKEN`
-alongside it. The `ld-viewer-dev` skill needs three more host-side files in
-the instance home, all landed as the instance owner: `ld-dev/repo-url` (one
-line, the household repo's SSH URL), `ld-dev/ssh/deploy_key` (mode 600 —
-a per-repo deploy key registered write-scoped on the household repo; minted
-host-side, the private half never displayed), `ld-dev/ssh/known_hosts`
-(GitHub's published SSH host keys — `gh api meta --jq '.ssh_keys[]' | sed
-'s/^/github.com /'` — so git-over-ssh runs strict, no trust-on-first-use),
-and `ld-dev/ssh/pi_key`
-(mode 600 — OpenSSH refuses a
-group/world-readable private key; the kiosk-diagnostics SSH key, its `.pub`
-authorized on the Pi). `ld-shared/scripts/ld_config_gate.py` is the single definition of
-a valid config — run it rather than eyeballing the JSON. Its `family.timezone`
-must match the container's `AGENT_TZ`, because `hermes cron create` takes no
-per-job zone and every producer fires in the container's; you do not have to
-check that by eye, though — `register_crons.py` refuses to register at all when
-they differ, so a mismatch stops bring-up rather than reaching the wall two
-hours late.
+Nothing to land first. The agent writes its own `ld/config.json` and mints
+its own kiosk on the owner's first reply: `runtime/SOUL.md` tells it that a
+missing or gate-failing config means it is not set up, and `ld-setup/SKILL.md`
+is what it runs then — the interview, `write_config.py`, `mint_kiosk.py`,
+then the two lines that bring the Pi up: run on the Pi itself through Plow
+Latch, over the owner's LAN, from their Mac when they have one, else texted
+to the owner to type — then `register_crons.py` and a forced `ld-weather`
+run. The one thing that has to
+be true beforehand is that the container's zone is the owner's: `AGENT_TZ` in
+the instance dotenv, set after `restore` and before `up` (agent-mgr README,
+*Where a per-person value goes*). Setup refuses a timezone answer that is not
+the container's, and the owner cannot fix that side themselves.
+
+Host-side edits to `~/.hermes-<agent>/ld/config.json` still work — it is the
+instance owner's file, mode 600; edit it, then `agent-mgr restart <agent>`.
+`ld-shared/scripts/ld_config_gate.py <path>` is the single definition of a
+valid config: empty output is a pass, anything else is the list of what is
+wrong (its exit code is always 0).
+
+The `ld-viewer-dev` skill is an operator tool, not part of setup, and needs
+three more host-side files in the instance home, all landed as the instance
+owner: `ld-dev/repo-url` (one line, the household repo's SSH URL),
+`ld-dev/ssh/deploy_key` (mode 600 — a per-repo deploy key registered
+write-scoped on the household repo; minted host-side, the private half never
+displayed), `ld-dev/ssh/known_hosts` (GitHub's published SSH host keys —
+`gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /'` — so git-over-ssh
+runs strict, no trust-on-first-use), and `ld-dev/ssh/pi_key` (mode 600 —
+OpenSSH refuses a group/world-readable private key; the kiosk-diagnostics
+SSH key, its `.pub` authorized on the Pi).
 
 ```sh
 agent-mgr restore <agent>            # config.yaml and the plugin into its home
@@ -193,55 +196,37 @@ agent-mgr activate <agent>           # prints a code — its owner texts it from
 # host's `sh` that collapses to one literal directory and exits 0.
 mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 
-# ALSO before `up`: the ld-config must be a real FILE at this path.
-# compose.override.yml binds it read-only over /opt/data/ld/config.json, and
-# Docker materializes a missing bind source as a root-owned DIRECTORY at both
-# ends -- bring-up then fails on a config nothing can read or replace. The
-# guard keeps `up` from creating that directory (an `exit` would close the
-# shell this block is pasted into); the later steps still run and fail
-# loudly against the missing container, which needs no fence.
-if [ -f ~/.hermes-<agent>/ld/config.json ]; then
-  agent-mgr up <agent>               # must precede sign-in: that runs inside this container
-else
-  echo 'STOP: land ld/config.json first (see above)'
-fi
+agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 just check-latch <agent>             # can this container reach that owner's Mac?
-agent-mgr agent <agent> 'what is the weather today?'          # a turn without the phone
 
-# The dashboard crons. Not optional, and not replayed by restore --
-# `hermes cron` persists to /opt/data/cron/jobs.json, which agent-mgr does not
-# touch, so a rebuilt home comes up with a wall screen that never updates and
-# nothing to diff against. Create-if-missing, so re-running it is safe.
-agent-mgr agent <agent> 'set up the life dashboard crons; paste the output verbatim + exit code'
+# Then the owner replies to the agent's 👋 from their phone. That reply IS the
+# rest of bring-up: the agent interviews them, writes ld/config.json, mints
+# the kiosk, brings the Pi up through Latch over their LAN (or texts them
+# the two lines when there's no Mac), registers the crons and forces a
+# weather card (ld-setup/SKILL.md). Nothing more to run here.
 ```
 
-That is a turn, not an exec, and deliberately: `ld-dashboard` is a skill, so the
-agent reads it and runs `register_crons.py` itself — inside the container, as
-the gateway's own uid, with no uid for anyone to choose. A plain
+The crons are registered by the agent itself, inside the container, as the
+gateway's own uid — deliberately not by an exec from here. A plain
 `agent-mgr compose … exec` runs as **root** (measured: `id` in the `str`
-container returns `uid=0`, because the image's s6 entrypoint remaps its in-image
-`hermes` user to `HERMES_UID`/`HERMES_GID` and a bare exec bypasses that), and
-on a fresh instance `jobs.json` does not exist yet — so a root-run registration
-creates the schedule root-owned and the gateway can then never pause, resume or
-remove anything in it. `agent-mgr` pins the pair on every exec it makes
-(`agent-mgr:146`, `:194`, `:343`) for this reason; going through it is how this
-repo avoids restating a uid rule. The repo has been bitten by root-owned paths
+container returns `uid=0`, because the image's s6 entrypoint remaps its
+in-image `hermes` user to `HERMES_UID`/`HERMES_GID` and a bare exec bypasses
+that), and on a fresh instance `jobs.json` does not exist yet — so a root-run
+registration creates the schedule root-owned and the gateway can then never
+pause, resume or remove anything in it. `agent-mgr` pins the pair on every
+exec it makes for this reason; the repo has been bitten by root-owned paths
 inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
-**The turn costs you the exit code.** `register_crons.py` refuses loudly — a missing or
-unusable `config.json`, a `family.timezone` that is not the container's zone,
-an empty `TZ`, a failed `cron create`, an unreadable `jobs.json`, a producer
-that is registered but PAUSED — but a turn returns the *turn's* status, so a
-non-zero exit reaches you only as whatever the agent chose to say about it. The
-skill therefore instructs the agent to paste the script's output verbatim and
-report its exit status, and to treat the run as unfinished until it has; ask for
-it explicitly if it does not appear, because a summary is exactly the thing that
-drops the words you would grep for. `refusing to register`, `WARNING` or
-`PAUSED` anywhere in that output means bring-up did not finish.
+**A turn costs you the exit code.** `write_config.py`, `mint_kiosk.py` and
+`register_crons.py` all refuse loudly with a non-zero exit, but a chat turn
+returns the *turn's* status. `ld-setup/SKILL.md` therefore holds the agent to
+`ld-dashboard`'s contract — paste each script's output verbatim with its
+exit status, and treat the phase as unfinished until it has. `refusing`,
+`WARNING` or `PAUSED` anywhere in that output means bring-up did not finish.
 
-If you are scripting this rather than running it by hand, take the exit code
-directly and pin the uid yourself:
+If you are re-registering from here rather than through the owner's chat,
+take the exit code directly and pin the uid yourself:
 
 ```sh
 agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
@@ -340,13 +325,14 @@ latch#183 later puts back.
 
 ```
 agent.env       what is true of every instance: where its config lives
-runtime/        config.yaml: model, plugins, mcp_servers
+runtime/        config.yaml: model, plugins, mcp_servers; SOUL.md: persona + the setup rule
 skills.tsv      empty -- no connectors on this instance (see above)
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
 ld-shared/      the POST helper, the ld-config gate and the wire protocol
 ld-dashboard/   the six cron schedules, all registered
+ld-setup/       first-run setup: the interview, write_config.py, mint_kiosk.py
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 ```
