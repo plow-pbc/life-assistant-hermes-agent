@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """triage_candidates.py — decode + filter the iMessage gather for ld-morning-triage.
 
-Reads the fixed sqlite3 query's `-json` stdout on stdin (an array of
+Reads the fixed sqlite3 query's `-json` output from its gather-file
+argument, deleting the file as it goes (an array of
 `{chat_id, is_from_me, handle, sent_at, hexbody}` objects), decodes each body
 (typedstream via the NSString marker, else plain UTF-8), applies the
 unaddressed rule per chat — every inbound message after the chat's last
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 EXCERPT_CAP = 500
@@ -59,15 +61,39 @@ def decode_body(blob: bytes) -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument("gather",
+                        help="gather file (raw sqlite3 -json output, or the "
+                             "persisted plow_run_command result envelope)")
     args = parser.parse_args()
+
+    # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
+    # The gather is consumed FIRST: the raw 36-hour corpus must not outlive
+    # this run whatever the outcome, so it's read and deleted before anything
+    # else (a broken config, a bad envelope) gets a chance to abort the run.
+    with open(args.gather) as f:
+        raw = f.read().strip()
+    os.unlink(args.gather)
 
     with open(args.config) as f:
         excluded = set(
             json.load(f)["morning_triage"]["exclude"]["imessage_handles"]
         )
-
-    # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
-    raw = sys.stdin.read().strip()
+    # An oversized plow_run_command result reaches the model as a persisted
+    # envelope — {"result": "<json of {exit_code, handle, output}>"} — not as
+    # raw query stdout. Unwrap it here so the model passes the persisted path
+    # untouched; a query result itself is always an array (or empty), never
+    # an object, so the sniff cannot misfire on real rows.
+    if raw.startswith("{"):
+        try:
+            inner = json.loads(json.loads(raw)["result"])
+            if inner["exit_code"] != 0:
+                print(f"gather failed: exit_code={inner['exit_code']}",
+                      file=sys.stderr)
+                return 2
+            raw = inner["output"].strip()
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
+            print(f"malformed gather envelope: {e}", file=sys.stderr)
+            return 2
     try:
         rows = json.loads(raw) if raw else []
     except json.JSONDecodeError as e:
