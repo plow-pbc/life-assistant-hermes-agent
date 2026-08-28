@@ -186,10 +186,13 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
     # Single-slash native URIs are join links too — virtual window applies.
     (event(minutes=20, location="msteams:/l/meetup-join/19%3ameeting"), True),
     (event(minutes=40, location="msteams:/l/meetup-join/19%3ameeting"), False),
-    # Reality pin for the no-slash-required pattern: a bare scheme's residue
-    # ("http" + ":" + "//") now MATCHES, so this classifies virtual and falls
-    # outside the 30m window — the over-match direction the pattern accepts.
+    # A bare scheme's residue ("http" + ":" + "//") still carries a slash, so
+    # it classifies virtual and falls outside the 30m window.
     (event(minutes=40, location="Join at http://"), False),
+    # A prose colon in the location must NOT classify virtual — that would
+    # silently shrink the window from 60 to 30 and drop this real in-person
+    # reminder. Classification requires a slash; redaction stays broad.
+    (event(minutes=40, location="Parking note:Floor 3, Bldg:Annex"), True),
     (event(minutes=40), True),                       # in-person window is 60
     (event(minutes=70), False),
     (event(minutes=0), False),                       # already started
@@ -224,7 +227,7 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
            attendees=(attendee("owner@example.test"),)), True),
 ], ids=["virtual-in-window", "virtual-past-window", "location-url-is-virtual",
         "single-slash-uri-in-window", "single-slash-uri-past-window",
-        "bare-scheme-overmatches-to-virtual",
+        "bare-scheme-classifies-virtual", "prose-colon-stays-in-person",
         "in-person-in-window", "in-person-past-window", "already-started",
         "cancelled", "all-day", "private", "confidential",
         "owner-as-organizer", "owner-declined", "owner-absent",

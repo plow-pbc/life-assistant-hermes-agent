@@ -63,13 +63,21 @@ HANDOFF = "/opt/data/ld/calendar-nudge-text"
 # JSON whose identities/lookaheads make a non-qualifying event publish.
 CONFIG_FILE = "/opt/data/ld/config.json"
 _MARKERS = re.compile(r'<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
-# Any URI, not just http(s): native join links carry the same bearer-style
-# credentials, and single-slash forms (msteams:/l/meetup-join/...) are legal,
-# so no slash is required after the colon. Letter-led prose tokens with a
-# colon ("note:parking", "Re:Budget") DO match and get stripped/classified —
-# that direction fails SAFE on a shared display (a stripped word costs less
-# than a leaked credential); digit-led times ("3:10pm") stay untouched.
+# Two patterns for two opposite risk profiles.
+#
+# REDACTION (title stripping) uses the broad one: any URI, not just http(s)
+# — native join links carry the same bearer-style credentials, and no slash
+# is required after the colon. Letter-led prose tokens with a colon
+# ("note:parking", "Re:Budget") DO match and get stripped — over-stripping
+# fails SAFE on a shared display (a stripped word costs less than a leaked
+# credential); digit-led times ("3:10pm") stay untouched.
 _URL_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S+")
+# CLASSIFICATION (virtual vs in-person) must not over-match: flipping a
+# prose-colon location ("Floor:3") to virtual would silently shrink its
+# window from 60 to 30 minutes and drop real reminders. It requires a slash
+# after the colon, which every real join link has — double (zoommtg://...)
+# or single (msteams:/l/meetup-join/...) — and prose colons never do.
+_LINK_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:/\S+")
 # Destinations, not people: Google's shared-calendar and booking-resource
 # suffixes. A mirrored invite or a room is nobody left waiting.
 _NON_HUMAN_SUFFIXES = ("@group.calendar.google.com",
@@ -218,11 +226,13 @@ def main(argv=None, now=None) -> int:
             minutes_until = int((start_dt - now_dt).total_seconds() // 60)
 
             location = unwrap(ev.get("location"))
-            # Virtual = a structured video link OR a URL in the location.
-            # Only a real link counts — keyword-matching ("Zoom"/"Meet")
-            # false-positives on "Meeting Room". The raw URL is a bearer-style
-            # join token and never reaches a surface; compose renders `online`.
-            virtual = bool(ev.get("hangoutLink")) or bool(_URL_TOKEN.search(location))
+            # Virtual = a structured video link OR a link in the location.
+            # Only a slashed link counts (_LINK_TOKEN, not the broad redaction
+            # pattern): keyword-matching false-positives on "Meeting Room",
+            # and a prose colon ("Floor:3") must not shrink the window. The
+            # raw link is a bearer-style join token and never reaches a
+            # surface; compose renders `online`.
+            virtual = bool(ev.get("hangoutLink")) or bool(_LINK_TOKEN.search(location))
             lookahead = lookahead_virtual if virtual else lookahead_in_person
             if not (0 < minutes_until <= lookahead):
                 continue
