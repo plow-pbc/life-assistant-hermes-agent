@@ -103,12 +103,12 @@ JOBS = (
         "schedule": "5 7 * * *",
         "prompt": (
             "Run the ld-morning-triage producer now: surface the one "
-            "most-important unaddressed inbound across Gmail and Slack from the "
-            "last 36h and post it to the kiosk as card 1, type alert."
+            "most-important unaddressed iMessage from the last 36h and post "
+            "it to the kiosk as card 1, type alert."
         ),
         "skill": "ld-morning-triage",
         "deliver": None,
-        "blocked": "reads Gmail and Slack; needs a rewrite onto the Mac's iMessage DB through Latch",
+        "blocked": None,
     },
     {
         "name": "ld-weekly-digest",
@@ -240,7 +240,7 @@ def registered_jobs(jobs_path=JOBS_FILE):
 def create_argv(job):
     """No --deliver arm, because no job that reaches here has one.
 
-    Only LIVE jobs are ever created, and both of them post their card over the
+    Only LIVE jobs are ever created, and all of them post their card over the
     kiosk POST -- the card IS the delivery. `ld-calendar-nudge` is the one
     producer that also messages the owner, and it is blocked, so the expansion
     machinery its `deliver` field needed was unreachable code. The field stays as

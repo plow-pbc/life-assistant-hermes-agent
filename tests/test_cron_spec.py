@@ -24,7 +24,7 @@ def spec():
     return mod
 
 
-LIVE_NAMES = {"ld-weather", "ld-sports"}
+LIVE_NAMES = {"ld-weather", "ld-sports", "ld-morning-triage"}
 
 
 # The whole job contract, as one table. name -> (card, type, is-blocked).
@@ -46,7 +46,7 @@ JOB_CONTRACT = {
     "ld-weather":         (3, "weather",     False),
     "ld-sports":          (5, "sports",      False),
     "ld-morning-updates": (2, "affirmation", True),
-    "ld-morning-triage":  (1, "alert",       True),
+    "ld-morning-triage":  (1, "alert",       False),
     "ld-weekly-digest":   (4, "digest",      True),
     "ld-calendar-nudge":  (1, "alert",       True),
 }
@@ -66,15 +66,15 @@ def test_the_job_contract_is_exactly_this():
     } == {(name, card, type_, blocked) for name, (card, type_, blocked) in JOB_CONTRACT.items()}
 
 
-def test_exactly_the_two_producers_with_a_public_data_source_are_live():
-    """The other four read Gmail, Google Calendar or Slack, and plow-connectors
-    is dropped. Registering one would schedule a turn that cannot succeed, and
-    its 06:00 failure would read as a producer bug rather than a missing
-    connector."""
+def test_exactly_the_producers_with_a_data_source_are_live():
+    """The other three read Google Calendar, and plow-connectors is dropped.
+    Registering one would schedule a turn that cannot succeed, and its 06:00
+    failure would read as a producer bug rather than a missing connector.
+    Triage is live: its source is the Mac's iMessage DB through Latch."""
     mod = spec()
     assert {j["name"] for j in mod.LIVE} == LIVE_NAMES
-    assert len(mod.JOBS) == 6, "all six stay in the spec; only two are registered"
-    assert len(mod.BLOCKED) == 4
+    assert len(mod.JOBS) == 6, "all six stay in the spec; only three are registered"
+    assert len(mod.BLOCKED) == 3
 
 
 @pytest.mark.parametrize("job", spec().BLOCKED, ids=lambda j: j["name"])
@@ -209,7 +209,9 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
     ])
     fake = FakeHermes(path)
     mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
-    assert fake.created == ["ld-sports"], "the already-registered job must be skipped"
+    assert fake.created == ["ld-sports", "ld-morning-triage"], (
+        "the already-registered job must be skipped"
+    )
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
 
@@ -231,7 +233,9 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     with pytest.raises(SystemExit) as exit_:
         mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
-    assert fake.created == ["ld-sports"], "a paused job must not be re-registered"
+    assert fake.created == ["ld-sports", "ld-morning-triage"], (
+        "a paused job must not be re-registered"
+    )
     out = capsys.readouterr().out
     assert "PAUSED" in out and "/opt/hermes/bin/hermes cron resume ld-weather" in out
 
