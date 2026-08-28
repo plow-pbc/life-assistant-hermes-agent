@@ -159,8 +159,9 @@ the instance home, all landed as the instance owner: `ld-dev/repo-url` (one
 line, the household repo's HTTPS URL), `ld-dev/git-credentials` (mode 600,
 one `https://x-access-token:<PAT>@github.com` line — land it via a
 `read -rs`-style recipe so the token never touches a shell history or
-transcript), and `ld-dev/ssh/pi_key` (the kiosk-diagnostics SSH key, its
-`.pub` authorized on the Pi). `ld-shared/scripts/ld_config_gate.py` is the single definition of
+transcript), and `ld-dev/ssh/pi_key` (mode 600 — OpenSSH refuses a
+group/world-readable private key; the kiosk-diagnostics SSH key, its `.pub`
+authorized on the Pi). `ld-shared/scripts/ld_config_gate.py` is the single definition of
 a valid config — run it rather than eyeballing the JSON. Its `family.timezone`
 must match the container's `AGENT_TZ`, because `hermes cron create` takes no
 per-job zone and every producer fires in the container's; you do not have to

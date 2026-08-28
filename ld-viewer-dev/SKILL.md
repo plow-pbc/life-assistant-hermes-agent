@@ -59,8 +59,9 @@ SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
 
 ## The development loop
 
-1. **Refresh the workspace.** Clone into `/opt/data/ld-dev/repo` if absent,
-   else pull `--ff-only` (recipes above).
+1. **Refresh the workspace.** Clone into `/opt/data/ld-dev/repo` if absent;
+   else `remote set-url origin` from `repo-url`, then pull `--ff-only`
+   (recipes above).
 2. **Edit.** Run `npm test` locally when node is available in this container;
    otherwise rely on the updater's build gate — it runs `npm ci`,
    `npm run build`, and `npm test` on the Pi before anything flips.
