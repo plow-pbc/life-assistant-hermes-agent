@@ -80,4 +80,5 @@ services:
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-shared:/opt/data/skills/ld-shared:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-weekly-digest:/opt/data/skills/ld-weekly-digest:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-dashboard:/opt/data/skills/ld-dashboard:ro
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-viewer-dev:/opt/data/skills/ld-viewer-dev:ro
       - ${AGENT_HOME:?set by agent-mgr from the instance descriptor}/ld/config.json:/opt/data/ld/config.json:ro
