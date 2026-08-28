@@ -1,10 +1,11 @@
 # life-assistant
 
 > [!IMPORTANT]
-> **This repo is code only.** The instances it configures hold a person's Plow
-> credential and reach their calendar through their own Mac (see [No connectors,
-> and what that costs](#no-connectors-and-what-that-costs) for what they no
-> longer reach) — all of that lives in the instance's home on the host, never
+> **This repo is code only.** An instance holds a person's Plow credential and
+> drives their own Mac through Latch — [Latch — whose Mac an instance
+> reaches](#latch--whose-mac-an-instance-reaches) says what that grants, and
+> [No connectors, and what that costs](#no-connectors-and-what-that-costs) what
+> it no longer does. All of it lives in the instance's home on the host, never
 > here. Keep it that way:
 > nothing under this tree may carry a credential, a chat id, or a person's data.
 
