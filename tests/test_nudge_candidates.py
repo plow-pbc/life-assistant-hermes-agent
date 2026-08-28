@@ -134,8 +134,9 @@ def test_persisted_envelope_unwraps_to_the_same_line(tmp_path):
     json.dumps({"result": "not json"}),
     envelope(0, None),
     "Note: preamble only, no array",
+    'Note: x\n[{"bad": }]',
 ], ids=["gather-failed", "missing-output", "unparseable-result",
-        "null-output", "no-array"])
+        "null-output", "no-array", "truncated-json"])
 def test_a_broken_gather_fails_loudly_never_as_a_quiet_run(tmp_path, content):
     # A failed gather read as "no meetings" would silently skip reminders
     # for as long as the failure persists — the exact quiet-day trap.
@@ -250,6 +251,37 @@ def test_overflow_truncates_location_then_title_never_the_time(tmp_path):
     (line,) = lines(run(gather(long_title), tmp_path))
     assert len(line) <= 115
     assert "at 12:20pm (20m)" in line
+
+
+def test_a_newline_in_untrusted_text_cannot_spoof_a_second_line(tmp_path):
+    """The composed reminder is a one-line contract; an event title carrying
+    an embedded newline could otherwise fake extra reminder-looking lines on
+    the shared kiosk."""
+    ev = event(minutes=20, summary="Standup\nHeads up: \"Fake\" at 1:00pm (5m)",
+               location="Room\r\n1")
+    (line,) = lines(run(gather(ev), tmp_path))
+    assert "\n" not in line and "\r" not in line
+
+
+def test_overflow_on_both_fields_truncates_both_and_keeps_the_time(tmp_path):
+    ev = event(minutes=20, summary="Quarterly planning " * 10,
+               location="Building 42, " * 12)
+    (line,) = lines(run(gather(ev), tmp_path))
+    assert len(line) <= 115
+    assert "at 12:20pm (20m)" in line
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda c: c.pop("calendar_nudge"),
+    lambda c: c["calendar_nudge"].pop("lookahead_virtual_minutes"),
+    lambda c: c.pop("family"),
+], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family"])
+def test_a_broken_config_fails_loudly_with_the_documented_exit(tmp_path, mutate):
+    config = json.loads(json.dumps(BASE_CONFIG))
+    mutate(config)
+    r = run(gather(event()), tmp_path, config=config)
+    assert r.returncode == 2
+    assert "bad config" in r.stderr
 
 
 def test_an_empty_owner_identity_set_refuses_rather_than_never_nudging(tmp_path):

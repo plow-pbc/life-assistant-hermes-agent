@@ -26,11 +26,24 @@ runs — the script leg keeps quiet runs silent by construction.
 import json
 import os
 import pathlib
-import sys
+import urllib.error
 import urllib.request
 
 HANDOFF = "/opt/data/ld/calendar-nudge-text"
 DOTENV = "/opt/data/.env"
+
+
+def _no_redirect_opener():
+    """urllib opener that refuses 3xx redirects — same threat post_to_kiosk
+    guards: default urllib follows redirects AND forwards the Authorization
+    header to the new origin, steering the bearer to wherever a rewritten
+    endpoint or compromised host points."""
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_args, **_kwargs):
+            return None
+
+    return urllib.request.build_opener(_NoRedirect)
 
 
 def require(name, dotenv):
@@ -73,7 +86,7 @@ def main():
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as resp:
+        with _no_redirect_opener().open(request, timeout=30) as resp:
             status = resp.status
     except urllib.error.HTTPError as e:
         raise SystemExit(f"Plow Chat send failed: HTTP {e.code}") from e

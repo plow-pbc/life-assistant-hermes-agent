@@ -43,8 +43,11 @@ _NON_HUMAN_SUFFIXES = ("@group.calendar.google.com",
 
 
 def unwrap(value):
-    """Strip Latch's untrusted-content markers; the inner text stays data."""
-    return _MARKERS.sub("", value) if isinstance(value, str) else ""
+    """Strip Latch's untrusted-content markers and collapse all whitespace —
+    newlines included — to single spaces. The composed reminder is a ONE-line
+    contract: an event title carrying an embedded newline could otherwise
+    spoof extra reminder-looking lines on the shared kiosk."""
+    return " ".join(_MARKERS.sub("", value).split()) if isinstance(value, str) else ""
 
 
 def is_human_external(email, identities):
@@ -91,14 +94,20 @@ def main() -> int:
         raw = f.read().strip()
     os.unlink(args.gather)
 
-    with open(args.config) as f:
-        config = json.load(f)
-    tz = ZoneInfo(config["family"]["timezone"])
-    nudge_cfg = config["calendar_nudge"]
-    lookahead_virtual = nudge_cfg["lookahead_virtual_minutes"]
-    lookahead_in_person = nudge_cfg["lookahead_in_person_minutes"]
-    identities = {str(e).strip().lower()
-                  for e in nudge_cfg["owner_identities"] if str(e).strip()}
+    # Same exit-2 contract as the gather below: a broken config must fail
+    # loudly, never surface as a traceback-with-exit-1 or a quiet run.
+    try:
+        with open(args.config) as f:
+            config = json.load(f)
+        tz = ZoneInfo(config["family"]["timezone"])
+        nudge_cfg = config["calendar_nudge"]
+        lookahead_virtual = nudge_cfg["lookahead_virtual_minutes"]
+        lookahead_in_person = nudge_cfg["lookahead_in_person_minutes"]
+        identities = {str(e).strip().lower()
+                      for e in nudge_cfg["owner_identities"] if str(e).strip()}
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print(f"bad config {args.config}: {e!r}", file=sys.stderr)
+        return 2
     if not identities:
         # An empty identity set fails owner-participation on EVERY event — a
         # config mistake that presents as an eternally quiet nudge.
