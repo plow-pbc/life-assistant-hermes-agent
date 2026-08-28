@@ -44,6 +44,12 @@ import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
+)
+from gather_result import GatherError, read_gather  # noqa: E402
+
 LIMIT = 115
 # The only gather locations the model may name (validated before any I/O):
 # the runtime's persisted-result directory, and the fixed file the sheet
@@ -129,12 +135,13 @@ def main(argv=None) -> int:
               "path would be an arbitrary delete", file=sys.stderr)
         return 2
 
-    # The gather is consumed FIRST: the raw calendar corpus must not outlive
-    # this run whatever the outcome, so it's read and deleted before anything
-    # else (a broken config, a bad envelope) gets a chance to abort the run.
-    with open(args.gather) as f:
-        raw = f.read().strip()
-    os.unlink(args.gather)
+    # Consume-first + envelope sniff live in ld-shared/scripts/gather_result.py
+    # (shared with the triage filter); the semantics are unchanged.
+    try:
+        raw = read_gather(args.gather)
+    except GatherError as e:
+        print(e, file=sys.stderr)
+        return 2
 
     # Same exit-2 contract as the gather below: a broken config must fail
     # loudly, never surface as a traceback-with-exit-1 or a quiet run.
@@ -157,22 +164,6 @@ def main(argv=None) -> int:
               "fail the owner-participation rule and no nudge would ever "
               "fire", file=sys.stderr)
         return 2
-
-    # An oversized plow_run_command result reaches the model as a persisted
-    # envelope — {"result": "<json of {exit_code, handle, output, ...}>"} —
-    # not as raw gog stdout. gog's output opens with a JSON array (after
-    # Latch's "Note:" preamble), never an object, so the sniff cannot misfire.
-    if raw.startswith("{"):
-        try:
-            inner = json.loads(json.loads(raw)["result"])
-            if inner["exit_code"] != 0:
-                print(f"gather failed: exit_code={inner['exit_code']}",
-                      file=sys.stderr)
-                return 2
-            raw = inner["output"].strip()
-        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
-            print(f"malformed gather envelope: {e}", file=sys.stderr)
-            return 2
 
     # Latch prepends preamble lines ("Note: Using direct access token ...")
     # to the command output; the events are the array that follows.
