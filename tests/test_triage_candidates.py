@@ -71,10 +71,14 @@ def run_gather_file(content, config, tmp_path):
     cfg.write_text(json.dumps(config))
     gather = tmp_path / "gather"
     gather.write_text(content)
-    return subprocess.run(
+    r = subprocess.run(
         [sys.executable, str(SCRIPT), "--config", str(cfg), str(gather)],
         capture_output=True, text=True,
     )
+    # The raw corpus must not outlive the run, success or failure — asserted
+    # here so every file-argument row pins it.
+    assert not gather.exists()
+    return r
 
 
 def envelope(exit_code, output):

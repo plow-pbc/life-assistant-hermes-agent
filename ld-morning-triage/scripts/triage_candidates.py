@@ -66,21 +66,21 @@ def main() -> int:
                              "stdin when omitted")
     args = parser.parse_args()
 
+    # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
+    # The gather is consumed FIRST: the raw 36-hour corpus must not outlive
+    # this run whatever the outcome, so it's read and deleted before anything
+    # else (a broken config, a bad envelope) gets a chance to abort the run.
+    if args.gather:
+        with open(args.gather) as f:
+            raw = f.read().strip()
+        os.unlink(args.gather)
+    else:
+        raw = sys.stdin.read().strip()
+
     with open(args.config) as f:
         excluded = set(
             json.load(f)["morning_triage"]["exclude"]["imessage_handles"]
         )
-
-    # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
-    if args.gather:
-        with open(args.gather) as f:
-            raw = f.read().strip()
-        # The raw 36-hour corpus must not outlive this run, whatever the
-        # outcome — deleting it here (content already in memory) beats a
-        # separate cleanup instruction an agent might never reach.
-        os.unlink(args.gather)
-    else:
-        raw = sys.stdin.read().strip()
     # An oversized plow_run_command result reaches the model as a persisted
     # envelope — {"result": "<json of {exit_code, handle, output}>"} — not as
     # raw query stdout. Unwrap it here so the model passes the persisted path
