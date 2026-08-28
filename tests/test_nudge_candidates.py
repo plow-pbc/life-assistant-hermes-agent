@@ -186,9 +186,13 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
     (event(minutes=20, hangout="https://meet.example.test/abc"), True),
     (event(minutes=40, hangout="https://meet.example.test/abc"), False),
     (event(minutes=40, location="Zoom: https://zoom.example.test/j/1"), False),
-    # A bare scheme with no link content is not a join link: only a real URL
-    # counts, so this stays in-person (kept at 40m, inside the 60m window).
-    (event(minutes=40, location="Join at http://"), True),
+    # Single-slash native URIs are join links too — virtual window applies.
+    (event(minutes=20, location="msteams:/l/meetup-join/19%3ameeting"), True),
+    (event(minutes=40, location="msteams:/l/meetup-join/19%3ameeting"), False),
+    # Reality pin for the no-slash-required pattern: a bare scheme's residue
+    # ("http" + ":" + "//") now MATCHES, so this classifies virtual and falls
+    # outside the 30m window — the over-match direction the pattern accepts.
+    (event(minutes=40, location="Join at http://"), False),
     (event(minutes=40), True),                       # in-person window is 60
     (event(minutes=70), False),
     (event(minutes=0), False),                       # already started
@@ -222,7 +226,8 @@ def test_a_quiet_window_writes_nothing_and_reports_zero(rig):
     (event(organizer="peer@example.test",
            attendees=(attendee("owner@example.test"),)), True),
 ], ids=["virtual-in-window", "virtual-past-window", "location-url-is-virtual",
-        "bare-scheme-is-not-virtual",
+        "single-slash-uri-in-window", "single-slash-uri-past-window",
+        "bare-scheme-overmatches-to-virtual",
         "in-person-in-window", "in-person-past-window", "already-started",
         "cancelled", "all-day", "private", "confidential",
         "owner-as-organizer", "owner-declined", "owner-absent",
@@ -272,13 +277,24 @@ def test_a_url_in_the_title_is_stripped_never_posted(rig):
               summary="https://only-a-link.example.test/x"),
         event(minutes=22, uid="uid-3@google.com",
               summary="Sync zoommtg://zoom.example.test/join?pwd=s3cret today"),
+        event(minutes=23, uid="uid-4@google.com",
+              summary="Call msteams:/l/meetup-join/19%3ameeting now"),
+        # Reality pin: a letter-led prose token with a colon matches the
+        # no-slash-required pattern and is stripped — the accepted over-match
+        # direction (a stripped word costs less than a leaked credential).
+        # Digit-led times ("3:10pm") never match.
+        event(minutes=24, uid="uid-5@google.com",
+              summary="Re:Budget review at 3:10pm"),
     ))
     lines = chat_lines(rig)
     assert lines[0].startswith('Heads up: "Join now" at')
     assert '"Sync today"' in lines[1]  # native scheme stripped the same way
-    assert '"(untitled meeting)"' in lines[2]
+    assert '"Call now"' in lines[2]    # single-slash form stripped too
+    assert '"review at 3:10pm"' in lines[3]
+    assert '"(untitled meeting)"' in lines[4]
     joined = "".join(lines)
-    assert "http" not in joined and "zoommtg" not in joined and "pwd" not in joined
+    assert ("http" not in joined and "zoommtg" not in joined
+            and "msteams" not in joined and "pwd" not in joined)
 
 
 def test_a_private_sibling_drops_every_copy_of_the_invite(rig):
