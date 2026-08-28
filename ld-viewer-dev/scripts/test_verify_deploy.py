@@ -183,11 +183,27 @@ def test_redirect_refused():
     check("redirect target never fetched", "/elsewhere" not in _RedirectHandler.requests)
 
 
+def test_unreachable_kiosk_times_out_cleanly():
+    """A down Pi (connection refused) is this tool's most likely real failure —
+    every probe must record it and keep polling to a clean exit 1, never raise."""
+    server, base = _start_server()
+    server.shutdown()
+    server.server_close()  # port now closed → URLError on every probe
+    try:
+        _use_endpoint(base)
+        code, out = run("abc123", "--timeout", "0.2")
+    finally:
+        _reset()
+    check("unreachable kiosk exits 1 on timeout", code == 1)
+    check("last response names the transport failure", "unreachable" in out)
+
+
 def main():
     test_success_on_live_sha_match_and_base_url_derivation()
     test_timeout_on_mismatch_prints_last_response()
     test_exit_2_on_missing_or_malformed_env()
     test_redirect_refused()
+    test_unreachable_kiosk_times_out_cleanly()
     print(f"\n{passed} passed, {failed} failed")
     sys.exit(0 if failed == 0 else 1)
 
