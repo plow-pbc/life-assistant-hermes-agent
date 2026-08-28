@@ -63,7 +63,13 @@ HANDOFF = "/opt/data/ld/calendar-nudge-text"
 # builds the argv, and a steerable --config could point at a model-written
 # JSON whose identities/lookaheads make a non-qualifying event publish.
 CONFIG_FILE = "/opt/data/ld/config.json"
-_MARKERS = re.compile(r'<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
+# gog 0.36 (openclaw/gogcli internal/outfmt/untrusted.go) wraps each field as
+#   <<<EXTERNAL_UNTRUSTED_CONTENT id="x">>>\nSource: google_api\n---\n<value>\n<<<END_...>>>
+# The open marker carries a metadata line and a `---` rule. Stripping the
+# marker alone left `Source: google_api ---` on a live card (2026-08-28).
+_MARKERS = re.compile(
+    r'<<<EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>\s*(?:Source:[^\n]*\n---\n?)?'
+    r'|<<<END_EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
 # Two patterns for two opposite risk profiles.
 #
 # REDACTION (title stripping) uses the broad one: any URI, not just http(s)

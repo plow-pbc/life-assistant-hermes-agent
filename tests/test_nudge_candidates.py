@@ -44,8 +44,11 @@ BASE_CONFIG = {
     },
 }
 
-WRAP_OPEN = '<<<EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>'
-WRAP_CLOSE = '<<<END_EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>'
+# The real gog 0.36 shape: the open marker is followed by a `Source:` metadata
+# line and a `---` rule (measured live 2026-08-28 — a fixture without them let
+# "Source: google_api ---" reach the kiosk).
+WRAP_OPEN = '<<<EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>\nSource: google_api\n---\n'
+WRAP_CLOSE = '\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>'
 
 
 @pytest.fixture
