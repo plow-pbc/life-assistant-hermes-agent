@@ -30,6 +30,11 @@ deploy it by pushing, and **prove it went live**.
   line in `/opt/data/ld-dev/repo-url`:
 
       git clone "$(cat /opt/data/ld-dev/repo-url)" /opt/data/ld-dev/repo
+
+  A pre-existing clone may carry a stale (SSH-era) origin — canonicalize it
+  before any pull/push:
+
+      git -C /opt/data/ld-dev/repo remote set-url origin "$(cat /opt/data/ld-dev/repo-url)"
 - Push credential: `/opt/data/ld-dev/git-credentials` (mode 600, provisioned
   on the host). The repo is public so **fetches need no credential**; pushes
   go through the git credential store — never paste the token into a URL or
@@ -112,7 +117,8 @@ When asked to sync from upstream, merge the template into the household repo —
 it is an ordinary deploy afterwards:
 
     cd /opt/data/ld-dev/repo
-    git remote add template https://github.com/plow-pbc/life-dashboard.git 2>/dev/null || true
+    git remote set-url template https://github.com/plow-pbc/life-dashboard.git 2>/dev/null \
+      || git remote add template https://github.com/plow-pbc/life-dashboard.git
     git fetch template
     git merge template/main
     # resolve, push (= deploy, credential recipe above), then verify the
