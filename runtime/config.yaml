@@ -19,6 +19,14 @@
 model:
   default: gpt-5.5
   provider: openai-codex
+display:
+  # The background self-improvement review still runs and writes; only its
+  # "💾 Self-improvement review: …" chat line is silenced. That line takes the
+  # gateway's plain send() path — not the status hook the plow-chat plugin
+  # absorbs (hermes-plow-chat#30) — so this config key is its one off switch.
+  # This agent's only chat surface is the owner's iMessage thread, where the
+  # typing indicator already shows a turn in progress.
+  memory_notifications: off
 mcp_servers:
   # Plow Latch, reached over the Plow relay: the browser and the filesystem this
   # agent drives are THE INSTANCE OWNER's Mac, not this container. The relay authorises the
