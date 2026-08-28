@@ -212,7 +212,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
         {"name": "ld-weather", "enabled": True, "paused_at": None}
     ])
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage", "ld-weekly-digest"
     ], "the already-registered job must be skipped"
@@ -235,7 +235,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     # but an unattended re-provision must not read this run as success -- the
     # exit code is the only signal that reaches one.
     with pytest.raises(SystemExit) as exit_:
-        mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
+        mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage", "ld-weekly-digest"
@@ -252,7 +252,7 @@ def test_no_blocked_job_is_ever_created(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles"})
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
     assert set(fake.created) == LIVE_NAMES
     blocked = {j["name"] for j in mod.BLOCKED}
     assert not blocked & set(fake.created)
@@ -333,33 +333,60 @@ def test_a_paused_job_is_not_runnable(tmp_path):
     }
 
 
-def test_no_live_job_needs_a_delivery_target():
-    """The tripwire that replaced the resolver.
-
-    Every live producer posts its card over the kiosk POST -- the card IS the
-    delivery -- so the ${VAR} expansion machinery `ld-calendar-nudge` needed was
-    reachable only from a blocked row. It was deleted rather than carried as
-    roadmap inventory, and this is what fires on the day a job carrying a
-    delivery target goes live: whoever unblocks it writes the resolver then,
-    against a requirement they can see, instead of inheriting an unreachable one
-    nobody has run."""
-    # Every row, not just the live ones. The deleted tests asserted no row
-    # carried a literal chat id, and this repo is shared by more than one
-    # person -- so a blocked row picking up `plow_chat:cht_realuid` would
-    # commit one owner's chat into the tree with the suite still green.
+def test_no_row_carries_a_literal_delivery_target():
+    """Every row, not just the live ones. This repo is shared by more than one
+    person -- a row picking up `plow_chat:cht_realuid` would commit one
+    owner's chat into the tree with the suite still green; a chat uid belongs
+    to one instance's activation, never to this tree."""
     for job in spec().JOBS:
         deliver = job["deliver"]
         assert deliver is None or "${" in deliver, (
             f"{job['name']} names a literal delivery target {deliver!r} -- a chat "
             "uid belongs to one instance's activation, never to this tree"
         )
-    for job in spec().LIVE:
-        assert job["deliver"] is None, (
-            f"{job['name']} is live and carries deliver={job['deliver']!r}, but "
-            "create_argv() has no --deliver arm -- the target would be silently "
-            "dropped. Add the expansion back (see git history for the deleted "
-            "resolve_deliver) rather than removing this assertion."
-        )
+
+
+def test_only_the_digest_rides_the_native_deliver_arm():
+    """The card IS the delivery for every other live producer, and the shape
+    divide is deliberate: --deliver relays EVERY final response, which fits
+    the weekly always-has-content digest and would spam from the half-hourly
+    quiet-no-op nudge -- the nudge's chat leg is a committed script when it
+    lands (the row comment records this). This replaces the old tripwire that
+    fired when a job with a target went live: the resolver it demanded is
+    back (resolve_deliver), so the pin is now on WHICH jobs use it."""
+    mod = spec()
+    assert {j["name"] for j in mod.LIVE if j["deliver"]} == {"ld-weekly-digest"}
+
+
+ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"}
+
+
+@pytest.mark.parametrize("env", [
+    {"TZ": "America/Los_Angeles"},
+    {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": ""},
+    {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "   "},
+], ids=["unset", "empty", "blank"])
+def test_an_unexpandable_deliver_target_refuses_by_name(env):
+    """The silent-drop trap: hermes accepts an empty or half-expanded target,
+    so the digest would post its card and message nobody, every Sunday, in
+    front of nobody. Registration must stop and say which variable to fix."""
+    mod = spec()
+    digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
+    with pytest.raises(SystemExit) as excinfo:
+        mod.create_argv(digest, env)
+    assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
+
+
+def test_the_deliver_target_expands_from_env_and_card_only_jobs_get_no_arm():
+    """One assertion per side of the divide: the digest's argv carries the
+    expanded target, and a card-only job's argv has no --deliver at all."""
+    mod = spec()
+    digest = next(j for j in mod.LIVE if j["name"] == "ld-weekly-digest")
+    argv = mod.create_argv(digest, ENV_OK)
+    assert argv[-2:] == ["--deliver", "plow_chat:cht_test"]
+
+    weather = next(j for j in mod.LIVE if j["name"] == "ld-weather")
+    assert "--deliver" not in mod.create_argv(weather, ENV_OK)
 
 
 def test_the_blocked_nudge_still_records_the_target_it_will_need():

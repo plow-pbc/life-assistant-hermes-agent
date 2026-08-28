@@ -175,10 +175,11 @@ two surfaces, in this order:
        /opt/data/skills/ld-weekly-digest/scripts/post_digest.py --dry-run
 
 2. **Plow Chat** — after the kiosk post succeeds, end the turn by
-   returning the same digest text as the agent's final response. The Hermes
-   `plow_chat` gateway delivers that response to the owner's chat, so the
-   owner gets the same digest on both surfaces (kiosk glanceable, chat for
-   reading later). The duplicate is deliberate.
+   returning the same digest text as the agent's final response. The cron
+   row is registered with a Plow Chat delivery target (`register_crons.py`'s
+   `--deliver` arm), which relays that final response to the owner's chat,
+   so the owner gets the same digest on both surfaces (kiosk glanceable,
+   chat for reading later). The duplicate is deliberate.
 
 When invoked directly in chat (no cron), the kiosk step is skipped —
 just return the digest in the reply.
