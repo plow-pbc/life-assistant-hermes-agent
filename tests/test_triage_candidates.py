@@ -85,9 +85,11 @@ def envelope(exit_code, output):
                                "output": output})})
 
 
-def test_persisted_envelope_unwraps_to_the_same_candidates(tmp_path):
+@pytest.mark.parametrize("wrap", [lambda s: envelope(0, s), lambda s: s],
+                         ids=["persisted-envelope", "raw-query-output"])
+def test_gather_file_argument_yields_the_same_candidates(tmp_path, wrap):
     r = run_gather_file(
-        envelope(0, sqljson(msg(7, 0, 1000, hexutf8("sign the form?")))),
+        wrap(sqljson(msg(7, 0, 1000, hexutf8("sign the form?")))),
         BASE_CONFIG, tmp_path)
     assert r.returncode == 0
     (cand,) = json.loads(r.stdout)
