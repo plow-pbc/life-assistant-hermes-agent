@@ -271,7 +271,7 @@ def dotenv_values(path=DOTENV):
     return {
         name: value
         for name, _, value in (line.partition("=") for line in lines)
-        if name.isidentifier() and not name.startswith("#")
+        if name.isidentifier()  # a '#'-comment line fails this on its own
     }
 
 
