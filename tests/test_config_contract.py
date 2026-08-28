@@ -485,6 +485,7 @@ WRITE_SAFE_ROOT = "/opt/data"
 # guards on the finder, none on the contract, and together bigger than it.
 PRODUCERS = [
     ("ld-morning-triage", "post_alert.py"),
+    ("ld-morning-updates", "post_message.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
 ]
