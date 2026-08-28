@@ -27,6 +27,8 @@ ENDPOINT_ENV = "DASHBOARD_ENDPOINT_URL"
 MESSAGE_SUFFIX = "/api/message"
 # Rebound by the test suite; the updater fires every 2 min, so 5s is plenty.
 POLL_INTERVAL = 5.0
+# Per-request budget (connect + read). Also rebound by the test suite.
+REQUEST_TIMEOUT = 10.0
 
 
 def die_malformed(msg):
@@ -49,7 +51,7 @@ def base_url():
 def probe(url):
     """One GET of /api/version → its body text, or the failure as text."""
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
+        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as resp:
             return resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         return f"HTTP {exc.code} {exc.reason}"
