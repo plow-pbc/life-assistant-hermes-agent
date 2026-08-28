@@ -27,7 +27,7 @@ proof still holds):
     (indexing a non-object, or testing a non-string field) — jq's gate ran with
     `2>/dev/null || echo "not valid JSON"`, collapsing both into that one line.
 
-The seven checks, matching the (updated) jq filter exactly:
+The eight checks, matching the (updated) jq filter exactly:
   1. family.owner.name must contain a non-whitespace char  (jq: (.family.owner.name // "") | test("\\S"))
   2. family.timezone must contain a non-whitespace char    (jq: (.family.timezone // "") | test("\\S"))
   3. calendar.sources must be a non-empty array            (jq: (type) == "array" and length >= 1)
@@ -201,7 +201,13 @@ def main(argv):
         return 2
     try:
         with open(argv[1], encoding="utf-8") as f:
-            config = json.load(f)
+            # parse_constant: Python's json accepts the non-standard NaN /
+            # Infinity tokens jq's strict parser refuses; raising here keeps
+            # the two gates byte-identical ("not valid JSON") on that input —
+            # observable since the number-typed lookahead checks landed.
+            config = json.load(
+                f, parse_constant=lambda token: (_ for _ in ()).throw(
+                    ValueError(f"non-standard JSON constant {token}")))
         failures = gate(config)
     except (OSError, ValueError, GateError):
         # jq's gate emitted "not valid JSON" on any read/parse/filter failure.
