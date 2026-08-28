@@ -43,8 +43,6 @@ def read_gather(path):
             if inner["exit_code"] != 0:
                 raise GatherError(f"gather failed: exit_code={inner['exit_code']}")
             raw = inner["output"].strip()
-        except GatherError:
-            raise
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
             raise GatherError(f"malformed gather envelope: {e}") from e
     return raw
