@@ -114,7 +114,8 @@ Los_Angeles container, silently.
 posting a card, and which chat that is was minted by this instance's own
 activation — so it can never be a literal here, on a repo more than one person
 runs. The digest's sits in `JOBS` as `plow_chat:${PLOW_CHAT_CHAT_UID}`, and
-`resolve_deliver()` expands it from the container env at registration time,
+`resolve_deliver()` expands it from `/opt/data/.env` — the file activation
+writes and the gateway loads; a `docker exec` session's env never carries it —
 refusing an unset or blank variable by name — an empty target is a chat leg
 that silently delivers nowhere.
 

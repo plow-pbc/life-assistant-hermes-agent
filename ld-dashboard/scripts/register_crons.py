@@ -51,8 +51,9 @@ LD_CONFIG = "/opt/data/ld/config.json"
 # purpose:
 #   - ld-weekly-digest rides the cron's native --deliver arm: it is weekly and
 #     ALWAYS has content, so relaying its final response is exactly the chat
-#     leg the sheet promises. create_argv() expands the ${VAR} from the
-#     container env at registration time and refuses a blank one.
+#     leg the sheet promises. create_argv() expands the ${VAR} from
+#     /opt/data/.env -- the file activation writes and the gateway loads; a
+#     docker-exec session's env never carries it -- and refuses a blank one.
 #   - ld-calendar-nudge does NOT: it is half-hourly with quiet no-op runs, and
 #     --deliver relays EVERY final response. Its chat leg is its committed
 #     post script (ld-calendar-nudge/scripts/post_nudge.py), which reads
@@ -252,34 +253,64 @@ def registered_jobs(jobs_path=JOBS_FILE):
     }
 
 
-def resolve_deliver(deliver, env=None):
-    """Expand every ${VAR} in a delivery target from the container env.
+DOTENV = "/opt/data/.env"
+
+
+def dotenv_values(path=DOTENV):
+    """The gateway's own env file, parsed with one spelling: NAME=value.
+
+    Registration runs via `docker exec`, and an exec session's env never
+    carries the per-instance PLOW_CHAT_* values -- they live in /opt/data/.env,
+    the file the gateway itself loads (measured: the first live registration
+    refused on an unset uid that sat one file-read away). No quoting, no
+    `export`, no substitution -- the file is machine-written by activation in
+    exactly this shape, and a second accepted spelling is a second thing that
+    can drift. Absent file reads as empty: the refusal in resolve_deliver
+    names what's missing either way.
+    """
+    try:
+        lines = pathlib.Path(path).read_text().splitlines()
+    except FileNotFoundError:
+        return {}
+    return {
+        name: value
+        for name, _, value in (line.partition("=") for line in lines)
+        if name.isidentifier()  # a '#'-comment line fails this on its own
+    }
+
+
+def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
+    """Expand every ${VAR} in a delivery target from ONE source.
 
     The chat uid is minted by this instance's own activation, so it can never
-    be a literal in a repo more than one person runs -- it reaches the
-    container as PLOW_CHAT_CHAT_UID in the env. An unset or blank variable
+    be a literal in a repo more than one person runs -- in production it lives
+    in /opt/data/.env, the file the gateway loads (a docker-exec session's env
+    never carries it -- measured). That file IS the source; an explicit `env`
+    is the test-injection override, taken alone. An unset or blank variable
     REFUSES loudly: hermes would accept the half-expanded or empty target and
     the digest's chat leg would drop silently, every Sunday, in front of
     nobody -- the exact trap the old tripwire test existed to catch.
     """
-    env = os.environ if env is None else env
+    if env is None:
+        values, source = dotenv_values(dotenv_path), f"{dotenv_path} (the file activation writes it to)"
+    else:
+        values, source = env, "the injected env"
 
     def expand(match):
         name = match.group(1)
-        value = (env.get(name) or "").strip()
+        value = (values.get(name) or "").strip()
         if not value:
             raise SystemExit(
                 f"refusing to register: deliver target {deliver!r} needs {name}, "
-                "which is unset or blank in this container. It lands in the env "
-                "at activation time; registering without it would create a chat "
-                "leg that silently delivers nowhere."
+                f"which is unset or blank in {source}. Registering without it "
+                "would create a chat leg that silently delivers nowhere."
             )
         return value
 
     return re.sub(r"\$\{(\w+)\}", expand, deliver)
 
 
-def create_argv(job, env=None):
+def create_argv(job, env=None, dotenv_path=DOTENV):
     """The --deliver arm serves exactly one live shape: a producer whose every
     run has content, where relaying the final response IS the chat leg
     (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
@@ -289,7 +320,7 @@ def create_argv(job, env=None):
     if job["skill"]:
         argv += ["--skill", job["skill"]]
     if job["deliver"]:
-        argv += ["--deliver", resolve_deliver(job["deliver"], env)]
+        argv += ["--deliver", resolve_deliver(job["deliver"], env, dotenv_path)]
     return argv
 
 
