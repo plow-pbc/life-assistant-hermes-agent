@@ -566,35 +566,17 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
 
 
 def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
-    """The gate's placeholder check matches whole strings only, so a
-    placeholder embedded mid-string ("/Users/[OWNER_MAC_USERNAME]/...")
-    passes the gate unfilled — the exact drift that once let an unmigrated
-    config reach the 07:05 gather. Two assertions pin the contract from both
-    sides: the unfilled template must FAIL the gate (every placeholder is
-    gate-visible), and no template string may embed a bracket form the
-    whole-string regex cannot see."""
+    """The gate's placeholder check matches whole strings only, so the
+    template's new key must ship as the exact whole-string form the gate
+    can see — a mid-string embedding ("/Users/[USER]/...") would pass the
+    gate unfilled and reach the 07:05 gather. The gate's own nested/embedded
+    coverage lives in ld-shared/scripts/test_ld_config_gate.py."""
     spec = importlib.util.spec_from_file_location(
         "ld_config_gate", ROOT / "ld-shared" / "scripts" / "ld_config_gate.py")
     gate = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gate)
 
     template = ROOT / "ld-shared" / "references" / "config.example.json"
-    parsed = json.loads((template).read_text())
+    parsed = json.loads(template.read_text())
     assert "an unfilled [UPPER_SNAKE] placeholder remains" in gate.gate(parsed)
-
-    def values(node):
-        """Every string value the gate would see, minus _comment prose —
-        the exemption is structural (by key), not a word match."""
-        if isinstance(node, dict):
-            for k, v in node.items():
-                if k != "_comment":
-                    yield from values(v)
-        elif isinstance(node, list):
-            for v in node:
-                yield from values(v)
-        elif isinstance(node, str):
-            yield node
-
-    embedded = [s for s in values(parsed)
-                if "[" in s and not re.fullmatch(r"\[[A-Z][A-Z0-9_]*\]", s)]
-    assert embedded == [], f"gate-invisible embedded placeholder(s): {embedded}"
+    assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"

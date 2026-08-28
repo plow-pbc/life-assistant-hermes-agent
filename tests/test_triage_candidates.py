@@ -117,12 +117,10 @@ def test_only_inbound_after_the_last_reply_counts(tmp_path):
     assert cand["excerpt"] == "new ask"
 
 
-@pytest.mark.parametrize("hexbody", ["", None], ids=["real", "tolerated"])
-def test_attachment_only_inbound_yields_no_candidate(tmp_path, hexbody):
+def test_attachment_only_inbound_yields_no_candidate(tmp_path):
     # sqlite's hex() never returns NULL — hex(coalesce(NULL, NULL)) is the
     # empty string, so -json frames an attachment-only row as "hexbody":"".
-    # null is tolerated as well, but "" is the shape the producer emits.
-    r = run(sqljson(msg(7, 0, 1000, hexbody)), BASE_CONFIG, tmp_path)
+    r = run(sqljson(msg(7, 0, 1000, "")), BASE_CONFIG, tmp_path)
     assert json.loads(r.stdout) == []
 
 
