@@ -328,7 +328,7 @@ def test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not():
     cases = [  # label, secrets-file host (None = absent), env host, dotenv host, winner, loser
         # Hosts are private IPs: a dotenv-sourced endpoint is household-gated.
         ("latch env endpoint yields to the re-pointed dotenv line",
-         None, "192.168.1.9", "192.168.1.50", "192.168.1.50", "192.168.1.9:"),
+         None, "192.168.1.9", "192.168.1.50", "192.168.1.50", "192.168.1.9"),
         ("latch secrets-file endpoint keeps precedence over the dotenv",
          "10.0.0.7", "192.168.1.9", "192.168.1.50", "10.0.0.7", "192.168.1.50"),
     ]

@@ -115,8 +115,8 @@ def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, ba
     assert not ld.exists()
 
 
-@pytest.mark.parametrize("bad", ["collector.example", "134744072", "8.8.8.8"],
-                         ids=["public-name", "decimal-ip", "public-ip"])
+@pytest.mark.parametrize("bad", ["collector.example", "134744072", "8.8.8.8", "raspberrypi"],
+                         ids=["public-name", "decimal-ip", "public-ip", "bare-hostname"])
 def test_a_public_address_refuses_the_bearer_stays_on_the_household_network(home, bad):
     """These pass the charset but reach off the household network: a public
     hostname, a dotless decimal that curl reads as 8.8.8.8, and a public IP.
