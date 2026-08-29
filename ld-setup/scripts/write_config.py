@@ -36,7 +36,7 @@ REQUIRED = ("owner_name", "owner_email", "city", "timezone", "has_mac")
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Same reason as mint_kiosk.py: a followed 3xx re-issues the request elsewhere."""
+    """Same reason as mint_wall_token.py: a followed 3xx re-issues the request elsewhere."""
 
     def redirect_request(self, *_args, **_kwargs):
         return None

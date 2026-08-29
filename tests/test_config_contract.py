@@ -609,3 +609,16 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     parsed = json.loads(template.read_text())
     assert "an unfilled [UPPER_SNAKE] placeholder remains" in gate.gate(parsed)
     assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"
+
+
+SETUP_COMPLETE_MARKER = "/opt/data/ld/setup-complete"
+
+
+def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
+    """SOUL.md's skip check and ld-setup's own write instruction have to agree
+    on the exact path -- a drift on either side reads as done when it isn't,
+    or never marks a real completion done at all."""
+    soul = (ROOT / "runtime" / "SOUL.md").read_text()
+    skill = (ROOT / "ld-setup" / "SKILL.md").read_text()
+    assert SETUP_COMPLETE_MARKER in soul, "SOUL.md does not name the setup-complete marker"
+    assert SETUP_COMPLETE_MARKER in skill, "ld-setup/SKILL.md does not name the setup-complete marker"

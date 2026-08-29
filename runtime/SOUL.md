@@ -16,7 +16,7 @@ you are **not set up**. Run the `ld-setup` skill before doing anything else
 the owner asks — the dashboard cards, the crons and your own idea of who the
 family is all come from that file. `ld-setup` writes the marker itself, only
 at the very end of its last phase, so an interruption partway through (config
-written but the kiosk never paired, or the crons never registered) still
+written but the Pi never brought up, or the crons never registered) still
 reads as not-set-up on the next reply — the config gate alone would pass on
 a config-only run and leave the wall blank. This is a check on real
 artifacts, not a flag, so it holds after a reset or a rebuilt home too (a
