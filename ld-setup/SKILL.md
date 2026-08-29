@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run setup for the life dashboard — interview the owner over chat, write /opt/data/ld/config.json, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when /opt/data/ld/setup-complete is missing, when /opt/data/ld/config.json is missing or the ld-config gate refuses it, when the owner asks to set up or re-set-up their dashboard, or when the wall has never shown a card.
+description: First-run setup for the life dashboard — interview the owner over chat, write /opt/data/ld/config.json, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when the requested work involves the life dashboard and /opt/data/ld/setup-complete is missing, when its config is missing or refused, when the owner asks to set up or re-set-up their dashboard, or when the wall has never shown a card. Do not use for unrelated calendar or life-assistant questions.
 ---
 
 # Life Dashboard — Setup

@@ -638,3 +638,12 @@ def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
     skill = (ROOT / "ld-setup" / "SKILL.md").read_text()
     assert SETUP_COMPLETE_MARKER in soul, "SOUL.md does not name the setup-complete marker"
     assert SETUP_COMPLETE_MARKER in skill, "ld-setup/SKILL.md does not name the setup-complete marker"
+
+
+def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
+    """A calendar question is not a request for Raspberry Pi credentials."""
+    soul = (ROOT / "runtime" / "SOUL.md").read_text()
+    setup = (ROOT / "ld-setup" / "SKILL.md").read_text()
+    assert "before doing anything else" not in soul
+    assert "unrelated life-assistant requests" in soul
+    assert "when the requested work involves the life dashboard" in setup.split("---", 2)[1]
