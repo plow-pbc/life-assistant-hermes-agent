@@ -85,7 +85,7 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | `has_mac` | do you have a Mac with Plow Latch running? (without one, only the calendar tile updates — the weather, sports and message cards need the Mac to ship them — and the Pi has to be set up by hand) | gates `mac_username`; decides the Phase 3 path |
 | `mac_username` | your Mac login name (only with a Mac) | `morning_triage.chat_db_path` |
 | `pi_address` | the Pi's address on your home network — the IP, or `raspberrypi.local` | Phase 2 (`mint_wall_token.py`) and the Phase 3 `ssh` target; not in the config |
-| `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the Phase 3 `ssh` target; not in the config |
+| `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the Phase 3 `ssh` target; not in the config. Letters, digits, `.`, `_`, `-` only — refuse anything else: it lands in `ssh` argv |
 | `ical_url` | optional: the wall's own calendar tile reads a feed directly. In Google Calendar → Settings → the calendar → "Secret address in iCal format", copy that URL. Blank is fine — the tile stays empty until you give me one. | Phase 2 (`mint_wall_token.py --ical-url`); not in the config |
 | `owner_imessage`, `people`, `digest_length` | optional: your number, household names, how long the Sunday digest should be | `family`, `weekly_digest.length` |
 | `teams` | optional: teams to follow, each as ESPN abbreviation + sport + league, e.g. `[{"abbr":"chc","sport":"baseball","league":"mlb"}]` | `sports.followed` |
@@ -138,7 +138,9 @@ The first run mints the token and appends `DASHBOARD_ENDPOINT_URL`
 the gateway's start-time load and never sees an appended line). A later run
 prints `already minted: DASHBOARD_ENDPOINT_URL=…` and appends nothing — it
 never re-mints, because the Pi holds the first token; that line is Phase 2's
-skip signal. Either way it (re)writes two files, mode 600, and prints two
+skip signal. A later run with a *different* address prints `re-pointed:`
+instead — the endpoint line converges to the new Pi, the token stays, and
+Phase 3 ships `pi.env` to that Pi. Either way it (re)writes two files, mode 600, and prints two
 bare lines, `pi_line_1=…` and `pi_line_2=…`, for Phase 3:
 
 - `/opt/data/ld/pi.env` — the Pi's `~/ld-data/.env` (`ICAL_URL=` and
@@ -198,10 +200,12 @@ continue with `pi_line_2` over Latch as above.
 
 Then ship the Pi's env file — read `/opt/data/ld/pi.env` with your file tool
 and make it the `content` (nowhere else), then copy it across and restart
-the viewer:
+the viewer. The shell text here is static: the owner's two values ride the
+trailing argv positions (`$1`/`$2`), so nothing they answered is ever parsed
+as shell:
 
     plow_write_file(path="~/Plow/ld/pi.env", content=<the content of /opt/data/ld/pi.env>)
-    plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env <pi_user>@<pi_address>:ld-data/.env && ssh -o BatchMode=yes <pi_user>@<pi_address> 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'"], network=true, timeout=30000)
+    plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env $1@$2:ld-data/.env && ssh -o BatchMode=yes $1@$2 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'","sh","<pi_user>","<pi_address>"], network=true, timeout=30000)
 
 Finish with the skip check at the top of this phase: JSON with a `sha` means
 the viewer is up and the token is live. Paste it. Any other result — 401

@@ -17,11 +17,13 @@ DASHBOARD_DELIVERY=latch, which is what turns post_to_kiosk.py's POST into a
 Latch hand-off. The append lands AFTER the gateway loaded the dotenv, which
 is why post_to_kiosk.py reads the dotenv itself as its third source.
 
-Idempotent on the token: a dotenv that already names DASHBOARD_ENDPOINT_URL is
-never appended to and the token is never re-minted -- the Pi holds the old
-one, and a new one here would lock the producers out of the wall. The two
-files ARE rewritten from that existing token, so a re-run after a lost
-/opt/data/ld/ still has something to ship.
+Idempotent on the token: a dotenv that already names DASHBOARD_ENDPOINT_URL
+never re-mints -- the Pi holds the old token, and a new one here would lock
+the producers out of the wall. The ADDRESS is not sticky the same way: a
+re-run with a different pi_address re-points DASHBOARD_ENDPOINT_URL in place
+(token unchanged), so cards follow the owner's current Pi instead of a
+decommissioned one. The two files ARE rewritten from the existing token every
+run, so a re-run after a lost /opt/data/ld/ still has something to ship.
 
 Stdout never carries the token. It carries pi_line_1= and pi_line_2=, the two
 commands the agent runs on the Pi through Latch -- bare, one per line, nothing
@@ -73,6 +75,17 @@ def append_dotenv(path, pairs):
         f.write("\n" + "".join(f"{k}={v}\n" for k, v in pairs))
 
 
+def rewrite_dotenv_line(path, key, value):
+    """Converge one machine-written NAME=value line in place. Only ever aimed
+    at the endpoint line -- the token line is never touched (a re-mint would
+    lock the producers out of the wall)."""
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    out = [f"{key}={value}" if line.partition("=")[0] == key else line for line in lines]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(out) + "\n")
+
+
 def write_private(path, text):
     """Create-or-rewrite, mode 600. fchmod BEFORE the write: O_CREAT's mode only
     applies to a new file, and a rewrite of a looser-permissioned one would
@@ -98,18 +111,23 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         )
 
     values = dotenv_values(dotenv_path)
-    endpoint = values.get("DASHBOARD_ENDPOINT_URL", "").strip()
-    if endpoint:
+    old = values.get("DASHBOARD_ENDPOINT_URL", "").strip()
+    endpoint = f"http://{args.pi_address}:5174/api/message"
+    if old:
         token = values.get("DASHBOARD_TOKEN", "").strip()
         if not token:
             raise SystemExit(
                 f"refusing: {dotenv_path} names DASHBOARD_ENDPOINT_URL but DASHBOARD_TOKEN "
                 "is blank -- the Pi's token is not here to ship; restore the line or start over"
             )
-        print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
+        if old == endpoint:
+            print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
+        else:
+            rewrite_dotenv_line(dotenv_path, "DASHBOARD_ENDPOINT_URL", endpoint)
+            print(f"re-pointed: DASHBOARD_ENDPOINT_URL={endpoint} (token unchanged -- "
+                  "cards now target this Pi; ship pi.env to it in Phase 3)")
     else:
         token = secrets.token_urlsafe(24)
-        endpoint = f"http://{args.pi_address}:5174/api/message"
         append_dotenv(dotenv_path, [
             ("DASHBOARD_ENDPOINT_URL", endpoint),
             ("DASHBOARD_TOKEN", token),

@@ -69,22 +69,36 @@ def test_a_first_run_appends_three_lines_and_ships_the_token_in_two_files_only(h
 
 
 def test_a_second_run_appends_nothing_re_ships_the_same_token_and_still_never_prints_it(home, capsys):
-    """The Pi holds the first token; a re-mint would lock the producers out.
-    A different address on the re-run must not re-mint either -- the dotenv
-    is the truth, and the skill prints what it already says."""
+    """The Pi holds the first token; a re-mint would lock the producers out."""
     dotenv, ld = home
     run(home, capsys)
     after_first = dotenv.read_text()
     tok = token_in(dotenv)
     (ld / "dashboard.hdr").unlink()  # a lost /opt/data/ld/ still has something to ship after a re-run
-    rc, out = run(home, capsys, pi="192.168.1.50")
+    rc, out = run(home, capsys)
     assert rc == 0
     assert dotenv.read_text() == after_first
     assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
     assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
     assert tok not in out
-    assert f"DASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message" in out
+    assert f"already minted: DASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message" in out
     assert "pi_line_1=" in out and "pi_line_2=" in out
+
+
+def test_a_new_address_re_points_the_endpoint_and_keeps_the_token(home, capsys):
+    """A replaced Pi must receive the cards: the endpoint line converges to the
+    address the owner gave THIS run, while the token -- which the new Pi gets
+    via pi.env in Phase 3 -- is never re-minted."""
+    dotenv, ld = home
+    run(home, capsys)
+    tok = token_in(dotenv)
+    rc, out = run(home, capsys, pi="192.168.1.50")
+    assert rc == 0
+    assert "DASHBOARD_ENDPOINT_URL=http://192.168.1.50:5174/api/message\n" in dotenv.read_text()
+    assert f"http://{PI}:" not in dotenv.read_text()
+    assert token_in(dotenv) == tok
+    assert "re-pointed: DASHBOARD_ENDPOINT_URL=http://192.168.1.50:5174/api/message" in out
+    assert tok not in out
 
 
 @pytest.mark.parametrize("bad", ["pi; rm -rf /", "raspberrypi.local/x", "10.0.0.5 --", ""],

@@ -115,8 +115,11 @@ TOKEN_ENV = "DASHBOARD_TOKEN"
 # http:// is an accepted trade-off for that trust zone.
 REQUIRED_URL_PREFIXES = ("http://", "https://")
 # The only endpoint shape the agent-writable dotenv may name: the Pi's own
-# message API on the household LAN. Anything else there is an injected line.
-DOTENV_ENDPOINT_RE = re.compile(r"http://[^/]+:5174/api/message")
+# message API on the household LAN, with the host held to the same safe
+# charset mint_wall_token.py enforces -- the URL is interpolated into the
+# sh -c the Mac runs in latch mode, so a metacharacter host is an injection,
+# not just a wrong address.
+DOTENV_ENDPOINT_RE = re.compile(r"http://[A-Za-z0-9.-]+:5174/api/message")
 
 # Latch delivery. When the dotenv says DASHBOARD_DELIVERY=latch the Pi is
 # reachable only from the owner's Mac, so the wire body goes to this outbox
@@ -189,8 +192,8 @@ def _validate_dotenv_endpoint(url):
     """
     if not DOTENV_ENDPOINT_RE.fullmatch(url):
         sys.exit(
-            f"error: endpoint URL from {DOTENV} is not http://<host>:5174/api/message "
-            f"— refusing to send the bearer to {url}"
+            "error: endpoint URL is not http://<host>:5174/api/message with a "
+            f"[A-Za-z0-9.-] host — refusing to use {url}"
         )
 
 
@@ -272,12 +275,18 @@ def main():
     args = parser.parse_args()
 
     text = read_message()
+    dotenv = dotenv_values(DOTENV)
+    latch = dotenv.get(DELIVERY_KEY, "").strip() == "latch"
     url, url_source = read_secret(ENDPOINT_FILE, ENDPOINT_ENV, "endpoint URL")
+    if latch and dotenv.get(ENDPOINT_ENV, "").strip():
+        # ld-setup owns the latch endpoint in the dotenv and re-points it there
+        # on a Pi address change; the startup env is that file's boot-time load,
+        # so after a re-point the env is the stale copy — the dotenv line wins.
+        url, url_source = dotenv[ENDPOINT_ENV].strip(), "dotenv"
     if not any(url.startswith(p) for p in REQUIRED_URL_PREFIXES):
         sys.exit(f"error: endpoint URL must start with http:// or https://, got: {url}")
     if url_source == "dotenv":
         _validate_dotenv_endpoint(url)
-    latch = dotenv_values(DOTENV).get(DELIVERY_KEY, "").strip() == "latch"
     # Direct mode reads the token here, BEFORE --dry-run, so a missing token
     # still refuses on a dry run as it always has. Latch mode never needs it.
     token = None if latch else read_secret(TOKEN_FILE, TOKEN_ENV, "token")[0]
