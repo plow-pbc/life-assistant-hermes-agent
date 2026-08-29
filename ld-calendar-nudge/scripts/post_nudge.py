@@ -83,9 +83,13 @@ def main():
 
     post_to_kiosk.post_bearer_json(chat_url, token, {"body": text}, "Plow Chat")
 
-    # Both legs succeeded: consume the one-shot handoff.
+    # Both legs are done here: chat posted, and the kiosk body either posted
+    # (direct) or sits durably in the outbox (latch) — the Latch calls above
+    # replay from that file, so consuming the handoff loses nothing.
     os.unlink(HANDOFF)
-    print(f"posted kiosk card and chat nudge ({len(text)} chars)")
+    latch = dotenv_values(DOTENV).get(post_to_kiosk.DELIVERY_KEY, "").strip() == "latch"
+    kiosk = "kiosk card queued for Latch (both calls above still owed)" if latch else "posted kiosk card"
+    print(f"{kiosk}; chat nudge posted ({len(text)} chars)")
 
 
 if __name__ == "__main__":

@@ -267,6 +267,16 @@ def test_dotenv_endpoint_that_is_not_the_pi_is_refused():
     check("dotenv endpoint off the Pi shape exits non-zero", code != 0)
     check("no request reached the server (refused before any send)", len(_CapturingHandler.received) == 0)
     check("bearer token not echoed on refusal", TOKEN not in out)
+    # Right shape, wrong reach: a public hostname passes the regex but must
+    # refuse before the bearer can walk off the household network.
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            use_dotenv_secrets(Path(d), endpoint="http://collector.example:5174/api/message",
+                               card="3", body_type="weather")
+            code, out = run(stdin_text="x")
+        finally:
+            reset_module()
+    check("dotenv endpoint on a public host is refused (right shape, wrong reach)", code != 0)
 
 
 def test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request():
@@ -315,31 +325,27 @@ def test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not():
     file's stale boot-time copy, so in latch mode the dotenv line wins over
     env -- and ONLY over env: a secrets-mount file keeps its documented
     precedence even when the dotenv also names the key."""
-    with tempfile.TemporaryDirectory() as d:
-        try:
-            use_latch_delivery(Path(d), endpoint="http://stale-pi:5174/api/message")
-            (Path(d) / ".env").write_text(
-                "DASHBOARD_DELIVERY=latch\n"
-                "DASHBOARD_ENDPOINT_URL=http://new-pi:5174/api/message\n")
-            code, out = run(stdin_text="hi")
-        finally:
-            reset_module()
-    check("latch env endpoint yields to the re-pointed dotenv line",
-          code == 0 and "http://new-pi:5174/api/message" in out and "stale-pi" not in out)
-    with tempfile.TemporaryDirectory() as d:
-        try:
-            use_latch_delivery(Path(d), endpoint="http://from-env:5174/api/message")
-            endpoint_file = Path(d) / "endpoint-file"
-            endpoint_file.write_text("http://from-file:5174/api/message")
-            post_to_kiosk.ENDPOINT_FILE = str(endpoint_file)
-            (Path(d) / ".env").write_text(
-                "DASHBOARD_DELIVERY=latch\n"
-                "DASHBOARD_ENDPOINT_URL=http://from-dotenv:5174/api/message\n")
-            code, out = run(stdin_text="hi")
-        finally:
-            reset_module()
-    check("latch secrets-file endpoint keeps precedence over the dotenv",
-          code == 0 and "http://from-file:5174/api/message" in out and "from-dotenv" not in out)
+    cases = [  # label, secrets-file host (None = absent), env host, dotenv host, winner, loser
+        ("latch env endpoint yields to the re-pointed dotenv line",
+         None, "stale-pi", "new-pi", "new-pi", "stale-pi"),
+        ("latch secrets-file endpoint keeps precedence over the dotenv",
+         "from-file", "from-env", "from-dotenv", "from-file", "from-dotenv"),
+    ]
+    for label, file_host, env_host, dotenv_host, winner, loser in cases:
+        with tempfile.TemporaryDirectory() as d:
+            try:
+                use_latch_delivery(Path(d), endpoint=f"http://{env_host}:5174/api/message")
+                if file_host:
+                    endpoint_file = Path(d) / "endpoint-file"
+                    endpoint_file.write_text(f"http://{file_host}:5174/api/message")
+                    post_to_kiosk.ENDPOINT_FILE = str(endpoint_file)
+                (Path(d) / ".env").write_text(
+                    "DASHBOARD_DELIVERY=latch\n"
+                    f"DASHBOARD_ENDPOINT_URL=http://{dotenv_host}:5174/api/message\n")
+                code, out = run(stdin_text="hi")
+            finally:
+                reset_module()
+        check(label, code == 0 and f"http://{winner}:5174/api/message" in out and loser not in out)
 
 
 def test_a_delivery_that_is_not_latch_still_posts():

@@ -93,7 +93,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from runtime_env import DOTENV, dotenv_values
+from runtime_env import DOTENV, dotenv_values, household_host
 
 # Bundle-specific — the wrapper sets these before calling main().
 CARD: str | None = None
@@ -194,6 +194,14 @@ def _validate_dotenv_endpoint(url):
         sys.exit(
             "error: endpoint URL is not http://<host>:5174/api/message with a "
             f"[A-Za-z0-9.-] host — refusing to use {url}"
+        )
+    # The regex pins the shape; this pins the *reach*. A syntactically clean
+    # public hostname (collector.example) would still walk the bearer off the
+    # household network via the Mac's curl.
+    if not household_host(url[len("http://"):-len(":5174/api/message")]):
+        sys.exit(
+            f"error: endpoint host in {url} is not on the household network "
+            "(a private IP, a .local name, or a bare LAN hostname) — refusing"
         )
 
 

@@ -35,18 +35,10 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?count=1&name="
 REQUIRED = ("owner_name", "owner_email", "city", "timezone", "has_mac")
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Same reason as mint_wall_token.py: a followed 3xx re-issues the request elsewhere."""
-
-    def redirect_request(self, *_args, **_kwargs):
-        return None
-
-
 def geocode(city):
     """city -> (lat, lon), or a refusal the agent can relay."""
-    opener = urllib.request.build_opener(_NoRedirect)
     try:
-        with opener.open(GEOCODE_URL + urllib.parse.quote(city), timeout=30) as resp:
+        with urllib.request.urlopen(GEOCODE_URL + urllib.parse.quote(city), timeout=30) as resp:
             results = json.load(resp).get("results") or []
     except (urllib.error.URLError, json.JSONDecodeError) as exc:
         raise SystemExit(f"refusing to write: could not look up {city!r}: {exc}") from None

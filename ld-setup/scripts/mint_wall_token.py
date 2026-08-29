@@ -47,7 +47,7 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
-from runtime_env import DOTENV, dotenv_values  # noqa: E402
+from runtime_env import DOTENV, dotenv_values, household_host  # noqa: E402
 
 LD_DIR = "/opt/data/ld"
 # A LAN IP or an mDNS/DNS name. It lands inside a URL in the dotenv and inside
@@ -120,6 +120,12 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
             f"refusing: pi address {args.pi_address!r} is not [A-Za-z0-9.-] -- "
             "it lands in a URL and in an ssh argv element"
         )
+    if not household_host(args.pi_address):
+        raise SystemExit(
+            f"refusing: pi address {args.pi_address!r} is not on the household network "
+            "(a private IP, a .local name, or a bare LAN hostname) -- the wall's "
+            "bearer rides every request to this host"
+        )
     if not PI_USER_RE.fullmatch(args.pi_user):
         raise SystemExit(
             f"refusing: pi user {args.pi_user!r} is not [A-Za-z0-9._-] -- "
@@ -142,6 +148,16 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
             rewrite_dotenv_line(dotenv_path, "DASHBOARD_ENDPOINT_URL", endpoint)
             print(f"re-pointed: DASHBOARD_ENDPOINT_URL={endpoint} (token unchanged -- "
                   "cards now target this Pi; ship pi.env to it in Phase 3)")
+        # A pre-latch dotenv (endpoint + token from a direct-POST install)
+        # converges too: this setup's delivery IS latch, and leaving the key
+        # unset would send every producer on a direct POST that cannot reach
+        # the LAN-only Pi.
+        if values.get("DASHBOARD_DELIVERY", "").strip() != "latch":
+            if "DASHBOARD_DELIVERY" in values:
+                rewrite_dotenv_line(dotenv_path, "DASHBOARD_DELIVERY", "latch")
+            else:
+                append_dotenv(dotenv_path, [("DASHBOARD_DELIVERY", "latch")])
+            print("converged: DASHBOARD_DELIVERY=latch")
     else:
         token = secrets.token_urlsafe(24)
         append_dotenv(dotenv_path, [

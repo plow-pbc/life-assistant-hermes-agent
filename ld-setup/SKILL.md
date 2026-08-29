@@ -164,9 +164,13 @@ angle brackets to the Mac.
 
 ## Phase 3 — Bring the Pi up through Latch
 
-**With a Mac:** skip when this returns JSON carrying a `sha` (the viewer is
-up and the token is the one it checks — a Latch call, so it belongs to this
-path only; the no-Mac path has its own gate below):
+**With a Mac:** when this returns JSON carrying a `sha`, the viewer is up
+and the token is the one it checks (a Latch call, so it belongs to this path
+only; the no-Mac path has its own gate below) — skip the bring-up, EXCEPT
+the ship-and-restart step at the end of this path, which still runs whenever
+Phase 2 printed `re-pointed:` or this run passed `--ical-url`: the freshly
+rewritten `pi.env` has to reach the Pi or the new feed/address never takes
+effect.
 
     plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
 
@@ -217,7 +221,11 @@ minute and retry, at most a few times), unreachable device (the Mac) — is
 reported verbatim, and this phase is not done.
 
 **No Mac (or no Latch):** skip this path when `/opt/data/ld/pi-brought-up`
-exists — the file written below on the owner's confirmation. Otherwise the
+exists — the file written below on the owner's confirmation. One exception:
+if this run supplied a *new* `ical_url`, text the owner just the updated
+`ICAL_URL=…` line from `/opt/data/ld/pi.env` — never the token line again —
+to replace in `~/ld-data/.env` on the Pi, followed by
+`systemctl --user restart life-dashboard-viewer`. Otherwise the
 fallback is the direct one, and the token crosses chat once — acknowledged,
 not ideal, and the only place in this sheet where that is allowed. Text the
 owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of

@@ -115,6 +115,30 @@ def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, ba
     assert not ld.exists()
 
 
+def test_a_public_address_refuses_the_bearer_stays_on_the_household_network(home):
+    """collector.example passes the charset but is globally routable; the
+    wall's bearer rides every request to this host, so it is refused."""
+    dotenv, ld = home
+    with pytest.raises(SystemExit) as e:
+        mwt.main(["collector.example", "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "household" in str(e.value)
+    assert dotenv.read_text() == SEED
+    assert not ld.exists()
+
+
+def test_a_pre_latch_dotenv_converges_delivery_to_latch(home, capsys):
+    """A direct-POST install re-run through this setup keeps its token and
+    endpoint but gains DASHBOARD_DELIVERY=latch -- without it every producer
+    would POST directly at a Pi only the Mac can reach."""
+    dotenv, ld = home
+    dotenv.write_text(SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n"
+                      "DASHBOARD_TOKEN=tok_wall\n")
+    rc, out = run(home, capsys)
+    assert rc == 0
+    assert "\nDASHBOARD_DELIVERY=latch\n" in dotenv.read_text()
+    assert "converged: DASHBOARD_DELIVERY=latch" in out
+
+
 @pytest.mark.parametrize("bad", ["sam odio", "pi;id", "-oProxyCommand=x"],
                          ids=["space", "semicolon", "dash-option"])
 def test_a_login_that_is_not_a_user_refuses_before_touching_anything(home, bad):
@@ -140,20 +164,17 @@ def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home
     assert not ld.exists()
 
 
-def test_ical_url_given_lands_in_pi_env_and_never_on_stdout(home, capsys):
+@pytest.mark.parametrize(("extra_argv", "expected"), [
+    (["--ical-url", ICAL], ICAL),
+    ([], ""),
+], ids=["given", "omitted"])
+def test_ical_url_lands_only_in_pi_env(home, capsys, extra_argv, expected):
     """The Pi's calendar tile reads the feed URL directly from pi.env; it is
-    a private feed, so it must never appear on stdout either."""
+    a private feed, so it must never appear on stdout. Omitted leaves the
+    line blank."""
     dotenv, ld = home
-    rc, out = run(home, capsys, extra_argv=["--ical-url", ICAL])
+    rc, out = run(home, capsys, extra_argv=extra_argv)
     assert rc == 0
     tok = token_in(dotenv)
-    assert (ld / "pi.env").read_text() == f"ICAL_URL={ICAL}\nDASHBOARD_TOKEN={tok}\n"
+    assert (ld / "pi.env").read_text() == f"ICAL_URL={expected}\nDASHBOARD_TOKEN={tok}\n"
     assert ICAL not in out
-
-
-def test_ical_url_omitted_leaves_the_line_blank(home, capsys):
-    dotenv, ld = home
-    rc, out = run(home, capsys)
-    assert rc == 0
-    tok = token_in(dotenv)
-    assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
