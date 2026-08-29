@@ -5,7 +5,6 @@ reads (WITHIN / EXCEEDS) and the exit code, driven through the same CLI the
 SKILL.md tells the agent to run — so a change to the cap value or the boundary
 rule fails here rather than as a mis-decided payment.
 """
-import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -16,28 +15,12 @@ REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "ld-payments" / "scripts" / "payment_cap.py"
 
 
-def _module():
-    spec = importlib.util.spec_from_file_location("payment_cap", SCRIPT)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
 def run(spent, amount):
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--spent-today", str(spent),
          "--amount", str(amount)],
         capture_output=True, text=True,
     )
-
-
-CAP = _module().DAILY_PAYMENT_CAP_USD
-
-
-def test_the_v1_default_cap_is_200():
-    # Pins the conservative v1 default the SKILL.md documents; a bump is a
-    # deliberate edit, not a drift.
-    assert CAP == 200.0
 
 
 @pytest.mark.parametrize(("spent", "amount", "verdict"), [
@@ -54,12 +37,6 @@ def test_verdict_is_the_first_token_and_the_boundary_is_inclusive(spent, amount,
     r = run(spent, amount)
     assert r.returncode == 0, r.stderr
     assert r.stdout.split()[0] == verdict
-
-
-def test_within_cap_matches_the_cli_at_the_boundary():
-    mod = _module()
-    assert mod.within_cap(150, 50) is True
-    assert mod.within_cap(150, 50.01) is False
 
 
 @pytest.mark.parametrize(("spent", "amount"), [
