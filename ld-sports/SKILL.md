@@ -54,6 +54,10 @@ env var (both from `data/.env`, mode 600) — no value reaches argv. It posts
 as card 5 with `type: "sports"`, http(s)-allowed, no redirects, and fails
 loudly on any non-200 response.
 
+If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
+follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+is not done until the Latch `curl` returned 2xx.
+
 Preview without sending: `… post_sports.py --dry-run`.
 
 ## Config

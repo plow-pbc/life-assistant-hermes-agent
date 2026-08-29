@@ -52,7 +52,7 @@ def config():
     return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
 
 
-DESCRIPTOR_KEYS = {"AGENT_CONFIG"}
+DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
 
 
 def test_the_descriptor_carries_nothing_but_the_shared_config_path():
@@ -76,7 +76,8 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
     every AGENT_* name passed it, so AGENT_TOKEN=sk-... would have shipped green.
     One exact key cannot."""
     assert set(descriptor()) == DESCRIPTOR_KEYS, (
-        "agent.env is a CLOSED SET: it holds AGENT_CONFIG and nothing else. "
+        "agent.env is a CLOSED SET: it holds AGENT_CONFIG and AGENT_LIVE, "
+        "nothing else. "
         "Every instance reads this one file, so adding a key means editing "
         "DESCRIPTOR_KEYS deliberately -- see README.md. A person-valued key "
         "(a timezone, a locale) does not belong here at all, and identity "
@@ -88,6 +89,14 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
 def test_the_descriptor_names_where_this_agents_config_lives():
     assert descriptor()["AGENT_CONFIG"] == "runtime/config.yaml"
     assert (ROOT / "runtime" / "config.yaml").is_file()
+
+
+def test_every_instance_is_live():
+    """Real people's workflows run through every instance, and the gateway
+    messages its person at every restart -- the guard is what makes a
+    transition deliberate, so a descriptor that stopped saying so would
+    silently strip it from all of them."""
+    assert descriptor()["AGENT_LIVE"] == "1"
 
 
 def test_the_phone_line_is_enabled():
@@ -407,7 +416,7 @@ def override():
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
 
 
-def test_every_skill_is_mounted_flat_and_read_only():
+def test_the_hermes_volumes_are_exactly_these():
     """Four declarative strings, asserted exactly.
 
     This replaces a brace-aware volume parser, its own unit test, and four
@@ -428,6 +437,16 @@ def test_every_skill_is_mounted_flat_and_read_only():
         f"${{AGENT_DIR:?set by agent-mgr from the registry}}/{name}"
         f":/opt/data/skills/{name}:ro"
         for name in SKILL_DIRS
+    } | {
+        # The one non-skill bind: the repo's SOUL.md pinned read-only over the
+        # gateway's own copy (HERMES_HOME is /opt/data), so the setup rule it
+        # carries survives anything a turn writes into the home. The old
+        # config.json:ro bind is gone on purpose: the agent writes that file
+        # now (ld-setup), and pinning it was what forced "land it before up".
+        # Same exact-string discipline: drop :ro, reroot the source, or mount
+        # a directory and this fails with both sets printed.
+        "${AGENT_DIR:?set by agent-mgr from the registry}"
+        "/runtime/SOUL.md:/opt/data/SOUL.md:ro"
     }
 
 
@@ -443,7 +462,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     container, as an agent that cannot find the contract it was told to read.
 
     The check is only worth anything because the mapping is earned:
-    test_every_skill_is_mounted_flat_and_read_only pins
+    test_the_hermes_volumes_are_exactly_these pins
     ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
     ROOT really does mean the agent can open them.
 
@@ -455,7 +474,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
     seen = 0
-    for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
+    for skill_md in [*sorted(ROOT.glob("ld-*/SKILL.md")), ROOT / "runtime" / "SOUL.md"]:
         text = skill_md.read_text()
         for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
             ref = ref.rstrip(".").rstrip("/")
@@ -485,6 +504,9 @@ WRITE_SAFE_ROOT = "/opt/data"
 # guards on the finder, none on the contract, and together bigger than it.
 PRODUCERS = [
     ("ld-morning-triage", "post_alert.py"),
+    ("ld-morning-updates", "post_message.py"),
+    ("ld-weekly-digest", "post_digest.py"),
+    ("ld-calendar-nudge", "post_nudge.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
 ]
@@ -496,13 +518,17 @@ BEFORE, AFTER = r"(?<![\w.\-/])", r"(?![\w.\-/])"
 
 def _handoff(skill, wrapper):
     source = (ROOT / skill / "scripts" / wrapper).read_text()
-    paths = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', source)
+    # Two spellings, one contract: a thin wrapper hands its path to the
+    # shared helper (MESSAGE_FILE = "..."), while post_nudge.py owns its
+    # handoff itself and declares it as its own HANDOFF constant.
+    paths = re.findall(r'(?:MESSAGE_FILE\s*=|^HANDOFF =)\s*"([^"]+)"',
+                       source, re.MULTILINE)
     # ld-shared's only quoted assignment is its docstring EXAMPLE -- the real
     # constant is `MESSAGE_FILE: str | None = None`, which this cannot see. So a
     # reworded docstring lands here, and a bare unpack would blame neither the
     # file nor the contract.
     assert len(paths) == 1, (
-        f"{skill}/scripts/{wrapper} declares {len(paths)} quoted MESSAGE_FILE "
+        f"{skill}/scripts/{wrapper} declares {len(paths)} quoted handoff "
         "assignments; expected exactly 1"
     )
     return paths[0]
@@ -565,6 +591,16 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
     )
 
 
+def test_the_nudge_filter_writes_exactly_what_the_coordinator_consumes():
+    """nudge_candidates.py writes the one handoff; post_nudge.py (the one
+    posting command) reads and consumes it. A drifted path on either side
+    tells a leg to read a file nobody writes — an unattended half-hourly
+    failure in front of nobody."""
+    nc_src = (ROOT / "ld-calendar-nudge" / "scripts" / "nudge_candidates.py").read_text()
+    (written,) = re.findall(r'^HANDOFF = "([^"]+)"', nc_src, re.MULTILINE)
+    assert written == _handoff("ld-calendar-nudge", "post_nudge.py")
+
+
 def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     """The gate's placeholder check matches whole strings only, so the
     template's new key must ship as the exact whole-string form the gate
@@ -582,3 +618,16 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     parsed = json.loads(template.read_text())
     assert "an unfilled [UPPER_SNAKE] placeholder remains" in gate.gate(parsed)
     assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"
+
+
+SETUP_COMPLETE_MARKER = "/opt/data/ld/setup-complete"
+
+
+def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
+    """SOUL.md's skip check and ld-setup's own write instruction have to agree
+    on the exact path -- a drift on either side reads as done when it isn't,
+    or never marks a real completion done at all."""
+    soul = (ROOT / "runtime" / "SOUL.md").read_text()
+    skill = (ROOT / "ld-setup" / "SKILL.md").read_text()
+    assert SETUP_COMPLETE_MARKER in soul, "SOUL.md does not name the setup-complete marker"
+    assert SETUP_COMPLETE_MARKER in skill, "ld-setup/SKILL.md does not name the setup-complete marker"

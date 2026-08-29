@@ -10,12 +10,10 @@ module at import, per the pinned producer→card mapping the viewer renders
 producer — including weather and sports — runs as an LLM cron job that calls a
 Python wrapper.
 
-Three rows, not six: weather, sports, and morning-triage — the last rewritten
-onto the Mac's iMessage DB, queried through Latch. Cards 2 and 4 stay reserved
-for the calendar producers still gated on plow-pbc/latch#183 (Google through a
-vendored gog); their bodies are not in this repo, and their card numbers stay
-reserved above so the mapping this asserts does not silently renumber when they
-land.
+Six rows, one per producer wrapper: weather and sports (public feeds),
+morning-triage (the Mac's iMessage DB through Latch), and the three calendar
+producers (morning-updates, weekly-digest, calendar-nudge) on Latch's vendored
+gog.
 
 Each wrapper runs in a fresh interpreter: an in-process import would find
 post_to_kiosk already in sys.modules and mask a broken relative sys.path in the
@@ -51,7 +49,10 @@ SNIPPET = (
 
 WRAPPERS = (
     ("ld-morning-triage/scripts/post_alert.py", "1", "alert"),
+    ("ld-calendar-nudge/scripts/post_nudge.py", "1", "alert"),
+    ("ld-morning-updates/scripts/post_message.py", "2", "affirmation"),
     ("ld-weather/scripts/post_weather.py", "3", "weather"),
+    ("ld-weekly-digest/scripts/post_digest.py", "4", "digest"),
     ("ld-sports/scripts/post_sports.py", "5", "sports"),
 )
 

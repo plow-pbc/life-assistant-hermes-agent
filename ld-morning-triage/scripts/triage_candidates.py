@@ -30,6 +30,12 @@ import json
 import os
 import sys
 
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
+)
+from gather_result import GatherError, read_gather  # noqa: E402
+
 EXCERPT_CAP = 500
 
 
@@ -67,33 +73,18 @@ def main() -> int:
     args = parser.parse_args()
 
     # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
-    # The gather is consumed FIRST: the raw 36-hour corpus must not outlive
-    # this run whatever the outcome, so it's read and deleted before anything
-    # else (a broken config, a bad envelope) gets a chance to abort the run.
-    with open(args.gather) as f:
-        raw = f.read().strip()
-    os.unlink(args.gather)
+    # Consume-first + envelope sniff live in ld-shared/scripts/gather_result.py
+    # (shared with the calendar-nudge filter); the semantics are unchanged.
+    try:
+        raw = read_gather(args.gather)
+    except GatherError as e:
+        print(e, file=sys.stderr)
+        return 2
 
     with open(args.config) as f:
         excluded = set(
             json.load(f)["morning_triage"]["exclude"]["imessage_handles"]
         )
-    # An oversized plow_run_command result reaches the model as a persisted
-    # envelope — {"result": "<json of {exit_code, handle, output}>"} — not as
-    # raw query stdout. Unwrap it here so the model passes the persisted path
-    # untouched; a query result itself is always an array (or empty), never
-    # an object, so the sniff cannot misfire on real rows.
-    if raw.startswith("{"):
-        try:
-            inner = json.loads(json.loads(raw)["result"])
-            if inner["exit_code"] != 0:
-                print(f"gather failed: exit_code={inner['exit_code']}",
-                      file=sys.stderr)
-                return 2
-            raw = inner["output"].strip()
-        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
-            print(f"malformed gather envelope: {e}", file=sys.stderr)
-            return 2
     try:
         rows = json.loads(raw) if raw else []
     except json.JSONDecodeError as e:

@@ -1,7 +1,13 @@
+> **Vendored copy.** The canonical protocol lives in `plow-pbc/life-dashboard`
+> at `docs/kiosk-protocol.md`; this pinned copy is what this agent's producers
+> read. When the two disagree, the canonical copy governs — sync this one from
+> it rather than editing it independently.
+
 # Kiosk wire protocol + tile contract
 
-The single source of truth for **what every ld- producer posts to the kiosk**,
-on any platform. Both the Plow agent seed (deterministic JS runners + Python
+What every ld- producer posts to the kiosk, on any platform — pinned from the
+canonical copy in `plow-pbc/life-dashboard` `docs/kiosk-protocol.md` (see the
+header above). Both the Plow agent seed (deterministic JS runners + Python
 wrappers) and the Hermes agent seed (LLM producers + Python wrappers) MUST emit
 exactly this. The `seed-life-dashboard-viewer` kiosk is the consumer; this
 contract is what keeps producers and viewer in lockstep.
@@ -34,7 +40,7 @@ Every producer POSTs ONE message to the household's Pi message API:
 | 1 | `alert` | ld-morning-triage (and ld-calendar-nudge reminders) | plain text, ≤115 chars |
 | 2 | `affirmation` | ld-morning-updates | plain text, ≤115 chars |
 | 3 | `weather` | ld-weather | self-contained HTML tile |
-| 4 | `digest` | ld-weekly-digest | plain text, ≤115 chars |
+| 4 | `digest` | ld-weekly-digest | plain text, long-form (viewer-clamped) |
 | 5 | `sports` | ld-sports | self-contained HTML tile |
 
 Card 1 is shared: a calendar nudge and the morning triage alert both land in
@@ -42,10 +48,15 @@ the alert slot; latest-per-card means the newest of the two shows.
 
 ## Plain-text cards (1, 2, 4)
 
-`text` is a short paraphrased line, **≤115 chars** to match the kiosk's visible
-budget. Producers paraphrase private mail/iMessage/Slack content — they never
-quote it verbatim, and `--dry-run` always redacts the body to
-`<redacted, N chars>` so agent-visible stdout stays non-sensitive.
+For cards 1 and 2, `text` is a short paraphrased line, **≤115 chars** to match
+the kiosk's visible budget. Card 4 is the exception: the viewer gives the
+digest a full-width 2× row sized for the full weekly summary, well above the
+shared 5-line clamp (`life-dashboard-viewer/src/index.css:324` is the
+enforcer), so long digest text is the contract and the viewer's clamp is the
+backstop — do not pre-truncate it. On every plain-text card, producers
+paraphrase private mail/iMessage/Slack content — they never quote it
+verbatim, and `--dry-run` always redacts the body to `<redacted, N chars>`
+so agent-visible stdout stays non-sensitive.
 
 ## HTML tile cards (3 weather, 5 sports)
 
@@ -62,8 +73,9 @@ tile and theme. A producer MUST NOT invent new global CSS the viewer would have
 to carry.
 
 Whatever generates the tile (Plow's `scheduled/compose.js`, or a Hermes LLM
-producer following its SKILL.md) MUST emit the markup + `<style>` below. This
-file is canonical; a tile change lands here and propagates to both platforms.
+producer following its SKILL.md) MUST emit the markup + `<style>` below. A tile
+change lands in the canonical copy in `plow-pbc/life-dashboard` and is synced
+here; it propagates to both platforms from there.
 
 ### Weather tile (card 3)
 

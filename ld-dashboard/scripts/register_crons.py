@@ -31,9 +31,16 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
+
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
+)
+from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
@@ -43,14 +50,22 @@ JOBS_FILE = "/opt/data/cron/jobs.json"
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
 LD_CONFIG = "/opt/data/ld/config.json"
 
-# The spec. One row per producer, live or not.
+# The spec. One row per producer — all six are live; the blocked/LIVE
+# partition machinery left with the last blocked row (git history keeps the
+# pattern if a producer ever loses its data source again).
 #
 # `deliver` is None for every card-only producer: the card IS the delivery, over
-# the kiosk POST. ld-calendar-nudge also messages the owner, and it is blocked --
-# so its target is recorded as the ${VAR} it will need and nothing expands it.
-# The resolver that used to live here was reachable only from this one blocked
-# row; see create_argv() for why it went, and
-# test_no_live_job_needs_a_delivery_target for what fires when it is needed.
+# the kiosk POST. Two producers also message the owner, and they diverge on
+# purpose:
+#   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
+#     weekly and ALWAYS has content, so relaying its final response is exactly
+#     the chat leg the sheet promises. create_argv() expands the ${VAR} from
+#     /opt/data/.env -- the file activation writes and the gateway loads; a
+#     docker-exec session's env never carries it -- and refuses a blank one.
+#   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
+#     quiet no-op runs, and --deliver relays EVERY final response -- its chat
+#     leg lives in its committed post_nudge.py coordinator, keeping quiet ticks silent
+#     by construction.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
 # the container's zone, which is agent-mgr's AGENT_TZ.
@@ -68,7 +83,6 @@ JOBS = (
         ),
         "skill": "ld-weather",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-sports",
@@ -81,7 +95,6 @@ JOBS = (
         ),
         "skill": "ld-sports",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-morning-updates",
@@ -89,12 +102,12 @@ JOBS = (
         "type": "affirmation",
         "schedule": "0 7 * * *",
         "prompt": (
-            "Run the ld-morning-updates affirmation producer now: compose the "
-            "morning affirmation and post it to the kiosk as card 2, type affirmation."
+            "Run the ld-morning-updates affirmation producer now: gather today's "
+            "calendar through Latch gog, compose the morning affirmation, and "
+            "post it to the kiosk as card 2, type affirmation."
         ),
         "skill": "ld-morning-updates",
         "deliver": None,
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
     },
     {
         "name": "ld-morning-triage",
@@ -108,7 +121,6 @@ JOBS = (
         ),
         "skill": "ld-morning-triage",
         "deliver": None,
-        "blocked": None,
     },
     {
         "name": "ld-weekly-digest",
@@ -116,12 +128,16 @@ JOBS = (
         "type": "digest",
         "schedule": "0 17 * * 0",
         "prompt": (
-            "Run the ld-weekly-digest producer now: compose the week-ahead "
-            "digest and post it to the kiosk as card 4, type digest."
+            "Run the ld-weekly-digest producer now: gather the week's calendar "
+            "through Latch gog, compose the week-ahead digest, post it to the "
+            "kiosk as card 4, type digest, and return the digest text as the "
+            "final response."
         ),
         "skill": "ld-weekly-digest",
-        "deliver": None,
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
+        # Native --deliver, unlike the nudge: the digest is weekly and
+        # always has content, so relaying every final response fits; the
+        # half-hourly nudge has quiet no-op runs and rides its script leg.
+        "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
     },
     {
         "name": "ld-calendar-nudge",
@@ -129,18 +145,20 @@ JOBS = (
         "type": "alert",
         "schedule": "20,50 * * * *",
         "prompt": (
-            "Run the ld-calendar-nudge producer now: if a meeting with other "
-            "attendees starts within the lookahead window, post a kiosk reminder "
-            "and message the owner over Plow Chat."
+            "Run the ld-calendar-nudge producer now: gather the next day's "
+            "calendar through Latch gog, run the nudge filter, and if a "
+            "meeting with other attendees starts within the lookahead window, "
+            "post a kiosk reminder and message the owner over Plow Chat; a "
+            "quiet tick is a no-op on both surfaces."
         ),
         "skill": "ld-calendar-nudge",
-        "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
-        "blocked": "reads Google Calendar; plow-connectors is dropped -- blocked on plow-pbc/latch#183",
+        # deliver stays None ON PURPOSE, unlike the digest: --deliver relays
+        # EVERY final response, and this producer runs half-hourly with quiet
+        # no-op ticks -- its chat leg lives in its post_nudge.py coordinator,
+        # which keeps quiet runs silent by construction.
+        "deliver": None,
     },
 )
-
-LIVE = tuple(j for j in JOBS if not j["blocked"])
-BLOCKED = tuple(j for j in JOBS if j["blocked"])
 
 
 def require_timezone_agreement(config_path=LD_CONFIG, env=None):
@@ -237,18 +255,48 @@ def registered_jobs(jobs_path=JOBS_FILE):
     }
 
 
-def create_argv(job):
-    """No --deliver arm, because no job that reaches here has one.
+def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
+    """Expand every ${VAR} in a delivery target from ONE source.
 
-    Only LIVE jobs are ever created, and all of them post their card over the
-    kiosk POST -- the card IS the delivery. `ld-calendar-nudge` is the one
-    producer that also messages the owner, and it is blocked, so the expansion
-    machinery its `deliver` field needed was unreachable code. The field stays as
-    DATA on the blocked row so the requirement is not lost, and
-    test_no_live_job_needs_a_delivery_target fires the day one becomes live."""
+    The chat uid is minted by this instance's own activation, so it can never
+    be a literal in a repo more than one person runs -- in production it lives
+    in /opt/data/.env, the file the gateway loads (a docker-exec session's env
+    never carries it -- measured). That file IS the source; an explicit `env`
+    is the test-injection override, taken alone. An unset or blank variable
+    REFUSES loudly: hermes would accept the half-expanded or empty target and
+    the digest's chat leg would drop silently, every Sunday, in front of
+    nobody -- the exact trap the old tripwire test existed to catch.
+    """
+    if env is None:
+        values, source = dotenv_values(dotenv_path), f"{dotenv_path} (the file activation writes it to)"
+    else:
+        values, source = env, "the injected env"
+
+    def expand(match):
+        name = match.group(1)
+        value = (values.get(name) or "").strip()
+        if not value:
+            raise SystemExit(
+                f"refusing to register: deliver target {deliver!r} needs {name}, "
+                f"which is unset or blank in {source}. Registering without it "
+                "would create a chat leg that silently delivers nowhere."
+            )
+        return value
+
+    return re.sub(r"\$\{(\w+)\}", expand, deliver)
+
+
+def create_argv(job, env=None, dotenv_path=DOTENV):
+    """The --deliver arm serves exactly one live shape: a producer whose every
+    run has content, where relaying the final response IS the chat leg
+    (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
+    relays every final response, no-ops included -- which is why the live
+    nudge's deliver is None and its chat leg lives in post_nudge.py."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]
+    if job["deliver"]:
+        argv += ["--deliver", resolve_deliver(job["deliver"], env, dotenv_path)]
     return argv
 
 
@@ -260,9 +308,6 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.parse_args(argv)
 
-    for job in BLOCKED:
-        print(f"blocked, not registered: {job['name']} ({job['schedule']}) -- {job['blocked']}")
-
     if not shutil.which(HERMES) and not os.path.exists(HERMES):
         raise SystemExit(f"{HERMES} not found -- run this inside the agent container")
 
@@ -270,7 +315,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
     registered = registered_jobs(jobs_path)
     paused = []
 
-    for job in LIVE:
+    for job in JOBS:
         if job["name"] in registered:
             if registered[job["name"]]:
                 print(f"already present, skipped: {job['name']}")
@@ -286,7 +331,7 @@ def main(argv=None, runner=_run, jobs_path=JOBS_FILE, config_path=LD_CONFIG, env
                 )
                 paused.append(job["name"])
             continue
-        proc = runner(create_argv(job))
+        proc = runner(create_argv(job, env))
         if proc.returncode != 0:
             raise SystemExit(
                 f"could not register {job['name']}:\n{proc.stdout}\n{proc.stderr}"

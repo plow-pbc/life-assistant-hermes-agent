@@ -5,8 +5,7 @@ description: The life-dashboard's cron spec — the six producer schedules as re
 
 # Life Dashboard — the cron spec
 
-The six producer schedules, versioned. Three are registered; three are blocked
-and say why.
+The six producer schedules, versioned. All six are registered.
 
 ## Why a skill and not a note
 
@@ -94,16 +93,14 @@ source; this table summarises it.
 |---|---|---|---|
 | `ld-weather` | `0 6 * * *` | 3 · weather | **live** |
 | `ld-sports` | `0 6 * * *` | 5 · sports | **live** |
-| `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | blocked — Google Calendar, `plow-pbc/latch#183` |
+| `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | **live** — Google Calendar via Latch's vendored gog |
 | `ld-morning-triage` | `5 7 * * *` | 1 · alert | **live** — iMessage through Latch |
-| `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | blocked — Google Calendar, `plow-pbc/latch#183` |
-| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | blocked — Google Calendar, `plow-pbc/latch#183` |
+| `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
+| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored gog |
 
-Blocked means the producer body is not in this repo and its cron is not
-registered: `plow-connectors` was dropped, so those three have no data source
-on this agent until `plow-pbc/latch#183`'s calendar producers land. Their
-bodies stay fetchable in the archived upstream repos, and their card numbers
-stay reserved here so the mapping cannot silently renumber when they land.
+All six rows register unconditionally. The blocked/LIVE partition machinery
+left with the last blocked row — no blocked producer is on any roadmap, and
+git history keeps the pattern if one ever loses its data source again.
 
 ## Two values that are never literals
 
@@ -117,26 +114,22 @@ checks only that `family.timezone` is non-blank, which a perfectly valid
 `America/Chicago` config satisfies while its cards land two hours late on a
 Los_Angeles container, silently.
 
-**The Plow Chat delivery target.** `ld-calendar-nudge` messages the owner as
-well as posting a card, and which chat that is was minted by this instance's own
+**The Plow Chat delivery target.** Two producers message the owner as well as
+posting a card, and which chat that is was minted by this instance's own
 activation — so it can never be a literal here, on a repo more than one person
-runs.
+runs. It sits in `JOBS` as `plow_chat:${PLOW_CHAT_CHAT_UID}`, and
+`resolve_deliver()` expands it from `/opt/data/.env` — the file activation
+writes and the gateway loads; a `docker exec` session's env never carries it —
+refusing an unset or blank variable by name — an empty target is a chat leg
+that silently delivers nowhere.
 
-Right now **nothing expands it and nothing checks it.** The producer is blocked,
-so the target sits in `JOBS` as data (`plow_chat:${PLOW_CHAT_CHAT_UID}`)
-recording what it will need, and `create_argv()` has no `--deliver` arm at all:
-the resolver that used to expand the variable and refuse a blank one was
-reachable only from this one blocked row, so it was deleted rather than carried
-as roadmap inventory.
-
-> **If you are unblocking `ld-calendar-nudge`, read this.** Flipping `blocked`
-> to `None` is not enough — `create_argv()` will silently drop the target and
-> the nudge will post its card and message nobody.
-> `test_no_live_job_needs_a_delivery_target` fails the moment you do it, which
-> is the intended tripwire; the expansion it is asking for is in git history as
-> `resolve_deliver` (deleted in the round that answered knightwatch's stage-one
-> simplification probe). Restore it with its refusals, or write a better one —
-> but do not delete the assertion.
+The two producers take different delivery paths, on purpose. `--deliver`
+relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always
+has content, its final response IS the digest — and its live row rides it.
+It does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
+its chat leg lives in its committed `post_nudge.py` coordinator and its row's `deliver`
+is `None` (`test_only_the_digest_rides_the_native_deliver_arm` pins the
+divide).
 
 ## Unattended runs
 
