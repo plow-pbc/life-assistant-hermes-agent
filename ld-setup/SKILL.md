@@ -166,7 +166,7 @@ path only; the no-Mac path has its own gate below):
 
     plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
 
-Otherwise probe key auth first — no password should ever need to
+Otherwise — still on the with-a-Mac path — probe key auth first — no password should ever need to
 cross chat. `BatchMode=yes` on every `ssh`/`scp` so a key-auth regression
 fails fast instead of hanging on a password prompt with no tty;
 `StrictHostKeyChecking=accept-new` because the first connection has no host
@@ -236,7 +236,17 @@ Create-if-missing and safe to re-run, so there is no skip condition of its own
 
 Paste its output and its exit status; `refusing to register`, `WARNING` or
 `PAUSED` means this phase did not finish (see
-`/opt/data/skills/ld-dashboard/SKILL.md`). Then force the weather card.
+`/opt/data/skills/ld-dashboard/SKILL.md`).
+
+**Without a Mac, registration is the whole phase** — everything from here to
+the owner question is Latch work a no-Mac install cannot do: every pushed
+card — weather, sports, messages — stays empty until a Mac with Latch
+exists, because delivery always routes through the outbox and nothing ships
+it. Do not force a card, do not try to read one back, and do not ask the
+owner to look for one — the screen being up was already confirmed when
+Phase 3 wrote `pi-brought-up`, so go straight to the marker at the end.
+
+**With a Mac, force the weather card.**
 `hermes cron run` takes a job **id**, not a name, and ids are opaque hex, so
 look the id up from `/opt/data/cron/jobs.json` (the same file
 `register_crons.py` itself trusts, not `hermes cron list`'s human rendering)
@@ -265,15 +275,7 @@ is on the Pi. `{"message": null}` means it is not — read the forced run's
 output (`/opt/hermes/bin/hermes cron runs`) for what went wrong, fix it, and
 force it again.
 
-Without a Mac there is no card to check: every pushed card — weather, sports,
-messages — stays empty until a Mac with Latch exists, because delivery always
-routes through the outbox and nothing ships it. Do not ask the owner to look
-for a card; ask whether the screen itself is up — the frame with its calendar
-tile — and let that confirmation stand as this phase's proof, writing
-`/opt/data/ld/setup-complete` below on it (Phase 3's `pi-brought-up` is
-already on disk by now).
-
-With a Mac, tell the owner: "your wall is live — the weather card should be
+Then tell the owner: "your wall is live — the weather card should be
 showing; is it?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.
 
