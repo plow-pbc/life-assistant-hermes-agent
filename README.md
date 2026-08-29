@@ -330,6 +330,7 @@ ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-shared/      the POST helper, the ld-config gate and the wire protocol
 ld-dashboard/   the six cron schedules; three registered, three blocked
+ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 ```
@@ -376,3 +377,10 @@ installs it and reloads the gateway only if the file actually changed.
   to probe. `plow-pbc/latch#183` is what brings Google back — through a vendored
   `gog` behind Latch rather than a connector skill. See [No connectors, and what
   that costs](#no-connectors-and-what-that-costs).
+
+- **`ld-payments` is the instruction layer only, and not yet deployable.** The
+  skill tells the agent to stop refusing payment requests and run them through
+  the owner-approval flow; it does **not** implement the guardrail. It is safe
+  to run only once the platform's fail-closed payment gate and the owner
+  per-payment confirmation infra are live — so it must not reach the deployed
+  agent before those. Mounted for review; a deploy is gated on that ordering.
