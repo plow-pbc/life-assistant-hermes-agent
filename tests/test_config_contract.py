@@ -52,7 +52,7 @@ def config():
     return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
 
 
-DESCRIPTOR_KEYS = {"AGENT_CONFIG"}
+DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
 
 
 def test_the_descriptor_carries_nothing_but_the_shared_config_path():
@@ -87,6 +87,14 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
 
 def test_the_descriptor_names_where_this_agents_config_lives():
     assert descriptor()["AGENT_CONFIG"] == "runtime/config.yaml"
+
+
+def test_every_instance_is_live():
+    """Real people's workflows run through every instance, and the gateway
+    messages its person at every restart -- the guard is what makes a
+    transition deliberate, so a descriptor that stopped saying so would
+    silently strip it from all of them."""
+    assert descriptor()["AGENT_LIVE"] == "1"
     assert (ROOT / "runtime" / "config.yaml").is_file()
 
 
