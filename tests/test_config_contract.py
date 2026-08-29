@@ -639,6 +639,13 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
 SETUP_COMPLETE_MARKER = "/opt/data/ld/setup-complete"
 
 
+def test_every_calendar_gather_names_the_configured_gog_account():
+    """gog refuses --calendars without the account that owns those ids."""
+    for skill in ("ld-morning-updates", "ld-calendar-nudge", "ld-weekly-digest"):
+        sheet = (ROOT / skill / "SKILL.md").read_text()
+        assert "--account=<calendar.account>" in sheet, skill
+
+
 def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
     """SOUL.md's skip check and ld-setup's own write instruction have to agree
     on the exact path -- a drift on either side reads as done when it isn't,

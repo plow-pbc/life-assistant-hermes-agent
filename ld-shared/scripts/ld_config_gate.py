@@ -27,26 +27,25 @@ proof still holds):
     (indexing a non-object, or testing a non-string field) — jq's gate ran with
     `2>/dev/null || echo "not valid JSON"`, collapsing both into that one line.
 
-The eight checks, matching the (updated) jq filter exactly:
+The nine checks, matching the (updated) jq filter exactly:
   1. family.owner.name must contain a non-whitespace char  (jq: (.family.owner.name // "") | test("\\S"))
   2. family.timezone must contain a non-whitespace char    (jq: (.family.timezone // "") | test("\\S"))
   3. calendar.sources must be a non-empty array            (jq: (type) == "array" and length >= 1)
-  4. no calendar.sources[].calendar_id may be blank        (jq: select(((.calendar_id // "") | test("\\S")) | not))
-  5. calendar.sources[].calendar_id values must be unique  (jq: length == (unique | length))
-  6. calendar_nudge.owner_identities must be a non-empty list of nonblank
+  4. calendar.account must contain a non-whitespace char   (jq: (.calendar.account // "") | test("\\S"))
+  5. no calendar.sources[].calendar_id may be blank        (jq: select(((.calendar_id // "") | test("\\S")) | not))
+  6. calendar.sources[].calendar_id values must be unique  (jq: length == (unique | length))
+  7. calendar_nudge.owner_identities must be a non-empty list of nonblank
      strings                                               (jq: (type) == "array", length >= 1, each (. // "") | test("\\S"))
-  7. calendar_nudge.lookahead_virtual_minutes and
+  8. calendar_nudge.lookahead_virtual_minutes and
      lookahead_in_person_minutes must be positive numbers  (jq: (type) == "number" and . > 0)
-  8. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
+  9. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
 
-Checks 4-5 replaced the old "no calendar.sources[].account may be blank": the
-runtime reads every source under the ONE gog identity Latch is authenticated
-as and consumes only calendar_id, so per-source account validated an identity
-nothing uses -- while several sources saying "primary" all resolved to the
-authenticated account's own calendar, silently omitting the rest. The id IS
-the whole address, so it must be present and unique (which also caps a bare
-"primary" at one source). Owner identity is a nudge concern, not a source
-concern: check 6 is its home -- calendar_nudge.owner_identities is the
+Checks 4-6 replace the old per-source account model with the one identity gog
+actually needs: calendar.account selects the authenticated account once, while
+each calendar_id names a calendar visible to it. Several sources saying
+"primary" all resolve to that account's own calendar, silently omitting the
+rest, so ids must also be present and unique. Owner participation is a separate
+nudge concern: check 7 is its home -- calendar_nudge.owner_identities is the
 owner's email identity set (one per connected calendar) that
 nudge_candidates.py's owner-participation rule reads; an empty set would
 fail that rule on every event, an eternally quiet nudge that looks installed.
@@ -135,7 +134,13 @@ def gate(config):
     if not (isinstance(sources, list) and len(sources) >= 1):
         failures.append("calendar.sources is not a non-empty array")
 
-    # 4. no calendar.sources[].calendar_id is blank, and 5. the ids are unique.
+    # 4. gog requires the account that owns/can read --calendars. This is one
+    #    identity for the whole merged call, not duplicated on every source.
+    account = _index(_index(config, "calendar"), "account")
+    if not _test_nonblank(account):
+        failures.append("calendar.account is blank")
+
+    # 5. no calendar.sources[].calendar_id is blank, and 6. the ids are unique.
     #    One gog identity reads every source, so the id is a calendar's entire
     #    address: a blank one reads nothing, and duplicates (several "primary")
     #    silently collapse onto the authenticated account's one calendar.
@@ -162,7 +167,7 @@ def gate(config):
         if len(ids) != len(set(ids)):
             failures.append("calendar.sources[].calendar_id values are not unique")
 
-    # 6. calendar_nudge.owner_identities is a non-empty list of nonblank
+    # 7. calendar_nudge.owner_identities is a non-empty list of nonblank
     #    strings. One gog identity fetches every calendar, so the nudge's
     #    owner-participation rule cannot be derived from the sources (the
     #    per-source account/self keys are gone; this key is identity's home).
@@ -177,7 +182,7 @@ def gate(config):
             "calendar_nudge.owner_identities is not a non-empty list of "
             "nonblank strings")
 
-    # 7. the two nudge lookaheads are positive numbers. nudge_candidates.py
+    # 8. the two nudge lookaheads are positive numbers. nudge_candidates.py
     #    hard-requires both, so a gate-passing config missing either would
     #    fail every scheduled half-hourly run -- installed-looking, never
     #    nudging. bool is excluded: JSON true is jq type "boolean", but
@@ -188,7 +193,7 @@ def gate(config):
                 and value > 0):
             failures.append(f"calendar_nudge.{key} is not a positive number")
 
-    # 8. no leftover [UPPER_SNAKE] placeholder anywhere
+    # 9. no leftover [UPPER_SNAKE] placeholder anywhere
     if any(_PLACEHOLDER_RE.match(s) for s in _all_strings(config)):
         failures.append("an unfilled [UPPER_SNAKE] placeholder remains")
 

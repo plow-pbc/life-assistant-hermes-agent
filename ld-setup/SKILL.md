@@ -78,7 +78,7 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | answer | ask | goes to |
 |---|---|---|
 | `owner_name` | what should I call you? | `family.owner.name` |
-| `owner_email` | the Google account whose calendar you live by (the email) | `calendar.sources[0].calendar_id` **and** `calendar_nudge.owner_identities[0]` |
+| `owner_email` | the Google account whose calendar you live by (the email) | `calendar.account`, `calendar.sources[0].calendar_id`, and `calendar_nudge.owner_identities[0]` |
 | `extra_calendar_ids` | any shared calendars? — the full id, `…@group.calendar.google.com` | more `calendar.sources[]` |
 | `city` | which city is home? | `weather.location`, geocoded to `lat`/`lon` |
 | `timezone` | run `echo $TZ`, tell the owner that zone, ask them to confirm it is theirs | `family.timezone` |

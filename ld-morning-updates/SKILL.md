@@ -39,12 +39,13 @@ calendar events from this skill. Do not add safety flags (`--readonly`,
 flags and REFUSES any caller-supplied duplicate, so carrying one makes
 every run fail before it starts.
 
-Read `calendar.sources` from `/opt/data/ld/config.json`, comma-join the
-sources' `calendar_id` values, then call `plow_run_command` with EXACTLY
-this argv, substituting only that config-supplied list (which never varies
-between runs):
+Read `calendar.account` and `calendar.sources` from `/opt/data/ld/config.json`,
+comma-join the sources' `calendar_id` values, then call `plow_run_command` with
+EXACTLY this argv, substituting only those config-supplied values (which never
+vary between runs):
 
-    ["gog", "calendar", "events", "list", "--calendars=<comma-joined calendar_ids>",
+    ["gog", "calendar", "events", "list", "--account=<calendar.account>",
+     "--calendars=<comma-joined calendar_ids>",
      "--days=3", "--json", "--results-only", "--sort=start", "--max=250"]
 
 The argv is a byte-identical literal every run, and that is load-bearing:
@@ -57,8 +58,8 @@ gog in local time, so the same bytes ask the right question every morning.
 busy household with multiple connected sources across a multi-day lookahead.
 
 One call covers every source — the `--calendars` list is the merge, read
-under the one account Latch's gog is authenticated as. That is why each
-source is just a `calendar_id` (there is no per-source account key): the id
+under the one `calendar.account` Latch's gog is authenticated as. Each source
+is just a `calendar_id` (there is no per-source account key): the id
 is a calendar's whole address and must be the globally-unique form (the
 `...@group.calendar.google.com` / email ids), visible to that account.
 `primary` names only the gog account's own calendar, so at most one source

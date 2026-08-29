@@ -76,7 +76,7 @@ def build(answers, env, geocoder=None):
             "people": list(answers.get("people") or []),
             "timezone": answers["timezone"],
         },
-        "calendar": {"sources": sources},
+        "calendar": {"account": answers["owner_email"], "sources": sources},
         "weekly_digest": {"length": answers.get("digest_length") or "", "long_lead": []},
         "morning_triage": {"chat_db_path": chat_db, "ranking_instructions": "",
                            "exclude": {"imessage_handles": []}},
