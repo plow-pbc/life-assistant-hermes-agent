@@ -36,7 +36,7 @@ Stdout never carries the token. It carries pi_line_1= and pi_line_2=, the two
 commands the agent runs on the Pi through Latch -- bare, one per line, nothing
 shell-wrapped, so each value drops straight into an ssh argv element.
 
-ICAL_URL comes from the "ical_url" answer when the key is present; absent,
+ICAL_URL comes from the "ical_url" answer when it is a string; absent (or null),
 the value already in pi.env is kept (an idempotent re-run must not erase the
 feed), and only a first run with no pi.env writes it blank -- the viewer
 treats a blank one as "Can't reach calendar" until the owner fills it. The

@@ -54,6 +54,16 @@ def refuse(home, **payload):
     return str(e.value)
 
 
+def test_stdin_that_is_not_the_answer_object_refuses(home):
+    """The two refusal branches of the stdin seam: non-JSON, and a key the
+    contract does not name (a typo would otherwise be silently ignored)."""
+    dotenv, ld = home
+    with pytest.raises(SystemExit) as e:
+        mwt.main(stdin=io.StringIO("not json"), dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "not one JSON object" in str(e.value)
+    assert "unknown keys" in refuse(home, pi_address=PI, pi_user="pi", pi_adress="typo")
+
+
 def token_in(dotenv):
     (tok,) = re.findall(r"^DASHBOARD_TOKEN=(\S+)$", dotenv.read_text(), re.MULTILINE)
     return tok
