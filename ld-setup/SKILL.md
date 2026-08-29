@@ -269,7 +269,9 @@ Without a Mac there is no card to check: every pushed card — weather, sports,
 messages — stays empty until a Mac with Latch exists, because delivery always
 routes through the outbox and nothing ships it. Do not ask the owner to look
 for a card; ask whether the screen itself is up — the frame with its calendar
-tile — and write the marker on that confirmation.
+tile — and let that confirmation stand as this phase's proof, writing
+`/opt/data/ld/setup-complete` below on it (Phase 3's `pi-brought-up` is
+already on disk by now).
 
 With a Mac, tell the owner: "your wall is live — the weather card should be
 showing; is it?" — their answer confirms the screen itself, which is the
