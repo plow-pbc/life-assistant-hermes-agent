@@ -1,0 +1,131 @@
+"""The wall's token is minted once, shipped only in files, and never printed.
+
+Behaviour, not shape: the dotenv gains exactly three lines with the leading
+newline (the fixture's dotenv deliberately ends WITHOUT one, so a bare append
+would splice onto PLOW_CHAT_TOKEN and take the instance off its chat), a
+second run appends nothing, the two files the agent ships are mode 600, and
+the token appears in those files and nowhere on stdout.
+"""
+import importlib.util
+import re
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+spec = importlib.util.spec_from_file_location(
+    "mint_wall_token", ROOT / "ld-setup" / "scripts" / "mint_wall_token.py")
+mwt = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mwt)
+
+PI = "raspberrypi.local"
+SEED = "PLOW_CHAT_TOKEN=tok_chat"  # no trailing newline, on purpose
+ICAL = "https://calendar.google.com/calendar/ical/secret%40group.calendar.google.com/private-abc123/basic.ics"
+
+
+@pytest.fixture
+def home(tmp_path):
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(SEED)
+    return dotenv, tmp_path / "ld"
+
+
+def run(home, capsys, pi=PI, extra_argv=None):
+    dotenv, ld = home
+    argv = [pi] + (extra_argv or [])
+    rc = mwt.main(argv, dotenv_path=str(dotenv), ld_dir=str(ld))
+    return rc, capsys.readouterr().out
+
+
+def token_in(dotenv):
+    (tok,) = re.findall(r"^DASHBOARD_TOKEN=(\S+)$", dotenv.read_text(), re.MULTILINE)
+    return tok
+
+
+def test_a_first_run_appends_three_lines_and_ships_the_token_in_two_files_only(home, capsys):
+    dotenv, ld = home
+    rc, out = run(home, capsys)
+    assert rc == 0
+    tok = token_in(dotenv)
+    assert len(tok) >= 32  # secrets.token_urlsafe(24)
+    assert dotenv.read_text() == (
+        SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n"
+        f"DASHBOARD_TOKEN={tok}\nDASHBOARD_DELIVERY=latch\n"
+    )
+    assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
+    assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
+    for name in ("pi.env", "dashboard.hdr"):
+        assert oct((ld / name).stat().st_mode & 0o777) == "0o600", name
+    assert tok not in out
+    # Bare key=value lines, nothing shell-wrapped: the agent lifts each value
+    # straight into an ssh argv element. apt-get, not apt (whose "WARNING:
+    # ... stable CLI interface" the skill reads as a failed phase); `sudo env`
+    # so env_reset cannot drop the frontend; the template repo positionally,
+    # which bootstrap.sh requires (${1:?usage}).
+    assert ("pi_line_1=sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y"
+            " nodejs npm git chromium fonts-noto-color-emoji\n") in out
+    assert ("pi_line_2=curl -fsSL https://raw.githubusercontent.com/plow-pbc/life-dashboard/main/updater/bootstrap.sh"
+            " | sh -s -- https://github.com/plow-pbc/life-dashboard.git\n") in out
+
+
+def test_a_second_run_appends_nothing_re_ships_the_same_token_and_still_never_prints_it(home, capsys):
+    """The Pi holds the first token; a re-mint would lock the producers out.
+    A different address on the re-run must not re-mint either -- the dotenv
+    is the truth, and the skill prints what it already says."""
+    dotenv, ld = home
+    run(home, capsys)
+    after_first = dotenv.read_text()
+    tok = token_in(dotenv)
+    (ld / "dashboard.hdr").unlink()  # a lost /opt/data/ld/ still has something to ship after a re-run
+    rc, out = run(home, capsys, pi="192.168.1.50")
+    assert rc == 0
+    assert dotenv.read_text() == after_first
+    assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
+    assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
+    assert tok not in out
+    assert f"DASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message" in out
+    assert "pi_line_1=" in out and "pi_line_2=" in out
+
+
+@pytest.mark.parametrize("bad", ["pi; rm -rf /", "raspberrypi.local/x", "10.0.0.5 --", ""],
+                         ids=["semicolon", "slash", "space", "empty"])
+def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, bad):
+    """The address lands inside a URL in the dotenv and inside the curl the
+    agent runs through Latch, so anything but [A-Za-z0-9.-] is refused by
+    name, and nothing has been written when it is."""
+    dotenv, ld = home
+    with pytest.raises(SystemExit) as e:
+        mwt.main([bad], dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "pi address" in str(e.value)
+    assert dotenv.read_text() == SEED
+    assert not ld.exists()
+
+
+def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home, capsys):
+    """Half a dotenv (someone deleted the TOKEN line) must not produce a
+    pi.env with DASHBOARD_TOKEN= blank -- that disables the Pi's API."""
+    dotenv, ld = home
+    dotenv.write_text(SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n")
+    with pytest.raises(SystemExit) as e:
+        mwt.main([PI], dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "DASHBOARD_TOKEN" in str(e.value)
+    assert not ld.exists()
+
+
+def test_ical_url_given_lands_in_pi_env_and_never_on_stdout(home, capsys):
+    """The Pi's calendar tile reads the feed URL directly from pi.env; it is
+    a private feed, so it must never appear on stdout either."""
+    dotenv, ld = home
+    rc, out = run(home, capsys, extra_argv=["--ical-url", ICAL])
+    assert rc == 0
+    tok = token_in(dotenv)
+    assert (ld / "pi.env").read_text() == f"ICAL_URL={ICAL}\nDASHBOARD_TOKEN={tok}\n"
+    assert ICAL not in out
+
+
+def test_ical_url_omitted_leaves_the_line_blank(home, capsys):
+    dotenv, ld = home
+    rc, out = run(home, capsys)
+    assert rc == 0
+    tok = token_in(dotenv)
+    assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
