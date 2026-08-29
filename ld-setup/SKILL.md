@@ -86,13 +86,13 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | `mac_username` | your Mac login name (only with a Mac) | `morning_triage.chat_db_path` |
 | `pi_address` | the Pi's address on your home network — the IP, or `raspberrypi.local` | Phase 2 (`mint_wall_token.py`) and the Phase 3 `ssh` target; not in the config |
 | `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the Phase 3 `ssh` target; not in the config. Letters, digits, `.`, `_`, `-` only — refuse anything else: it lands in `ssh` argv |
-| `ical_url` | optional: the wall's own calendar tile reads a feed directly. In Google Calendar → Settings → the calendar → "Secret address in iCal format", copy that URL. Blank is fine — the tile stays empty until you give me one. | Phase 2 (`mint_wall_token.py --ical-url`); not in the config |
+| `ical_url` | optional: the wall's own calendar tile reads a feed directly. In Google Calendar → Settings → the calendar → "Secret address in iCal format", copy that URL. Blank is fine — the tile stays empty until you give me one. | Phase 2 (the `ical_url` key of `mint_wall_token.py`'s stdin JSON); not in the config |
 | `owner_imessage`, `people`, `digest_length` | optional: your number, household names, how long the Sunday digest should be | `family`, `weekly_digest.length` |
 | `teams` | optional: teams to follow, each as ESPN abbreviation + sport + league, e.g. `[{"abbr":"chc","sport":"baseball","league":"mlb"}]` | `sports.followed` |
 
 `ical_url` is a private feed URL — anyone holding it reads that calendar. It
 arrives in the owner's own message, which you cannot undo; from there it goes
-into exactly one place, the `--ical-url` argument in Phase 2. Never repeat it
+into exactly one place, the `ical_url` key of Phase 2's stdin JSON. Never repeat it
 back in chat and never put it in any other call.
 
 **The timezone is not negotiable here.** If the owner's zone is not `$TZ`,
@@ -106,7 +106,7 @@ Compose ONE JSON object from the answers (keys exactly as the table's first
 column; `has_mac` a real boolean, not `"yes"` or `1`; list keys as lists,
 `teams` a list of objects shaped as above; `pi_address` and `pi_user` may be
 included — the script ignores them. Leave `ical_url` out of the JSON entirely
-— its only destination is Phase 2's `--ical-url` argument) and feed it on
+— its only destination is Phase 2's own stdin JSON) and feed it on
 stdin — never on argv — to:
 
     /opt/data/skills/ld-setup/scripts/write_config.py <<'EOF'
@@ -121,18 +121,21 @@ means Phase 1 is done. The full shape it writes is
 
 ## Phase 2 — The wall's token
 
-Idempotent, so there is no dotenv to inspect by hand — always run it, with
-the Pi's address as its one positional argument (an address is not a secret;
-argv is fine), the Pi's login as `--pi-user` (validated here in code so
-Phase 3's `ssh` argv can only ever carry the safe charset), and the owner's
-iCal URL, if they gave one, as `--ical-url`:
+Idempotent, so there is no dotenv to inspect by hand — always run it. Its
+answers ride stdin as ONE JSON object through a quoted heredoc, never argv
+and never interpolated into shell text — the same rule as Phase 1, because
+an embedded quote in an owner's answer would otherwise execute before the
+script's validation (which holds `pi_address` and `pi_user` to the safe
+charset Phase 3's `ssh` argv depends on) could see it:
 
-    /opt/data/skills/ld-setup/scripts/mint_wall_token.py <pi_address> --pi-user '<pi_user>' --ical-url '<ical_url>'
+    /opt/data/skills/ld-setup/scripts/mint_wall_token.py <<'EOF'
+    {"pi_address": "...", "pi_user": "...", "ical_url": "..."}
+    EOF
 
-Drop `--ical-url` entirely when the owner gave no feed *this run* — an
-omitted flag keeps whatever feed `pi.env` already carries, and only a first
-run with no `pi.env` yet writes it blank (the viewer shows an empty calendar
-tile until a later re-run supplies one).
+Leave the `ical_url` key out entirely when the owner gave no feed *this run*
+— an absent key keeps whatever feed `pi.env` already carries, and only a
+first run with no `pi.env` yet writes it blank (the viewer shows an empty
+calendar tile until a later re-run supplies one).
 
 The first run mints the token and appends `DASHBOARD_ENDPOINT_URL`
 (`http://<pi_address>:5174/api/message`), `DASHBOARD_TOKEN` and
@@ -169,7 +172,7 @@ angle brackets to the Mac.
 and the token is the one it checks (a Latch call, so it belongs to this path
 only; the no-Mac path has its own gate below) — skip the bring-up, EXCEPT
 the ship-and-restart step at the end of this path, which still runs whenever
-Phase 2 printed `re-pointed:` or this run passed `--ical-url`: the freshly
+Phase 2 printed `re-pointed:` or this run supplied `ical_url`: the freshly
 rewritten `pi.env` has to reach the Pi or the new feed/address never takes
 effect.
 

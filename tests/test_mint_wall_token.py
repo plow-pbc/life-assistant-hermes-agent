@@ -7,6 +7,8 @@ second run appends nothing, the two files the agent ships are mode 600, and
 the token appears in those files and nowhere on stdout.
 """
 import importlib.util
+import io
+import json
 import re
 from pathlib import Path
 
@@ -30,11 +32,26 @@ def home(tmp_path):
     return dotenv, tmp_path / "ld"
 
 
-def run(home, capsys, pi=PI, extra_argv=None):
+def run(home, capsys, pi=PI, user="pi", ical=None):
+    """Feed the answers the way the sheet does: one JSON object on stdin.
+    ical=None leaves the key out (keep what pi.env holds)."""
     dotenv, ld = home
-    argv = [pi, "--pi-user=pi"] + (extra_argv or [])
-    rc = mwt.main(argv, dotenv_path=str(dotenv), ld_dir=str(ld))
+    payload = {"pi_address": pi, "pi_user": user}
+    if ical is not None:
+        payload["ical_url"] = ical
+    rc = mwt.main(stdin=io.StringIO(json.dumps(payload)),
+                  dotenv_path=str(dotenv), ld_dir=str(ld))
     return rc, capsys.readouterr().out
+
+
+def refuse(home, **payload):
+    dotenv, ld = home
+    with pytest.raises(SystemExit) as e:
+        mwt.main(stdin=io.StringIO(json.dumps(payload)),
+                 dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert dotenv.read_text() == SEED
+    assert not ld.exists()
+    return str(e.value)
 
 
 def token_in(dotenv):
@@ -107,12 +124,7 @@ def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, ba
     """The address lands inside a URL in the dotenv and inside the curl the
     agent runs through Latch, so anything but [A-Za-z0-9.-] is refused by
     name, and nothing has been written when it is."""
-    dotenv, ld = home
-    with pytest.raises(SystemExit) as e:
-        mwt.main([bad, "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
-    assert "pi address" in str(e.value)
-    assert dotenv.read_text() == SEED
-    assert not ld.exists()
+    assert "pi address" in refuse(home, pi_address=bad, pi_user="pi")
 
 
 @pytest.mark.parametrize("bad", ["collector.example", "134744072", "8.8.8.8", "raspberrypi"],
@@ -121,19 +133,14 @@ def test_a_public_address_refuses_the_bearer_stays_on_the_household_network(home
     """These pass the charset but reach off the household network: a public
     hostname, a dotless decimal that curl reads as 8.8.8.8, and a public IP.
     The wall's bearer rides every request to this host, so all refuse."""
-    dotenv, ld = home
-    with pytest.raises(SystemExit) as e:
-        mwt.main([bad, "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
-    assert "household" in str(e.value)
-    assert dotenv.read_text() == SEED
-    assert not ld.exists()
+    assert "household" in refuse(home, pi_address=bad, pi_user="pi")
 
 
 def test_an_omitted_ical_url_keeps_the_feed_already_in_pi_env(home, capsys):
     """Omitted is not blank: the idempotent re-run the sheet prescribes must
     not erase the feed a later re-point or Pi rebuild ships."""
     dotenv, ld = home
-    run(home, capsys, extra_argv=["--ical-url", ICAL])
+    run(home, capsys, ical=ICAL)
     rc, out = run(home, capsys)
     assert rc == 0
     tok = token_in(dotenv)
@@ -164,12 +171,7 @@ def test_a_login_that_is_not_a_user_refuses_before_touching_anything(home, bad):
     """pi_user rides an ssh argv element in Phase 3; the interview's charset
     rule is enforced here in code so a missed refusal there still cannot put
     shell-relevant characters on the Mac."""
-    dotenv, ld = home
-    with pytest.raises(SystemExit) as e:
-        mwt.main([PI, f"--pi-user={bad}"], dotenv_path=str(dotenv), ld_dir=str(ld))
-    assert "pi user" in str(e.value)
-    assert dotenv.read_text() == SEED
-    assert not ld.exists()
+    assert "pi user" in refuse(home, pi_address=PI, pi_user=bad)
 
 
 def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home, capsys):
@@ -178,21 +180,22 @@ def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home
     dotenv, ld = home
     dotenv.write_text(SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n")
     with pytest.raises(SystemExit) as e:
-        mwt.main([PI, "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
+        mwt.main(stdin=io.StringIO(json.dumps({"pi_address": PI, "pi_user": "pi"})),
+                 dotenv_path=str(dotenv), ld_dir=str(ld))
     assert "DASHBOARD_TOKEN" in str(e.value)
     assert not ld.exists()
 
 
-@pytest.mark.parametrize(("extra_argv", "expected"), [
-    (["--ical-url", ICAL], ICAL),
-    ([], ""),
+@pytest.mark.parametrize(("ical", "expected"), [
+    (ICAL, ICAL),
+    (None, ""),
 ], ids=["given", "omitted"])
-def test_ical_url_lands_only_in_pi_env(home, capsys, extra_argv, expected):
+def test_ical_url_lands_only_in_pi_env(home, capsys, ical, expected):
     """The Pi's calendar tile reads the feed URL directly from pi.env; it is
     a private feed, so it must never appear on stdout. Omitted leaves the
     line blank."""
     dotenv, ld = home
-    rc, out = run(home, capsys, extra_argv=extra_argv)
+    rc, out = run(home, capsys, ical=ical)
     assert rc == 0
     tok = token_in(dotenv)
     assert (ld / "pi.env").read_text() == f"ICAL_URL={expected}\nDASHBOARD_TOKEN={tok}\n"

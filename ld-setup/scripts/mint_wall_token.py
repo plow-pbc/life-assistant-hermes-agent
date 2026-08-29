@@ -25,19 +25,27 @@ re-run with a different pi_address re-points DASHBOARD_ENDPOINT_URL in place
 decommissioned one. The two files ARE rewritten from the existing token every
 run, so a re-run after a lost /opt/data/ld/ still has something to ship.
 
+Answers arrive as ONE JSON object on stdin -- {"pi_address": ..., "pi_user":
+..., "ical_url": ...} -- never on argv and never interpolated into shell
+text: fed through a quoted heredoc they are inert data, the same rule as
+write_config.py, where an embedded quote in an owner's answer would
+otherwise execute before any validation here could see it. Leave "ical_url"
+out to keep the feed already in pi.env.
+
 Stdout never carries the token. It carries pi_line_1= and pi_line_2=, the two
 commands the agent runs on the Pi through Latch -- bare, one per line, nothing
 shell-wrapped, so each value drops straight into an ssh argv element.
 
-ICAL_URL comes from --ical-url when given; omitted, the value already in
-pi.env is kept (an idempotent re-run must not erase the feed), and only a
-first run with no pi.env writes it blank -- the viewer treats a blank one as
-"Can't reach calendar" until the owner fills it. The URL is a private feed,
-so like the token it is written to pi.env only -- never printed.
+ICAL_URL comes from the "ical_url" answer when the key is present; absent,
+the value already in pi.env is kept (an idempotent re-run must not erase the
+feed), and only a first run with no pi.env writes it blank -- the viewer
+treats a blank one as "Can't reach calendar" until the owner fills it. The
+URL is a private feed, so like the token it is written to pi.env only --
+never printed.
 """
 from __future__ import annotations
 
-import argparse
+import json
 import os
 import re
 import secrets
@@ -103,39 +111,37 @@ def write_private(path, text):
         f.write(text)
 
 
-def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("pi_address", help="the Pi on the owner's LAN: an IP, or raspberrypi.local")
-    parser.add_argument(
-        "--ical-url", default=None,
-        help="optional iCal feed URL for the Pi's calendar tile; omitted keeps the feed "
-             "already in pi.env (blank only when there is no pi.env yet)",
-    )
-    parser.add_argument(
-        "--pi-user", required=True,
-        help="the Pi's ssh login, validated here so Phase 3's argv only ever carries the safe charset",
-    )
-    args = parser.parse_args(argv)
-    if not PI_ADDRESS_RE.fullmatch(args.pi_address):
+def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
+    try:
+        answers = json.load(stdin or sys.stdin)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"refusing: stdin is not one JSON object: {exc}") from None
+    unknown = set(answers) - {"pi_address", "pi_user", "ical_url"}
+    if unknown:
+        raise SystemExit(f"refusing: unknown keys {sorted(unknown)}")
+    pi_address = str(answers.get("pi_address", ""))
+    pi_user = str(answers.get("pi_user", ""))
+    ical_url = answers.get("ical_url")  # absent = keep what pi.env holds
+    if not PI_ADDRESS_RE.fullmatch(pi_address):
         raise SystemExit(
-            f"refusing: pi address {args.pi_address!r} is not [A-Za-z0-9.-] -- "
+            f"refusing: pi address {pi_address!r} is not [A-Za-z0-9.-] -- "
             "it lands in a URL and in an ssh argv element"
         )
-    if not household_host(args.pi_address):
+    if not household_host(pi_address):
         raise SystemExit(
-            f"refusing: pi address {args.pi_address!r} is not on the household network "
+            f"refusing: pi address {pi_address!r} is not on the household network "
             "(a private IP or a .local name) -- the wall's bearer rides every "
             "request to this host"
         )
-    if not PI_USER_RE.fullmatch(args.pi_user):
+    if not PI_USER_RE.fullmatch(pi_user):
         raise SystemExit(
-            f"refusing: pi user {args.pi_user!r} is not [A-Za-z0-9._-] -- "
+            f"refusing: pi user {pi_user!r} is not [A-Za-z0-9._-] -- "
             "it lands in an ssh argv element in Phase 3"
         )
 
     values = dotenv_values(dotenv_path)
     old = values.get("DASHBOARD_ENDPOINT_URL", "").strip()
-    endpoint = f"http://{args.pi_address}:5174/api/message"
+    endpoint = f"http://{pi_address}:5174/api/message"
     if old:
         token = values.get("DASHBOARD_TOKEN", "").strip()
         if not token:
@@ -169,16 +175,12 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         print(f"minted the wall token; appended DASHBOARD_ENDPOINT_URL={endpoint}, "
               f"DASHBOARD_TOKEN and DASHBOARD_DELIVERY=latch to {dotenv_path}.")
 
-    ical = args.ical_url
+    ical = ical_url
     if ical is None:
         # Omitted is not "blank": an idempotent re-run must not erase the
-        # feed a later re-point or Pi rebuild ships.
-        try:
-            with open(os.path.join(ld_dir, "pi.env"), encoding="utf-8") as f:
-                ical = next((line.partition("=")[2].rstrip("\n")
-                             for line in f if line.startswith("ICAL_URL=")), "")
-        except FileNotFoundError:
-            ical = ""
+        # feed a later re-point or Pi rebuild ships. dotenv_values reads a
+        # missing pi.env as empty, so a first run still writes it blank.
+        ical = dotenv_values(os.path.join(ld_dir, "pi.env")).get("ICAL_URL", "")
 
     os.makedirs(ld_dir, mode=0o700, exist_ok=True)
     write_private(os.path.join(ld_dir, "pi.env"), f"ICAL_URL={ical}\nDASHBOARD_TOKEN={token}\n")
