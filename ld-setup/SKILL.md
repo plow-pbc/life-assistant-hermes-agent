@@ -123,9 +123,11 @@ means Phase 1 is done. The full shape it writes is
 
 Idempotent, so there is no dotenv to inspect by hand — always run it, with
 the Pi's address as its one positional argument (an address is not a secret;
-argv is fine) and the owner's iCal URL, if they gave one, as `--ical-url`:
+argv is fine), the Pi's login as `--pi-user` (validated here in code so
+Phase 3's `ssh` argv can only ever carry the safe charset), and the owner's
+iCal URL, if they gave one, as `--ical-url`:
 
-    /opt/data/skills/ld-setup/scripts/mint_wall_token.py <pi_address> --ical-url '<ical_url>'
+    /opt/data/skills/ld-setup/scripts/mint_wall_token.py <pi_address> --pi-user '<pi_user>' --ical-url '<ical_url>'
 
 Drop `--ical-url` entirely when the owner had no feed; the file then carries a
 blank `ICAL_URL=`, which the viewer shows as an empty calendar tile until a
@@ -283,7 +285,8 @@ Then tell the owner: "your wall is live — the weather card should be
 showing; is it?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.
 
-Only now, after that proof, mark the whole run done — this is the only thing
-that writes this file, and nothing before this line should:
+Only now — after the owner's confirmation, this phase's for a Mac install,
+Phase 3's `pi-brought-up` for a no-Mac one — mark the whole run done; this is
+the only thing that writes this file, and nothing before this line should:
 
     date -u +%FT%TZ > /opt/data/ld/setup-complete

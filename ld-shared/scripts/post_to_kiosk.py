@@ -278,10 +278,11 @@ def main():
     dotenv = dotenv_values(DOTENV)
     latch = dotenv.get(DELIVERY_KEY, "").strip() == "latch"
     url, url_source = read_secret(ENDPOINT_FILE, ENDPOINT_ENV, "endpoint URL")
-    if latch and dotenv.get(ENDPOINT_ENV, "").strip():
+    if latch and url_source == "env" and dotenv.get(ENDPOINT_ENV, "").strip():
         # ld-setup owns the latch endpoint in the dotenv and re-points it there
         # on a Pi address change; the startup env is that file's boot-time load,
         # so after a re-point the env is the stale copy — the dotenv line wins.
+        # Only over env: a secrets-mount file keeps its documented precedence.
         url, url_source = dotenv[ENDPOINT_ENV].strip(), "dotenv"
     if not any(url.startswith(p) for p in REQUIRED_URL_PREFIXES):
         sys.exit(f"error: endpoint URL must start with http:// or https://, got: {url}")

@@ -53,6 +53,10 @@ LD_DIR = "/opt/data/ld"
 # A LAN IP or an mDNS/DNS name. It lands inside a URL in the dotenv and inside
 # the curl the agent runs through Latch, so nothing else is allowed through.
 PI_ADDRESS_RE = re.compile(r"[A-Za-z0-9.-]+")
+# The Pi's ssh login. It rides ssh/scp argv in Phase 3; this check is the
+# code-level twin of the interview rule so a missed refusal there still
+# cannot put shell-relevant characters on the Mac.
+PI_USER_RE = re.compile(r"[A-Za-z0-9._-]+")
 # apt-get, not apt: apt prints "WARNING: apt does not have a stable CLI
 # interface", and the skill reads any WARNING as "this phase did not finish".
 # `sudo env ...`, not a bare prefix: sudo's env_reset drops a caller-set
@@ -76,14 +80,17 @@ def append_dotenv(path, pairs):
 
 
 def rewrite_dotenv_line(path, key, value):
-    """Converge one machine-written NAME=value line in place. Only ever aimed
-    at the endpoint line -- the token line is never touched (a re-mint would
-    lock the producers out of the wall)."""
+    """Converge one machine-written NAME=value line. Only ever aimed at the
+    endpoint line -- the token line is never touched (a re-mint would lock the
+    producers out of the wall). Written beside and os.replace'd in, never
+    truncate-in-place: this file is the whole agent's config, and a crash
+    mid-write must leave the original intact."""
     with open(path, encoding="utf-8") as f:
         lines = f.read().splitlines()
     out = [f"{key}={value}" if line.partition("=")[0] == key else line for line in lines]
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(out) + "\n")
+    tmp = f"{path}.repoint"
+    write_private(tmp, "\n".join(out) + "\n")
+    os.replace(tmp, path)
 
 
 def write_private(path, text):
@@ -103,11 +110,20 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         "--ical-url", default="",
         help="optional iCal feed URL for the Pi's calendar tile; blank is legal (502s the tile)",
     )
+    parser.add_argument(
+        "--pi-user", default="",
+        help="the Pi's ssh login, validated here for Phase 3's argv; blank skips the check",
+    )
     args = parser.parse_args(argv)
     if not PI_ADDRESS_RE.fullmatch(args.pi_address):
         raise SystemExit(
             f"refusing: pi address {args.pi_address!r} is not [A-Za-z0-9.-] -- "
             "it lands in a URL and in an ssh argv element"
+        )
+    if args.pi_user and not PI_USER_RE.fullmatch(args.pi_user):
+        raise SystemExit(
+            f"refusing: pi user {args.pi_user!r} is not [A-Za-z0-9._-] -- "
+            "it lands in an ssh argv element in Phase 3"
         )
 
     values = dotenv_values(dotenv_path)

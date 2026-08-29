@@ -115,6 +115,20 @@ def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, ba
     assert not ld.exists()
 
 
+@pytest.mark.parametrize("bad", ["sam odio", "pi;id", "-oProxyCommand=x"],
+                         ids=["space", "semicolon", "dash-option"])
+def test_a_login_that_is_not_a_user_refuses_before_touching_anything(home, bad):
+    """pi_user rides an ssh argv element in Phase 3; the interview's charset
+    rule is enforced here in code so a missed refusal there still cannot put
+    shell-relevant characters on the Mac."""
+    dotenv, ld = home
+    with pytest.raises(SystemExit) as e:
+        mwt.main([PI, f"--pi-user={bad}"], dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "pi user" in str(e.value)
+    assert dotenv.read_text() == SEED
+    assert not ld.exists()
+
+
 def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home, capsys):
     """Half a dotenv (someone deleted the TOKEN line) must not produce a
     pi.env with DASHBOARD_TOKEN= blank -- that disables the Pi's API."""
