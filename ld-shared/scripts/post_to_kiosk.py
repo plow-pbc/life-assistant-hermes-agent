@@ -55,6 +55,13 @@ via argv:
   All three are fixed, non-argv, non-caller-steerable; all three empty is a
   loud refusal.
 
+  delivery — DASHBOARD_DELIVERY in the dotenv:
+    - `latch`: no POST. The wire body is written to OUTBOX_DIR/card-<n>.json
+      (mode 600) and LATCH_BLOCK is printed: the two Latch calls that ship it
+      from the owner's Mac, which is on the Pi's LAN when this container is
+      not. The token is not read in this mode.
+    - anything else: the direct POST above.
+
 The test suite imports this module and rebinds these constants (the secret-file
 paths, DOTENV, MESSAGE_FILE) and feeds stdin — a seam reachable only by an importer,
 not by the CLI a scheduled agent invokes.
@@ -110,6 +117,22 @@ REQUIRED_URL_PREFIXES = ("http://", "https://")
 # The only endpoint shape the agent-writable dotenv may name: the Pi's own
 # message API on the household LAN. Anything else there is an injected line.
 DOTENV_ENDPOINT_RE = re.compile(r"http://[^/]+:5174/api/message")
+
+# Latch delivery. When the dotenv says DASHBOARD_DELIVERY=latch the Pi is
+# reachable only from the owner's Mac, so the wire body goes to this outbox
+# and the agent ships it with two Latch calls (ld-shared/references/
+# latch-delivery.md). The token is never read in that mode: the Mac holds it
+# in ~/Plow/ld/dashboard.hdr, written once by ld-setup.
+DELIVERY_KEY = "DASHBOARD_DELIVERY"
+OUTBOX_DIR = "/opt/data/ld/outbox"
+LATCH_BLOCK = (
+    "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
+    "1. plow_write_file  path=~/Plow/ld/card-{card}.json  content=<the JSON below>\n"
+    "2. plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+    "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-{card}.json "
+    "{url}\"] network=true\n"
+    "{json}"
+)
 
 
 def read_required_file(path, label):
@@ -219,6 +242,21 @@ def post_bearer_json(url, token, body, label):
         sys.exit(f"error: POST to {label} failed: {exc.reason}")
 
 
+def hand_off_to_latch(url, body):
+    """Latch delivery: the exact wire body to the outbox, mode 600, plus the
+    two Latch calls the agent makes with it. No request leaves here -- the
+    Mac, on the Pi's LAN, makes it -- and the agent's run is not done until
+    that curl returned 2xx (the reference sheet holds it to that)."""
+    os.makedirs(OUTBOX_DIR, mode=0o700, exist_ok=True)
+    path = os.path.join(OUTBOX_DIR, f"card-{CARD}.json")
+    wire = json.dumps(body)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(wire)
+    print(LATCH_BLOCK.format(card=CARD, url=url, json=wire))
+
+
 def main():
     if not CARD:
         sys.exit("error: post_to_kiosk.CARD not set by caller")
@@ -239,7 +277,10 @@ def main():
         sys.exit(f"error: endpoint URL must start with http:// or https://, got: {url}")
     if url_source == "dotenv":
         _validate_dotenv_endpoint(url)
-    token, _ = read_secret(TOKEN_FILE, TOKEN_ENV, "token")
+    latch = dotenv_values(DOTENV).get(DELIVERY_KEY, "").strip() == "latch"
+    # Direct mode reads the token here, BEFORE --dry-run, so a missing token
+    # still refuses on a dry run as it always has. Latch mode never needs it.
+    token = None if latch else read_secret(TOKEN_FILE, TOKEN_ENV, "token")[0]
 
     body = {"card": CARD, "type": BODY_TYPE, "text": text}
     if TITLE is not None:
@@ -264,7 +305,10 @@ def main():
         )
         return
 
-    post_bearer_json(url, token, body, "message API")
+    if latch:
+        hand_off_to_latch(url, body)
+    else:
+        post_bearer_json(url, token, body, "message API")
 
     # Consume the one-shot handoff. Success path only — left intact on the error
     # exits above so a retry resends it; the module docstring owns the window

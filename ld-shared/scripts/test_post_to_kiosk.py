@@ -74,6 +74,7 @@ def reset_module():
     # Not the real /opt/data/.env: a machine that happens to have one would
     # otherwise satisfy the third source and silence the both-absent refusals.
     post_to_kiosk.DOTENV = "/nonexistent/dotenv-for-tests/.env"
+    post_to_kiosk.OUTBOX_DIR = "/opt/data/ld/outbox"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
     os.environ.pop(post_to_kiosk.TOKEN_ENV, None)
 
@@ -125,6 +126,23 @@ def use_env_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", 
     post_to_kiosk.TOKEN_FILE = str(tmp / "nonexistent-token")
     os.environ[post_to_kiosk.ENDPOINT_ENV] = endpoint
     os.environ[post_to_kiosk.TOKEN_ENV] = TOKEN
+
+
+def use_latch_delivery(tmp: Path, endpoint, card="3", body_type="weather"):
+    """Latch transport: endpoint from the env (so a loopback server can stand
+    where the Pi would and prove nothing reached it), DASHBOARD_DELIVERY=latch
+    from the dotenv, the outbox rebound under tmp. No token anywhere: latch
+    mode must not need one -- the Mac holds it."""
+    reset_module()
+    post_to_kiosk.CARD = card
+    post_to_kiosk.BODY_TYPE = body_type
+    post_to_kiosk.ENDPOINT_FILE = str(tmp / "nonexistent-endpoint")
+    post_to_kiosk.TOKEN_FILE = str(tmp / "nonexistent-token")
+    os.environ[post_to_kiosk.ENDPOINT_ENV] = endpoint
+    dotenv = tmp / ".env"
+    dotenv.write_text("DASHBOARD_DELIVERY=latch\n")
+    post_to_kiosk.DOTENV = str(dotenv)
+    post_to_kiosk.OUTBOX_DIR = str(tmp / "outbox")
 
 
 class _CapturingHandler(BaseHTTPRequestHandler):
@@ -249,6 +267,66 @@ def test_dotenv_endpoint_that_is_not_the_pi_is_refused():
     check("dotenv endpoint off the Pi shape exits non-zero", code != 0)
     check("no request reached the server (refused before any send)", len(_CapturingHandler.received) == 0)
     check("bearer token not echoed on refusal", TOKEN not in out)
+
+
+def test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request():
+    """DASHBOARD_DELIVERY=latch: the exact wire body lands in the outbox (mode
+    600), the fixed NOT DELIVERED block names both Latch calls, no request is
+    made, no token is read or printed, and the handoff is consumed because the
+    outbox now holds the body."""
+    server, base = _start_server()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            use_latch_delivery(Path(d), endpoint=f"{base}/api/message")
+            msg = Path(d) / "ld-weather-text"
+            msg.write_text("<div class='weather'>72°</div>")
+            post_to_kiosk.MESSAGE_FILE = str(msg)
+            post_to_kiosk.TITLE = ""
+            code, out = run()
+            outbox = Path(d) / "outbox" / "card-3.json"
+            written = outbox.read_text() if outbox.exists() else None
+            mode = oct(outbox.stat().st_mode & 0o777) if outbox.exists() else None
+            file_gone = not msg.exists()
+    finally:
+        server.shutdown()
+        reset_module()
+    wire = json.dumps({"card": "3", "type": "weather", "text": "<div class='weather'>72°</div>", "title": ""})
+    check("latch exit zero", code == 0)
+    check("no request reached the server", len(_CapturingHandler.received) == 0)
+    check("outbox holds the exact wire body", written == wire)
+    check("outbox file is mode 600", mode == "0o600")
+    check("MESSAGE_FILE consumed once the outbox holds the body", file_gone)
+    check(
+        "stdout is the fixed NOT DELIVERED block with both Latch calls and the JSON",
+        out == (
+            "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
+            "1. plow_write_file  path=~/Plow/ld/card-3.json  content=<the JSON below>\n"
+            "2. plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+            "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-3.json "
+            f"{base}/api/message\"] network=true\n"
+            f"{wire}\n"
+        ),
+    )
+    check("no token on stdout (latch mode never reads one)", TOKEN not in out)
+
+
+def test_a_delivery_that_is_not_latch_still_posts():
+    """DASHBOARD_DELIVERY unset, blank, or anything but `latch` is today's
+    direct POST -- the dotenv's presence alone changes nothing."""
+    for delivery in ("", "direct"):
+        server, base = _start_server()
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                use_env_secrets(Path(d), endpoint=f"{base}/api/message")
+                dotenv = Path(d) / ".env"
+                dotenv.write_text(f"DASHBOARD_DELIVERY={delivery}\n")
+                post_to_kiosk.DOTENV = str(dotenv)
+                code, _ = run(stdin_text="x")
+        finally:
+            server.shutdown()
+            reset_module()
+        check(f"DASHBOARD_DELIVERY={delivery!r} exits zero", code == 0)
+        check(f"DASHBOARD_DELIVERY={delivery!r} still POSTs to the endpoint", len(_CapturingHandler.received) == 1)
 
 
 def test_message_file_preserved_on_send_failure():
@@ -446,6 +524,8 @@ def main():
     test_env_secrets_message_file_posts_and_consumes_file()
     test_dotenv_secrets_are_the_third_source()
     test_dotenv_endpoint_that_is_not_the_pi_is_refused()
+    test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request()
+    test_a_delivery_that_is_not_latch_still_posts()
     test_message_file_preserved_on_send_failure()
     test_optional_title_is_posted_when_set()
     test_dry_run_redacts_body_and_token()

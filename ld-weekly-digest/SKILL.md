@@ -170,6 +170,10 @@ two surfaces, in this order:
    response — surface that and stop; do not continue to the chat step on a
    failed kiosk post.
 
+   If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
+   follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+   is not done until the Latch `curl` returned 2xx.
+
    Preview without sending (body text is redacted to `<redacted, N chars>`):
 
        /opt/data/skills/ld-weekly-digest/scripts/post_digest.py --dry-run
