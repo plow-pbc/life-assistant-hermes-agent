@@ -44,7 +44,7 @@ only ever name *one*, and `agent-mgr`'s ownership guard refuses a home that does
 not match the instance's own name, so a repo that declared one could not be
 shared at all. Silence is what makes this work.
 
-`agent.env` is a **closed set** holding only `AGENT_CONFIG`;
+`agent.env` is a **closed set** holding only `AGENT_CONFIG` and `AGENT_LIVE`;
 `tests/test_config_contract.py` fails on any other key, of any kind. Every
 instance reads this one file, so a new key is given to all of them — adding one
 is a deliberate edit to `DESCRIPTOR_KEYS`, not something a comment can justify.
@@ -339,7 +339,8 @@ latch#183 later puts back.
 ## Layout
 
 ```
-agent.env       what is true of every instance: where its config lives
+agent.env       what is true of every instance: where its config lives, and
+                that it is live (AGENT_LIVE=1 -- transitions ask first)
 runtime/        config.yaml: model, plugins, mcp_servers
 skills.tsv      empty -- no connectors on this instance (see above)
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one

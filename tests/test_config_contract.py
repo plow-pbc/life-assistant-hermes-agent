@@ -52,7 +52,7 @@ def config():
     return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
 
 
-DESCRIPTOR_KEYS = {"AGENT_CONFIG"}
+DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
 
 
 def test_the_descriptor_carries_nothing_but_the_shared_config_path():
@@ -76,7 +76,8 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
     every AGENT_* name passed it, so AGENT_TOKEN=sk-... would have shipped green.
     One exact key cannot."""
     assert set(descriptor()) == DESCRIPTOR_KEYS, (
-        "agent.env is a CLOSED SET: it holds AGENT_CONFIG and nothing else. "
+        "agent.env is a CLOSED SET: it holds AGENT_CONFIG and AGENT_LIVE, "
+        "nothing else. "
         "Every instance reads this one file, so adding a key means editing "
         "DESCRIPTOR_KEYS deliberately -- see README.md. A person-valued key "
         "(a timezone, a locale) does not belong here at all, and identity "
@@ -88,6 +89,14 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
 def test_the_descriptor_names_where_this_agents_config_lives():
     assert descriptor()["AGENT_CONFIG"] == "runtime/config.yaml"
     assert (ROOT / "runtime" / "config.yaml").is_file()
+
+
+def test_every_instance_is_live():
+    """Real people's workflows run through every instance, and the gateway
+    messages its person at every restart -- the guard is what makes a
+    transition deliberate, so a descriptor that stopped saying so would
+    silently strip it from all of them."""
+    assert descriptor()["AGENT_LIVE"] == "1"
 
 
 def test_the_phone_line_is_enabled():
