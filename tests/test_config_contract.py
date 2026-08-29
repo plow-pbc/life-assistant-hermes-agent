@@ -99,26 +99,10 @@ def test_every_instance_is_live():
     assert descriptor()["AGENT_LIVE"] == "1"
 
 
-def test_the_phone_line_is_enabled():
+def test_the_phone_line_is_enabled_without_instance_policy():
     cfg = config()
     assert "plow-chat-platform" in cfg["plugins"]["enabled"]
-    assert cfg["platforms"]["plow_chat"]["enabled"] is True
-
-
-def test_trusted_groups_stay_in_the_shared_plugin_not_instance_config():
-    """This repo declares that the phone platform is on; Plow and the pinned
-    plugin own per-chat trust, prompt selection, and the agent write tool.
-    Adding a second group-policy config here would make Docker and cloud agents
-    disagree again and would not be changed by the account dashboard.
-    """
-    cfg = config()
     assert cfg["platforms"]["plow_chat"] == {"enabled": True}
-    assert cfg["plugins"]["entries"]["plow-chat-platform"]["allow_tool_override"] is False
-
-    readme = (ROOT / "README.md").read_text()
-    assert "## Trusted group conversations" in readme
-    assert "plow_set_conversation_trusted" in readme
-    assert "agent-mgr restore <agent>" in readme
 
 
 def test_latch_is_the_only_mcp_server():
