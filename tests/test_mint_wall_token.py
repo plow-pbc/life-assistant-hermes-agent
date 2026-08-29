@@ -61,6 +61,8 @@ def test_stdin_that_is_not_the_answer_object_refuses(home):
     with pytest.raises(SystemExit) as e:
         mwt.main(stdin=io.StringIO("not json"), dotenv_path=str(dotenv), ld_dir=str(ld))
     assert "not one JSON object" in str(e.value)
+    assert dotenv.read_text() == SEED
+    assert not ld.exists()
     assert "unknown keys" in refuse(home, pi_address=PI, pi_user="pi", pi_adress="typo")
 
 
