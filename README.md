@@ -143,7 +143,11 @@ not an omission to be tidied up later.
 `<agent>` is the registry name. `life` is the only instance that *may* be
 registered today; see [Adding a second instance](#adding-a-second-instance) for the other.
 
-Nothing to land first. The agent writes its own `ld/config.json` and mints
+Nothing to land first for the dashboard itself. Before restoring this revision,
+deploy the Plow current-session preferences endpoint and compatible
+`hermes-plow-chat` pin; otherwise removing the local notification override can
+put self-improvement reviews back in the owner's chat. The agent writes its own
+`ld/config.json` and mints
 the wall's token on the owner's first reply: `runtime/SOUL.md` tells it that
 a missing or gate-failing config means it is not set up, and
 `ld-setup/SKILL.md` is what it runs then — the interview, `write_config.py`,
