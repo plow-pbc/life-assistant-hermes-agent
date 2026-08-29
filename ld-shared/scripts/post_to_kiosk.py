@@ -93,6 +93,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from bearer_http import open_no_redirect
 from runtime_env import DOTENV, dotenv_values, household_host
 
 # Bundle-specific — the wrapper sets these before calling main().
@@ -215,22 +216,6 @@ def read_message():
     return text
 
 
-def _no_redirect_opener():
-    """urllib opener that refuses 3xx redirects.
-
-    Default urllib follows redirects AND forwards the Authorization header to
-    the new origin — a rewritten endpoint or compromised host could steer the
-    bearer to an attacker URL. Refuse the redirect; the HTTPError handler then
-    fails loudly.
-    """
-
-    class _NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *_args, **_kwargs):
-            return None
-
-    return urllib.request.build_opener(_NoRedirect)
-
-
 def post_bearer_json(url, token, body, label):
     """One bearer-token JSON POST, shared by every producer leg.
 
@@ -245,7 +230,7 @@ def post_bearer_json(url, token, body, label):
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
     )
     try:
-        _no_redirect_opener().open(req, timeout=30).close()
+        open_no_redirect(req, timeout=30).close()
     except urllib.error.HTTPError as exc:
         # Don't decode exc.read() — the same echoed-text concern.
         sys.exit(f"error: {label} returned HTTP {exc.code} {exc.reason}")

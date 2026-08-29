@@ -29,6 +29,12 @@ import time
 import urllib.error
 import urllib.request
 
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
+)
+from bearer_http import open_no_redirect  # noqa: E402
+
 ENDPOINT_ENV = "DASHBOARD_ENDPOINT_URL"
 TOKEN_ENV = "DASHBOARD_TOKEN"
 MESSAGE_SUFFIX = "/api/message"
@@ -55,23 +61,11 @@ def base_url():
     return url[: -len(MESSAGE_SUFFIX)]
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Refuse 3xx: the default opener would forward the Authorization header
-    to the redirect target, disclosing the household bearer — same reasoning
-    as post_to_kiosk.py's opener."""
-
-    def redirect_request(self, *_args, **_kwargs):
-        return None
-
-
-_OPENER = urllib.request.build_opener(_NoRedirect)
-
-
 def probe(url, token):
     """One GET of /api/version → its body text, or the failure as text."""
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
     try:
-        with _OPENER.open(req, timeout=REQUEST_TIMEOUT) as resp:
+        with open_no_redirect(req, timeout=REQUEST_TIMEOUT) as resp:
             return resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         return f"HTTP {exc.code} {exc.reason}"
