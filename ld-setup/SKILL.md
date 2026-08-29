@@ -12,8 +12,8 @@ reset, a rebuilt home or an interrupted chat all pick up from here.
 | phase | what it produces | the artifact that skips it |
 |---|---|---|
 | 1 · interview | `/opt/data/ld/config.json` | the file exists **and** the gate prints nothing |
-| 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/opt/data/ld/pi.env`, `/opt/data/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…` |
-| 3 · Pi bring-up | a running viewer holding this token | `/api/version` through Latch answers with JSON carrying `sha` |
+| 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/opt/data/ld/pi.env`, `/opt/data/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…`, confirming it already ran (the script is idempotent; run it every time) |
+| 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/opt/data/ld/pi-brought-up` exists |
 | 4 · crons + proof | the six schedules and one real card | `/opt/data/ld/setup-complete` exists |
 
 `/opt/data/ld/setup-complete` is the one thing that marks the whole run done
@@ -82,7 +82,7 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | `extra_calendar_ids` | any shared calendars? — the full id, `…@group.calendar.google.com` | more `calendar.sources[]` |
 | `city` | which city is home? | `weather.location`, geocoded to `lat`/`lon` |
 | `timezone` | run `echo $TZ`, tell the owner that zone, ask them to confirm it is theirs | `family.timezone` |
-| `has_mac` | do you have a Mac with Plow Latch running? (without it the calendar and message cards stay empty, and the Pi has to be set up by hand — the weather and sports cards do not need it) | gates `mac_username`; decides the Phase 3 path |
+| `has_mac` | do you have a Mac with Plow Latch running? (without one, only the calendar tile updates — the weather, sports and message cards need the Mac to ship them — and the Pi has to be set up by hand) | gates `mac_username`; decides the Phase 3 path |
 | `mac_username` | your Mac login name (only with a Mac) | `morning_triage.chat_db_path` |
 | `pi_address` | the Pi's address on your home network — the IP, or `raspberrypi.local` | Phase 2 (`mint_wall_token.py`) and the Phase 3 `ssh` target; not in the config |
 | `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the Phase 3 `ssh` target; not in the config |
@@ -104,9 +104,10 @@ agrees with the container instead — the cards would land at the wrong hour.
 
 Compose ONE JSON object from the answers (keys exactly as the table's first
 column; `has_mac` a real boolean, not `"yes"` or `1`; list keys as lists,
-`teams` a list of objects shaped as above; `pi_address`, `pi_user` and
-`ical_url` may be included — the script ignores them) and feed it on stdin —
-never on argv — to:
+`teams` a list of objects shaped as above; `pi_address` and `pi_user` may be
+included — the script ignores them. Leave `ical_url` out of the JSON entirely
+— its only destination is Phase 2's `--ical-url` argument) and feed it on
+stdin — never on argv — to:
 
     /opt/data/skills/ld-setup/scripts/write_config.py <<'EOF'
     { ...the answers... }
@@ -159,12 +160,13 @@ angle brackets to the Mac.
 
 ## Phase 3 — Bring the Pi up through Latch
 
-Skip when this returns JSON carrying a `sha` (the viewer is up and the token
-is the one it checks):
+**With a Mac:** skip when this returns JSON carrying a `sha` (the viewer is
+up and the token is the one it checks — a Latch call, so it belongs to this
+path only; the no-Mac path has its own gate below):
 
     plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
 
-**With a Mac:** probe key auth first — no password should ever need to
+Otherwise probe key auth first — no password should ever need to
 cross chat. `BatchMode=yes` on every `ssh`/`scp` so a key-auth regression
 fails fast instead of hanging on a password prompt with no tty;
 `StrictHostKeyChecking=accept-new` because the first connection has no host
@@ -199,7 +201,7 @@ and make it the `content` (nowhere else), then copy it across and restart
 the viewer:
 
     plow_write_file(path="~/Plow/ld/pi.env", content=<the content of /opt/data/ld/pi.env>)
-    plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env <pi_user>@<pi_address>:ld-data/.env && ssh -o BatchMode=yes <pi_user>@<pi_address> 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'"], network=true)
+    plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env <pi_user>@<pi_address>:ld-data/.env && ssh -o BatchMode=yes <pi_user>@<pi_address> 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'"], network=true, timeout=30000)
 
 Finish with the skip check at the top of this phase: JSON with a `sha` means
 the viewer is up and the token is live. Paste it. Any other result — 401
@@ -208,17 +210,22 @@ restart the viewer), connection refused (the viewer is not up yet; wait a
 minute and retry, at most a few times), unreachable device (the Mac) — is
 reported verbatim, and this phase is not done.
 
-**No Mac (or no Latch):** the fallback is the direct one, and the token
-crosses chat once — acknowledged, not ideal, and the only place in this
-sheet where that is allowed. Text the owner, verbatim: (1) `pi_line_1`, (2)
-`pi_line_2`, and (3) the two lines of `/opt/data/ld/pi.env` (read with your
-file tool; this is the one place its content may be pasted), and say: run
-the first two on the Pi over ssh or at its keyboard, then put those two
-lines in `~/ld-data/.env` on the Pi, `chmod 600 ~/ld-data/.env`, and run
+**No Mac (or no Latch):** skip this path when `/opt/data/ld/pi-brought-up`
+exists — the file written below on the owner's confirmation. Otherwise the
+fallback is the direct one, and the token crosses chat once — acknowledged,
+not ideal, and the only place in this sheet where that is allowed. Text the
+owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
+`/opt/data/ld/pi.env` (read with your file tool; this is the one place its
+content may be pasted), and say: run the first two on the Pi over ssh or at
+its keyboard, then put those two lines in `~/ld-data/.env` on the Pi,
+`chmod 600 ~/ld-data/.env`, and run
 `systemctl --user restart life-dashboard-viewer`; the screen comes up on its
-own within a few minutes. Ask them to tell you when it is done, then
-continue — you cannot reach the Pi yourself without a Mac, so the owner's
-word that the screen is up is this phase's proof.
+own within a few minutes. You cannot reach the Pi yourself without a Mac, so
+the owner's word that the screen is up is this phase's proof — when they say
+it is, write the artifact that keeps a resumed run (or a deleted
+setup-complete marker) from texting the token across chat a second time:
+
+    date -u +%FT%TZ > /opt/data/ld/pi-brought-up
 
 ## Phase 4 — Crons, and one card
 
@@ -256,10 +263,15 @@ read the card back the same way the producers write it:
 `{"message": {…"type":"weather"…}}` is the gate: the weather producer's card
 is on the Pi. `{"message": null}` means it is not — read the forced run's
 output (`/opt/hermes/bin/hermes cron runs`) for what went wrong, fix it, and
-force it again. Without a Mac, ask the owner instead whether the weather card
-is showing on the screen.
+force it again.
 
-Then tell the owner: "your wall is live — the weather card should be
+Without a Mac there is no card to check: every pushed card — weather, sports,
+messages — stays empty until a Mac with Latch exists, because delivery always
+routes through the outbox and nothing ships it. Do not ask the owner to look
+for a card; ask whether the screen itself is up — the frame with its calendar
+tile — and write the marker on that confirmation.
+
+With a Mac, tell the owner: "your wall is live — the weather card should be
 showing; is it?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.
 
