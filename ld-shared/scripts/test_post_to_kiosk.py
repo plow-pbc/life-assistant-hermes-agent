@@ -2,7 +2,8 @@
 """Tests for post_to_kiosk.py — the shared POST helper every ld- producer uses.
 
 The helper reads the message text from one of two fixed sources (stdin, or a
-caller-set MESSAGE_FILE) and the endpoint URL + bearer token file-first-then-env.
+caller-set MESSAGE_FILE) and the endpoint URL + bearer token from the first
+populated of three: the secret file, the process env, then the shared dotenv.
 The body shape (CARD + BODY_TYPE, plus an optional TITLE) is set by each
 producer's thin wrapper before calling main(). These tests import the module and
 rebind those constants to scratch files / env — a seam reachable only by an
@@ -70,6 +71,9 @@ def reset_module():
     post_to_kiosk.MESSAGE_FILE = None
     post_to_kiosk.ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
     post_to_kiosk.TOKEN_FILE = "/config/secrets/dashboard-token"
+    # Not the real /opt/data/.env: a machine that happens to have one would
+    # otherwise satisfy the third source and silence the both-absent refusals.
+    post_to_kiosk.DOTENV = "/nonexistent/dotenv-for-tests/.env"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
     os.environ.pop(post_to_kiosk.TOKEN_ENV, None)
 
@@ -90,6 +94,26 @@ def use_file_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1",
     post_to_kiosk.ENDPOINT_FILE = str(endpoint_file)
     post_to_kiosk.TOKEN_FILE = str(token_file)
     return endpoint_file, token_file
+
+
+def use_dotenv_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", body_type="alert"):
+    """Dotenv transport: no secret file, no env var — both keys in DOTENV alone.
+
+    The live case ld-setup creates: mint_wall_token.py appends its lines after
+    the gateway loaded /opt/data/.env, so a cron-spawned producer sees them
+    only by reading the file itself.
+    """
+    reset_module()
+    post_to_kiosk.CARD = card
+    post_to_kiosk.BODY_TYPE = body_type
+    post_to_kiosk.ENDPOINT_FILE = str(tmp / "nonexistent-endpoint")
+    post_to_kiosk.TOKEN_FILE = str(tmp / "nonexistent-token")
+    dotenv = tmp / ".env"
+    dotenv.write_text(
+        f"PLOW_AGENT_TOKEN={TOKEN}\n{post_to_kiosk.ENDPOINT_ENV}={endpoint}\n"
+        f"{post_to_kiosk.TOKEN_ENV}={TOKEN}\n"
+    )
+    post_to_kiosk.DOTENV = str(dotenv)
 
 
 def use_env_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", body_type="alert"):
@@ -188,6 +212,43 @@ def test_env_secrets_message_file_posts_and_consumes_file():
         check("auth header uses the env token", r["auth"] == f"Bearer {TOKEN}")
         check("body card/type from wrapper", (r["body"]["card"], r["body"]["type"]) == ("3", "weather"))
         check("body text is the MESSAGE_FILE contents", r["body"]["text"] == "<div class='weather'>72°</div>")
+
+
+def test_dotenv_secrets_are_the_third_source():
+    """No secret file and no env var: both values come from the dotenv, and a
+    Pi-shaped endpoint there is accepted. --dry-run, so no server is needed
+    and the URL can carry the real port 5174 rather than a loopback's.
+
+    Without this source, every line mint_wall_token.py appends after `up`
+    stays invisible to the producers until the gateway restarts."""
+    with tempfile.TemporaryDirectory() as d:
+        use_dotenv_secrets(Path(d), endpoint="http://raspberrypi.local:5174/api/message",
+                           card="3", body_type="weather")
+        code, out = run("--dry-run", stdin_text="72 and clear")
+    reset_module()
+    check("dotenv-only dry-run exit zero", code == 0)
+    check(
+        "the dotenv's endpoint is the one that would be posted to",
+        code == 0 and json.loads(out)["url"] == "http://raspberrypi.local:5174/api/message",
+    )
+    check("dotenv token never appears on stdout", TOKEN not in out)
+
+
+def test_dotenv_endpoint_that_is_not_the_pi_is_refused():
+    """/opt/data/.env is agent-writable at runtime; an injected endpoint line
+    there must not steer the bearer anywhere but http://<host>:5174/api/message.
+    A live loopback server on another port proves nothing was sent."""
+    server, base = _start_server()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            use_dotenv_secrets(Path(d), endpoint=f"{base}/api/message", card="3", body_type="weather")
+            code, out = run(stdin_text="x")
+    finally:
+        server.shutdown()
+        reset_module()
+    check("dotenv endpoint off the Pi shape exits non-zero", code != 0)
+    check("no request reached the server (refused before any send)", len(_CapturingHandler.received) == 0)
+    check("bearer token not echoed on refusal", TOKEN not in out)
 
 
 def test_message_file_preserved_on_send_failure():
@@ -383,6 +444,8 @@ def test_redirect_not_followed():
 def main():
     test_file_secrets_stdin_message_posts_correct_payload()
     test_env_secrets_message_file_posts_and_consumes_file()
+    test_dotenv_secrets_are_the_third_source()
+    test_dotenv_endpoint_that_is_not_the_pi_is_refused()
     test_message_file_preserved_on_send_failure()
     test_optional_title_is_posted_when_set()
     test_dry_run_redacts_body_and_token()
