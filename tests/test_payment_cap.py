@@ -1,9 +1,9 @@
-"""tests/test_payment_cap.py — behavior tests for the ld-payments daily cap.
+"""tests/test_payment_cap.py — behavior tests for the advisory daily guideline.
 
-The cap is the soft secondary ceiling; the assertion is the verdict a caller
-reads (WITHIN / EXCEEDS) and the exit code, driven through the same CLI the
-SKILL.md tells the agent to run — so a change to the cap value or the boundary
-rule fails here rather than as a mis-decided payment.
+The assertion is the advisory verdict a caller reads (WITHIN / EXCEEDS) and the
+exit code, driven through the same CLI the SKILL.md tells the agent to run — so
+a change to the cap value or the boundary rule fails here rather than as a
+mis-decided payment.
 """
 import subprocess
 import sys

@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-"""payment_cap.py — the soft daily ceiling for ld-payments.
+"""payment_cap.py — the advisory daily guideline for ld-payments.
 
-The SECONDARY bound only. The real bound on any payment is the owner's
-per-payment confirmation (the platform's fail-closed gate releases the banking
-credential only after the owner approves that specific payment with the code
-sent to their thread — see ../SKILL.md). This cap is a backstop against a
-runaway day: the running total of payments the owner has approved today must
-stay at or under it. The agent tallies today's already-approved payments from
-the owner thread (the authoritative approval record) and asks this script
-whether one more fits — the arithmetic lives here, not in the model, so a long
-session cannot fumble the sum.
+This is a secondary, best-effort check. The owner still decides every payment
+through the platform approval flow described in ../SKILL.md. The agent tallies
+today's already-approved payments from the owner thread and asks this script
+whether one more fits the configured guideline — the arithmetic lives here, not
+in the model, so a long session cannot fumble the sum.
 
-Stateless on purpose: it keeps no ledger and reads no files. There is no
-enforcement here — enforcement is the platform gate — only a deterministic
-"does this fit under today's remaining budget" answer.
+Stateless on purpose: it keeps no ledger and reads no files. It is not an atomic
+platform limit: overlapping turns can observe the same tally. It only provides
+a deterministic "does this fit under today's remaining guideline" answer.
 
 Verdict is the first token of stdout — WITHIN or EXCEEDS — so a caller can read
 it without parsing. Both are valid, successful answers, so both exit 0; only
