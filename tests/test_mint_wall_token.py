@@ -126,16 +126,20 @@ def test_a_public_address_refuses_the_bearer_stays_on_the_household_network(home
     assert not ld.exists()
 
 
-def test_a_pre_latch_dotenv_converges_delivery_to_latch(home, capsys):
+@pytest.mark.parametrize("seed_delivery", ["", "DASHBOARD_DELIVERY=direct\n"],
+                         ids=["absent", "direct"])
+def test_a_pre_latch_dotenv_converges_delivery_to_latch(home, capsys, seed_delivery):
     """A direct-POST install re-run through this setup keeps its token and
     endpoint but gains DASHBOARD_DELIVERY=latch -- without it every producer
-    would POST directly at a Pi only the Mac can reach."""
+    would POST directly at a Pi only the Mac can reach. An absent key is
+    appended; a direct one is rewritten in place, never duplicated."""
     dotenv, ld = home
     dotenv.write_text(SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n"
-                      "DASHBOARD_TOKEN=tok_wall\n")
+                      "DASHBOARD_TOKEN=tok_wall\n" + seed_delivery)
     rc, out = run(home, capsys)
     assert rc == 0
-    assert "\nDASHBOARD_DELIVERY=latch\n" in dotenv.read_text()
+    assert dotenv.read_text().count("DASHBOARD_DELIVERY") == 1
+    assert "DASHBOARD_DELIVERY=latch\n" in dotenv.read_text()
     assert "converged: DASHBOARD_DELIVERY=latch" in out
 
 

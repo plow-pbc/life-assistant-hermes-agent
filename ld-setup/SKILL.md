@@ -221,11 +221,13 @@ minute and retry, at most a few times), unreachable device (the Mac) — is
 reported verbatim, and this phase is not done.
 
 **No Mac (or no Latch):** skip this path when `/opt/data/ld/pi-brought-up`
-exists — the file written below on the owner's confirmation. One exception:
-if this run supplied a *new* `ical_url`, text the owner just the updated
-`ICAL_URL=…` line from `/opt/data/ld/pi.env` — never the token line again —
-to replace in `~/ld-data/.env` on the Pi, followed by
-`systemctl --user restart life-dashboard-viewer`. Otherwise the
+exists — the file written below on the owner's confirmation. Two exceptions:
+if Phase 2 printed `re-pointed:`, this is a *different Pi* — ignore the
+marker and run the full fallback below, because the new device has neither
+the packages nor its env. If this run only supplied a *new* `ical_url`, text
+the owner just the updated `ICAL_URL=…` line from `/opt/data/ld/pi.env` —
+never the token line again — to replace in `~/ld-data/.env` on the Pi,
+followed by `systemctl --user restart life-dashboard-viewer`. Otherwise the
 fallback is the direct one, and the token crosses chat once — acknowledged,
 not ideal, and the only place in this sheet where that is allowed. Text the
 owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
