@@ -201,7 +201,7 @@ def _validate_dotenv_endpoint(url):
     if not household_host(url[len("http://"):-len(":5174/api/message")]):
         sys.exit(
             f"error: endpoint host in {url} is not on the household network "
-            "(a private IP, a .local name, or a bare LAN hostname) — refusing"
+            "(a private IP or a .local name) — refusing"
         )
 
 

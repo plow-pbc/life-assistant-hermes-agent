@@ -38,12 +38,14 @@ def dotenv_values(path=DOTENV):
 def household_host(host):
     """True only for a host that can be on the owner's home network: an IP
     literal that is not globally routable (RFC1918, the 100.64/10 tailnet
-    range, link-local), a .local mDNS name, or a dotless LAN hostname. The
-    wall's bearer rides every request to this host, so a public name here is
-    exfiltration, not configuration. Shared by mint_wall_token.py (refusing
-    the interview answer) and post_to_kiosk.py (refusing an injected dotenv
-    line) so the two gates cannot drift."""
+    range, link-local) or a .local mDNS name. No bare-hostname fallback --
+    curl reads a dotless numeric string like 134744072 as the public address
+    8.8.8.8, so anything that is not a parseable IP or .local is refused.
+    The wall's bearer rides every request to this host, so a public name
+    here is exfiltration, not configuration. Shared by mint_wall_token.py
+    (refusing the interview answer) and post_to_kiosk.py (refusing an
+    injected dotenv line) so the two gates cannot drift."""
     try:
         return not ipaddress.ip_address(host).is_global
     except ValueError:
-        return host.endswith(".local") or "." not in host
+        return host.endswith(".local")

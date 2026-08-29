@@ -326,10 +326,11 @@ def test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not():
     env -- and ONLY over env: a secrets-mount file keeps its documented
     precedence even when the dotenv also names the key."""
     cases = [  # label, secrets-file host (None = absent), env host, dotenv host, winner, loser
+        # Hosts are private IPs: a dotenv-sourced endpoint is household-gated.
         ("latch env endpoint yields to the re-pointed dotenv line",
-         None, "stale-pi", "new-pi", "new-pi", "stale-pi"),
+         None, "192.168.1.9", "192.168.1.50", "192.168.1.50", "192.168.1.9:"),
         ("latch secrets-file endpoint keeps precedence over the dotenv",
-         "from-file", "from-env", "from-dotenv", "from-file", "from-dotenv"),
+         "10.0.0.7", "192.168.1.9", "192.168.1.50", "10.0.0.7", "192.168.1.50"),
     ]
     for label, file_host, env_host, dotenv_host, winner, loser in cases:
         with tempfile.TemporaryDirectory() as d:

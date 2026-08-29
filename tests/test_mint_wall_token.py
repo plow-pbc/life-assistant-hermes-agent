@@ -115,15 +115,30 @@ def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, ba
     assert not ld.exists()
 
 
-def test_a_public_address_refuses_the_bearer_stays_on_the_household_network(home):
-    """collector.example passes the charset but is globally routable; the
-    wall's bearer rides every request to this host, so it is refused."""
+@pytest.mark.parametrize("bad", ["collector.example", "134744072", "8.8.8.8"],
+                         ids=["public-name", "decimal-ip", "public-ip"])
+def test_a_public_address_refuses_the_bearer_stays_on_the_household_network(home, bad):
+    """These pass the charset but reach off the household network: a public
+    hostname, a dotless decimal that curl reads as 8.8.8.8, and a public IP.
+    The wall's bearer rides every request to this host, so all refuse."""
     dotenv, ld = home
     with pytest.raises(SystemExit) as e:
-        mwt.main(["collector.example", "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
+        mwt.main([bad, "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
     assert "household" in str(e.value)
     assert dotenv.read_text() == SEED
     assert not ld.exists()
+
+
+def test_an_omitted_ical_url_keeps_the_feed_already_in_pi_env(home, capsys):
+    """Omitted is not blank: the idempotent re-run the sheet prescribes must
+    not erase the feed a later re-point or Pi rebuild ships."""
+    dotenv, ld = home
+    run(home, capsys, extra_argv=["--ical-url", ICAL])
+    rc, out = run(home, capsys)
+    assert rc == 0
+    tok = token_in(dotenv)
+    assert (ld / "pi.env").read_text() == f"ICAL_URL={ICAL}\nDASHBOARD_TOKEN={tok}\n"
+    assert ICAL not in out
 
 
 @pytest.mark.parametrize("seed_delivery", ["", "DASHBOARD_DELIVERY=direct\n"],

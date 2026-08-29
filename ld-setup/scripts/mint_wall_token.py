@@ -29,11 +29,11 @@ Stdout never carries the token. It carries pi_line_1= and pi_line_2=, the two
 commands the agent runs on the Pi through Latch -- bare, one per line, nothing
 shell-wrapped, so each value drops straight into an ssh argv element.
 
-ICAL_URL is written blank unless --ical-url is given: nothing in the config
-or the interview otherwise carries an iCal feed URL (the calendar ids there
-are gog's, not a feed), and the viewer treats a blank one as "Can't reach
-calendar" until the owner fills it. The URL is a private feed, so like the
-token it is written to pi.env only -- never printed.
+ICAL_URL comes from --ical-url when given; omitted, the value already in
+pi.env is kept (an idempotent re-run must not erase the feed), and only a
+first run with no pi.env writes it blank -- the viewer treats a blank one as
+"Can't reach calendar" until the owner fills it. The URL is a private feed,
+so like the token it is written to pi.env only -- never printed.
 """
 from __future__ import annotations
 
@@ -107,8 +107,9 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("pi_address", help="the Pi on the owner's LAN: an IP, or raspberrypi.local")
     parser.add_argument(
-        "--ical-url", default="",
-        help="optional iCal feed URL for the Pi's calendar tile; blank is legal (502s the tile)",
+        "--ical-url", default=None,
+        help="optional iCal feed URL for the Pi's calendar tile; omitted keeps the feed "
+             "already in pi.env (blank only when there is no pi.env yet)",
     )
     parser.add_argument(
         "--pi-user", required=True,
@@ -123,8 +124,8 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
     if not household_host(args.pi_address):
         raise SystemExit(
             f"refusing: pi address {args.pi_address!r} is not on the household network "
-            "(a private IP, a .local name, or a bare LAN hostname) -- the wall's "
-            "bearer rides every request to this host"
+            "(a private IP or a .local name) -- the wall's bearer rides every "
+            "request to this host"
         )
     if not PI_USER_RE.fullmatch(args.pi_user):
         raise SystemExit(
@@ -168,8 +169,19 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         print(f"minted the wall token; appended DASHBOARD_ENDPOINT_URL={endpoint}, "
               f"DASHBOARD_TOKEN and DASHBOARD_DELIVERY=latch to {dotenv_path}.")
 
+    ical = args.ical_url
+    if ical is None:
+        # Omitted is not "blank": an idempotent re-run must not erase the
+        # feed a later re-point or Pi rebuild ships.
+        try:
+            with open(os.path.join(ld_dir, "pi.env"), encoding="utf-8") as f:
+                ical = next((line.partition("=")[2].rstrip("\n")
+                             for line in f if line.startswith("ICAL_URL=")), "")
+        except FileNotFoundError:
+            ical = ""
+
     os.makedirs(ld_dir, mode=0o700, exist_ok=True)
-    write_private(os.path.join(ld_dir, "pi.env"), f"ICAL_URL={args.ical_url}\nDASHBOARD_TOKEN={token}\n")
+    write_private(os.path.join(ld_dir, "pi.env"), f"ICAL_URL={ical}\nDASHBOARD_TOKEN={token}\n")
     write_private(os.path.join(ld_dir, "dashboard.hdr"), f"Authorization: Bearer {token}\n")
     print(f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr (mode 600) -- "
           "ship them with plow_write_file; never paste them.")

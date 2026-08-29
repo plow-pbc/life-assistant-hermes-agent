@@ -129,9 +129,10 @@ iCal URL, if they gave one, as `--ical-url`:
 
     /opt/data/skills/ld-setup/scripts/mint_wall_token.py <pi_address> --pi-user '<pi_user>' --ical-url '<ical_url>'
 
-Drop `--ical-url` entirely when the owner had no feed; the file then carries a
-blank `ICAL_URL=`, which the viewer shows as an empty calendar tile until a
-later re-run supplies one.
+Drop `--ical-url` entirely when the owner gave no feed *this run* — an
+omitted flag keeps whatever feed `pi.env` already carries, and only a first
+run with no `pi.env` yet writes it blank (the viewer shows an empty calendar
+tile until a later re-run supplies one).
 
 The first run mints the token and appends `DASHBOARD_ENDPOINT_URL`
 (`http://<pi_address>:5174/api/message`), `DASHBOARD_TOKEN` and
@@ -224,10 +225,11 @@ reported verbatim, and this phase is not done.
 exists — the file written below on the owner's confirmation. Two exceptions:
 if Phase 2 printed `re-pointed:`, this is a *different Pi* — ignore the
 marker and run the full fallback below, because the new device has neither
-the packages nor its env. If this run only supplied a *new* `ical_url`, text
-the owner just the updated `ICAL_URL=…` line from `/opt/data/ld/pi.env` —
-never the token line again — to replace in `~/ld-data/.env` on the Pi,
-followed by `systemctl --user restart life-dashboard-viewer`. Otherwise the
+the packages nor its env. If this run only supplied a *new* `ical_url`, ask
+the owner to set `ICAL_URL=` in `~/ld-data/.env` on the Pi to the feed URL
+they just gave you — do not repeat the URL back (it is a private feed and
+they already hold it), and never the token line again — then
+`systemctl --user restart life-dashboard-viewer`. Otherwise the
 fallback is the direct one, and the token crosses chat once — acknowledged,
 not ideal, and the only place in this sheet where that is allowed. Text the
 owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
