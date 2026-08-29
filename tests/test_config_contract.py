@@ -631,3 +631,20 @@ def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
     skill = (ROOT / "ld-setup" / "SKILL.md").read_text()
     assert SETUP_COMPLETE_MARKER in soul, "SOUL.md does not name the setup-complete marker"
     assert SETUP_COMPLETE_MARKER in skill, "ld-setup/SKILL.md does not name the setup-complete marker"
+
+
+def test_the_life_assistant_exhausts_safe_capabilities_before_handoff():
+    """Tool-backed completion must be the default, with explicit safety bounds."""
+    soul = " ".join((ROOT / "runtime" / "SOUL.md").read_text().split())
+    required = (
+        "Finish every task the owner has authorized",
+        (
+            "inspect the available skills, connected services, local data sources, "
+            "and permissioned tools"
+        ),
+        "Request the narrow access you need",
+        "Ask the owner only when you are blocked by",
+        "never expose it in chat",
+    )
+    for rule in required:
+        assert rule in soul, f"SOUL.md is missing the resourcefulness rule: {rule!r}"
