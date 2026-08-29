@@ -316,6 +316,29 @@ plugin is pinned in `plow-pbc/agent-mgr`, installed by `agent-mgr restore
 so one repo bumping it for every agent is the behaviour you want; this repo used
 to carry a pin covering both, and that argument now belongs one layer up.
 
+## Trusted group conversations
+
+Conversation trust is state on the owner's Plow `Chat`, not on the physical
+phone line and not in this repository. The owner can change it from the Plow
+dashboard's **Trusted lines** card or ask the agent in that conversation, which
+uses the shared `plow_set_conversation_trusted` tool after explicit
+confirmation. A member cannot change the setting.
+
+In an untrusted group, the assistant keeps owner material out of the thread. In
+a trusted group, every participant may ask it to use its normal tools and
+connected accounts, and requested results are answered where everyone can see
+them. For this life assistant, “What's on the schedule today?” reaches Google
+Calendar through Latch's vendored `gog`; trust changes whether that result may
+be returned to the group, not how calendar access works. Credentials,
+authentication secrets, raw tokens, and payment-card secrets remain excluded.
+
+The policy and tool live in the one `hermes-plow-chat` plugin used by Docker and
+cloud agents. Deploy the Plow API preference first, advance agent-mgr's exact
+plugin SHA second, then run `agent-mgr restore <agent>` so the installed copy in
+that instance's home changes. `runtime/config.yaml` only enables the platform;
+adding group prompts or another trust flag there would create a second policy
+path that the dashboard cannot update.
+
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
 feeds every non-empty line to `lib/fetch-tree` as a repo name, so a `# see
