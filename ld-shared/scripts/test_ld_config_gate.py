@@ -77,14 +77,15 @@ CASES = [
      json.dumps({**VALID, "family": {**VALID["family"], "owner": {}}}),
      "family.owner.name is blank", True),
     ("(c) sources empty array",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": []}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": []}}),
      "calendar.sources is not a non-empty array", True),
     ("(c') sources missing",
-     json.dumps({"family": VALID["family"], "calendar": {"account": "owner@example.test"},
+     json.dumps({"family": VALID["family"],
+                 "calendar": {"account": VALID["calendar"]["account"]},
                  "calendar_nudge": VALID["calendar_nudge"]}),
      "calendar.sources is not a non-empty array", True),
     ("(c'') sources non-array",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": "primary"}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": "primary"}}),
      "calendar.sources is not a non-empty array", True),
     ("(c''') calendar account missing",
      json.dumps({**VALID, "calendar": {"sources": VALID["calendar"]["sources"]}}),
@@ -93,21 +94,24 @@ CASES = [
      json.dumps({**VALID, "calendar": {**VALID["calendar"], "account": "  "}}),
      "calendar.account is blank", True),
     ("(d) blank source calendar_id",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": [{"calendar_id": "  ", "name": "Personal"}]}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"],
+                                       "sources": [{"calendar_id": "  ", "name": "Personal"}]}}),
      "a calendar.sources[].calendar_id is blank", True),
     ("(d') missing source calendar_id",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": [{"name": "Personal"}]}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"],
+                                       "sources": [{"name": "Personal"}]}}),
      "a calendar.sources[].calendar_id is blank", True),
     # The failure the account model hid: several sources saying "primary" all
     # resolve to the gog-authenticated account's one calendar. Uniqueness
     # subsumes the at-most-one-"primary" rule.
     ("(d'') duplicate calendar_id values",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": [
+     json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": [
          {"calendar_id": "primary", "name": "Personal"},
          {"calendar_id": "primary", "name": "Work"}]}}),
      "calendar.sources[].calendar_id values are not unique", True),
     ("(e) leftover placeholder (calendar_id)",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": [{"calendar_id": "[FAMILY_CALENDAR_ID]"}]}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"],
+                                       "sources": [{"calendar_id": "[FAMILY_CALENDAR_ID]"}]}}),
      "an unfilled [UPPER_SNAKE] placeholder remains", True),
     # The nudge's identity home: an empty/blank set is an eternally quiet
     # nudge that looks installed, so the gate refuses it by name.
@@ -190,18 +194,20 @@ CASES = [
      json.dumps({**VALID, "family": "oops"}),
      "not valid JSON", True),
     ("a source is non-object → not valid JSON",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": ["x"]}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": ["x"]}}),
      "not valid JSON", True),
     # A blank-id object FOLLOWED by a non-object element: jq's `?` suppresses
     # only the `.[]` iteration error, so it still evaluates `"x".calendar_id` and
     # the whole filter collapses to "not valid JSON" — it does NOT short-circuit on
     # the earlier blank id. Pins the gate to sweep ALL elements (no early break).
     ("blank calendar_id then non-object source → not valid JSON",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": [{"calendar_id": "  "}, "x"]}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"],
+                                       "sources": [{"calendar_id": "  "}, "x"]}}),
      "not valid JSON", True),
     # A non-string calendar_id errors in jq's test() — 'not valid JSON', not a verdict.
     ("calendar_id is a number → not valid JSON",
-     json.dumps({**VALID, "calendar": {"account": "owner@example.test", "sources": [{"calendar_id": 5}]}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"],
+                                       "sources": [{"calendar_id": 5}]}}),
      "not valid JSON", True),
     ("top-level array → not valid JSON", json.dumps([1, 2, 3]), "not valid JSON", True),
 ]

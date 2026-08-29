@@ -98,9 +98,12 @@ tracked tree stay identical for everyone:
 
 - The `PLOW_CHAT_TOKEN` that lands in the instance's `.env` belongs to whoever
   texted.
-- The Plow Chat line is theirs, so the agent texts and is texted by them and
-  nobody else. (It used to reach their Gmail, Calendar and Slack too, through
-  the `plow-connectors` skill — see [No connectors, and what that
+- The Plow Chat credential and private conversation belong to that owner. Other
+  people participate through group conversations; explicit owner trust controls
+  whether a group can use normal tools and owner material. Replies remain
+  visible to the whole group.
+  (The agent used to reach Gmail, Calendar and Slack through the
+  `plow-connectors` skill — see [No connectors, and what that
   costs](#no-connectors-and-what-that-costs).)
 - Their phone line does not draw on anyone else's pool. Plow's five service-wide
   numbers collide on **(line, participant set)**, and a different handset is a
