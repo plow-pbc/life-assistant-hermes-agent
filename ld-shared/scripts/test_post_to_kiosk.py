@@ -310,6 +310,38 @@ def test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_requ
     check("no token on stdout (latch mode never reads one)", TOKEN not in out)
 
 
+def test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not():
+    """ld-setup re-points the endpoint in the dotenv; the startup env is that
+    file's stale boot-time copy, so in latch mode the dotenv line wins over
+    env -- and ONLY over env: a secrets-mount file keeps its documented
+    precedence even when the dotenv also names the key."""
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            use_latch_delivery(Path(d), endpoint="http://stale-pi:5174/api/message")
+            (Path(d) / ".env").write_text(
+                "DASHBOARD_DELIVERY=latch\n"
+                "DASHBOARD_ENDPOINT_URL=http://new-pi:5174/api/message\n")
+            code, out = run(stdin_text="hi")
+        finally:
+            reset_module()
+    check("latch env endpoint yields to the re-pointed dotenv line",
+          code == 0 and "http://new-pi:5174/api/message" in out and "stale-pi" not in out)
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            use_latch_delivery(Path(d), endpoint="http://from-env:5174/api/message")
+            endpoint_file = Path(d) / "endpoint-file"
+            endpoint_file.write_text("http://from-file:5174/api/message")
+            post_to_kiosk.ENDPOINT_FILE = str(endpoint_file)
+            (Path(d) / ".env").write_text(
+                "DASHBOARD_DELIVERY=latch\n"
+                "DASHBOARD_ENDPOINT_URL=http://from-dotenv:5174/api/message\n")
+            code, out = run(stdin_text="hi")
+        finally:
+            reset_module()
+    check("latch secrets-file endpoint keeps precedence over the dotenv",
+          code == 0 and "http://from-file:5174/api/message" in out and "from-dotenv" not in out)
+
+
 def test_a_delivery_that_is_not_latch_still_posts():
     """DASHBOARD_DELIVERY unset, blank, or anything but `latch` is today's
     direct POST -- the dotenv's presence alone changes nothing."""
@@ -525,6 +557,7 @@ def main():
     test_dotenv_secrets_are_the_third_source()
     test_dotenv_endpoint_that_is_not_the_pi_is_refused()
     test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request()
+    test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not()
     test_a_delivery_that_is_not_latch_still_posts()
     test_message_file_preserved_on_send_failure()
     test_optional_title_is_posted_when_set()

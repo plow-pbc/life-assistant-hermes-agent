@@ -32,7 +32,7 @@ def home(tmp_path):
 
 def run(home, capsys, pi=PI, extra_argv=None):
     dotenv, ld = home
-    argv = [pi] + (extra_argv or [])
+    argv = [pi, "--pi-user=pi"] + (extra_argv or [])
     rc = mwt.main(argv, dotenv_path=str(dotenv), ld_dir=str(ld))
     return rc, capsys.readouterr().out
 
@@ -109,7 +109,7 @@ def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, ba
     name, and nothing has been written when it is."""
     dotenv, ld = home
     with pytest.raises(SystemExit) as e:
-        mwt.main([bad], dotenv_path=str(dotenv), ld_dir=str(ld))
+        mwt.main([bad, "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
     assert "pi address" in str(e.value)
     assert dotenv.read_text() == SEED
     assert not ld.exists()
@@ -135,7 +135,7 @@ def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home
     dotenv, ld = home
     dotenv.write_text(SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n")
     with pytest.raises(SystemExit) as e:
-        mwt.main([PI], dotenv_path=str(dotenv), ld_dir=str(ld))
+        mwt.main([PI, "--pi-user=pi"], dotenv_path=str(dotenv), ld_dir=str(ld))
     assert "DASHBOARD_TOKEN" in str(e.value)
     assert not ld.exists()
 

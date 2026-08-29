@@ -111,8 +111,8 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         help="optional iCal feed URL for the Pi's calendar tile; blank is legal (502s the tile)",
     )
     parser.add_argument(
-        "--pi-user", default="",
-        help="the Pi's ssh login, validated here for Phase 3's argv; blank skips the check",
+        "--pi-user", required=True,
+        help="the Pi's ssh login, validated here so Phase 3's argv only ever carries the safe charset",
     )
     args = parser.parse_args(argv)
     if not PI_ADDRESS_RE.fullmatch(args.pi_address):
@@ -120,7 +120,7 @@ def main(argv=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
             f"refusing: pi address {args.pi_address!r} is not [A-Za-z0-9.-] -- "
             "it lands in a URL and in an ssh argv element"
         )
-    if args.pi_user and not PI_USER_RE.fullmatch(args.pi_user):
+    if not PI_USER_RE.fullmatch(args.pi_user):
         raise SystemExit(
             f"refusing: pi user {args.pi_user!r} is not [A-Za-z0-9._-] -- "
             "it lands in an ssh argv element in Phase 3"
