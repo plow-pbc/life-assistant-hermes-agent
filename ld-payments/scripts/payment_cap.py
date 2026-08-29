@@ -23,6 +23,7 @@ cap check that silently mis-parsed its inputs is worse than no check.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 
 # TODO(hermes-cap-read): v1 hard-codes the cap. Once the Hermes cap-read path is
@@ -55,9 +56,14 @@ def main(argv: list[str] | None = None) -> int:
                    help="USD of the payment being considered now")
     args = p.parse_args(argv)
 
-    # Fail loud: a negative input is upstream drift, not a payment.
-    if args.spent_today < 0 or args.amount < 0:
-        print("EXIT: --spent-today and --amount must be >= 0", file=sys.stderr)
+    # Fail loud: a negative or non-finite input is upstream drift, not a
+    # payment. argparse's float() accepts "nan"/"inf", which slip past a bare
+    # `< 0` and would crash `round(inf * 100)` with a raw traceback — the exact
+    # uncontrolled exit this guard promises not to have.
+    if (not math.isfinite(args.spent_today) or not math.isfinite(args.amount)
+            or args.spent_today < 0 or args.amount < 0):
+        print("EXIT: --spent-today and --amount must be finite and >= 0",
+              file=sys.stderr)
         return 2
 
     new_total = args.spent_today + args.amount

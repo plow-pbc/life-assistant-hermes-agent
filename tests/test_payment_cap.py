@@ -65,10 +65,15 @@ def test_within_cap_matches_the_cli_at_the_boundary():
 @pytest.mark.parametrize(("spent", "amount"), [
     (-1, 50),
     (50, -1),
-], ids=["negative-spent", "negative-amount"])
-def test_negative_inputs_fail_loudly(spent, amount):
-    # A negative amount is upstream drift, not a payment — exit loud, don't
-    # silently treat it as a credit that frees up budget.
+    ("nan", 50),
+    (50, "inf"),
+    ("-inf", 50),
+], ids=["negative-spent", "negative-amount", "nan-spent", "inf-amount",
+        "neg-inf-spent"])
+def test_malformed_inputs_fail_loudly(spent, amount):
+    # A negative or non-finite amount is upstream drift, not a payment — exit
+    # loud (a controlled exit 2, never a raw traceback), don't silently treat a
+    # negative as a credit that frees up budget or let nan/inf crash the check.
     r = run(spent, amount)
     assert r.returncode == 2
     assert r.stdout == ""
