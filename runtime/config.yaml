@@ -17,7 +17,7 @@
 # door, ld-morning-triage the Mac's iMessage DB through the same one. See the
 # repo README, "No connectors, and what that costs".
 model:
-  default: gpt-5.5
+  default: gpt-5.6-sol
   provider: openai-codex
 display:
   # The background self-improvement review still runs and writes; only its
