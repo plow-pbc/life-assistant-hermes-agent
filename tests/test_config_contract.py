@@ -87,6 +87,7 @@ def test_the_descriptor_carries_nothing_but_the_shared_config_path():
 
 def test_the_descriptor_names_where_this_agents_config_lives():
     assert descriptor()["AGENT_CONFIG"] == "runtime/config.yaml"
+    assert (ROOT / "runtime" / "config.yaml").is_file()
 
 
 def test_every_instance_is_live():
@@ -95,7 +96,6 @@ def test_every_instance_is_live():
     transition deliberate, so a descriptor that stopped saying so would
     silently strip it from all of them."""
     assert descriptor()["AGENT_LIVE"] == "1"
-    assert (ROOT / "runtime" / "config.yaml").is_file()
 
 
 def test_the_phone_line_is_enabled():
