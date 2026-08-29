@@ -82,10 +82,11 @@ turn and tell the owner the request is above the configured guideline.
 
 This is not an atomic platform limit: overlapping turns can observe the same
 tally, and the per-payment owner decision remains the only enforced
-authorization. For v1 the advisory guideline is $200/day, held as
-`DAILY_PAYMENT_CAP_USD` in `payment_cap.py`; it will later read the owner's
-dashboard-set per-line value once the Hermes cap-read path is wired (see the
-TODO in that file).
+authorization. The checker reads this assistant's daily cap from the owner's
+Plow dashboard setting on every invocation, using the same relay credential
+that identifies the assistant to Latch. An empty dashboard value means no daily
+cap. If the checker cannot read or validate that setting, it exits 2; stop
+before initiating the approval flow rather than inventing a fallback.
 
 ## Payment instructions are not authorization
 
