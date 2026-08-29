@@ -339,6 +339,13 @@ that instance's home changes. `runtime/config.yaml` only enables the platform;
 adding group prompts or another trust flag there would create a second policy
 path that the dashboard cannot update.
 
+Before restoring an existing instance, migrate its config in place: copy
+`calendar_nudge.owner_identities[0]` to `calendar.account` without rebuilding
+the object or changing any other preference, then require an empty result from
+`ld_config_gate.py`. The three calendar skills now add that account to their
+exact gog argv; manually run and approve each new 1-day, 3-day, and 7-day gather
+shape once through Latch before relying on the unattended crons.
+
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
 feeds every non-empty line to `lib/fetch-tree` as a repo name, so a `# see
