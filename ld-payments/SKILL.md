@@ -51,7 +51,9 @@ For every payment, before anything else:
 The v1 Latch detector covers the maintained financial-domain list. An unlisted
 bank or a card form on an ordinary merchant site may not trigger the platform
 gate; this is an accepted v1 limitation, so the instruction-layer confirmation
-remains required for every payment request.
+remains required for every payment request. If the platform does not produce a
+private approval message that the owner can approve, stop before invoking the
+vault or submitting the payment.
 
 **Never move money without the owner's per-payment confirmation, and never
 handle raw credentials.** If a step would require you to see or enter a password,
