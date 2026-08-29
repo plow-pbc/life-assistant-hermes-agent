@@ -2,7 +2,8 @@
 """Tests for post_to_kiosk.py — the shared POST helper every ld- producer uses.
 
 The helper reads the message text from one of two fixed sources (stdin, or a
-caller-set MESSAGE_FILE) and the endpoint URL + bearer token file-first-then-env.
+caller-set MESSAGE_FILE) and the endpoint URL + bearer token from the first
+populated of three: the secret file, the process env, then the shared dotenv.
 The body shape (CARD + BODY_TYPE, plus an optional TITLE) is set by each
 producer's thin wrapper before calling main(). These tests import the module and
 rebind those constants to scratch files / env — a seam reachable only by an
@@ -70,6 +71,10 @@ def reset_module():
     post_to_kiosk.MESSAGE_FILE = None
     post_to_kiosk.ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
     post_to_kiosk.TOKEN_FILE = "/config/secrets/dashboard-token"
+    # Not the real /opt/data/.env: a machine that happens to have one would
+    # otherwise satisfy the third source and silence the both-absent refusals.
+    post_to_kiosk.DOTENV = "/nonexistent/dotenv-for-tests/.env"
+    post_to_kiosk.OUTBOX_DIR = "/opt/data/ld/outbox"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
     os.environ.pop(post_to_kiosk.TOKEN_ENV, None)
 
@@ -92,6 +97,26 @@ def use_file_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1",
     return endpoint_file, token_file
 
 
+def use_dotenv_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", body_type="alert"):
+    """Dotenv transport: no secret file, no env var — both keys in DOTENV alone.
+
+    The live case ld-setup creates: mint_wall_token.py appends its lines after
+    the gateway loaded /opt/data/.env, so a cron-spawned producer sees them
+    only by reading the file itself.
+    """
+    reset_module()
+    post_to_kiosk.CARD = card
+    post_to_kiosk.BODY_TYPE = body_type
+    post_to_kiosk.ENDPOINT_FILE = str(tmp / "nonexistent-endpoint")
+    post_to_kiosk.TOKEN_FILE = str(tmp / "nonexistent-token")
+    dotenv = tmp / ".env"
+    dotenv.write_text(
+        f"PLOW_AGENT_TOKEN={TOKEN}\n{post_to_kiosk.ENDPOINT_ENV}={endpoint}\n"
+        f"{post_to_kiosk.TOKEN_ENV}={TOKEN}\n"
+    )
+    post_to_kiosk.DOTENV = str(dotenv)
+
+
 def use_env_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", body_type="alert"):
     """Env transport: point the file paths at nonexistent files and set env vars."""
     reset_module()
@@ -101,6 +126,23 @@ def use_env_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", 
     post_to_kiosk.TOKEN_FILE = str(tmp / "nonexistent-token")
     os.environ[post_to_kiosk.ENDPOINT_ENV] = endpoint
     os.environ[post_to_kiosk.TOKEN_ENV] = TOKEN
+
+
+def use_latch_delivery(tmp: Path, endpoint, card="3", body_type="weather"):
+    """Latch transport: endpoint from the env (so a loopback server can stand
+    where the Pi would and prove nothing reached it), DASHBOARD_DELIVERY=latch
+    from the dotenv, the outbox rebound under tmp. No token anywhere: latch
+    mode must not need one -- the Mac holds it."""
+    reset_module()
+    post_to_kiosk.CARD = card
+    post_to_kiosk.BODY_TYPE = body_type
+    post_to_kiosk.ENDPOINT_FILE = str(tmp / "nonexistent-endpoint")
+    post_to_kiosk.TOKEN_FILE = str(tmp / "nonexistent-token")
+    os.environ[post_to_kiosk.ENDPOINT_ENV] = endpoint
+    dotenv = tmp / ".env"
+    dotenv.write_text("DASHBOARD_DELIVERY=latch\n")
+    post_to_kiosk.DOTENV = str(dotenv)
+    post_to_kiosk.OUTBOX_DIR = str(tmp / "outbox")
 
 
 class _CapturingHandler(BaseHTTPRequestHandler):
@@ -188,6 +230,142 @@ def test_env_secrets_message_file_posts_and_consumes_file():
         check("auth header uses the env token", r["auth"] == f"Bearer {TOKEN}")
         check("body card/type from wrapper", (r["body"]["card"], r["body"]["type"]) == ("3", "weather"))
         check("body text is the MESSAGE_FILE contents", r["body"]["text"] == "<div class='weather'>72°</div>")
+
+
+def test_dotenv_secrets_are_the_third_source():
+    """No secret file and no env var: both values come from the dotenv, and a
+    Pi-shaped endpoint there is accepted. --dry-run, so no server is needed
+    and the URL can carry the real port 5174 rather than a loopback's.
+
+    Without this source, every line mint_wall_token.py appends after `up`
+    stays invisible to the producers until the gateway restarts."""
+    with tempfile.TemporaryDirectory() as d:
+        use_dotenv_secrets(Path(d), endpoint="http://raspberrypi.local:5174/api/message",
+                           card="3", body_type="weather")
+        code, out = run("--dry-run", stdin_text="72 and clear")
+    reset_module()
+    check("dotenv-only dry-run exit zero", code == 0)
+    check(
+        "the dotenv's endpoint is the one that would be posted to",
+        code == 0 and json.loads(out)["url"] == "http://raspberrypi.local:5174/api/message",
+    )
+    check("dotenv token never appears on stdout", TOKEN not in out)
+
+
+def test_dotenv_endpoint_that_is_not_the_pi_is_refused():
+    """/opt/data/.env is agent-writable at runtime; an injected endpoint line
+    there must not steer the bearer anywhere but http://<host>:5174/api/message.
+    A live loopback server on another port proves nothing was sent."""
+    server, base = _start_server()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            use_dotenv_secrets(Path(d), endpoint=f"{base}/api/message", card="3", body_type="weather")
+            code, out = run(stdin_text="x")
+    finally:
+        server.shutdown()
+        reset_module()
+    check("dotenv endpoint off the Pi shape exits non-zero", code != 0)
+    check("no request reached the server (refused before any send)", len(_CapturingHandler.received) == 0)
+    check("bearer token not echoed on refusal", TOKEN not in out)
+    # Right shape, wrong reach: a public hostname passes the regex but must
+    # refuse before the bearer can walk off the household network.
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            use_dotenv_secrets(Path(d), endpoint="http://collector.example:5174/api/message",
+                               card="3", body_type="weather")
+            code, out = run(stdin_text="x")
+        finally:
+            reset_module()
+    check("dotenv endpoint on a public host is refused (right shape, wrong reach)", code != 0)
+
+
+def test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request():
+    """DASHBOARD_DELIVERY=latch: the exact wire body lands in the outbox (mode
+    600), the fixed NOT DELIVERED block names both Latch calls, no request is
+    made, no token is read or printed, and the handoff is consumed because the
+    outbox now holds the body."""
+    server, base = _start_server()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            use_latch_delivery(Path(d), endpoint=f"{base}/api/message")
+            msg = Path(d) / "ld-weather-text"
+            msg.write_text("<div class='weather'>72°</div>")
+            post_to_kiosk.MESSAGE_FILE = str(msg)
+            post_to_kiosk.TITLE = ""
+            code, out = run()
+            outbox = Path(d) / "outbox" / "card-3.json"
+            written = outbox.read_text() if outbox.exists() else None
+            mode = oct(outbox.stat().st_mode & 0o777) if outbox.exists() else None
+            file_gone = not msg.exists()
+    finally:
+        server.shutdown()
+        reset_module()
+    wire = json.dumps({"card": "3", "type": "weather", "text": "<div class='weather'>72°</div>", "title": ""})
+    check("latch exit zero", code == 0)
+    check("no request reached the server", len(_CapturingHandler.received) == 0)
+    check("outbox holds the exact wire body", written == wire)
+    check("outbox file is mode 600", mode == "0o600")
+    check("MESSAGE_FILE consumed once the outbox holds the body", file_gone)
+    check(
+        "stdout is the fixed NOT DELIVERED block with both Latch calls and the JSON",
+        out == (
+            "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
+            "1. plow_write_file  path=~/Plow/ld/card-3.json  content=<the JSON below>\n"
+            "2. plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+            "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-3.json "
+            f"{base}/api/message\"] network=true\n"
+            f"{wire}\n"
+        ),
+    )
+    check("no token on stdout (latch mode never reads one)", TOKEN not in out)
+
+
+def test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not():
+    """ld-setup re-points the endpoint in the dotenv; the startup env is that
+    file's stale boot-time copy, so in latch mode the dotenv line wins over
+    env -- and ONLY over env: a secrets-mount file keeps its documented
+    precedence even when the dotenv also names the key."""
+    cases = [  # label, secrets-file host (None = absent), env host, dotenv host, winner, loser
+        # Hosts are private IPs: a dotenv-sourced endpoint is household-gated.
+        ("latch env endpoint yields to the re-pointed dotenv line",
+         None, "192.168.1.9", "192.168.1.50", "192.168.1.50", "192.168.1.9"),
+        ("latch secrets-file endpoint keeps precedence over the dotenv",
+         "10.0.0.7", "192.168.1.9", "192.168.1.50", "10.0.0.7", "192.168.1.50"),
+    ]
+    for label, file_host, env_host, dotenv_host, winner, loser in cases:
+        with tempfile.TemporaryDirectory() as d:
+            try:
+                use_latch_delivery(Path(d), endpoint=f"http://{env_host}:5174/api/message")
+                if file_host:
+                    endpoint_file = Path(d) / "endpoint-file"
+                    endpoint_file.write_text(f"http://{file_host}:5174/api/message")
+                    post_to_kiosk.ENDPOINT_FILE = str(endpoint_file)
+                (Path(d) / ".env").write_text(
+                    "DASHBOARD_DELIVERY=latch\n"
+                    f"DASHBOARD_ENDPOINT_URL=http://{dotenv_host}:5174/api/message\n")
+                code, out = run(stdin_text="hi")
+            finally:
+                reset_module()
+        check(label, code == 0 and f"http://{winner}:5174/api/message" in out and loser not in out)
+
+
+def test_a_delivery_that_is_not_latch_still_posts():
+    """DASHBOARD_DELIVERY unset, blank, or anything but `latch` is today's
+    direct POST -- the dotenv's presence alone changes nothing."""
+    for delivery in ("", "direct"):
+        server, base = _start_server()
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                use_env_secrets(Path(d), endpoint=f"{base}/api/message")
+                dotenv = Path(d) / ".env"
+                dotenv.write_text(f"DASHBOARD_DELIVERY={delivery}\n")
+                post_to_kiosk.DOTENV = str(dotenv)
+                code, _ = run(stdin_text="x")
+        finally:
+            server.shutdown()
+            reset_module()
+        check(f"DASHBOARD_DELIVERY={delivery!r} exits zero", code == 0)
+        check(f"DASHBOARD_DELIVERY={delivery!r} still POSTs to the endpoint", len(_CapturingHandler.received) == 1)
 
 
 def test_message_file_preserved_on_send_failure():
@@ -383,6 +561,11 @@ def test_redirect_not_followed():
 def main():
     test_file_secrets_stdin_message_posts_correct_payload()
     test_env_secrets_message_file_posts_and_consumes_file()
+    test_dotenv_secrets_are_the_third_source()
+    test_dotenv_endpoint_that_is_not_the_pi_is_refused()
+    test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request()
+    test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not()
+    test_a_delivery_that_is_not_latch_still_posts()
     test_message_file_preserved_on_send_failure()
     test_optional_title_is_posted_when_set()
     test_dry_run_redacts_body_and_token()

@@ -103,6 +103,10 @@ never in argv), consuming the handoff only after both legs succeed. Fails
 loudly at whichever leg breaks — surface that in the final response.
 Preview with `--dry-run` (body redacted, nothing consumed).
 
+If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
+follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+is not done until the Latch `curl` returned 2xx.
+
 Then emit a one-line summary naming the count — "posted N meeting
 reminder(s)"; the content itself stays out of your hands by design.
 

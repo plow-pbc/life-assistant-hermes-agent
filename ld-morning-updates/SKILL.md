@@ -158,6 +158,10 @@ The endpoint stores a single current message per card, so each post
 replaces the previous one. There is no expiry: the message stays on the
 dashboard until the next day's post replaces it.
 
+If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
+follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+is not done until the Latch `curl` returned 2xx.
+
 Preview the request envelope without sending it (body text is redacted
 to `<redacted, N chars>`):
 

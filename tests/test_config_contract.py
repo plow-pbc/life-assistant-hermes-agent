@@ -438,15 +438,15 @@ def test_the_hermes_volumes_are_exactly_these():
         f":/opt/data/skills/{name}:ro"
         for name in SKILL_DIRS
     } | {
-        # The one non-skill bind: the shared ld-config pinned read-only over
-        # itself. /opt/data is the agent's writable home, so without this a
-        # prompt-injected turn could rewrite the config every producer
-        # trusts; the single-FILE bind keeps the fixed reader path while the
-        # ld/ handoff directory stays writable. Same exact-string discipline:
-        # drop :ro, widen it to the directory, or reroot the source and this
-        # fails with both sets printed.
-        "${AGENT_HOME:?set by agent-mgr from the instance descriptor}"
-        "/ld/config.json:/opt/data/ld/config.json:ro"
+        # The one non-skill bind: the repo's SOUL.md pinned read-only over the
+        # gateway's own copy (HERMES_HOME is /opt/data), so the setup rule it
+        # carries survives anything a turn writes into the home. The old
+        # config.json:ro bind is gone on purpose: the agent writes that file
+        # now (ld-setup), and pinning it was what forced "land it before up".
+        # Same exact-string discipline: drop :ro, reroot the source, or mount
+        # a directory and this fails with both sets printed.
+        "${AGENT_DIR:?set by agent-mgr from the registry}"
+        "/runtime/SOUL.md:/opt/data/SOUL.md:ro"
     }
 
 
@@ -474,7 +474,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     prefix = "/opt/data/skills/"
     leaves = set(SKILL_DIRS)
     seen = 0
-    for skill_md in sorted(ROOT.glob("ld-*/SKILL.md")):
+    for skill_md in [*sorted(ROOT.glob("ld-*/SKILL.md")), ROOT / "runtime" / "SOUL.md"]:
         text = skill_md.read_text()
         for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
             ref = ref.rstrip(".").rstrip("/")
@@ -618,3 +618,16 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     parsed = json.loads(template.read_text())
     assert "an unfilled [UPPER_SNAKE] placeholder remains" in gate.gate(parsed)
     assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"
+
+
+SETUP_COMPLETE_MARKER = "/opt/data/ld/setup-complete"
+
+
+def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
+    """SOUL.md's skip check and ld-setup's own write instruction have to agree
+    on the exact path -- a drift on either side reads as done when it isn't,
+    or never marks a real completion done at all."""
+    soul = (ROOT / "runtime" / "SOUL.md").read_text()
+    skill = (ROOT / "ld-setup" / "SKILL.md").read_text()
+    assert SETUP_COMPLETE_MARKER in soul, "SOUL.md does not name the setup-complete marker"
+    assert SETUP_COMPLETE_MARKER in skill, "ld-setup/SKILL.md does not name the setup-complete marker"

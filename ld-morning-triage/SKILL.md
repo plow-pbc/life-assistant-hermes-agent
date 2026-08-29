@@ -154,6 +154,10 @@ directory is not the skill directory):
 
     /opt/data/skills/ld-morning-triage/scripts/post_alert.py
 
+If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
+follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+is not done until the Latch `curl` returned 2xx.
+
 Add `--dry-run` when testing without hitting the live kiosk:
 
     /opt/data/skills/ld-morning-triage/scripts/post_alert.py --dry-run
