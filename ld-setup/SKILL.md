@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run setup for the life dashboard — interview the owner over chat, write /opt/data/ld/config.json, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when /opt/data/ld/setup-complete is missing, when /opt/data/ld/config.json is missing or the ld-config gate refuses it, when the owner asks to set up or re-set-up their dashboard, or when the wall has never shown a card.
+description: First-run setup for the life dashboard — interview the owner over chat, write /opt/data/ld/config.json, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when the requested work involves the life dashboard and /opt/data/ld/setup-complete is missing, when its config is missing or refused, when the owner asks to set up or re-set-up their dashboard, or when the wall has never shown a card. Do not use for unrelated calendar or life-assistant questions.
 ---
 
 # Life Dashboard — Setup
@@ -78,7 +78,7 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | answer | ask | goes to |
 |---|---|---|
 | `owner_name` | what should I call you? | `family.owner.name` |
-| `owner_email` | the Google account whose calendar you live by (the email) | `calendar.sources[0].calendar_id` **and** `calendar_nudge.owner_identities[0]` |
+| `owner_email` | the Google account whose calendar you live by (the email) | `calendar.account`, `calendar.sources[0].calendar_id`, and `calendar_nudge.owner_identities[0]` |
 | `extra_calendar_ids` | any shared calendars? — the full id, `…@group.calendar.google.com` | more `calendar.sources[]` |
 | `city` | which city is home? | `weather.location`, geocoded to `lat`/`lon` |
 | `timezone` | run `echo $TZ`, tell the owner that zone, ask them to confirm it is theirs | `family.timezone` |

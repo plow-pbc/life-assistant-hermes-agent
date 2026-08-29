@@ -99,10 +99,10 @@ def test_every_instance_is_live():
     assert descriptor()["AGENT_LIVE"] == "1"
 
 
-def test_the_phone_line_is_enabled():
+def test_the_phone_line_is_enabled_without_instance_policy():
     cfg = config()
     assert "plow-chat-platform" in cfg["plugins"]["enabled"]
-    assert cfg["platforms"]["plow_chat"]["enabled"] is True
+    assert cfg["platforms"]["plow_chat"] == {"enabled": True}
 
 
 def test_latch_is_the_only_mcp_server():
@@ -623,6 +623,13 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
 SETUP_COMPLETE_MARKER = "/opt/data/ld/setup-complete"
 
 
+def test_every_calendar_gather_names_the_configured_gog_account():
+    """gog refuses --calendars without the account that owns those ids."""
+    for skill in ("ld-morning-updates", "ld-calendar-nudge", "ld-weekly-digest"):
+        sheet = (ROOT / skill / "SKILL.md").read_text()
+        assert "--account=<calendar.account>" in sheet, skill
+
+
 def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
     """SOUL.md's skip check and ld-setup's own write instruction have to agree
     on the exact path -- a drift on either side reads as done when it isn't,
@@ -631,3 +638,12 @@ def test_the_setup_complete_marker_is_named_the_same_way_everywhere():
     skill = (ROOT / "ld-setup" / "SKILL.md").read_text()
     assert SETUP_COMPLETE_MARKER in soul, "SOUL.md does not name the setup-complete marker"
     assert SETUP_COMPLETE_MARKER in skill, "ld-setup/SKILL.md does not name the setup-complete marker"
+
+
+def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
+    """A calendar question is not a request for Raspberry Pi credentials."""
+    soul = (ROOT / "runtime" / "SOUL.md").read_text()
+    setup = (ROOT / "ld-setup" / "SKILL.md").read_text()
+    assert "before doing anything else" not in soul
+    assert "unrelated life-assistant requests" in soul
+    assert "when the requested work involves the life dashboard" in setup.split("---", 2)[1]

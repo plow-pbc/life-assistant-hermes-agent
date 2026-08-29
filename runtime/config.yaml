@@ -51,14 +51,14 @@ plugins:
   - plow-chat-platform
   entries:
     plow-chat-platform:
-      # The plugin registers one platform and no tools. Denying overrides keeps
-      # a future plugin change from silently shadowing an image tool of the
-      # same name, which would be invisible from this file.
+      # The plugin registers the platform plus its Plow-specific group-send and
+      # owner trust tools. Neither replaces an image tool. Denying overrides
+      # keeps a future name collision from silently shadowing one, which would
+      # be invisible from this file.
       allow_tool_override: false
 platforms:
   plow_chat:
     enabled: true
-    # No extra.group_prompts: this agent has one private chat and no groups.
-    # The plugin keys group prompts by display name from PLOW_CHAT_GROUP_UIDS,
-    # so a prompt naming no configured group is logged and skipped rather than
-    # fatal — adding one here before the group exists is a silent no-op.
+    # No instance group prompts or trust flag. Plow's owner-scoped Chat resource
+    # is the durable preference and the shared plugin refreshes it before each
+    # turn, so dashboard and agent writes take effect without a restore.

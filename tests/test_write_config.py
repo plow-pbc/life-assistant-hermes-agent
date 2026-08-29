@@ -53,6 +53,7 @@ def fake_geocode(city):
 def test_answers_become_a_config_the_shared_gate_accepts(answers, expected_chat_db):
     config = wc.build(answers, ENV, geocoder=fake_geocode)
     assert gate(config) == ""
+    assert config["calendar"]["account"] == "rowan@example.test"
     assert config["calendar"]["sources"][0]["calendar_id"] == "rowan@example.test"
     assert config["calendar_nudge"]["owner_identities"] == ["rowan@example.test"]
     assert config["weather"] == {"location": "Chicago", "lat": 41.85, "lon": -87.65}
