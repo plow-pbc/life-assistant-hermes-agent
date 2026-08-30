@@ -105,6 +105,20 @@ def test_the_phone_line_is_enabled_without_instance_policy():
     assert cfg["platforms"]["plow_chat"] == {"enabled": True}
 
 
+def test_group_sessions_are_shared_per_chat():
+    """One group chat = one session, whoever is speaking.
+
+    The image default (true) keys group sessions per sender, splitting one
+    visible iMessage thread into per-person agent contexts. That shipped as a
+    real incident on 2026-08-30: a member's question and the owner's follow-up
+    landed in different sessions, and the reply answered the owner's unrelated
+    in-flight task into the shared thread. The plugin's
+    config.extra["group_sessions_per_user"] = False does not reach the
+    gateway's session store, so the gateway-level key here is the only thing
+    holding the line."""
+    assert config()["group_sessions_per_user"] is False
+
+
 def test_latch_is_the_only_mcp_server():
     assert list(config()["mcp_servers"]) == ["latch"]
 

@@ -16,6 +16,15 @@
 # (ld-morning-updates, ld-weekly-digest, ld-calendar-nudge) read through that
 # door, ld-morning-triage the Mac's iMessage DB through the same one. See the
 # repo README, "No connectors, and what that costs".
+# One session per group chat, shared by every participant. The image's default
+# (true) keys each group session per SENDER, which splits one visible iMessage
+# thread into per-person contexts: on 2026-08-30 the owner's "Elm. You can
+# check." routed to his own session (mid toll-payment task) instead of the one
+# holding another member's block-party question, and Elm answered the wrong
+# thing into the shared thread. The plow-chat plugin's
+# `config.extra["group_sessions_per_user"] = False` does NOT cover this — the
+# gateway's session store reads only this gateway-level key.
+group_sessions_per_user: false
 model:
   default: gpt-5.6-sol
   provider: openai-codex
