@@ -19,17 +19,6 @@
 model:
   default: gpt-5.6-sol
   provider: openai-codex
-display:
-  # The background self-improvement review still runs and writes; only its
-  # "💾 Self-improvement review: …" chat line is silenced. That line takes the
-  # gateway's plain send() path — not the status hook the plow-chat plugin
-  # absorbs (hermes-plow-chat#30) — so this config key is its one off switch.
-  # This agent's only chat surface is the owner's iMessage thread, where the
-  # typing indicator already shows a turn in progress.
-  # Quoted: the key is a tri-state ("off" / "on" / "verbose"), and bare `off`
-  # is a YAML 1.1 boolean that a 1.2 parser would read as a string anyway —
-  # the quotes make it the documented string form under every parser.
-  memory_notifications: "off"
 mcp_servers:
   # Plow Latch, reached over the Plow relay: the browser and the filesystem this
   # agent drives are THE INSTANCE OWNER's Mac, not this container. The relay authorises the
@@ -51,14 +40,14 @@ plugins:
   - plow-chat-platform
   entries:
     plow-chat-platform:
-      # The plugin registers one platform and no tools. Denying overrides keeps
-      # a future plugin change from silently shadowing an image tool of the
-      # same name, which would be invisible from this file.
+      # The plugin registers the platform plus its Plow-specific group-send and
+      # owner trust tools. Neither replaces an image tool. Denying overrides
+      # keeps a future name collision from silently shadowing one, which would
+      # be invisible from this file.
       allow_tool_override: false
 platforms:
   plow_chat:
     enabled: true
-    # No extra.group_prompts: this agent has one private chat and no groups.
-    # The plugin keys group prompts by display name from PLOW_CHAT_GROUP_UIDS,
-    # so a prompt naming no configured group is logged and skipped rather than
-    # fatal — adding one here before the group exists is a silent no-op.
+    # No instance group prompts or trust flag. Plow's owner-scoped Chat resource
+    # is the durable preference and the shared plugin refreshes it before each
+    # turn, so dashboard and agent writes take effect without a restore.

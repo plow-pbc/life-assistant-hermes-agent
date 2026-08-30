@@ -13,8 +13,8 @@ this skill never self-registers.
 **Read `/opt/data/ld/config.json` before starting** — the shared
 life-dashboard config. This digest uses two sections:
 
-- `calendar` — the `sources` list to fetch from (each source is a
-  `calendar_id`; one gog identity reads them all).
+- `calendar` — the `account` gog reads as and the `sources` list to fetch from
+  (each source is a `calendar_id`; that one identity reads them all).
 - `weekly_digest` — `length` (free-form length/shape preference, same idea
   as `morning_triage.ranking_instructions`; empty = the full layout) and the
   `long_lead` heads-up rules.
@@ -46,12 +46,13 @@ it. Do not add safety flags (`--readonly`, `--wrap-untrusted`) to any argv:
 Latch injects this Mac's own safety flags and REFUSES any caller-supplied
 duplicate, so carrying one makes every run fail before it starts.
 
-Read `calendar.sources` from `/opt/data/ld/config.json`, comma-join the
-sources' `calendar_id` values, then fetch the main window with ONE
-`plow_run_command` call — EXACTLY this argv, substituting only that
-config-supplied list (which never varies between runs):
+Read `calendar.account` and `calendar.sources` from `/opt/data/ld/config.json`,
+comma-join the sources' `calendar_id` values, then fetch the main window with
+ONE `plow_run_command` call — EXACTLY this argv, substituting only those
+config-supplied values (which never vary between runs):
 
-    ["gog", "calendar", "events", "list", "--calendars=<comma-joined calendar_ids>",
+    ["gog", "calendar", "events", "list", "--account=<calendar.account>",
+     "--calendars=<comma-joined calendar_ids>",
      "--days=7", "--json", "--results-only", "--sort=start", "--max=250"]
 
 Each argv here is a byte-identical literal every run, and that is

@@ -98,9 +98,12 @@ tracked tree stay identical for everyone:
 
 - The `PLOW_CHAT_TOKEN` that lands in the instance's `.env` belongs to whoever
   texted.
-- The Plow Chat line is theirs, so the agent texts and is texted by them and
-  nobody else. (It used to reach their Gmail, Calendar and Slack too, through
-  the `plow-connectors` skill — see [No connectors, and what that
+- The Plow Chat credential and private conversation belong to that owner. Other
+  people participate through group conversations; explicit owner trust controls
+  whether a group can use normal tools and owner material. Replies remain
+  visible to the whole group.
+  (The agent used to reach Gmail, Calendar and Slack through the
+  `plow-connectors` skill — see [No connectors, and what that
   costs](#no-connectors-and-what-that-costs).)
 - Their phone line does not draw on anyone else's pool. Plow's five service-wide
   numbers collide on **(line, participant set)**, and a different handset is a
@@ -143,7 +146,11 @@ not an omission to be tidied up later.
 `<agent>` is the registry name. `life` is the only instance that *may* be
 registered today; see [Adding a second instance](#adding-a-second-instance) for the other.
 
-Nothing to land first. The agent writes its own `ld/config.json` and mints
+Nothing to land first for the dashboard itself. Before restoring this revision,
+deploy the Plow current-session preferences endpoint and compatible
+`hermes-plow-chat` pin; otherwise removing the local notification override can
+put self-improvement reviews back in the owner's chat. The agent writes its own
+`ld/config.json` and mints
 the wall's token on the owner's first reply: `runtime/SOUL.md` tells it that
 a missing or gate-failing config means it is not set up, and
 `ld-setup/SKILL.md` is what it runs then — the interview, `write_config.py`,
@@ -316,6 +323,36 @@ plugin is pinned in `plow-pbc/agent-mgr`, installed by `agent-mgr restore
 so one repo bumping it for every agent is the behaviour you want; this repo used
 to carry a pin covering both, and that argument now belongs one layer up.
 
+## Trusted group conversations
+
+Conversation trust is state on the owner's Plow `Chat`, not on the physical
+phone line and not in this repository. The owner can change it from the Plow
+dashboard's **Trusted lines** card or ask the agent in that conversation, which
+uses the shared `plow_set_conversation_trusted` tool after explicit
+confirmation. A member cannot change the setting.
+
+In an untrusted group, the assistant keeps owner material out of the thread. In
+a trusted group, every participant may ask it to use its normal tools and
+connected accounts, and requested results are answered where everyone can see
+them. For this life assistant, “What's on the schedule today?” reaches Google
+Calendar through Latch's vendored `gog`; trust changes whether that result may
+be returned to the group, not how calendar access works. Credentials,
+authentication secrets, raw tokens, and payment-card secrets remain excluded.
+
+The policy and tool live in the one `hermes-plow-chat` plugin used by Docker and
+cloud agents. Deploy the Plow API preference first, advance agent-mgr's exact
+plugin SHA second, then run `agent-mgr restore <agent>` so the installed copy in
+that instance's home changes. `runtime/config.yaml` only enables the platform;
+adding group prompts or another trust flag there would create a second policy
+path that the dashboard cannot update.
+
+Before restoring an existing instance, migrate its config in place: copy
+`calendar_nudge.owner_identities[0]` to `calendar.account` without rebuilding
+the object or changing any other preference, then require an empty result from
+`ld_config_gate.py`. The three calendar skills now add that account to their
+exact gog argv; manually run and approve each new 1-day, 3-day, and 7-day gather
+shape once through Latch before relying on the unattended crons.
+
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
 feeds every non-empty line to `lib/fetch-tree` as a repo name, so a `# see
@@ -336,6 +373,7 @@ ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
 ld-shared/      the POST helper, the ld-config gate and the wire protocol
 ld-dashboard/   the six cron schedules, all registered
+ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
 ld-setup/       first-run setup end-to-end: config -> wall token -> Pi over Latch -> crons
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
@@ -384,3 +422,10 @@ installs it and reloads the gateway only if the file actually changed.
   rather than a connector skill; all three calendar producers ride it, and
   `plow-pbc/latch#183`'s port work is done. See [No connectors, and what
   that costs](#no-connectors-and-what-that-costs).
+
+- **`ld-payments` is the instruction layer only, and not yet deployable.** The
+  skill tells the agent to stop refusing payment requests and run them through
+  the owner-approval flow; it does **not** implement the guardrail. It is safe
+  to run only once the platform's fail-closed payment gate and the owner
+  per-payment confirmation infra are live — so it must not reach the deployed
+  agent before those. Mounted for review; a deploy is gated on that ordering.
