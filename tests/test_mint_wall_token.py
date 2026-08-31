@@ -225,6 +225,36 @@ def test_a_first_run_missing_an_answer_refuses_by_name_instead_of_guessing(home,
     assert named in refuse(home, **payload)
 
 
+def test_a_pre_fix_dotenv_resumed_unattended_refuses_for_the_login_by_name(home):
+    """The production upgrade scenario this commit exists for: an install
+    minted before DASHBOARD_PI_USER existed (endpoint + token, no login),
+    resumed with {} by a cron turn. The address recovers; the login cannot --
+    the refusal names pi_user and nothing is written."""
+    dotenv, ld = home
+    seeded = SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\nDASHBOARD_TOKEN=tok_wall\n"
+    dotenv.write_text(seeded)
+    with pytest.raises(SystemExit) as e:
+        mwt.main(stdin=io.StringIO("{}"), dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "pi_user" in str(e.value)
+    assert dotenv.read_text() == seeded
+    assert not ld.exists()
+
+
+def test_a_mixed_case_address_converges_and_stays_idempotent_across_a_resume(home, capsys):
+    """DNS is case-insensitive and urlsplit lowercases on recovery, so a
+    mixed-case answer must not leave an endpoint that every later {} resume
+    're-points' to its own lowercase twin."""
+    dotenv, ld = home
+    run(home, capsys, pi="RaspberryPi.LOCAL")
+    after_first = dotenv.read_text()
+    assert "DASHBOARD_ENDPOINT_URL=http://raspberrypi.local:5174/api/message\n" in after_first
+    rc = mwt.main(stdin=io.StringIO("{}"), dotenv_path=str(dotenv), ld_dir=str(ld))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert dotenv.read_text() == after_first
+    assert "re-pointed" not in out
+
+
 def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home, capsys):
     """Half a dotenv (someone deleted the TOKEN line) must not produce a
     pi.env with DASHBOARD_TOKEN= blank -- that disables the Pi's API."""

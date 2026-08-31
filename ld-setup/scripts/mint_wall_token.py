@@ -133,7 +133,10 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
     ical_url = answers.get("ical_url")  # absent = keep what pi.env holds
 
     values = dotenv_values(dotenv_path)
-    pi_address = str(answers.get("pi_address") or "").strip()
+    # Lowercased once at intake: DNS and mDNS names are case-insensitive, and
+    # urlsplit lowercases on recovery -- without this a mixed-case address
+    # would "re-point" the endpoint on every resume that omits it.
+    pi_address = str(answers.get("pi_address") or "").strip().lower()
     if not pi_address:
         pi_address = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
         if not pi_address:
