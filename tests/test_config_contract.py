@@ -152,12 +152,12 @@ def test_every_pinned_skill_is_a_sha_not_a_branch():
 
 
 def test_skills_tsv_carries_no_comment_lines():
-    """A comment here breaks `agent-mgr restore`, and only at deploy time.
+    """A comment here breaks `agent-mgr deploy`, and only at deploy time.
 
     agent-mgr gates the replay on `[ -s skills.tsv ]` -- size, not content --
     then feeds every line with a non-empty first tab-field to lib/fetch-tree. A
     zero-byte file is skipped cleanly, but a file holding only `# see latch#183`
-    is non-empty, so the comment text becomes the repo argument and restore dies
+    is non-empty, so the comment text becomes the repo argument and deploy dies
     on it. The explanation belongs in a docstring like this one, never in the
     file itself, and this test is what keeps a well-meaning edit from putting it
     there."""
@@ -165,7 +165,7 @@ def test_skills_tsv_carries_no_comment_lines():
     for line in text.splitlines():
         assert not line.lstrip().startswith("#"), (
             f"skills.tsv carries a comment line: {line!r} -- agent-mgr feeds it to "
-            "fetch-tree as a repo name and restore dies. Keep the file empty or "
+            "fetch-tree as a repo name and deploy dies. Keep the file empty or "
             "tab-separated rows only."
         )
 

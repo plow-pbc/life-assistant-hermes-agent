@@ -10,15 +10,15 @@ The six producer schedules, versioned. All six are registered.
 ## Why a skill and not a note
 
 `hermes cron` persists jobs to `/opt/data/cron/jobs.json`, and `agent-mgr
-restore` does **not** replay it. A rebuilt instance therefore comes up with a
+deploy` does **not** replay it. A rebuilt instance therefore comes up with a
 wall screen that never updates and nothing to diff against — the schedules are
-the one part of this agent's behaviour that a restore silently drops. Keeping
+the one part of this agent's behaviour that a deploy silently drops. Keeping
 them here means "set up the life dashboard crons" replays a reviewed spec rather
 than improvising six schedules from a sentence.
 
 ## Registering
 
-**This is a bring-up step, not a repair step.** `agent-mgr restore` does not
+**This is a bring-up step, not a repair step.** `agent-mgr deploy` does not
 replay `jobs.json`, so an instance that has been brought up without it has a wall
 screen that never updates — and nothing to diff against, because the failure
 looks identical to a producer that is running and finding nothing. Run it after

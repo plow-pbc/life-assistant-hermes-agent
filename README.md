@@ -84,7 +84,7 @@ imply this one: #14 landing makes it *more* reachable, not less.
 4. `agent-mgr register <name>`, then the ordinary [Bring-up](#bring-up) — a
    pointer rather than a copy, deliberately: this section's whole premise is
    that everything points here instead of carrying its own sequence, and the
-   abbreviated `restore` → `up` chain that used to sit on this line was already
+   abbreviated `deploy` → `up` chain that used to sit on this line was already
    missing the `mkdir` that keeps `skills/` and `ld/` from landing root-owned.
 
 Step 1 retires precondition 1. Step 3 is the one that outlives it.
@@ -164,7 +164,7 @@ the Mac is awake with Latch running. No Mac: the lines are texted to the
 owner to type. Then `register_crons.py` and a forced `ld-weather` run. The
 one thing that has to
 be true beforehand is that the container's zone is the owner's: `AGENT_TZ` in
-the instance dotenv, set after `restore` and before `up` (agent-mgr README,
+the instance dotenv, set after `deploy` and before `up` (agent-mgr README,
 *Where a per-person value goes*). Setup refuses a timezone answer that is not
 the container's, and the owner cannot fix that side themselves.
 
@@ -190,14 +190,14 @@ OpenSSH refuses a group/world-readable private key; the kiosk-diagnostics
 SSH key, its `.pub` authorized on the Pi).
 
 ```sh
-agent-mgr restore <agent>            # config.yaml and the plugin into its home
+agent-mgr deploy <agent>            # config.yaml and the plugin into its home
 agent-mgr activate <agent>           # prints a code — its owner texts it from their phone
 
 # BEFORE `up`, and not optional. Both directories have to be owned by the
 # instance owner, for different reasons. `skills/`: compose.override.yml mounts
 # each skill UNDER /opt/data, which is already the home bind, so the runtime
 # creates the missing mountpoint inside that bind's source on the host -- as
-# root, and no later `restore` can install into it. plow-pbc/agent-mgr#44 is the
+# root, and no later `deploy` can install into it. plow-pbc/agent-mgr#44 is the
 # fleet-level fix; until it lands this line stands in for it. `ld/`: the agent
 # writes its config and every composed tile there with its file tool, so a
 # root-owned `ld/` costs every card, quietly -- nothing downstream re-checks it.
@@ -318,7 +318,7 @@ check-connectors` has nothing to report on this instance; calendar access is
 Latch's vendored `gog`, not a connector.
 
 **The one pin left is the plugin's, and it is not this repo's.** The Plow Chat
-plugin is pinned in `plow-pbc/agent-mgr`, installed by `agent-mgr restore
+plugin is pinned in `plow-pbc/agent-mgr`, installed by `agent-mgr deploy
 <agent>` and read again by `agent-mgr activate <agent>`. It is fleet mechanism,
 so one repo bumping it for every agent is the behaviour you want; this repo used
 to carry a pin covering both, and that argument now belongs one layer up.
@@ -341,7 +341,7 @@ authentication secrets, raw tokens, and payment-card secrets remain excluded.
 
 The policy and tool live in the one `hermes-plow-chat` plugin used by Docker and
 cloud agents. Deploy the Plow API preference first, advance agent-mgr's exact
-plugin SHA second, then run `agent-mgr restore <agent>` so the installed copy in
+plugin SHA second, then run `agent-mgr deploy <agent>` so the installed copy in
 that instance's home changes. `runtime/config.yaml` only enables the platform;
 adding group prompts or another trust flag there would create a second policy
 path that the dashboard cannot update.
@@ -356,7 +356,7 @@ shape once through Latch before relying on the unattended crons.
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
 feeds every non-empty line to `lib/fetch-tree` as a repo name, so a `# see
-latch#183` line would kill `restore` at deploy time.
+latch#183` line would kill `deploy` at deploy time.
 `test_skills_tsv_carries_no_comment_lines` holds that, and
 `test_every_pinned_skill_is_a_sha_not_a_branch` still checks any row that
 latch#183 later puts back.
@@ -381,7 +381,7 @@ tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 
 Deployment is `plow-pbc/agent-mgr`'s. This repo carried its own `compose.yml`,
 verbatim copies of `model-provider` and `reload-if-running`, and eleven recipes
-re-implementing `restore`, `activate`, `up` and the rest.
+re-implementing `deploy`, `activate`, `up` and the rest.
 
 `check-latch` is the exception that stayed, because `agent-mgr check-latch`
 classifies the response and this one shows it — see the recipe's own comment,
@@ -410,7 +410,7 @@ credential when the credential is fine. Measured: 200 with the header, 406
 without.
 
 **Editing `runtime/config.yaml` is not enough** — the gateway reads the
-*installed* copy in the instance's home. Run `agent-mgr restore <agent>`, which
+*installed* copy in the instance's home. Run `agent-mgr deploy <agent>`, which
 installs it and reloads the gateway only if the file actually changed.
 
 ## Open

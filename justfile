@@ -5,13 +5,13 @@
 # <agent> below is the registry name of a registered instance. `life` is the
 # only one that may be registered today -- see README "Adding a second instance":
 #
-#   agent-mgr restore <agent>     # config and the Plow Chat plugin (skills.tsv is empty)
+#   agent-mgr deploy <agent>     # config and the Plow Chat plugin (skills.tsv is empty)
 #   agent-mgr activate <agent>    # prints a code; its OWNER texts it, from their phone
 #   agent-mgr up <agent>          # down / restart / logs
 #   agent-mgr sign-in <agent>     # device-code OAuth; hand the URL to its owner
 #   agent-mgr agent <agent> "what's the weather?"
 #
-#   # The dashboard crons -- NOT replayed by restore, so bring-up is not done
+#   # The dashboard crons -- NOT replayed by deploy, so bring-up is not done
 #   # without them. Deliberately NOT restated here: the exact turn, the paste
 #   # request, the exit-code caveat and the exec form for scripted callers are
 #   # README "Bring-up". A third copy is how the first two drifted.
