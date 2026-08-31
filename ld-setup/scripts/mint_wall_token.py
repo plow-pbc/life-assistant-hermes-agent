@@ -157,23 +157,6 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
                 "refusing: no pi_address on stdin and no DASHBOARD_ENDPOINT_URL to recover "
                 "it from -- ask the owner for the Pi's address"
             )
-    pi_user = str(answers.get("pi_user") or "").strip()
-    remembered_host = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
-    if not pi_user:
-        # A remembered login belongs to the remembered Pi: a re-point to a new
-        # address must not silently pair the new device with the old login --
-        # the wrong-ssh-target bug this script exists to prevent.
-        if remembered_host and pi_address != remembered_host:
-            raise SystemExit(
-                f"refusing: the address changed ({remembered_host!r} -> {pi_address!r}) but no "
-                "pi_user came with it -- ask the owner for the new Pi's login (never guess one)"
-            )
-        pi_user = values.get("DASHBOARD_PI_USER", "").strip()
-    if not pi_user:
-        raise SystemExit(
-            "refusing: no pi_user on stdin and no DASHBOARD_PI_USER remembered -- ask the "
-            "owner for the Pi's login (never guess one)"
-        )
     if not PI_ADDRESS_RE.fullmatch(pi_address):
         raise SystemExit(
             f"refusing: pi address {pi_address!r} is not [A-Za-z0-9.-] -- "
@@ -184,6 +167,24 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
             f"refusing: pi address {pi_address!r} is not on the household network "
             "(a private IP or a .local name) -- the wall's bearer rides every "
             "request to this host"
+        )
+    pi_user = str(answers.get("pi_user") or "").strip()
+    remembered_host = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+    if not pi_user:
+        # A remembered login belongs to the remembered Pi: a re-point to a new
+        # address must not silently pair the new device with the old login --
+        # the wrong-ssh-target bug this script exists to prevent. The address
+        # checks above run first, so a bad address surfaces as its own refusal.
+        if remembered_host and pi_address != remembered_host:
+            raise SystemExit(
+                f"refusing: the address changed ({remembered_host!r} -> {pi_address!r}) but no "
+                "pi_user came with it -- ask the owner for the new Pi's login (never guess one)"
+            )
+        pi_user = values.get("DASHBOARD_PI_USER", "").strip()
+    if not pi_user:
+        raise SystemExit(
+            "refusing: no pi_user on stdin and no DASHBOARD_PI_USER remembered -- ask the "
+            "owner for the Pi's login (never guess one)"
         )
     if not PI_USER_RE.fullmatch(pi_user):
         raise SystemExit(
