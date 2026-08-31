@@ -181,7 +181,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
         {"name": "ld-weather", "enabled": True, "paused_at": None}
     ])
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"})
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage",
         "ld-weekly-digest", "ld-calendar-nudge",
@@ -205,7 +205,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     # but an unattended re-provision must not read this run as success -- the
     # exit code is the only signal that reaches one.
     with pytest.raises(SystemExit) as exit_:
-        mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
+        mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"})
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage",
@@ -222,7 +222,7 @@ def test_a_fresh_instance_registers_every_job(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
     fake = FakeHermes(path)
-    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"})
+    mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"})
     assert set(fake.created) == set(JOB_CONTRACT)
 
 
@@ -325,13 +325,13 @@ def test_only_the_digest_rides_the_native_deliver_arm():
     assert {j["name"] for j in mod.JOBS if j["deliver"]} == {"ld-weekly-digest"}
 
 
-ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_test"}
+ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"}
 
 
 @pytest.mark.parametrize(("env", "named_source"), [
     ({"TZ": "America/Los_Angeles"}, "the injected env"),
-    ({"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": ""}, "the injected env"),
-    ({"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "   "}, "the injected env"),
+    ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": ""}, "the injected env"),
+    ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "   "}, "the injected env"),
     (None, "absent.env"),
 ], ids=["unset", "empty", "blank", "absent-dotenv"])
 def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path):
@@ -344,14 +344,14 @@ def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_p
     digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     with pytest.raises(SystemExit) as excinfo:
         mod.create_argv(digest, env, dotenv_path=tmp_path / "absent.env")
-    assert "PLOW_CHAT_CHAT_UID" in str(excinfo.value)
+    assert "PLOW_HOME_CHANNEL" in str(excinfo.value)
     assert named_source in str(excinfo.value)
 
 
 @pytest.mark.parametrize("source", ["env", "dotenv"])
 def test_the_deliver_target_expands_from_either_source(source, tmp_path):
     """Registration runs via `docker exec`, whose session env does NOT carry
-    the activation-written PLOW_CHAT_* values -- those live in /opt/data/.env,
+    the activation-written PLOW_* values -- those live in /opt/data/.env,
     the file the gateway loads. Both routes must yield the same argv; the
     card-only job gets no --deliver arm either way."""
     mod = spec()
@@ -361,12 +361,24 @@ def test_the_deliver_target_expands_from_either_source(source, tmp_path):
         env, _ = ENV_OK, dotenv.write_text("")
     else:
         env = None  # production shape: no injection, the dotenv IS the source
-        dotenv.write_text("# activation writes this shape\nPLOW_CHAT_CHAT_UID=cht_test\n")
+        dotenv.write_text("# activation writes this shape\nPLOW_HOME_CHANNEL=cht_test\n")
     argv = mod.create_argv(digest, env, dotenv_path=dotenv)
     assert argv[-2:] == ["--deliver", "plow_chat:cht_test"]
 
     weather = next(j for j in mod.JOBS if j["name"] == "ld-weather")
     assert "--deliver" not in mod.create_argv(weather, env, dotenv_path=dotenv)
+
+
+def test_the_retired_name_is_not_read(tmp_path):
+    """PLOW_CHAT_CHAT_UID is the pre-unification spelling. Nothing reads it
+    any more: an instance still carrying only it refuses to register rather
+    than creating a chat leg that delivers nowhere."""
+    mod = spec()
+    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
+    env = {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_legacy"}
+    with pytest.raises(SystemExit) as excinfo:
+        mod.create_argv(digest, env, dotenv_path=tmp_path / "unused.env")
+    assert "PLOW_HOME_CHANNEL" in str(excinfo.value)
 
 
 def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):

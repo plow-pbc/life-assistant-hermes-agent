@@ -377,6 +377,8 @@ ld-payments/    pay a bill/person via the owner-approval flow (not deployable ye
 ld-setup/       first-run setup end-to-end: config -> wall token -> Pi over Latch -> crons
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
+Dockerfile      builds this agent as a standalone image -- adapter only (see below)
+.dockerignore   keeps secrets and stale bytecode out of that build's context
 ```
 
 Deployment is `plow-pbc/agent-mgr`'s. This repo carried its own `compose.yml`,
@@ -412,6 +414,38 @@ without.
 **Editing `runtime/config.yaml` is not enough** — the gateway reads the
 *installed* copy in the instance's home. Run `agent-mgr restore <agent>`, which
 installs it and reloads the gateway only if the file actually changed.
+
+## Building a standalone image
+
+`Dockerfile` bakes this repo's `runtime/SOUL.md` and `ld-*` skills onto the
+pinned Hermes base, so the agent runs as a self-contained container instead of
+from `agent-mgr`'s mounts. `agent-mgr` is unaffected and keeps running the repo
+the way it always has.
+
+```sh
+docker build .
+```
+
+Then put the Plow credentials in the image's dotenv, `/var/lib/hermes/.env`:
+
+```
+PLOW_API_BASE=https://api.plow.co       # API root, no /v1 suffix
+PLOW_HOME_CHANNEL=cht_...               # the home chat
+PLOW_AGENT_TOKEN=...                    # the agent's scoped bearer
+HERMES_CUSTOM_PLOW_API_KEY=...          # the model key config.yaml names
+```
+
+Those are the names `plow-chat-platform` reads. The pre-unification spellings
+(`PLOW_CHAT_BASE_URL`, `PLOW_CHAT_CHAT_UID`, `PLOW_CHAT_TOKEN`) are retired and
+nothing reads them; an instance still on them runs `agent-mgr
+migrate-plugin-env <name>` or re-activates.
+
+The `FROM` is an immutable `base-<sha>` tag that is never moved, so it fails at
+the pull until that commit of
+[`plow-pbc/plow-hermes-agent`](https://github.com/plow-pbc/plow-hermes-agent) is
+published rather than resolving to something else. To build against a local base
+before then, pass `--build-context "<that tag>=docker-image://<ref>"` — a
+registry reference, since BuildKit resolves a bare local name against Docker Hub.
 
 ## Open
 
