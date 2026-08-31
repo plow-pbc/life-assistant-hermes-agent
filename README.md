@@ -96,7 +96,7 @@ Step 1 retires precondition 1. Step 3 is the one that outlives it.
 entirely by *which phone texts the code back*. That single fact is what lets the
 tracked tree stay identical for everyone:
 
-- The `PLOW_CHAT_TOKEN` that lands in the instance's `.env` belongs to whoever
+- The `PLOW_AGENT_TOKEN` that lands in the instance's `.env` belongs to whoever
   texted.
 - The Plow Chat credential and private conversation belong to that owner. Other
   people participate through group conversations; explicit owner trust controls
@@ -125,7 +125,7 @@ ones left with the deployment and are `plow-pbc/agent-mgr`'s compose contract
 now; they are stated here as design, not as something this tree enforces:
 
 - **Another instance's state.** Two gateways sharing one home share one
-  `auth.json` and one dotenv, including one `PLOW_CHAT_CHAT_UID`, so whichever
+  `auth.json` and one dotenv, including one `PLOW_HOME_CHANNEL`, so whichever
   started last owns the chat. `agent-mgr`'s collision check refuses two
   *registered* agents resolving to the same home — but only registered ones: a
   container running outside the registry holding that home is invisible to it,
@@ -303,7 +303,7 @@ afterwards.
 
 `skills.tsv` is **empty**. `plow-connectors` — the skill that reached this
 owner's Gmail, Google Calendar and Slack with the gateway's own
-`PLOW_CHAT_TOKEN` — is no longer installed, and nothing here replaces it.
+`PLOW_AGENT_TOKEN` — is no longer installed, and nothing here replaces it.
 
 That is a deliberate trade, not an oversight. It is what lets the life-dashboard
 producers arrive as this agent's own mounted skills instead of a fetched tree,
