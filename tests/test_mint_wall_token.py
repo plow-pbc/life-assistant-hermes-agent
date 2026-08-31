@@ -73,15 +73,17 @@ def token_in(dotenv):
 
 def test_a_first_run_appends_three_lines_and_ships_the_token_in_two_files_only(home, capsys):
     dotenv, ld = home
-    rc, out = run(home, capsys)
+    # user="so", not the default: proves pi_target and DASHBOARD_PI_USER carry
+    # the ANSWERED login, indistinguishable from a hardcoded "pi" otherwise.
+    rc, out = run(home, capsys, user="so")
     assert rc == 0
     tok = token_in(dotenv)
     assert len(tok) >= 32  # secrets.token_urlsafe(24)
     assert dotenv.read_text() == (
         SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n"
-        f"DASHBOARD_TOKEN={tok}\nDASHBOARD_DELIVERY=latch\nDASHBOARD_PI_USER=pi\n"
+        f"DASHBOARD_TOKEN={tok}\nDASHBOARD_DELIVERY=latch\nDASHBOARD_PI_USER=so\n"
     )
-    assert f"pi_target=pi@{PI}\n" in out
+    assert f"pi_target=so@{PI}\n" in out
     assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
     assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
     for name in ("pi.env", "dashboard.hdr"):
