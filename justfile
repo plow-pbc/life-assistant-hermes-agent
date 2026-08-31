@@ -5,7 +5,7 @@
 # <agent> below is the registry name of a registered instance. `life` is the
 # only one that may be registered today -- see README "Adding a second instance":
 #
-#   agent-mgr deploy <agent>     # config and the Plow Chat plugin (skills.tsv is empty)
+#   agent-mgr deploy <agent>      # config and the Plow Chat plugin (skills.tsv is empty)
 #   agent-mgr activate <agent>    # prints a code; its OWNER texts it, from their phone
 #   agent-mgr up <agent>          # down / restart / logs
 #   agent-mgr sign-in <agent>     # device-code OAuth; hand the URL to its owner

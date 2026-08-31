@@ -190,7 +190,7 @@ OpenSSH refuses a group/world-readable private key; the kiosk-diagnostics
 SSH key, its `.pub` authorized on the Pi).
 
 ```sh
-agent-mgr deploy <agent>            # config.yaml and the plugin into its home
+agent-mgr deploy <agent>             # config.yaml and the plugin into its home
 agent-mgr activate <agent>           # prints a code — its owner texts it from their phone
 
 # BEFORE `up`, and not optional. Both directories have to be owned by the
