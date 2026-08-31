@@ -98,6 +98,19 @@ def append_dotenv(path, pairs):
         f.write("\n" + "".join(f"{k}={v}\n" for k, v in pairs))
 
 
+def converge_dotenv_value(path, values, key, value):
+    """One NAME=value line converged to `value`: appended when absent,
+    rewritten in place when different, untouched when equal. Returns whether
+    anything changed, so the caller owns its own message."""
+    if values.get(key, "").strip() == value:
+        return False
+    if key in values:
+        rewrite_dotenv_line(path, key, value)
+    else:
+        append_dotenv(path, [(key, value)])
+    return True
+
+
 def rewrite_dotenv_line(path, key, value):
     """Converge one machine-written NAME=value line. Only ever aimed at the
     endpoint line -- the token line is never touched (a re-mint would lock the
@@ -144,7 +157,18 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
                 "refusing: no pi_address on stdin and no DASHBOARD_ENDPOINT_URL to recover "
                 "it from -- ask the owner for the Pi's address"
             )
-    pi_user = str(answers.get("pi_user") or "").strip() or values.get("DASHBOARD_PI_USER", "").strip()
+    pi_user = str(answers.get("pi_user") or "").strip()
+    remembered_host = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+    if not pi_user:
+        # A remembered login belongs to the remembered Pi: a re-point to a new
+        # address must not silently pair the new device with the old login --
+        # the wrong-ssh-target bug this script exists to prevent.
+        if remembered_host and pi_address != remembered_host:
+            raise SystemExit(
+                f"refusing: the address changed ({remembered_host!r} -> {pi_address!r}) but no "
+                "pi_user came with it -- ask the owner for the new Pi's login (never guess one)"
+            )
+        pi_user = values.get("DASHBOARD_PI_USER", "").strip()
     if not pi_user:
         raise SystemExit(
             "refusing: no pi_user on stdin and no DASHBOARD_PI_USER remembered -- ask the "
@@ -186,11 +210,7 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         # converges too: this setup's delivery IS latch, and leaving the key
         # unset would send every producer on a direct POST that cannot reach
         # the LAN-only Pi.
-        if values.get("DASHBOARD_DELIVERY", "").strip() != "latch":
-            if "DASHBOARD_DELIVERY" in values:
-                rewrite_dotenv_line(dotenv_path, "DASHBOARD_DELIVERY", "latch")
-            else:
-                append_dotenv(dotenv_path, [("DASHBOARD_DELIVERY", "latch")])
+        if converge_dotenv_value(dotenv_path, values, "DASHBOARD_DELIVERY", "latch"):
             print("converged: DASHBOARD_DELIVERY=latch")
     else:
         token = secrets.token_urlsafe(24)
@@ -203,12 +223,8 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
               f"DASHBOARD_TOKEN and DASHBOARD_DELIVERY=latch to {dotenv_path}.")
 
     # The Pi's ssh login, persisted so a resumed or unattended run recovers it
-    # instead of guessing one. Same converge shape as DASHBOARD_DELIVERY.
-    if values.get("DASHBOARD_PI_USER", "").strip() != pi_user:
-        if "DASHBOARD_PI_USER" in values:
-            rewrite_dotenv_line(dotenv_path, "DASHBOARD_PI_USER", pi_user)
-        else:
-            append_dotenv(dotenv_path, [("DASHBOARD_PI_USER", pi_user)])
+    # instead of guessing one.
+    if converge_dotenv_value(dotenv_path, values, "DASHBOARD_PI_USER", pi_user):
         print(f"remembered: DASHBOARD_PI_USER={pi_user} (the Pi's ssh login, for resumed runs)")
 
     ical = ical_url
@@ -223,6 +239,10 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
     write_private(os.path.join(ld_dir, "dashboard.hdr"), f"Authorization: Bearer {token}\n")
     print(f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr (mode 600) -- "
           "ship them with plow_write_file; never paste them.")
+    # The one authoritative ssh target for Phase 3 -- both halves validated
+    # above, so the skill binds its placeholders from this line rather than
+    # re-deriving (or re-asking for) either half.
+    print(f"pi_target={pi_user}@{pi_address}")
     print(f"pi_line_1={PI_LINE_1}")
     print(f"pi_line_2={PI_LINE_2}")
     return 0

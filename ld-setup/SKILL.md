@@ -69,9 +69,11 @@ Skip when `/opt/data/ld/config.json` exists **and** this prints nothing:
 
 (No output is a pass; any text is the list of what is wrong. Its exit code is
 always 0 and means nothing — read the output, not the status.) Even when
-skipping, you still need `pi_address`, `pi_user`, `has_mac` and the optional
-`ical_url` below for Phases 2 and 3 — ask for those alone if you do not have
-them from this conversation.
+skipping, you still need `has_mac` (and the optional `ical_url`) for Phases 2
+and 3 — ask for those alone if you do not have them from this conversation.
+Do NOT re-ask for `pi_address` or `pi_user` here: Phase 2's script recovers
+both from the dotenv and refuses by name for whichever it cannot — that
+refusal, not this note, is what decides when the owner gets asked.
 
 Otherwise ask, one or two questions per message, in the owner's words:
 
@@ -171,9 +173,10 @@ bare lines, `pi_line_1=…` and `pi_line_2=…`, for Phase 3:
   script exited 0 and, with a Mac, that write succeeded.
 
 Everything after this line that is written `<pi_address>` or `<pi_user>` is a
-placeholder for the owner's answers (a real one looks like `192.0.2.10` and
-`pi`); substitute both before you make the call, and never send the literal
-angle brackets to the Mac.
+placeholder bound from the `pi_target=<pi_user>@<pi_address>` line Phase 2's
+script printed — the one authoritative, validated ssh target; never bind
+either half from memory or a guess. Substitute both before you make the
+call, and never send the literal angle brackets to the Mac.
 
 ## Phase 3 — Bring the Pi up through Latch
 
@@ -193,12 +196,15 @@ liveness path to tell the two states apart:
 
     plow_run_command(argv=["sh","-c","curl -fsS http://<pi_address>:5174/healthz"], network=true)
 
-`ok` here plus a 401/403/404 above = the viewer is alive and serving the wall
+`ok` here plus a 403/404 above = the viewer is alive and serving the wall
 but runs a build that predates the updater contract (no `/api/version`, or no
 remote reads). The remedy is re-running `pi_line_2` (the updater bootstrap)
 over ssh in the bring-up below — not `ssh-copy-id`, not a re-mint, and not a
-report that the wall is down. Only a connection failure on both (exit 7 /
-timeout) means the viewer is actually not up.
+report that the wall is down. `ok` plus a 401 is a *current* viewer whose
+token is not the one in the header — that is the 401 recovery at the end of
+this phase (re-ship `pi.env` and restart the viewer), not a bootstrap. Only
+a connection failure on both (exit 7 / timeout) means the viewer is actually
+not up.
 
 Otherwise — still on the with-a-Mac path — probe key auth first — no password should ever need to
 cross chat. `BatchMode=yes` on every `ssh`/`scp` so a key-auth regression

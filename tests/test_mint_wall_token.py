@@ -240,6 +240,25 @@ def test_a_pre_fix_dotenv_resumed_unattended_refuses_for_the_login_by_name(home)
     assert not ld.exists()
 
 
+def test_a_new_address_without_its_login_refuses_rather_than_pairing_old_login_new_pi(home, capsys):
+    """A re-point names a different device; the remembered login belongs to
+    the old one. Silently combining them is the wrong-ssh-target bug this
+    script exists to prevent -- refuse and name pi_user."""
+    dotenv, ld = home
+    run(home, capsys, user="so")
+    before = dotenv.read_text()
+    with pytest.raises(SystemExit) as e:
+        mwt.main(stdin=io.StringIO(json.dumps({"pi_address": "192.168.1.50"})),
+                 dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "pi_user" in str(e.value)
+    assert dotenv.read_text() == before
+
+
+def test_the_authoritative_ssh_target_is_printed_for_phase_3(home, capsys):
+    _, out = run(home, capsys, user="so")
+    assert f"pi_target=so@{PI}\n" in out
+
+
 def test_a_mixed_case_address_converges_and_stays_idempotent_across_a_resume(home, capsys):
     """DNS is case-insensitive and urlsplit lowercases on recovery, so a
     mixed-case answer must not leave an endpoint that every later {} resume
