@@ -28,9 +28,12 @@ COPY ld-viewer-dev/       /var/lib/hermes/skills/ld-viewer-dev/
 COPY ld-weather/          /var/lib/hermes/skills/ld-weather/
 COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
 
-# Normalize whatever modes the checkout carried. Ownership is left as root.
+# Normalize whatever modes the checkout carried, preserving the executable bit:
+# several SKILL.md files invoke a script by bare path, so a blanket 0644 makes
+# them fail with Permission denied. Ownership is left as root.
 RUN find /var/lib/hermes/skills -type d -exec chmod 0755 {} + \
- && find /var/lib/hermes/skills -type f -exec chmod 0644 {} + \
+ && find /var/lib/hermes/skills -type f ! -perm -u+x -exec chmod 0644 {} + \
+ && find /var/lib/hermes/skills -type f -perm -u+x -exec chmod 0755 {} + \
  && chmod 0644 /var/lib/hermes/SOUL.md
 
 # The one rewrite. Every path in this repo's content is written against the
