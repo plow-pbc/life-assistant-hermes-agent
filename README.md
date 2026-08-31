@@ -433,7 +433,13 @@ PLOW_API_BASE=https://api.plow.co       # API root, no /v1 suffix
 PLOW_HOME_CHANNEL=cht_...               # the home chat
 PLOW_AGENT_TOKEN=...                    # the agent's scoped bearer
 HERMES_CUSTOM_PLOW_API_KEY=...          # the model key config.yaml names
+TZ=America/Los_Angeles                  # the owner's own zone, not UTC
 ```
+
+`TZ` is load-bearing, not cosmetic: `ld-setup` refuses to write a config whose
+timezone disagrees with the container's, and the dashboard crons refuse to
+register without one — so an agent provisioned in `UTC` for an owner who is not
+in `UTC` cannot finish setup, and its reminders and digests never schedule.
 
 Those are the names `plow-chat-platform` reads. The pre-unification spellings
 (`PLOW_CHAT_BASE_URL`, `PLOW_CHAT_CHAT_UID`, `PLOW_CHAT_TOKEN`) are retired and
