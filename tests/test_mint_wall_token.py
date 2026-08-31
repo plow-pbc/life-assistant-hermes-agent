@@ -254,6 +254,20 @@ def test_a_new_address_without_its_login_refuses_rather_than_pairing_old_login_n
     assert dotenv.read_text() == before
 
 
+@pytest.mark.parametrize("bad,named", [("10.0.0.5 --", "pi address"), ("8.8.8.8", "household")],
+                         ids=["malformed", "public"])
+def test_a_bad_address_without_a_login_refuses_for_the_address_not_the_login(home, capsys, bad, named):
+    """The ordering contract: address validity surfaces first, so an owner
+    who sent a bad re-point address is asked to fix THAT, not for a login."""
+    dotenv, ld = home
+    run(home, capsys, user="so")
+    with pytest.raises(SystemExit) as e:
+        mwt.main(stdin=io.StringIO(json.dumps({"pi_address": bad})),
+                 dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert named in str(e.value)
+    assert "pi_user" not in str(e.value)
+
+
 def test_the_authoritative_ssh_target_is_printed_for_phase_3(home, capsys):
     _, out = run(home, capsys, user="so")
     assert f"pi_target=so@{PI}\n" in out
