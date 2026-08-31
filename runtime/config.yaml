@@ -6,7 +6,7 @@
 # Gmail and Slack are NOT reachable on this instance at all, and their absence
 # is no longer a routing detail. They used to arrive through the
 # plow-connectors skill, replayed from `skills.tsv`; that file is now empty,
-# so `agent-mgr restore <agent>` installs no skill and there is nothing here
+# so `agent-mgr deploy <agent>` installs no skill and there is nothing here
 # or in the home that reaches a person's mail.
 #
 # Google Calendar arrives another way: a vendored `gog` driven through Latch —
@@ -55,4 +55,4 @@ platforms:
     enabled: true
     # No instance group prompts or trust flag. Plow's owner-scoped Chat resource
     # is the durable preference and the shared plugin refreshes it before each
-    # turn, so dashboard and agent writes take effect without a restore.
+    # turn, so dashboard and agent writes take effect without a deploy.
