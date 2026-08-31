@@ -261,11 +261,13 @@ def test_a_bad_address_without_a_login_refuses_for_the_address_not_the_login(hom
     who sent a bad re-point address is asked to fix THAT, not for a login."""
     dotenv, ld = home
     run(home, capsys, user="so")
+    before = dotenv.read_text()
     with pytest.raises(SystemExit) as e:
         mwt.main(stdin=io.StringIO(json.dumps({"pi_address": bad})),
                  dotenv_path=str(dotenv), ld_dir=str(ld))
     assert named in str(e.value)
     assert "pi_user" not in str(e.value)
+    assert dotenv.read_text() == before
 
 
 def test_the_authoritative_ssh_target_is_printed_for_phase_3(home, capsys):
