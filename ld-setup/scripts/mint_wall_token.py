@@ -98,31 +98,29 @@ def append_dotenv(path, pairs):
         f.write("\n" + "".join(f"{k}={v}\n" for k, v in pairs))
 
 
-def converge_dotenv_value(path, values, key, value):
-    """One NAME=value line converged to `value`: appended when absent,
-    rewritten in place when different, untouched when equal. Returns whether
-    anything changed, so the caller owns its own message."""
-    if values.get(key, "").strip() == value:
-        return False
-    if key in values:
-        rewrite_dotenv_line(path, key, value)
-    else:
-        append_dotenv(path, [(key, value)])
-    return True
-
-
-def rewrite_dotenv_line(path, key, value):
-    """Converge one machine-written NAME=value line. Only ever aimed at the
-    endpoint line -- the token line is never touched (a re-mint would lock the
+def converge_dotenv(path, values, pairs):
+    """Machine-written NAME=value lines converged in ONE atomic replacement:
+    each key appended when absent, rewritten in place when different,
+    untouched when equal. One os.replace for all of them, so a coupled
+    identity (the endpoint and its login) can never be torn by a crash
+    between writes. Never aimed at the token line (a re-mint would lock the
     producers out of the wall). Written beside and os.replace'd in, never
     truncate-in-place: this file is the whole agent's config, and a crash
-    mid-write must leave the original intact."""
+    mid-write must leave the original intact. Returns the keys that changed,
+    so callers own their own messages."""
+    changed = {k: v for k, v in pairs if values.get(k, "").strip() != v}
+    if not changed:
+        return set()
     with open(path, encoding="utf-8") as f:
         lines = f.read().splitlines()
-    out = [f"{key}={value}" if line.partition("=")[0] == key else line for line in lines]
+    seen = {line.partition("=")[0] for line in lines}
+    out = [f"{key}={changed[key]}" if (key := line.partition("=")[0]) in changed else line
+           for line in lines]
+    out += [f"{k}={v}" for k, v in changed.items() if k not in seen]
     tmp = f"{path}.repoint"
     write_private(tmp, "\n".join(out) + "\n")
     os.replace(tmp, path)
+    return set(changed)
 
 
 def write_private(path, text):
@@ -201,32 +199,38 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
                 f"refusing: {dotenv_path} names DASHBOARD_ENDPOINT_URL but DASHBOARD_TOKEN "
                 "is blank -- the Pi's token is not here to ship; restore the line or start over"
             )
-        if old == endpoint:
-            print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
-        else:
-            rewrite_dotenv_line(dotenv_path, "DASHBOARD_ENDPOINT_URL", endpoint)
+        # ONE atomic replacement for everything that converges on a resume:
+        # the endpoint and its login are a coupled identity (a crash between
+        # separate writes could pair the new Pi with the old login -- the
+        # wrong-ssh-target bug this script exists to prevent), and a
+        # pre-latch dotenv's delivery converges to latch in the same pass
+        # (leaving it unset would send every producer on a direct POST that
+        # cannot reach the LAN-only Pi).
+        changed = converge_dotenv(dotenv_path, values, [
+            ("DASHBOARD_ENDPOINT_URL", endpoint),
+            ("DASHBOARD_DELIVERY", "latch"),
+            ("DASHBOARD_PI_USER", pi_user),
+        ])
+        if "DASHBOARD_ENDPOINT_URL" in changed:
             print(f"re-pointed: DASHBOARD_ENDPOINT_URL={endpoint} (token unchanged -- "
                   "cards now target this Pi; ship pi.env to it in Phase 3)")
-        # A pre-latch dotenv (endpoint + token from a direct-POST install)
-        # converges too: this setup's delivery IS latch, and leaving the key
-        # unset would send every producer on a direct POST that cannot reach
-        # the LAN-only Pi.
-        if converge_dotenv_value(dotenv_path, values, "DASHBOARD_DELIVERY", "latch"):
+        else:
+            print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
+        if "DASHBOARD_DELIVERY" in changed:
             print("converged: DASHBOARD_DELIVERY=latch")
+        if "DASHBOARD_PI_USER" in changed:
+            print(f"remembered: DASHBOARD_PI_USER={pi_user} (the Pi's ssh login, for resumed runs)")
     else:
         token = secrets.token_urlsafe(24)
         append_dotenv(dotenv_path, [
             ("DASHBOARD_ENDPOINT_URL", endpoint),
             ("DASHBOARD_TOKEN", token),
             ("DASHBOARD_DELIVERY", "latch"),
+            ("DASHBOARD_PI_USER", pi_user),
         ])
         print(f"minted the wall token; appended DASHBOARD_ENDPOINT_URL={endpoint}, "
-              f"DASHBOARD_TOKEN and DASHBOARD_DELIVERY=latch to {dotenv_path}.")
-
-    # The Pi's ssh login, persisted so a resumed or unattended run recovers it
-    # instead of guessing one.
-    if converge_dotenv_value(dotenv_path, values, "DASHBOARD_PI_USER", pi_user):
-        print(f"remembered: DASHBOARD_PI_USER={pi_user} (the Pi's ssh login, for resumed runs)")
+              f"DASHBOARD_TOKEN, DASHBOARD_DELIVERY=latch and DASHBOARD_PI_USER={pi_user} "
+              f"to {dotenv_path}.")
 
     ical = ical_url
     if ical is None:

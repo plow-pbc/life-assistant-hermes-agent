@@ -79,9 +79,9 @@ def test_a_first_run_appends_three_lines_and_ships_the_token_in_two_files_only(h
     assert len(tok) >= 32  # secrets.token_urlsafe(24)
     assert dotenv.read_text() == (
         SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n"
-        f"DASHBOARD_TOKEN={tok}\nDASHBOARD_DELIVERY=latch\n"
-        "\nDASHBOARD_PI_USER=pi\n"
+        f"DASHBOARD_TOKEN={tok}\nDASHBOARD_DELIVERY=latch\nDASHBOARD_PI_USER=pi\n"
     )
+    assert f"pi_target=pi@{PI}\n" in out
     assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
     assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
     for name in ("pi.env", "dashboard.hdr"):
@@ -240,39 +240,26 @@ def test_a_pre_fix_dotenv_resumed_unattended_refuses_for_the_login_by_name(home)
     assert not ld.exists()
 
 
-def test_a_new_address_without_its_login_refuses_rather_than_pairing_old_login_new_pi(home, capsys):
-    """A re-point names a different device; the remembered login belongs to
-    the old one. Silently combining them is the wrong-ssh-target bug this
-    script exists to prevent -- refuse and name pi_user."""
+@pytest.mark.parametrize("address,named", [
+    ("192.168.1.50", "pi_user"),   # valid new address, no login: the remembered login belongs to the OLD Pi
+    ("10.0.0.5 --", "pi address"),  # malformed: address validity surfaces first, not a login re-ask
+    ("8.8.8.8", "household"),       # public: same ordering contract
+], ids=["new-address", "malformed", "public"])
+def test_a_repoint_without_a_login_refuses_naming_the_actual_problem(home, capsys, address, named):
+    """One refusal matrix for a changed address arriving without pi_user:
+    a valid new address asks for the new Pi's login (never silently pairs it
+    with the old one -- the wrong-ssh-target bug this script prevents); a
+    bad address surfaces its own error first. Always side-effect-free."""
     dotenv, ld = home
     run(home, capsys, user="so")
     before = dotenv.read_text()
     with pytest.raises(SystemExit) as e:
-        mwt.main(stdin=io.StringIO(json.dumps({"pi_address": "192.168.1.50"})),
-                 dotenv_path=str(dotenv), ld_dir=str(ld))
-    assert "pi_user" in str(e.value)
-    assert dotenv.read_text() == before
-
-
-@pytest.mark.parametrize("bad,named", [("10.0.0.5 --", "pi address"), ("8.8.8.8", "household")],
-                         ids=["malformed", "public"])
-def test_a_bad_address_without_a_login_refuses_for_the_address_not_the_login(home, capsys, bad, named):
-    """The ordering contract: address validity surfaces first, so an owner
-    who sent a bad re-point address is asked to fix THAT, not for a login."""
-    dotenv, ld = home
-    run(home, capsys, user="so")
-    before = dotenv.read_text()
-    with pytest.raises(SystemExit) as e:
-        mwt.main(stdin=io.StringIO(json.dumps({"pi_address": bad})),
+        mwt.main(stdin=io.StringIO(json.dumps({"pi_address": address})),
                  dotenv_path=str(dotenv), ld_dir=str(ld))
     assert named in str(e.value)
-    assert "pi_user" not in str(e.value)
+    if named != "pi_user":
+        assert "pi_user" not in str(e.value)
     assert dotenv.read_text() == before
-
-
-def test_the_authoritative_ssh_target_is_printed_for_phase_3(home, capsys):
-    _, out = run(home, capsys, user="so")
-    assert f"pi_target=so@{PI}\n" in out
 
 
 def test_a_mixed_case_address_converges_and_stays_idempotent_across_a_resume(home, capsys):
