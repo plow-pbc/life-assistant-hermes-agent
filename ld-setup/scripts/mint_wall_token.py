@@ -32,6 +32,15 @@ write_config.py, where an embedded quote in an owner's answer would
 otherwise execute before any validation here could see it. Leave "ical_url"
 out to keep the feed already in pi.env.
 
+Every key may be left out on a resume: pi_address falls back to the host
+already in DASHBOARD_ENDPOINT_URL, and pi_user to the DASHBOARD_PI_USER line
+this script itself persists (appended beside the endpoint; converged in
+place when the owner names a different login). That line exists precisely so
+an unattended resume -- a cron turn with no owner in the conversation --
+never has to guess an ssh login: {} on stdin re-emits the whole install
+state, and a refusal here names exactly which answer only the owner can
+supply.
+
 Stdout never carries the token. It carries pi_line_1= and pi_line_2=, the two
 commands the agent runs on the Pi through Latch -- bare, one per line, nothing
 shell-wrapped, so each value drops straight into an ssh argv element.
@@ -51,6 +60,7 @@ import os
 import re
 import secrets
 import sys
+from urllib.parse import urlsplit
 
 sys.path.insert(
     0,
@@ -120,9 +130,23 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
     unknown = set(answers) - {"pi_address", "pi_user", "ical_url"}
     if unknown:
         raise SystemExit(f"refusing: unknown keys {sorted(unknown)}")
-    pi_address = str(answers.get("pi_address", ""))
-    pi_user = str(answers.get("pi_user", ""))
     ical_url = answers.get("ical_url")  # absent = keep what pi.env holds
+
+    values = dotenv_values(dotenv_path)
+    pi_address = str(answers.get("pi_address") or "").strip()
+    if not pi_address:
+        pi_address = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+        if not pi_address:
+            raise SystemExit(
+                "refusing: no pi_address on stdin and no DASHBOARD_ENDPOINT_URL to recover "
+                "it from -- ask the owner for the Pi's address"
+            )
+    pi_user = str(answers.get("pi_user") or "").strip() or values.get("DASHBOARD_PI_USER", "").strip()
+    if not pi_user:
+        raise SystemExit(
+            "refusing: no pi_user on stdin and no DASHBOARD_PI_USER remembered -- ask the "
+            "owner for the Pi's login (never guess one)"
+        )
     if not PI_ADDRESS_RE.fullmatch(pi_address):
         raise SystemExit(
             f"refusing: pi address {pi_address!r} is not [A-Za-z0-9.-] -- "
@@ -140,7 +164,6 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
             "it lands in an ssh argv element in Phase 3"
         )
 
-    values = dotenv_values(dotenv_path)
     old = values.get("DASHBOARD_ENDPOINT_URL", "").strip()
     endpoint = f"http://{pi_address}:5174/api/message"
     if old:
@@ -175,6 +198,15 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         ])
         print(f"minted the wall token; appended DASHBOARD_ENDPOINT_URL={endpoint}, "
               f"DASHBOARD_TOKEN and DASHBOARD_DELIVERY=latch to {dotenv_path}.")
+
+    # The Pi's ssh login, persisted so a resumed or unattended run recovers it
+    # instead of guessing one. Same converge shape as DASHBOARD_DELIVERY.
+    if values.get("DASHBOARD_PI_USER", "").strip() != pi_user:
+        if "DASHBOARD_PI_USER" in values:
+            rewrite_dotenv_line(dotenv_path, "DASHBOARD_PI_USER", pi_user)
+        else:
+            append_dotenv(dotenv_path, [("DASHBOARD_PI_USER", pi_user)])
+        print(f"remembered: DASHBOARD_PI_USER={pi_user} (the Pi's ssh login, for resumed runs)")
 
     ical = ical_url
     if ical is None:

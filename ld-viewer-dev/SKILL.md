@@ -58,9 +58,18 @@ deploy it by pushing, and **prove it went live**.
 - Pi SSH key: `/opt/data/ld-dev/ssh/pi_key`
 
 SSH to the Pi — plain user, **no sudo** (everything you need is a systemd
-`--user` unit or a file in the home):
+`--user` unit or a file in the home). `<pi>` in every ssh below is
+`<user>@<host>`, both halves from the dotenv — never guessed and never a
+remembered literal (this file is shared by every household). Recover them
+without printing the dotenv's secrets:
 
-    ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 '<command>'
+    python3 -c 'import sys; sys.path.insert(0, "/opt/data/skills/ld-shared/scripts"); from urllib.parse import urlsplit; from runtime_env import DOTENV, dotenv_values; v = dotenv_values(DOTENV); print(v.get("DASHBOARD_PI_USER", "") + "@" + (urlsplit(v.get("DASHBOARD_ENDPOINT_URL", "")).hostname or ""))'
+
+A blank half means Phase 2 of `ld-setup` has not persisted it yet — run
+`ld-setup`'s `mint_wall_token.py` resume (`{}` on stdin) or ask the owner;
+do not improvise a login.
+
+    ssh -i /opt/data/ld-dev/ssh/pi_key <pi> '<command>'
 
 ## The development loop
 
@@ -102,20 +111,20 @@ A push that "went through" is not a deploy; the updater may have failed the
 build, failed a health check, and rolled back. When that happens, read the
 result the updater recorded and **report it verbatim, never paraphrased**:
 
-    ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'cat ~/ld-releases/state/last-result.json'
+    ssh -i /opt/data/ld-dev/ssh/pi_key <pi> 'cat ~/ld-releases/state/last-result.json'
 
 A rolled-back SHA is pinned in `~/ld-releases/state/bad-sha` and is not retried
 until a new push — so the fix is always another commit, never a re-run.
 
-## Diagnostics (SSH, `so@rpi5`, plain user)
+## Diagnostics (SSH, `<pi>`, plain user)
 
-    ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'journalctl _SYSTEMD_USER_UNIT=life-dashboard-viewer.service -n 200 --no-pager'
-    ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'systemctl --user restart life-dashboard-viewer'
-    ssh -i /opt/data/ld-dev/ssh/pi_key so@rpi5 'cat ~/ld-releases/state/last-result.json'
+    ssh -i /opt/data/ld-dev/ssh/pi_key <pi> 'journalctl _SYSTEMD_USER_UNIT=life-dashboard-viewer.service -n 200 --no-pager'
+    ssh -i /opt/data/ld-dev/ssh/pi_key <pi> 'systemctl --user restart life-dashboard-viewer'
+    ssh -i /opt/data/ld-dev/ssh/pi_key <pi> 'cat ~/ld-releases/state/last-result.json'
 
 (`_SYSTEMD_USER_UNIT=`, not `--user -u`: the Pi keeps no per-user journal
 files, so the `--user` form returns "No journal files were found" — measured
-on rpi5; the system journal carries the user units' output.)
+on a real Pi; the system journal carries the user units' output.)
 
 The SSH key is for reads, restarts, and repair — **never the deploy path**.
 Deploying by editing files on the Pi directly leaves the kiosk running code no

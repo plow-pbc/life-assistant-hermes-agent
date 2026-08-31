@@ -80,6 +80,7 @@ def test_a_first_run_appends_three_lines_and_ships_the_token_in_two_files_only(h
     assert dotenv.read_text() == (
         SEED + f"\nDASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message\n"
         f"DASHBOARD_TOKEN={tok}\nDASHBOARD_DELIVERY=latch\n"
+        "\nDASHBOARD_PI_USER=pi\n"
     )
     assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
     assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
@@ -130,8 +131,8 @@ def test_a_new_address_re_points_the_endpoint_and_keeps_the_token(home, capsys):
     assert tok not in out
 
 
-@pytest.mark.parametrize("bad", ["pi; rm -rf /", "raspberrypi.local/x", "10.0.0.5 --", ""],
-                         ids=["semicolon", "slash", "space", "empty"])
+@pytest.mark.parametrize("bad", ["pi; rm -rf /", "raspberrypi.local/x", "10.0.0.5 --"],
+                         ids=["semicolon", "slash", "space"])
 def test_an_address_that_is_not_a_host_refuses_before_touching_anything(home, bad):
     """The address lands inside a URL in the dotenv and inside the curl the
     agent runs through Latch, so anything but [A-Za-z0-9.-] is refused by
@@ -186,6 +187,42 @@ def test_a_login_that_is_not_a_user_refuses_before_touching_anything(home, bad):
     rule is enforced here in code so a missed refusal there still cannot put
     shell-relevant characters on the Mac."""
     assert "pi user" in refuse(home, pi_address=PI, pi_user=bad)
+
+
+def test_a_resume_with_no_answers_recovers_the_whole_install_state(home, capsys):
+    """{} on stdin after a first run: the address comes back out of
+    DASHBOARD_ENDPOINT_URL and the login out of DASHBOARD_PI_USER, so an
+    unattended (cron) resume re-emits everything without re-asking the owner
+    -- and without guessing an ssh login."""
+    dotenv, ld = home
+    run(home, capsys, user="so")
+    after_first = dotenv.read_text()
+    rc = mwt.main(stdin=io.StringIO("{}"), dotenv_path=str(dotenv), ld_dir=str(ld))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert dotenv.read_text() == after_first
+    assert f"already minted: DASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message" in out
+
+
+def test_the_login_is_persisted_and_a_changed_one_converges_in_place(home, capsys):
+    dotenv, ld = home
+    run(home, capsys, user="so")
+    assert "DASHBOARD_PI_USER=so\n" in dotenv.read_text()
+    rc, out = run(home, capsys, user="sam")
+    assert rc == 0
+    assert dotenv.read_text().count("DASHBOARD_PI_USER") == 1
+    assert "DASHBOARD_PI_USER=sam\n" in dotenv.read_text()
+    assert "remembered: DASHBOARD_PI_USER=sam" in out
+
+
+@pytest.mark.parametrize("missing,named", [("pi_address", "pi_address"), ("pi_user", "pi_user")])
+def test_a_first_run_missing_an_answer_refuses_by_name_instead_of_guessing(home, missing, named):
+    """With nothing in the dotenv to fall back on, the refusal names the one
+    answer only the owner can supply -- a guessed ssh login (the old failure:
+    pi@<address> against a Pi whose login is not pi) must never happen."""
+    payload = {"pi_address": PI, "pi_user": "pi"}
+    del payload[missing]
+    assert named in refuse(home, **payload)
 
 
 def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home, capsys):

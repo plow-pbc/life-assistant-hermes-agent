@@ -84,8 +84,8 @@ Otherwise ask, one or two questions per message, in the owner's words:
 | `timezone` | run `echo $TZ`, tell the owner that zone, ask them to confirm it is theirs | `family.timezone` |
 | `has_mac` | do you have a Mac with Plow Latch running? (without one, only the calendar tile updates — the weather, sports and message cards need the Mac to ship them — and the Pi has to be set up by hand) | gates `mac_username`; decides the Phase 3 path |
 | `mac_username` | your Mac login name (only with a Mac) | `morning_triage.chat_db_path` |
-| `pi_address` | the Pi's address on your home network — the IP, or `raspberrypi.local` | Phase 2 (`mint_wall_token.py`) and the Phase 3 `ssh` target; not in the config |
-| `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the Phase 3 `ssh` target; not in the config. Letters, digits, `.`, `_`, `-` only — refuse anything else: it lands in `ssh` argv |
+| `pi_address` | the Pi's address on your home network — the IP, or `raspberrypi.local` | Phase 2 (`mint_wall_token.py`) and the Phase 3 `ssh` target; not in the config — after Phase 2 it lives in the dotenv's `DASHBOARD_ENDPOINT_URL`, so a resume never re-asks |
+| `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the Phase 3 `ssh` target; not in the config — after Phase 2 it lives in the dotenv's `DASHBOARD_PI_USER`, so a resume never re-asks. Letters, digits, `.`, `_`, `-` only — refuse anything else: it lands in `ssh` argv |
 | `ical_url` | optional: the wall's own calendar tile reads a feed directly. In Google Calendar → Settings → the calendar → "Secret address in iCal format", copy that URL. Blank is fine — the tile stays empty until you give me one. | Phase 2 (the `ical_url` key of `mint_wall_token.py`'s stdin JSON); not in the config |
 | `owner_imessage`, `people`, `digest_length` | optional: your number, household names, how long the Sunday digest should be | `family`, `weekly_digest.length` |
 | `teams` | optional: teams to follow, each as ESPN abbreviation + sport + league, e.g. `[{"abbr":"chc","sport":"baseball","league":"mlb"}]` | `sports.followed` |
@@ -137,6 +137,15 @@ Leave the `ical_url` key out entirely when the owner gave no feed *this run*
 first run with no `pi.env` yet writes it blank (the viewer shows an empty
 calendar tile until a later re-run supplies one).
 
+Every key may be left out on a resume — `{}` is a valid stdin object: the
+script recovers `pi_address` from the dotenv's `DASHBOARD_ENDPOINT_URL` and
+`pi_user` from `DASHBOARD_PI_USER` (which it persists there). When it
+refuses for a missing answer, that answer is one only the owner can supply —
+ask them for exactly that and nothing else. **Never invent an ssh login or
+address**: on an unattended (cron) turn with no owner reply to draw on,
+message the owner the question and stop; a guessed `pi@…` lands the wrong
+`ssh-copy-id` instruction on their Mac.
+
 The first run mints the token and appends `DASHBOARD_ENDPOINT_URL`
 (`http://<pi_address>:5174/api/message`), `DASHBOARD_TOKEN` and
 `DASHBOARD_DELIVERY=latch` to the dotenv (no restart needed —
@@ -177,6 +186,19 @@ rewritten `pi.env` has to reach the Pi or the new feed/address never takes
 effect.
 
     plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
+
+**Read the failure before treating it as "viewer not up."** A `curl` exit 22
+(an HTTP 4xx) means something *answered* on 5174 — probe the always-open
+liveness path to tell the two states apart:
+
+    plow_run_command(argv=["sh","-c","curl -fsS http://<pi_address>:5174/healthz"], network=true)
+
+`ok` here plus a 401/403/404 above = the viewer is alive and serving the wall
+but runs a build that predates the updater contract (no `/api/version`, or no
+remote reads). The remedy is re-running `pi_line_2` (the updater bootstrap)
+over ssh in the bring-up below — not `ssh-copy-id`, not a re-mint, and not a
+report that the wall is down. Only a connection failure on both (exit 7 /
+timeout) means the viewer is actually not up.
 
 Otherwise — still on the with-a-Mac path — probe key auth first — no password should ever need to
 cross chat. `BatchMode=yes` on every `ssh`/`scp` so a key-auth regression
