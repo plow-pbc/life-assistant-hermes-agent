@@ -32,6 +32,15 @@ write_config.py, where an embedded quote in an owner's answer would
 otherwise execute before any validation here could see it. Leave "ical_url"
 out to keep the feed already in pi.env.
 
+Every key may be left out on a resume: pi_address falls back to the host
+already in DASHBOARD_ENDPOINT_URL, and pi_user to the DASHBOARD_PI_USER line
+this script itself persists (appended beside the endpoint; converged in
+place when the owner names a different login). That line exists precisely so
+an unattended resume -- a cron turn with no owner in the conversation --
+never has to guess an ssh login: {} on stdin re-emits the whole install
+state, and a refusal here names exactly which answer only the owner can
+supply.
+
 Stdout never carries the token. It carries pi_line_1= and pi_line_2=, the two
 commands the agent runs on the Pi through Latch -- bare, one per line, nothing
 shell-wrapped, so each value drops straight into an ssh argv element.
@@ -51,6 +60,7 @@ import os
 import re
 import secrets
 import sys
+from urllib.parse import urlsplit
 
 sys.path.insert(
     0,
@@ -88,18 +98,29 @@ def append_dotenv(path, pairs):
         f.write("\n" + "".join(f"{k}={v}\n" for k, v in pairs))
 
 
-def rewrite_dotenv_line(path, key, value):
-    """Converge one machine-written NAME=value line. Only ever aimed at the
-    endpoint line -- the token line is never touched (a re-mint would lock the
+def converge_dotenv(path, values, pairs):
+    """Machine-written NAME=value lines converged in ONE atomic replacement:
+    each key appended when absent, rewritten in place when different,
+    untouched when equal. One os.replace for all of them, so a coupled
+    identity (the endpoint and its login) can never be torn by a crash
+    between writes. Never aimed at the token line (a re-mint would lock the
     producers out of the wall). Written beside and os.replace'd in, never
     truncate-in-place: this file is the whole agent's config, and a crash
-    mid-write must leave the original intact."""
+    mid-write must leave the original intact. Returns the keys that changed,
+    so callers own their own messages."""
+    changed = {k: v for k, v in pairs if values.get(k, "").strip() != v}
+    if not changed:
+        return set()
     with open(path, encoding="utf-8") as f:
         lines = f.read().splitlines()
-    out = [f"{key}={value}" if line.partition("=")[0] == key else line for line in lines]
+    seen = {line.partition("=")[0] for line in lines}
+    out = [f"{key}={changed[key]}" if (key := line.partition("=")[0]) in changed else line
+           for line in lines]
+    out += [f"{k}={v}" for k, v in changed.items() if k not in seen]
     tmp = f"{path}.repoint"
     write_private(tmp, "\n".join(out) + "\n")
     os.replace(tmp, path)
+    return set(changed)
 
 
 def write_private(path, text):
@@ -120,9 +141,20 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
     unknown = set(answers) - {"pi_address", "pi_user", "ical_url"}
     if unknown:
         raise SystemExit(f"refusing: unknown keys {sorted(unknown)}")
-    pi_address = str(answers.get("pi_address", ""))
-    pi_user = str(answers.get("pi_user", ""))
     ical_url = answers.get("ical_url")  # absent = keep what pi.env holds
+
+    values = dotenv_values(dotenv_path)
+    # Lowercased once at intake: DNS and mDNS names are case-insensitive, and
+    # urlsplit lowercases on recovery -- without this a mixed-case address
+    # would "re-point" the endpoint on every resume that omits it.
+    pi_address = str(answers.get("pi_address") or "").strip().lower()
+    if not pi_address:
+        pi_address = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+        if not pi_address:
+            raise SystemExit(
+                "refusing: no pi_address on stdin and no DASHBOARD_ENDPOINT_URL to recover "
+                "it from -- ask the owner for the Pi's address"
+            )
     if not PI_ADDRESS_RE.fullmatch(pi_address):
         raise SystemExit(
             f"refusing: pi address {pi_address!r} is not [A-Za-z0-9.-] -- "
@@ -134,13 +166,30 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
             "(a private IP or a .local name) -- the wall's bearer rides every "
             "request to this host"
         )
+    pi_user = str(answers.get("pi_user") or "").strip()
+    remembered_host = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+    if not pi_user:
+        # A remembered login belongs to the remembered Pi: a re-point to a new
+        # address must not silently pair the new device with the old login --
+        # the wrong-ssh-target bug this script exists to prevent. The address
+        # checks above run first, so a bad address surfaces as its own refusal.
+        if remembered_host and pi_address != remembered_host:
+            raise SystemExit(
+                f"refusing: the address changed ({remembered_host!r} -> {pi_address!r}) but no "
+                "pi_user came with it -- ask the owner for the new Pi's login (never guess one)"
+            )
+        pi_user = values.get("DASHBOARD_PI_USER", "").strip()
+    if not pi_user:
+        raise SystemExit(
+            "refusing: no pi_user on stdin and no DASHBOARD_PI_USER remembered -- ask the "
+            "owner for the Pi's login (never guess one)"
+        )
     if not PI_USER_RE.fullmatch(pi_user):
         raise SystemExit(
             f"refusing: pi user {pi_user!r} is not [A-Za-z0-9._-] -- "
             "it lands in an ssh argv element in Phase 3"
         )
 
-    values = dotenv_values(dotenv_path)
     old = values.get("DASHBOARD_ENDPOINT_URL", "").strip()
     endpoint = f"http://{pi_address}:5174/api/message"
     if old:
@@ -150,31 +199,38 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
                 f"refusing: {dotenv_path} names DASHBOARD_ENDPOINT_URL but DASHBOARD_TOKEN "
                 "is blank -- the Pi's token is not here to ship; restore the line or start over"
             )
-        if old == endpoint:
-            print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
-        else:
-            rewrite_dotenv_line(dotenv_path, "DASHBOARD_ENDPOINT_URL", endpoint)
+        # ONE atomic replacement for everything that converges on a resume:
+        # the endpoint and its login are a coupled identity (a crash between
+        # separate writes could pair the new Pi with the old login -- the
+        # wrong-ssh-target bug this script exists to prevent), and a
+        # pre-latch dotenv's delivery converges to latch in the same pass
+        # (leaving it unset would send every producer on a direct POST that
+        # cannot reach the LAN-only Pi).
+        changed = converge_dotenv(dotenv_path, values, [
+            ("DASHBOARD_ENDPOINT_URL", endpoint),
+            ("DASHBOARD_DELIVERY", "latch"),
+            ("DASHBOARD_PI_USER", pi_user),
+        ])
+        if "DASHBOARD_ENDPOINT_URL" in changed:
             print(f"re-pointed: DASHBOARD_ENDPOINT_URL={endpoint} (token unchanged -- "
                   "cards now target this Pi; ship pi.env to it in Phase 3)")
-        # A pre-latch dotenv (endpoint + token from a direct-POST install)
-        # converges too: this setup's delivery IS latch, and leaving the key
-        # unset would send every producer on a direct POST that cannot reach
-        # the LAN-only Pi.
-        if values.get("DASHBOARD_DELIVERY", "").strip() != "latch":
-            if "DASHBOARD_DELIVERY" in values:
-                rewrite_dotenv_line(dotenv_path, "DASHBOARD_DELIVERY", "latch")
-            else:
-                append_dotenv(dotenv_path, [("DASHBOARD_DELIVERY", "latch")])
+        else:
+            print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
+        if "DASHBOARD_DELIVERY" in changed:
             print("converged: DASHBOARD_DELIVERY=latch")
+        if "DASHBOARD_PI_USER" in changed:
+            print(f"remembered: DASHBOARD_PI_USER={pi_user} (the Pi's ssh login, for resumed runs)")
     else:
         token = secrets.token_urlsafe(24)
         append_dotenv(dotenv_path, [
             ("DASHBOARD_ENDPOINT_URL", endpoint),
             ("DASHBOARD_TOKEN", token),
             ("DASHBOARD_DELIVERY", "latch"),
+            ("DASHBOARD_PI_USER", pi_user),
         ])
         print(f"minted the wall token; appended DASHBOARD_ENDPOINT_URL={endpoint}, "
-              f"DASHBOARD_TOKEN and DASHBOARD_DELIVERY=latch to {dotenv_path}.")
+              f"DASHBOARD_TOKEN, DASHBOARD_DELIVERY=latch and DASHBOARD_PI_USER={pi_user} "
+              f"to {dotenv_path}.")
 
     ical = ical_url
     if ical is None:
@@ -188,6 +244,10 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
     write_private(os.path.join(ld_dir, "dashboard.hdr"), f"Authorization: Bearer {token}\n")
     print(f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr (mode 600) -- "
           "ship them with plow_write_file; never paste them.")
+    # The one authoritative ssh target for Phase 3 -- both halves validated
+    # above, so the skill binds its placeholders from this line rather than
+    # re-deriving (or re-asking for) either half.
+    print(f"pi_target={pi_user}@{pi_address}")
     print(f"pi_line_1={PI_LINE_1}")
     print(f"pi_line_2={PI_LINE_2}")
     return 0
