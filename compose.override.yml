@@ -17,7 +17,7 @@
 # are available here and both are quiet:
 #
 #   - Mounting a single directory AT /opt/data/skills. That is where
-#     `agent-mgr restore` installs whatever skills.tsv names, so a mount over it
+#     `agent-mgr deploy` installs whatever skills.tsv names, so a mount over it
 #     shadows that install. The file is empty today, but latch#183 refills it,
 #     and the failure then would look like a broken connector rather than a
 #     shadowed mount.
@@ -37,11 +37,11 @@
 # ~/.hermes-mark-property/skills are both root-owned today, created exactly this
 # way by property-hunt's own override, while the agent runs as uid 1000.
 #
-# A root-owned skills/ is one `agent-mgr restore` cannot write into, so the cost
+# A root-owned skills/ is one `agent-mgr deploy` cannot write into, so the cost
 # lands on the day skills.tsv is refilled (latch#183) and reads as a permission
 # error nobody attributes to a mount. `mkdir -p $AGENT_HOME/skills` as the agent
 # uid before the first `up` is what keeps the parent writable; the leaves under
-# it may be root-owned, because restore only needs to create siblings.
+# it may be root-owned, because deploy only needs to create siblings.
 # plow-pbc/agent-mgr#44 is the durable fix (and #42 is the same mechanism seen
 # from teardown, where the root-owned dirs are what the operator cannot rm).
 #
