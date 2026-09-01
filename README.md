@@ -423,6 +423,9 @@ from `agent-mgr`'s mounts. `agent-mgr` is unaffected and keeps running the repo
 the way it always has.
 
 ```sh
+# ECR Public 403s HEAD on a digest reference, and BuildKit resolves FROM with
+# HEAD -- so pull the pinned base first (pull uses GET), then build.
+docker pull public.ecr.aws/e1h7x4a2/plow-cloud-agents@sha256:9b24e8d1a8933709d1c640180e00c1e9d937bd44bf498f38a80a147955707724
 docker build .
 ```
 
@@ -446,12 +449,18 @@ Those are the names `plow-chat-platform` reads. The pre-unification spellings
 nothing reads them; an instance still on them runs `agent-mgr
 migrate-plugin-env <name>` or re-activates.
 
-The `FROM` is an immutable `base-<sha>` tag that is never moved, so it fails at
-the pull until that commit of
-[`plow-pbc/plow-hermes-agent`](https://github.com/plow-pbc/plow-hermes-agent) is
-published rather than resolving to something else. To build against a local base
-before then, pass `--build-context "<that tag>=docker-image://<ref>"` — a
-registry reference, since BuildKit resolves a bare local name against Docker Hub.
+The `FROM` is pinned by **digest**, not by tag. The `base-<sha>` half names the
+commit of [`plow-pbc/plow-hermes-agent`](https://github.com/plow-pbc/plow-hermes-agent)
+it was built from, and the `@sha256:` half is what the build actually resolves —
+so no tag reassignment can substitute different bytes under an existing tenant.
+Bump both together when moving to a newer base.
+
+The pull step above is not optional on this registry: ECR Public answers `HEAD`
+on a digest reference with `403 Forbidden` while answering `GET` normally, and
+BuildKit resolves a `FROM` with `HEAD` — so a clean `docker build .` fails at
+metadata resolution until the digest is in the local store. `docker pull` takes
+the `GET` path and puts it there. The tag-only form has no such problem, which
+is the trade for the supply-chain guarantee.
 
 ## Open
 
