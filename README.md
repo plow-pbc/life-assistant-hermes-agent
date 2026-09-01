@@ -357,10 +357,19 @@ timer ticks with nobody there to answer an approval card. `ld-setup` Phase 4
 approves it by running the strip once with the owner present, but only on an
 image that has the timer, and only on a run that reaches Phase 4. An instance
 already carrying `/opt/data/ld/setup-complete` skips that phase, so a standalone
-instance set up before this landed needs the step once, by hand: run
-`ld-shared/scripts/calendar_feed.py` with its owner present and approve the
-calls. Fleet instances need nothing until plow-pbc/agent-mgr#109 gives them a
-scheduler.
+instance set up before this landed needs the step once, by hand — on that
+instance, with its owner present at their Mac to approve the calls:
+
+```sh
+systemctl start life-calendar-feed.service   # blocks: it is Type=oneshot
+journalctl -u life-calendar-feed -n 20       # a count and "shipped through the Mac" is the pass
+```
+
+The unit rather than the script, deliberately: `ExecStart` already names the
+image's own path (`/var/lib/hermes/skills/...`, not this checkout's) and runs
+as `hermes`, so this cannot drift from what the timer actually ticks — which is
+the whole point of approving it. Fleet instances need nothing until
+plow-pbc/agent-mgr#109 gives them a scheduler.
 
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
