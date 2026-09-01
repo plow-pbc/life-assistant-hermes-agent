@@ -127,6 +127,37 @@ def test_outcome_memories_get_a_raised_char_limit():
     assert config()["memory"]["memory_char_limit"] == 6000
 
 
+def test_compression_has_somewhere_to_fall_back_to():
+    """Compaction must not be one provider stall away from freezing.
+
+    On a full-budget timeout the aux client deliberately skips the
+    same-provider retry for compression, so it needs another target. Without
+    one it has none: the implicit chain wants keys no instance carries, and the
+    last-resort net is the same (provider, model) that just stalled. That
+    emptiness cost ~30h on 2026-08-31 -- every turn on an oversized session
+    retried, stalled, cooled down 60s, and the transcript grew meanwhile.
+
+    The chain model is pinned, not free-form: a ChatGPT-account codex serves
+    ONLY gpt-5.6-sol and gpt-5.5. Every other id answers 400 "not supported
+    when using Codex with a ChatGPT account", so a well-meaning swap to a
+    cheaper-sounding one (gpt-5-mini, codex-mini-latest) installs a fallback
+    that can never fire -- and a naive probe would not catch it, because the
+    implicit main-model fallback reports success on the caller's behalf."""
+    compression = config()["auxiliary"]["compression"]
+    chain = compression["fallback_chain"]
+
+    assert [e["model"] for e in chain] == ["gpt-5.5"]
+    assert chain[0]["provider"] == "openai-codex", (
+        "the fallback rides this instance's own codex auth -- a provider "
+        "needing a new credential would not resolve here at all"
+    )
+    assert compression["timeout"] < chain[0]["timeout"], (
+        "the primary attempt must give up SOONER than the fallback runs: the "
+        "stall is what the user feels, and a long primary budget just delays "
+        "reaching the only thing that can still succeed"
+    )
+
+
 def test_latch_is_the_only_mcp_server():
     assert list(config()["mcp_servers"]) == ["latch"]
 

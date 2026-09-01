@@ -34,6 +34,42 @@ model:
 # mem_config.get("memory_char_limit", 2200).
 memory:
   memory_char_limit: 6000
+# Compaction must never be one provider stall away from freezing. On a
+# full-budget timeout the aux client DELIBERATELY skips the same-provider retry
+# for compression ("timeout on the critical path; skipping same-provider retry
+# and falling back") -- re-running a multi-minute summary on the thing that just
+# stalled would double the user-visible wait. So it needs somewhere else to land,
+# and by default there is nowhere: the implicit chain (openrouter/nous/local/
+# api-key) wants keys no instance here carries, and the last-resort net is the
+# SAME (provider, model) that just failed, which the model-scoped skip discards.
+#
+# On 2026-08-31 that emptiness cost ~30h: every turn on an oversized session
+# retried, stalled, cooled down 60s, and the transcript kept growing meanwhile.
+#
+# A second model on the instance's OWN codex auth closes it -- no new credential.
+# The skip is (provider, model)-scoped, so a different model on the same provider
+# is a valid target. Verify a candidate by watching the fallback log lines, not
+# the return value: a naive probe reports success while the implicit main-model
+# fallback quietly serves it. Measured that way, a ChatGPT-account codex serves
+# ONLY gpt-5.6-sol and gpt-5.5 -- every other id (gpt-5-mini, gpt-5.1-codex,
+# codex-mini-latest, ...) answers 400 "not supported when using Codex with a
+# ChatGPT account", so naming one here would install a fallback that never works.
+#
+# timeout is 180s, BELOW the image's 300s floor for the primary attempt, because
+# reaching the fallback FAST is the entire point: the stall is what the user
+# feels, and a longer primary budget just makes them wait longer before anything
+# else is tried. Both models summarize a ~290K-token transcript in 22-50s
+# measured, so 180s is generous for a healthy call and quick to abandon a sick
+# one. The chain entry keeps its own 300s -- once the fallback is running it is
+# the only hope left, so let it finish.
+auxiliary:
+  compression:
+    timeout: 180
+    fallback_chain:
+    - provider: openai-codex
+      model: gpt-5.5
+      timeout: 300
+
 mcp_servers:
   # Plow Latch, reached over the Plow relay: the browser and the filesystem this
   # agent drives are THE INSTANCE OWNER's Mac, not this container. The relay authorises the
