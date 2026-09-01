@@ -371,7 +371,9 @@ skills.tsv      empty -- no connectors on this instance (see above)
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
-ld-shared/      the POST helper, the ld-config gate and the wire protocol
+ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
+                calendar_feed.py -- the kiosk's calendar strip, no model in it
+                (scheduled by runtime/life-calendar-feed.timer, cloud image only)
 ld-dashboard/   the six cron schedules, all registered
 ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
 ld-setup/       first-run setup end-to-end: config -> wall token -> Pi over Latch -> crons
