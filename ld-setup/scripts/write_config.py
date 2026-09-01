@@ -224,14 +224,10 @@ def atomic_write(config_path, text):
     bytes are durable before the rename publishes them, then one os.replace.
     A reader sees the old config or the new one, never neither.
 
-    And before that rename, the bytes are read back and parsed with the SAME
-    strict reader ld_config_gate.py uses. Three separate rounds of review found
-    three ways this writer could put something on disk that a downstream reader
-    rejects, and each was closed at its own door. This closes the class instead
-    of a fourth instance: whatever the callers validate, nothing is published
-    unless the file that will exist parses. It is a last line, so it should
-    never fire -- if it does, a door is missing upstream and the refusal says
-    which file to look at.
+    Nothing is validated here: the caller serializes with allow_nan=False, and
+    json.dumps output is valid JSON by construction otherwise, so re-reading
+    the file back would be a second validation contract around a single
+    caller.
     """
     directory = os.path.dirname(config_path)
     os.makedirs(directory, exist_ok=True)
@@ -243,14 +239,7 @@ def atomic_write(config_path, text):
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        with open(temporary, encoding="utf-8") as f:
-            json.load(f, parse_constant=_reject_constant)
         os.replace(temporary, config_path)
-    except ValueError as exc:
-        os.unlink(temporary)
-        raise SystemExit(
-            f"refusing to write: the serialized config does not parse "
-            f"strictly ({exc}) -- {config_path} is unchanged") from None
     except BaseException:
         os.unlink(temporary)
         raise
@@ -287,7 +276,16 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         verdict = f"not valid JSON ({exc})"
     if verdict:
         raise SystemExit(f"refusing to write: the gate says: {verdict}")
-    atomic_write(config_path, json.dumps(config, indent=2) + "\n")
+    # allow_nan=False, the writer's half of the rule the two reads enforce:
+    # Python emits NaN/Infinity back out as bare tokens, and a config carrying
+    # one is refused by ld_config_gate.py's own strict reader -- which stands
+    # every producer down at once, silently. Nothing reaches here carrying one
+    # today; this keeps that true if a future path forgets.
+    try:
+        text = json.dumps(config, indent=2, allow_nan=False) + "\n"
+    except ValueError as exc:
+        raise SystemExit(f"refusing to write: {exc}") from None
+    atomic_write(config_path, text)
     print(f"wrote {config_path} (mode 600); gate: PASS")
     return 0
 
