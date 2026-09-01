@@ -220,3 +220,25 @@ def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypa
     assert target.read_bytes() == before
     # And nothing half-written left beside it for the next run to trip over.
     assert [p.name for p in target.parent.iterdir()] == ["config.json"]
+
+
+@pytest.mark.parametrize("token", ["Infinity", "-Infinity", "NaN"], ids=["inf", "-inf", "nan"])
+def test_a_patch_carrying_a_non_standard_json_constant_is_refused(
+    tmp_path, monkeypatch, token
+):
+    """Python parses NaN/Infinity and writes them back, and the shared gate
+    passes them (`float("inf") > 0`). Written out, ld_config_gate's own reader
+    -- which already refuses those tokens -- calls the live config "not valid
+    JSON" and stands every producer down. Refuse at the door instead."""
+    monkeypatch.setattr(wc, "geocode", fake_geocode)
+    target = tmp_path / "ld" / "config.json"
+    wc.main(stdin=io.StringIO(json.dumps(FULL)), env=ENV, config_path=str(target))
+    before = target.read_bytes()
+
+    with pytest.raises(SystemExit) as e:
+        wc.main(["--patch"], env=ENV, config_path=str(target),
+                stdin=io.StringIO(
+                    '{"calendar_nudge": {"lookahead_virtual_minutes": %s}}' % token))
+
+    assert token in str(e.value)
+    assert target.read_bytes() == before

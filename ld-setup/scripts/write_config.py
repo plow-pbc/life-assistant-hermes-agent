@@ -67,6 +67,19 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?count=1&name="
 REQUIRED = ("owner_name", "owner_email", "city", "timezone", "has_mac")
 
 
+def _reject_constant(token):
+    """Refuse JSON's non-standard NaN/Infinity tokens, at every door.
+
+    Python's parser accepts them and its writer emits them back, so a patch
+    carrying `Infinity` passes the shared gate (`float("inf") > 0` is true) and
+    is written out verbatim -- at which point ld_config_gate.py's own reader,
+    which already refuses them, calls the live config "not valid JSON" and
+    stands every producer down. Refusing at the read keeps the one config this
+    writes something every reader of it can parse.
+    """
+    raise ValueError(f"non-standard JSON constant {token}")
+
+
 def geocode(city):
     """city -> (lat, lon), or a refusal the agent can relay."""
     try:
@@ -237,12 +250,16 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         help="stdin is a partial config to merge onto the live one, not the answer set")
     args = parser.parse_args(argv or [])
     env = os.environ if env is None else env
-    payload = json.load(sys.stdin if stdin is None else stdin)
+    try:
+        payload = json.load(sys.stdin if stdin is None else stdin,
+                            parse_constant=_reject_constant)
+    except ValueError as exc:
+        raise SystemExit(f"refusing to write: {exc}") from None
     if args.patch:
         try:
             with open(config_path, encoding="utf-8") as f:
-                current = json.load(f)
-        except (OSError, json.JSONDecodeError) as exc:
+                current = json.load(f, parse_constant=_reject_constant)
+        except (OSError, ValueError) as exc:
             raise SystemExit(
                 f"refusing to patch: could not read {config_path}: {exc}") from None
         config = apply_patch(payload, current, env)
