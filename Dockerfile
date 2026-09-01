@@ -31,9 +31,13 @@ COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
 # Normalize whatever modes the checkout carried, preserving the executable bit:
 # several SKILL.md files invoke a script by bare path, so a blanket 0644 makes
 # them fail with Permission denied. Ownership is left as root.
-RUN find /var/lib/hermes/skills -type d -exec chmod 0755 {} + \
- && find /var/lib/hermes/skills -type f ! -perm -u+x -exec chmod 0644 {} + \
- && find /var/lib/hermes/skills -type f -perm -u+x -exec chmod 0755 {} + \
+# -mindepth 1: the skills root itself is the base's, root-owned and sticky so a
+# turn cannot rename a baked skill out of the scan path. Recursing over it would
+# reset that mode and leave the directory unwritable for the gateway's own
+# bundled-skill install, which then scans nothing.
+RUN find /var/lib/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
+ && find /var/lib/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
+ && find /var/lib/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
  && chmod 0644 /var/lib/hermes/SOUL.md
 
 # The one rewrite. Every path in this repo's content is written against the
