@@ -351,7 +351,10 @@ Before restoring an existing instance, migrate its config in place: copy
 the object or changing any other preference, then require an empty result from
 `ld_config_gate.py`. The three calendar skills now add that account to their
 exact gog argv; manually run and approve each new 1-day, 3-day, and 7-day gather
-shape once through Latch before relying on the unattended crons.
+shape once through Latch before relying on the unattended crons. The calendar
+strip adds a fourth shape — its `/api/calendar` curl — which `ld-setup` Phase 4
+now runs once while the owner is present, for the same reason: its timer ticks
+with nobody there to answer an approval card.
 
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and

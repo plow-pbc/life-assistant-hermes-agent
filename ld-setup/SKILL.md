@@ -324,6 +324,23 @@ is on the Pi. `{"message": null}` means it is not — read the forced run's
 output (`/opt/hermes/bin/hermes cron runs`) for what went wrong, fix it, and
 force it again.
 
+**Then approve the calendar strip's own delivery, once, here.** The strip
+(`ld-shared/scripts/calendar_feed.py`) runs unattended on a timer with no
+model in it, and it ships through Latch like every card — but with its own
+argv, which Latch has never seen. An unapproved argv on an unattended run
+stops at a card nobody is present to answer, so the first tick would leave
+the strip stale forever. Approving it now, while the owner is here, is the
+whole fix. Make exactly these two calls, the second byte-identical to what
+`curl_argv()` builds:
+
+    plow_write_file(path="~/Plow/ld/calendar.json", content='{"generated_at":"1970-01-01T00:00:00Z","window_days":7,"events":[]}')
+    plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr -H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/calendar.json http://<pi_address>:5174/api/calendar"], network=true)
+
+The body is deliberately an empty week: it is a real request the viewer
+accepts, and the next feed tick replaces it. On a fleet instance the timer
+does not exist yet (plow-pbc/agent-mgr#109) and this approval simply costs
+one card; do it anyway, so the instance is ready the day it does.
+
 Then tell the owner: "your wall is live — the weather card should be
 showing; is it?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.

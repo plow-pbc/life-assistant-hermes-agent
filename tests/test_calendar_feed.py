@@ -251,3 +251,16 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed):
     assert "kiosk-token" not in json.dumps(Handler.requests)
     # Nothing was POSTed from this container -- it is not on the Pi's LAN.
     assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
+
+
+def test_the_argv_setup_approves_is_the_argv_the_feed_sends(feed):
+    """Latch always-allow keys on the exact argv, so ld-setup Phase 4 approves
+    this shape while the owner is present. If the sheet and the script drift
+    apart, the approval covers a command the feed never sends and every
+    unattended tick stops at a card nobody answers -- silently, since the feed
+    reports its own stand-down as one line."""
+    module, _ = feed
+    built = module.curl_argv("http://<pi_address>:5174/api/calendar")[2]
+    sheet = (Path(__file__).resolve().parent.parent
+             / "ld-setup" / "SKILL.md").read_text()
+    assert built in sheet, f"ld-setup/SKILL.md does not carry this argv:\n{built}"

@@ -17,21 +17,21 @@ Everything it reads is fixed; nothing arrives on argv:
     literal here, as it is in `runtime/config.yaml` and that recipe: the
     dotenv is agent-writable, and an injected base would walk the relay bearer
     to another host with nothing to refuse it;
-  - the kiosk endpoint (and, on a direct instance, its bearer) through
-    post_to_kiosk's own constants, so a dotenv-sourced endpoint is held to the
-    Pi's own message API on the household network before a bearer is attached
-    to it.
+  - the kiosk endpoint through post_to_kiosk's own constants, so a
+    dotenv-sourced one is held to the Pi's own message API on the household
+    network before anything is sent to it.
 
-Two delivery paths, chosen by `DASHBOARD_DELIVERY` exactly as the card
-producers choose theirs. `latch` is the one every set-up household is on —
-mint_wall_token.py writes it unconditionally, because this container is not on
-the Pi's LAN — and it means the body is shipped from the owner's Mac in the two
-fixed calls ld-shared/references/latch-delivery.md documents: write the file,
-then curl it. This producer makes those two calls ITSELF, over the same relay
+ONE delivery path: the body is shipped from the owner's Mac, in the two fixed
+calls ld-shared/references/latch-delivery.md documents — write the file, then
+curl it. That is where every household is: mint_wall_token.py writes
+`DASHBOARD_DELIVERY=latch` unconditionally, because this container is not on
+the Pi's LAN. This producer makes those two calls ITSELF, over the same relay
 it gathers through; the card producers hand them to a model only because a
-model is already in their loop. In that mode the kiosk bearer is never read
-here at all — it lives in ~/Plow/ld/dashboard.hdr on the Mac and `curl -H @`
-reads it there.
+model is already in their loop.
+
+A consequence worth naming: the wall's bearer is never read here at all. It
+lives in ~/Plow/ld/dashboard.hdr on the Mac and `curl -H @` reads it there, so
+the token never crosses the relay and this script never holds it.
 
 The gather argv is byte-identical to the seven-day one ld-weekly-digest
 already uses, deliberately: Latch always-allow keys on the exact argv, README
@@ -193,15 +193,12 @@ def relay_config(dotenv):
 
 
 def kiosk_config(dotenv):
-    """(calendar URL, bearer or None, latch?), or (None, a stand-down reason).
+    """The kiosk's calendar URL, or (None, a stand-down reason).
 
     Goes through post_to_kiosk's constants rather than re-deriving them, so the
     agent-writable dotenv is held to the same endpoint shape and the same
-    household-network refusal a card post is. The bearer is required only on a
-    direct instance: under latch the Mac holds it.
+    household-network refusal a card post is. No bearer: the Mac holds it.
     """
-    latch = dotenv.get(post_to_kiosk.DELIVERY_KEY, "").strip() == "latch"
-
     def optional(file_path, env_name):
         # File, then the dotenv — deliberately NOT the process env. The unit
         # loads no EnvironmentFile, so nothing has laundered a dotenv line into
@@ -216,8 +213,7 @@ def kiosk_config(dotenv):
         return dotenv.get(env_name, "").strip(), "dotenv"
 
     url, source = optional(post_to_kiosk.ENDPOINT_FILE, post_to_kiosk.ENDPOINT_ENV)
-    token, _ = optional(post_to_kiosk.TOKEN_FILE, post_to_kiosk.TOKEN_ENV)
-    if not url or (not token and not latch):
+    if not url:
         return None, "kiosk is not configured"
     if not url.startswith(post_to_kiosk.REQUIRED_URL_PREFIXES):
         return None, "kiosk URL is not http(s)"
@@ -229,7 +225,7 @@ def kiosk_config(dotenv):
         post_to_kiosk._validate_dotenv_endpoint(url)
     if not url.endswith(MESSAGE_SUFFIX):
         return None, "kiosk URL does not end with /api/message"
-    return (url[: -len(MESSAGE_SUFFIX)] + CALENDAR_SUFFIX, token, latch), None
+    return url[: -len(MESSAGE_SUFFIX)] + CALENDAR_SUFFIX, None
 
 
 def read_config():
@@ -408,11 +404,10 @@ def main(*, now=None):
         print(f"calendar feed not configured: {exc}")
         return 0
 
-    kiosk, reason = kiosk_config(dotenv)
-    if kiosk is None:
+    calendar_url, reason = kiosk_config(dotenv)
+    if calendar_url is None:
         print(f"calendar feed not configured: {reason}")
         return 0
-    calendar_url, kiosk_token, latch = kiosk
 
     relay, missing = relay_config(dotenv)
     if relay is None:
@@ -430,20 +425,14 @@ def main(*, now=None):
             "window_days": WINDOW_DAYS,
             "events": events,
         }
-        if latch:
-            deliver_via_latch(relay_url, relay_token, calendar_url, feed)
-            how = "shipped through the Mac"
-        else:
-            _, status = _post_json(calendar_url, kiosk_token, feed,
-                                   "kiosk calendar API")
-            how = f"kiosk HTTP {status}"
+        deliver_via_latch(relay_url, relay_token, calendar_url, feed)
     except FeedError as exc:
         # The next tick is the retry; nothing is remembered between them. A
         # sleeping Mac is the common case and is not an error worth more.
         print(f"calendar feed failed: {exc}")
         return 0
 
-    print(f"calendar feed: {len(events)} events; {how}")
+    print(f"calendar feed: {len(events)} events; shipped through the Mac")
     return 0
 
 
