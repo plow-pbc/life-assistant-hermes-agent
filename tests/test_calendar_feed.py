@@ -25,6 +25,8 @@ from typing import ClassVar
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "ld-shared" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+import post_to_kiosk  # noqa: E402
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -76,9 +78,13 @@ CONFIG = {
 }
 
 
+validated = []
+
+
 @pytest.fixture
 def feed(tmp_path, monkeypatch):
     Handler.relay_responses, Handler.requests, Handler.redirect_paths = [], [], set()
+    validated.clear()
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -93,17 +99,25 @@ def feed(tmp_path, monkeypatch):
         sys.path.remove(str(SCRIPTS))
 
     (tmp_path / "config.json").write_text(json.dumps(CONFIG))
-    (tmp_path / "dotenv").write_text("")
+    # Everything through the dotenv, nothing through the process env: the unit
+    # loads no EnvironmentFile, and a value arriving as env would skip the
+    # household-network check that guards a dotenv-sourced endpoint.
+    (tmp_path / "dotenv").write_text(
+        "DOMO_DEVICE_UID=dev1\n"
+        "DOMO_MCP_TOKEN=relay-token\n"
+        f"DASHBOARD_ENDPOINT_URL={base}/api/message\n"
+        "DASHBOARD_TOKEN=kiosk-token\n")
     monkeypatch.setattr(module, "CONFIG_FILE", str(tmp_path / "config.json"))
-    monkeypatch.setattr(module, "STATE_FILE", str(tmp_path / "feed.state"))
     monkeypatch.setattr(module, "DOTENV", str(tmp_path / "dotenv"))
-    monkeypatch.setenv("PLOW_API_BASE", base)
-    monkeypatch.setenv("DOMO_DEVICE_UID", "dev1")
-    monkeypatch.setenv("DOMO_MCP_TOKEN", "relay-token")
-    monkeypatch.setenv("DASHBOARD_ENDPOINT_URL", f"{base}/api/message")
-    monkeypatch.setenv("DASHBOARD_TOKEN", "kiosk-token")
+    monkeypatch.setattr(module, "RELAY_ORIGIN", base)
+    # post_to_kiosk's endpoint validator pins the Pi's exact `:5174/api/message`
+    # shape, which a loopback server on an ephemeral port cannot wear. Its rules
+    # are that module's contract and are tested there; what matters HERE is that
+    # a dotenv-sourced endpoint is routed THROUGH it rather than around it — so
+    # it is replaced by a recorder and the routing is asserted.
+    monkeypatch.setattr(post_to_kiosk, "_validate_dotenv_endpoint", validated.append)
     try:
-        yield module
+        yield module, base
     finally:
         server.shutdown()
         server.server_close()
@@ -114,13 +128,18 @@ def published():
 
 
 def test_a_private_occurrence_takes_its_siblings_off_the_wall(feed):
+    feed, _ = feed
     """One invite is on several calendars, all copies sharing an iCalUID. Drop
     only the private copy and a default-visibility sibling publishes the title
     to a display everyone in the house can read."""
     Handler.relay_responses = [relay_ok([
         event("p1", "ical-p", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00",
               visibility="private", summary="Therapy"),
-        event("p2", "ical-p", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00",
+        # Same occurrence seen through a second calendar, but the copy was
+        # edited and its END differs. Keying on the end as well as the start
+        # made this copy a different occurrence, so it survived the prepass
+        # and published the private title.
+        event("p2", "ical-p", "2026-09-02T09:00:00-07:00", "2026-09-02T10:30:00-07:00",
               summary="Therapy"),
         event("c", "ical-c", "2026-09-02T11:00:00-07:00", "2026-09-02T12:00:00-07:00",
               status="cancelled"),
@@ -135,6 +154,7 @@ def test_a_private_occurrence_takes_its_siblings_off_the_wall(feed):
 
 
 def test_the_relay_bearer_is_never_forwarded_through_a_redirect(feed, capsys):
+    feed, _ = feed
     """urllib follows 3xx AND re-sends Authorization to the new origin, so a
     rewritten endpoint would walk the relay credential off the household
     network. The request must fail instead."""
@@ -148,6 +168,7 @@ def test_the_relay_bearer_is_never_forwarded_through_a_redirect(feed, capsys):
 
 
 def test_the_strip_is_ordered_by_when_things_start(feed):
+    feed, base = feed
     """gog sorts within one calendar; the merged result is in whatever order
     the calendars came back. An unsorted strip is wrong in a way that reads as
     a rendering bug, so it survives on the wall."""
@@ -165,3 +186,15 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
     # The all-day row sorts by local midnight, ahead of the same day's 9am.
     assert [e["uid"] for e in wire["events"]] == ["allday", "a", "b"]
     assert wire["window_days"] == 7
+    # Byte-identical to ld-weekly-digest's already-approved seven-day argv.
+    # A fourth shape strands every unattended run on a Latch approval card.
+    # The dotenv endpoint went through post_to_kiosk's validator, not around
+    # it. Loading it into the process env instead (an EnvironmentFile in the
+    # unit) is what used to skip this and hand the bearer to an injected host.
+    assert validated == [f"{base}/api/message"]
+    relay = [r for r in Handler.requests if r["path"].endswith("/mcp")][0]
+    assert relay["body"]["params"]["arguments"]["argv"] == [
+        "gog", "calendar", "events", "list",
+        "--account=ada@example.com", "--calendars=primary",
+        "--days=7", "--json", "--results-only", "--sort=start", "--max=250",
+    ]

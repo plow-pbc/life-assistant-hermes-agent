@@ -7,6 +7,13 @@
 # a prompt) is plow-pbc/agent-mgr's to add; until it does, the feed runs on the
 # cloud image and is inert on the fleet.
 #
+# No EnvironmentFile, deliberately. Loading /var/lib/hermes/.env here would put
+# every line of an AGENT-WRITABLE file into the process environment, where the
+# script reads it as trusted and skips the household-network check that only
+# applies to a dotenv-sourced endpoint — laundering an injected kiosk URL into
+# one that gets handed the bearer. The script reads that dotenv itself, so the
+# provenance survives.
+#
 # HERMES_HOME here is /var/lib/hermes: this file is copied to /etc/systemd, not
 # into the skills tree, so the Dockerfile's /opt/data rewrite never sees it and
 # the path is written out.
@@ -18,5 +25,4 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=hermes
-EnvironmentFile=/var/lib/hermes/.env
 ExecStart=/opt/hermes/.venv/bin/python3 /var/lib/hermes/skills/ld-shared/scripts/calendar_feed.py

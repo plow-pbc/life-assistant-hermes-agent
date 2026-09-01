@@ -12,17 +12,21 @@ Everything it reads is fixed; nothing arrives on argv:
   - `/opt/data/ld/config.json` for the account, the calendar ids and the
     household zone — the same `calendar.account` + `calendar.sources` shape
     every other calendar producer here reads;
-  - the Plow relay credential (`DOMO_DEVICE_UID`, `DOMO_MCP_TOKEN`) and
-    `PLOW_API_BASE`, env then the Hermes dotenv, the way post_nudge.py
-    resolves its chat leg and `just check-latch` probes the same pair;
+  - the Plow relay credential (`DOMO_DEVICE_UID`, `DOMO_MCP_TOKEN`) from the
+    Hermes dotenv, the pair `just check-latch` probes. The relay ORIGIN is a
+    literal here, as it is in `runtime/config.yaml` and that recipe: the
+    dotenv is agent-writable, and an injected base would walk the relay bearer
+    to another host with nothing to refuse it;
   - the kiosk endpoint and bearer through post_to_kiosk's own constants, so a
     dotenv-sourced endpoint is held to the Pi's own message API on the
     household network before a bearer is attached to it.
 
-The gather argv is a byte-identical literal every run. Latch's always-allow
-rules key on the exact argv, and a scheduled run has no user present to answer
-an approval card (plow-pbc/latch#181), so the relative window lives in the
-flags — `--from=now --days=7` — and never in a computed timestamp.
+The gather argv is byte-identical to the seven-day one ld-weekly-digest
+already uses, deliberately: Latch always-allow keys on the exact argv, README
+"Bring-up" has the owner approve each of the 1-, 3- and 7-day shapes once, and
+a fourth shape would strand every unattended run on an approval card nobody
+answers (plow-pbc/latch#181). `--days=7` is already relative to the moment of
+the call, so there is nothing for a computed timestamp to add.
 
 Every failure is a one-line stand-down and exit 0. This runs unattended: a
 non-zero exit buys nothing because nobody is reading, while a traceback
@@ -33,9 +37,9 @@ forever.
 Event text is UNTRUSTED. Private and confidential occurrences — and every
 sibling copy sharing their identity — are dropped first; then Latch's
 untrusted-content markers and every URI-shaped token are stripped from what is
-left. The helpers for that are inline rather than shared with
-nudge_candidates.py: its occurrence key is (iCalUID, start) where the one here
-is (iCalUID, start, end), and merging the two would change a live filter.
+left. The helpers for that are inline rather than lifted out of
+nudge_candidates.py, which keeps its own: sharing them means editing a live
+filter, and that is its own change.
 """
 
 from __future__ import annotations
@@ -44,7 +48,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -61,7 +64,10 @@ from bearer_http import open_no_redirect  # noqa: E402
 from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 CONFIG_FILE = "/opt/data/ld/config.json"
-STATE_FILE = "/opt/data/ld/calendar-feed.state"
+# Fixed, never from the dotenv. runtime/config.yaml and the justfile's
+# check-latch both name this origin outright; taking it from the
+# agent-writable dotenv instead would hand an injected turn the relay bearer.
+RELAY_ORIGIN = "https://api.plow.co"
 # ld-setup mints one bearer for the viewer's message API; the calendar API is
 # its sibling behind the same bearer. Deriving it keeps ONE address in the
 # dotenv and one thing for setup to re-point when the Pi moves.
@@ -69,8 +75,6 @@ MESSAGE_SUFFIX = "/api/message"
 CALENDAR_SUFFIX = "/api/calendar"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
-BACKOFF_FAILURES = 3
-BACKOFF_SECONDS = 60 * 60
 
 # gog 0.36 wraps each free-text field as
 #   <<<EXTERNAL_UNTRUSTED_CONTENT id="x">>>\nSource: google_api\n---\n<value>\n<<<END_...>>>
@@ -100,28 +104,23 @@ def redact(value):
     return " ".join(_URI_TOKEN.sub("", _MARKERS.sub("", value)).split())
 
 
-def _boundary(value):
-    """One start/end boundary as a comparable value.
-
-    All-day boundaries stay their date string; timed ones become UTC instants,
-    so two calendars' copies of the same occurrence — written with different
-    offsets — compare equal.
-    """
-    if "dateTime" not in value:
-        return value.get("date")
-    instant = datetime.fromisoformat(value["dateTime"].replace("Z", "+00:00"))
-    if instant.utcoffset() is None:
-        raise ValueError("timed event boundary has no UTC offset")
-    return instant.astimezone(timezone.utc)
-
-
 def event_key(event):
-    """One occurrence's cross-calendar identity.
+    """One occurrence's cross-calendar identity — the nudge filter's key.
 
-    Both boundaries, not just the start: a tight recurring series whose
-    occurrences share a start-of-day would otherwise collapse into one.
+    Start only. Two copies sharing an iCalUID and a start ARE the same
+    occurrence, so an end time can only make two views of it fail to match —
+    and the copy that fails to match a private sibling is the one that
+    publishes its title. All-day boundaries stay their date string; timed ones
+    become UTC instants, so copies written with different offsets compare
+    equal.
     """
-    return (event.get("iCalUID"), _boundary(event["start"]), _boundary(event["end"]))
+    start = event["start"]
+    if "dateTime" not in start:
+        return (event.get("iCalUID"), start.get("date"))
+    instant = datetime.fromisoformat(start["dateTime"].replace("Z", "+00:00"))
+    if instant.utcoffset() is None:
+        raise ValueError("timed event start has no UTC offset")
+    return (event.get("iCalUID"), instant.astimezone(timezone.utc))
 
 
 def visible_events(events):
@@ -169,16 +168,12 @@ def relay_config(dotenv):
     instance that has not minted a relay credential is unconfigured, not
     broken.
     """
-    def value(name):
-        return (os.environ.get(name) or dotenv.get(name) or "").strip()
-
-    base, uid, token = (value("PLOW_API_BASE").rstrip("/"),
-                        value("DOMO_DEVICE_UID"), value("DOMO_MCP_TOKEN"))
-    for name, present in (("PLOW_API_BASE", base), ("DOMO_DEVICE_UID", uid),
-                          ("DOMO_MCP_TOKEN", token)):
+    uid = dotenv.get("DOMO_DEVICE_UID", "").strip()
+    token = dotenv.get("DOMO_MCP_TOKEN", "").strip()
+    for name, present in (("DOMO_DEVICE_UID", uid), ("DOMO_MCP_TOKEN", token)):
         if not present:
             return None, name
-    return (f"{base}/v1/relay/devices/{uid}/mcp", token), None
+    return (f"{RELAY_ORIGIN}/v1/relay/devices/{uid}/mcp", token), None
 
 
 def kiosk_config(dotenv):
@@ -197,15 +192,16 @@ def kiosk_config(dotenv):
         return None, "kiosk delivery is latch"
 
     def optional(file_path, env_name):
+        # File, then the dotenv — deliberately NOT the process env. The unit
+        # loads no EnvironmentFile, so nothing has laundered a dotenv line into
+        # os.environ where it would read as trusted and skip the validator
+        # below. Provenance is the whole gate.
         try:
             file_value = Path(file_path).read_text().strip()
         except OSError:
             file_value = ""
         if file_value:
             return file_value, "file"
-        env_value = (os.environ.get(env_name) or "").strip()
-        if env_value:
-            return env_value, "env"
         return dotenv.get(env_name, "").strip(), "dotenv"
 
     url, source = optional(post_to_kiosk.ENDPOINT_FILE, post_to_kiosk.ENDPOINT_ENV)
@@ -246,7 +242,7 @@ def command_argv(account, calendar_ids):
         "gog", "calendar", "events", "list",
         f"--account={account}",
         f"--calendars={','.join(calendar_ids)}",
-        "--from=now", f"--days={WINDOW_DAYS}", "--json", "--results-only",
+        f"--days={WINDOW_DAYS}", "--json", "--results-only",
         "--sort=start", f"--max={MAX_EVENTS}",
     ]
 
@@ -350,48 +346,8 @@ def call_relay(url, token, argv):
     return decode_events(_decode_command_response(envelope))
 
 
-def _write_private_json(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-                mode="w", dir=path.parent, prefix=f".{path.name}.",
-                delete=False) as stream:
-            temporary = Path(stream.name)
-            os.fchmod(stream.fileno(), 0o600)
-            json.dump(value, stream, separators=(",", ":"))
-            stream.write("\n")
-        os.replace(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-
-def _state(path):
-    try:
-        value = json.loads(path.read_text())
-        if (isinstance(value["failures"], int)
-                and isinstance(value["last_attempt"], int)):
-            return {"failures": value["failures"],
-                    "last_attempt": value["last_attempt"]}
-    except (OSError, KeyError, TypeError, ValueError):
-        pass
-    return {"failures": 0, "last_attempt": 0}
-
-
-def _record_failure(path, now, reason):
-    state = _state(path)
-    try:
-        _write_private_json(
-            path, {"failures": state["failures"] + 1, "last_attempt": now})
-    except OSError:
-        pass
-    print(f"calendar feed failed: {reason}")
-
-
 def main(*, now=None):
     now = int(time.time()) if now is None else now
-    state_path = Path(STATE_FILE)
     dotenv = dotenv_values(DOTENV)
 
     try:
@@ -412,12 +368,6 @@ def main(*, now=None):
         return 0
     relay_url, relay_token = relay
 
-    state = _state(state_path)
-    if (state["failures"] >= BACKOFF_FAILURES
-            and now - state["last_attempt"] < BACKOFF_SECONDS):
-        print(f"calendar feed backing off after {state['failures']} failures")
-        return 0
-
     try:
         events = normalize_events(
             call_relay(relay_url, relay_token,
@@ -428,12 +378,9 @@ def main(*, now=None):
             "window_days": WINDOW_DAYS,
             "events": events,
         }, "kiosk calendar API")
-        _write_private_json(state_path, {"failures": 0, "last_attempt": now})
     except FeedError as exc:
-        _record_failure(state_path, now, str(exc))
-        return 0
-    except OSError:
-        _record_failure(state_path, now, "backoff state write failed")
+        # The next tick is the retry; nothing is remembered between them.
+        print(f"calendar feed failed: {exc}")
         return 0
 
     print(f"calendar feed: {len(events)} events; kiosk HTTP {status}")
