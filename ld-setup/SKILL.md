@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run setup for the life dashboard — interview the owner over chat, write /opt/data/ld/config.json, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when the requested work involves the life dashboard and /opt/data/ld/setup-complete is missing, when its config is missing or refused, when the owner asks to set up or re-set-up their dashboard, or when the wall has never shown a card. Do not use for unrelated calendar or life-assistant questions.
+description: First-run setup for the life dashboard — interview the owner over chat, write /opt/data/ld/config.json, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when the requested work involves the life dashboard and /opt/data/ld/setup-complete is missing, when its config is missing or refused, when the owner asks to set up or re-set-up their dashboard, when the wall has never shown a card, or when the owner asks to change one setting on a dashboard that is already set up (a new city, different teams, another calendar, a name) — see "Changing one setting later". Do not use for unrelated calendar or life-assistant questions.
 ---
 
 # Life Dashboard — Setup
@@ -359,3 +359,44 @@ Phase 3's `pi-brought-up` for a no-Mac one — mark the whole run done; this is
 the only thing that writes this file, and nothing before this line should:
 
     date -u +%FT%TZ > /opt/data/ld/setup-complete
+
+## Changing one setting later
+
+Once `/opt/data/ld/setup-complete` exists, a change is **not** a re-run of the
+phases above. Phase 1 builds the whole config from the answer set, so running
+it again resets every answer the owner is not restating — their teams, their
+extra calendars, their triage exclusions — silently, because a config missing
+those still passes the gate.
+
+Use the patch mode instead. Stdin is a PARTIAL CONFIG — the shape
+`/opt/data/skills/ld-shared/references/config.example.json` describes, carrying
+only what changes — never the answer set:
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --patch <<'JSON'
+    {"weather": {"location": "Denver"}}
+    JSON
+
+It merges onto the live file key by key, re-runs the shared gate on the
+**merged** result, and writes mode 600. It does **not** touch the crons: Phase 4
+registered all six jobs and nothing here is gated on a producer being
+configured, so a settings change has no schedule to add — and re-running the
+registration would fail the change on unrelated paused cron state. Paste its
+whole output verbatim anyway; a chat turn does not propagate an exit code.
+
+Three things it refuses rather than doing quietly, each naming what is wrong:
+a key that is not in `config.example.json` **at any depth**, list entries
+included — a misspelled `wether`, or `{"family":{"owner":{"nme":…}}}`, would
+otherwise merge in beside the real key, pass the gate on the old value and
+report a change that never happened; a merged config the gate rejects (nothing
+is written); and a `family.timezone` the container does not share (that is
+`AGENT_TZ` on the host — the owner has to ask the operator).
+
+Two things to know before composing one. **Lists replace, they do not grow** —
+`sports.followed` and `calendar.sources` are sets the owner states in full, so
+send the whole list you want, including the entries that are staying. And a
+`weather.location` sent without `lat`/`lon` is geocoded for you; do not supply
+coordinates yourself.
+
+The wall's token and the Pi are not settings and are not patchable: they are
+Phases 2 and 3, and a Pi that moved address is `mint_wall_token.py` again, not
+this.
