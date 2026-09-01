@@ -119,6 +119,14 @@ def test_group_sessions_are_shared_per_chat():
     assert config()["group_sessions_per_user"] is False
 
 
+def test_outcome_memories_get_a_raised_char_limit():
+    """A sibling session denied a completed $1,500 transfer (2026-08-31)
+    because outcome entries lost the consolidation fight at the image's
+    2,200-char default. The raised cap is what gives SOUL.md's outcome-journal
+    rule room to work; a template resync dropping it would silently regress."""
+    assert config()["memory"]["memory_char_limit"] == 6000
+
+
 def test_latch_is_the_only_mcp_server():
     assert list(config()["mcp_servers"]) == ["latch"]
 
@@ -684,3 +692,21 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     assert "before doing anything else" not in soul
     assert "unrelated life-assistant requests" in soul
     assert "when the requested work involves the life dashboard" in setup.split("---", 2)[1]
+
+
+def test_cross_session_claims_are_verified_and_outcomes_journaled():
+    """The stale-session rules are safety-critical: a sibling session once
+    denied a completed $1,500 transfer from its own memory. Pin the verify-
+    before-claiming, check-before-acting, and outcome-journal language."""
+    soul = " ".join((ROOT / "runtime" / "SOUL.md").read_text().split())
+    required = (
+        "run `session_search` first",
+        'not evidence of absence',
+        "check the authoritative surface",
+        "before initiating a consequential action",
+        "ambiguity never defaults to acting",
+        "use the `memory` tool to write a one-line outcome entry",
+        "supplements the search-first rule above, never replaces it",
+    )
+    for rule in required:
+        assert rule in soul, f"SOUL.md is missing the cross-session rule: {rule!r}"
