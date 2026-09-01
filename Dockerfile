@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-974f80f3f40a59726823b70afebe5ffb1a48070d@sha256:84b46cbb9e7f6ea87825bb7a5e04d0071faa03c6e49e66e7b052dbaa0fdf3c1d
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-6bbaad8de39939185fc43689220c0e9916d4a605@sha256:2e3f0163654a98728458120f66f3f58e32518eb43d3e2548f8e3801b845de8f7
 
 # Flat, the same layout compose.override.yml produces at /opt/data/skills: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
