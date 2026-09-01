@@ -196,3 +196,27 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
     assert "missing required answer(s)" not in combined, (
         "--patch was dropped and the partial config went through build()")
     assert "refusing to patch" in combined, combined
+
+
+def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypatch):
+    """The config is the only copy of every preference the owner is NOT
+    restating, which is the whole point of --patch. A truncate-then-write
+    destroys it before the replacement exists, so a failure in that window
+    leaves an empty file -- and an unreadable config stands every producer
+    down at once, silently."""
+    monkeypatch.setattr(wc, "geocode", fake_geocode)
+    target = tmp_path / "ld" / "config.json"
+    wc.main(stdin=io.StringIO(json.dumps(FULL)), env=ENV, config_path=str(target))
+    before = target.read_bytes()
+
+    def boom(*_args):
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(wc.os, "replace", boom)
+    with pytest.raises(OSError):
+        wc.main(["--patch"], env=ENV, config_path=str(target),
+                stdin=io.StringIO(json.dumps({"family": {"owner": {"name": "Ro"}}})))
+
+    assert target.read_bytes() == before
+    # And nothing half-written left beside it for the next run to trip over.
+    assert [p.name for p in target.parent.iterdir()] == ["config.json"]

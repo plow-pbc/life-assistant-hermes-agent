@@ -40,6 +40,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -153,16 +154,16 @@ def check_keys(patch, reference, path=""):
                         check_keys(entry, shape, f"{path}{key}[{index}].")
 
 
-def apply_patch(patch, current, env, geocoder=None, example=EXAMPLE):
+def apply_patch(patch, current, env, geocoder=None):
     """The live config with `patch` merged in, or SystemExit naming the refusal."""
     if not isinstance(patch, dict):
         raise SystemExit("refusing to patch: the patch is not a JSON object")
     try:
-        with open(example, encoding="utf-8") as f:
+        with open(EXAMPLE, encoding="utf-8") as f:
             reference = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(
-            f"refusing to patch: could not read {example}: {exc}") from None
+            f"refusing to patch: could not read {EXAMPLE}: {exc}") from None
     check_keys(patch, reference)
     if not isinstance(current, dict):
         raise SystemExit(
@@ -193,6 +194,39 @@ def apply_patch(patch, current, env, geocoder=None, example=EXAMPLE):
     return merged
 
 
+def atomic_write(config_path, text):
+    """Replace the config in one step, or leave the old one untouched.
+
+    A truncate-then-write destroys the file before the replacement exists, so
+    ENOSPC or a kill in that window leaves an empty or half-written config.
+    The first-run path could survive that -- the owner had just answered every
+    question, so re-running rebuilds it -- but a patch cannot: the file IS the
+    only copy of every preference the owner is not currently restating, and
+    preserving those is the whole reason --patch exists. An unreadable config
+    also stands every producer down at once (the shared gate refuses it), so
+    the failure presents as a wall that quietly stops updating.
+
+    So: a fresh file in the same directory (same filesystem, or os.replace is
+    not atomic), chmod BEFORE the PII-bearing content goes in, fsync so the
+    bytes are durable before the rename publishes them, then one os.replace.
+    A reader sees the old config or the new one, never neither.
+    """
+    directory = os.path.dirname(config_path)
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{os.path.basename(config_path)}.", dir=directory)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, config_path)
+    except BaseException:
+        os.unlink(temporary)
+        raise
+
+
 def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     # No real CLI args are ever expected (stdin carries the answers) -- default
     # to [] rather than argparse's usual sys.argv fallback, which would pick up
@@ -220,15 +254,7 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         verdict = f"not valid JSON ({exc})"
     if verdict:
         raise SystemExit(f"refusing to write: the gate says: {verdict}")
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    # O_CREAT's mode only applies to a NEW file; a rewrite of an existing,
-    # looser-permissioned file needs fchmod BEFORE the PII-bearing write, not
-    # after -- otherwise the content is briefly readable at the old mode.
-    fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-        f.write("\n")
+    atomic_write(config_path, json.dumps(config, indent=2) + "\n")
     print(f"wrote {config_path} (mode 600); gate: PASS")
     return 0
 
