@@ -324,6 +324,32 @@ is on the Pi. `{"message": null}` means it is not — read the forced run's
 output (`/opt/hermes/bin/hermes cron runs`) for what went wrong, fix it, and
 force it again.
 
+**Then, only where a scheduler exists, run the calendar strip once.** The
+strip (`ld-shared/scripts/calendar_feed.py`) runs unattended with no model in
+it and ships through Latch like every card, but with argv Latch has never
+seen — and an unapproved argv on an unattended run stops at a card nobody is
+present to answer. Running it here, with the owner watching, is what approves
+those calls. First check whether anything will ever run it:
+
+    test -f /etc/systemd/system/life-calendar-feed.timer && echo has-timer || echo no-timer
+
+`no-timer` — this is a fleet instance and nothing schedules the strip yet
+(plow-pbc/agent-mgr#109). **Skip this step entirely.** Do not post a calendar
+body: with no timer to replace it, an empty week would sit on the wall as a
+household's whole calendar, indefinitely, and a wrong strip is worse than no
+strip. Go on to the owner question.
+
+`has-timer` — run it once, as the gateway user:
+
+    /opt/hermes/.venv/bin/python3 /opt/data/skills/ld-shared/scripts/calendar_feed.py
+
+Approve the calls it makes; the argv it sends is the argv every later tick
+sends, so approving the real run is what makes the unattended ones silent.
+Paste its output. A line naming a count and `shipped through the Mac` is the
+pass. `calendar feed not configured: …` means an earlier phase did not finish
+— fix that first. The strip on the wall is real events from this household's
+own calendars, so it is also the proof, exactly as the weather card is.
+
 Then tell the owner: "your wall is live — the weather card should be
 showing; is it?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.

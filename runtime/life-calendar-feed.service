@@ -1,0 +1,28 @@
+# The calendar strip's scheduler, for the STANDALONE CLOUD IMAGE only.
+#
+# The fleet has no systemd: agent-mgr runs this agent as a container whose PID 1
+# is the gateway, and the only scheduler inside it is `hermes cron`, which fires
+# a model turn — for the one producer whose whole value is not spending one. A
+# command-slot on the fleet (s6, or a hermes cron that runs an argv rather than
+# a prompt) is plow-pbc/agent-mgr's to add; until it does, the feed runs on the
+# cloud image and is inert on the fleet.
+#
+# No EnvironmentFile, deliberately. Loading /var/lib/hermes/.env here would put
+# every line of an AGENT-WRITABLE file into the process environment, where the
+# script reads it as trusted and skips the household-network check that only
+# applies to a dotenv-sourced endpoint — laundering an injected kiosk URL into
+# one that gets handed the bearer. The script reads that dotenv itself, so the
+# provenance survives.
+#
+# HERMES_HOME here is /var/lib/hermes: this file is copied to /etc/systemd, not
+# into the skills tree, so the Dockerfile's /opt/data rewrite never sees it and
+# the path is written out.
+[Unit]
+Description=Publish the Life calendar feed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=hermes
+ExecStart=/opt/hermes/.venv/bin/python3 /var/lib/hermes/skills/ld-shared/scripts/calendar_feed.py

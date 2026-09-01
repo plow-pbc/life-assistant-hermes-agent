@@ -351,7 +351,25 @@ Before restoring an existing instance, migrate its config in place: copy
 the object or changing any other preference, then require an empty result from
 `ld_config_gate.py`. The three calendar skills now add that account to their
 exact gog argv; manually run and approve each new 1-day, 3-day, and 7-day gather
-shape once through Latch before relying on the unattended crons.
+shape once through Latch before relying on the unattended crons. The calendar
+strip adds a fourth shape — its `/api/calendar` curl — for the same reason: its
+timer ticks with nobody there to answer an approval card. `ld-setup` Phase 4
+approves it by running the strip once with the owner present, but only on an
+image that has the timer, and only on a run that reaches Phase 4. An instance
+already carrying `/opt/data/ld/setup-complete` skips that phase, so a standalone
+instance set up before this landed needs the step once, by hand — on that
+instance, with its owner present at their Mac to approve the calls:
+
+```sh
+systemctl start life-calendar-feed.service   # blocks: it is Type=oneshot
+journalctl -u life-calendar-feed -n 20       # a count and "shipped through the Mac" is the pass
+```
+
+The unit rather than the script, deliberately: `ExecStart` already names the
+image's own path (`/var/lib/hermes/skills/...`, not this checkout's) and runs
+as `hermes`, so this cannot drift from what the timer actually ticks — which is
+the whole point of approving it. Fleet instances need nothing until
+plow-pbc/agent-mgr#109 gives them a scheduler.
 
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
@@ -371,7 +389,9 @@ skills.tsv      empty -- no connectors on this instance (see above)
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
-ld-shared/      the POST helper, the ld-config gate and the wire protocol
+ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
+                calendar_feed.py -- the kiosk's calendar strip, no model in it
+                (scheduled by runtime/life-calendar-feed.timer, cloud image only)
 ld-dashboard/   the six cron schedules, all registered
 ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
 ld-setup/       first-run setup end-to-end: config -> wall token -> Pi over Latch -> crons

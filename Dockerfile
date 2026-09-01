@@ -50,6 +50,13 @@ RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills -type f \
       \( -name '*.md' -o -name '*.py' -o -name '*.json' \) \
       -exec sed -i 's|/opt/data|/var/lib/hermes|g' {} +
 
+# The calendar strip's schedule. Cloud image only: the fleet container has no
+# systemd, so ld-shared/scripts/calendar_feed.py ships there and nothing calls
+# it until agent-mgr grows a command slot. Both units name /var/lib/hermes
+# outright — they land in /etc/systemd, which the rewrite above does not walk.
+COPY runtime/life-calendar-feed.service runtime/life-calendar-feed.timer /etc/systemd/system/
+RUN systemctl enable life-calendar-feed.timer
+
 # The instance directory the producers read and ld-setup writes. Nothing exists
 # before first boot, so the image creates it empty: an unset-up agent is routed
 # to ld-setup by SOUL.md, exactly as on the fleet.
