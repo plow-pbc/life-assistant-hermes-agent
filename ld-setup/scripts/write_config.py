@@ -1,22 +1,46 @@
 #!/usr/bin/env python3
 """write_config.py -- the ld-setup interview's answers, written as /opt/data/ld/config.json.
 
-Answers arrive as ONE JSON object on stdin (the agent composes it from the
-owner's replies; nothing reaches argv). The result is the shape
-ld-shared/references/config.example.json describes, judged by the shared gate
--- ld_config_gate.gate() imported, not restated -- BEFORE it is written, and
-written mode 600 because family.owner and the calendar ids are a person's data.
+TWO modes, one file, because they must not disagree about what a valid config
+is. Both read ONE JSON object on stdin (the agent composes it from the owner's
+replies; nothing reaches argv), both judge the result by the shared gate --
+ld_config_gate.gate() imported, not restated -- BEFORE it is written, and both
+write mode 600 because family.owner and the calendar ids are a person's data.
 
-The timezone is checked against the container's TZ here rather than left to
-register_crons.py (which also refuses): the owner is the one answering, and
-the fix is AGENT_TZ in the instance dotenv on the HOST, which only the
+  (default)  the first-run interview. Stdin is the ANSWER set (owner_name,
+             owner_email, city, ...) and the whole config is built from it.
+
+  --patch    a later change. Stdin is a PARTIAL CONFIG -- the same shape
+             config.example.json describes, carrying only what changes -- and
+             it is deep-merged onto the live file. This is what makes "we
+             moved to Denver" or "add my partner's calendar" one turn instead
+             of a re-run of the whole interview that silently resets every
+             answer the owner is not restating.
+
+             Lists REPLACE rather than append: sports.followed and
+             calendar.sources are sets the owner states in full ("follow the
+             Cubs and the Bears"), and a patch that could only grow them would
+             have no way to drop one. Nested objects merge key by key, so
+             {"weather": {"location": "Denver"}} keeps lat/lon's siblings.
+
+The timezone is checked against the container's TZ in both modes rather than
+left to register_crons.py (which also refuses): the owner is the one answering,
+and the fix is AGENT_TZ in the instance dotenv on the HOST, which only the
 operator can edit -- so the refusal names it for the owner to relay.
+
+A patch also re-registers the crons. A setting that was blank is why a producer
+has no job, so the change that fills it is exactly the moment its job should
+appear -- and register_crons.py is idempotent, so a patch that changed nothing
+scheduling-shaped is a no-op there. The first-run path does NOT: Phase 4 of
+SKILL.md owns that registration and proves a card after it.
 """
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -29,6 +53,15 @@ sys.path.insert(
 from ld_config_gate import GateError, gate  # noqa: E402
 
 CONFIG = "/opt/data/ld/config.json"
+REGISTER_CRONS = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),
+    "..", "..", "ld-dashboard", "scripts", "register_crons.py")
+# The whole top level, closed on purpose. A patch is composed by a model from a
+# sentence, and a misspelled section ({"wether": ...}) would otherwise merge in
+# as dead config that the gate has no opinion about -- the owner is told the
+# change landed while the card keeps showing the old city.
+SECTIONS = ("family", "calendar", "weekly_digest", "morning_triage",
+            "calendar_nudge", "weather", "sports")
 # Keyless, like NWS and ESPN. count=1: the first match is the one the owner
 # meant often enough, and a wrong one shows as the wrong city name on the card.
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?count=1&name="
@@ -87,13 +120,76 @@ def build(answers, env, geocoder=None):
     }
 
 
+def deep_merge(current, patch):
+    """`patch` over `current`, key by key; a non-dict value replaces."""
+    merged = dict(current)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def apply_patch(patch, current, env, geocoder=None):
+    """The live config with `patch` merged in, or SystemExit naming the refusal."""
+    if not isinstance(patch, dict):
+        raise SystemExit("refusing to patch: the patch is not a JSON object")
+    unknown = [k for k in patch if k not in SECTIONS]
+    if unknown:
+        raise SystemExit(
+            f"refusing to patch: unknown config section(s): {', '.join(sorted(unknown))} "
+            f"-- the config has only: {', '.join(SECTIONS)}")
+    if not isinstance(current, dict):
+        raise SystemExit(
+            "refusing to patch: there is no config to patch yet -- run the "
+            "interview (this script with no --patch) first")
+
+    merged = deep_merge(copy.deepcopy(current), patch)
+
+    # Same refusal as build(), because it is the same mistake: the zone is the
+    # host's AGENT_TZ, and a config that disagrees with the container puts
+    # every card at the wrong local hour without failing anything.
+    container = (env.get("TZ") or "").strip()
+    zone = merged.get("family", {}).get("timezone")
+    if zone != container:
+        raise SystemExit(
+            f"refusing to patch: the config would say {zone!r} but this container "
+            f"runs in {container!r}. The zone is AGENT_TZ in the instance dotenv on "
+            "the host -- tell the owner to ask the operator to change it.")
+
+    # A location without its coordinates is the one patch that fails silently:
+    # the card's title changes to the new city and the forecast stays the old
+    # one's. Geocode it here rather than asking a model for a lat/lon.
+    weather = patch.get("weather") or {}
+    if "location" in weather and not {"lat", "lon"} <= set(weather):
+        lat, lon = (geocoder or geocode)(merged["weather"]["location"])
+        merged["weather"]["lat"], merged["weather"]["lon"] = lat, lon
+
+    return merged
+
+
 def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     # No real CLI args are ever expected (stdin carries the answers) -- default
     # to [] rather than argparse's usual sys.argv fallback, which would pick up
     # a caller's own argv (e.g. pytest's) when main() is invoked as a library.
-    argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args(argv or [])
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--patch", action="store_true",
+        help="stdin is a partial config to merge onto the live one, not the answer set")
+    args = parser.parse_args(argv or [])
     env = os.environ if env is None else env
-    config = build(json.load(sys.stdin if stdin is None else stdin), env)
+    payload = json.load(sys.stdin if stdin is None else stdin)
+    if args.patch:
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                current = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(
+                f"refusing to patch: could not read {config_path}: {exc}") from None
+        config = apply_patch(payload, current, env)
+    else:
+        config = build(payload, env)
     try:
         verdict = gate(config)
     except GateError as exc:
@@ -110,7 +206,19 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         json.dump(config, f, indent=2)
         f.write("\n")
     print(f"wrote {config_path} (mode 600); gate: PASS")
-    return 0
+    if not args.patch:
+        return 0
+
+    # Registration is reported, never swallowed: a patch that filled the last
+    # missing field for a producer has not actually turned that producer on
+    # until its job exists, and the chat turn does not propagate an exit code.
+    proc = subprocess.run([sys.executable, os.path.realpath(REGISTER_CRONS)],
+                          capture_output=True, text=True)
+    print((proc.stdout + proc.stderr).strip()
+          or "register_crons.py said nothing")
+    if proc.returncode != 0:
+        print("the change was saved, but schedule registration failed")
+    return proc.returncode
 
 
 if __name__ == "__main__":
