@@ -17,9 +17,21 @@ Everything it reads is fixed; nothing arrives on argv:
     literal here, as it is in `runtime/config.yaml` and that recipe: the
     dotenv is agent-writable, and an injected base would walk the relay bearer
     to another host with nothing to refuse it;
-  - the kiosk endpoint and bearer through post_to_kiosk's own constants, so a
-    dotenv-sourced endpoint is held to the Pi's own message API on the
-    household network before a bearer is attached to it.
+  - the kiosk endpoint (and, on a direct instance, its bearer) through
+    post_to_kiosk's own constants, so a dotenv-sourced endpoint is held to the
+    Pi's own message API on the household network before a bearer is attached
+    to it.
+
+Two delivery paths, chosen by `DASHBOARD_DELIVERY` exactly as the card
+producers choose theirs. `latch` is the one every set-up household is on —
+mint_wall_token.py writes it unconditionally, because this container is not on
+the Pi's LAN — and it means the body is shipped from the owner's Mac in the two
+fixed calls ld-shared/references/latch-delivery.md documents: write the file,
+then curl it. This producer makes those two calls ITSELF, over the same relay
+it gathers through; the card producers hand them to a model only because a
+model is already in their loop. In that mode the kiosk bearer is never read
+here at all — it lives in ~/Plow/ld/dashboard.hdr on the Mac and `curl -H @`
+reads it there.
 
 The gather argv is byte-identical to the seven-day one ld-weekly-digest
 already uses, deliberately: Latch always-allow keys on the exact argv, README
@@ -73,6 +85,10 @@ RELAY_ORIGIN = "https://api.plow.co"
 # dotenv and one thing for setup to re-point when the Pi moves.
 MESSAGE_SUFFIX = "/api/message"
 CALENDAR_SUFFIX = "/api/calendar"
+# The Mac-side staging path, a sibling of the cards' ~/Plow/ld/card-<n>.json.
+# Anything under ~/Plow auto-approves on the Mac; the curl argv below is one
+# more fixed shape the owner approves once, like each gather window.
+LATCH_BODY_PATH = "~/Plow/ld/calendar.json"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
 
@@ -177,19 +193,14 @@ def relay_config(dotenv):
 
 
 def kiosk_config(dotenv):
-    """The kiosk's calendar URL and bearer, or (None, a stand-down reason).
+    """(calendar URL, bearer or None, latch?), or (None, a stand-down reason).
 
     Goes through post_to_kiosk's constants rather than re-deriving them, so the
     agent-writable dotenv is held to the same endpoint shape and the same
-    household-network refusal a card post is.
+    household-network refusal a card post is. The bearer is required only on a
+    direct instance: under latch the Mac holds it.
     """
-    if dotenv.get(post_to_kiosk.DELIVERY_KEY, "").strip() == "latch":
-        # Latch delivery ships each card from the owner's Mac, because this
-        # container is not on the Pi's LAN — and that hop is two Latch calls a
-        # model makes. A feed whose whole point is having no model has nowhere
-        # to hand the body, so it stands down rather than writing an outbox
-        # file nobody will pick up.
-        return None, "kiosk delivery is latch"
+    latch = dotenv.get(post_to_kiosk.DELIVERY_KEY, "").strip() == "latch"
 
     def optional(file_path, env_name):
         # File, then the dotenv — deliberately NOT the process env. The unit
@@ -206,7 +217,7 @@ def kiosk_config(dotenv):
 
     url, source = optional(post_to_kiosk.ENDPOINT_FILE, post_to_kiosk.ENDPOINT_ENV)
     token, _ = optional(post_to_kiosk.TOKEN_FILE, post_to_kiosk.TOKEN_ENV)
-    if not url or not token:
+    if not url or (not token and not latch):
         return None, "kiosk is not configured"
     if not url.startswith(post_to_kiosk.REQUIRED_URL_PREFIXES):
         return None, "kiosk URL is not http(s)"
@@ -218,7 +229,7 @@ def kiosk_config(dotenv):
         post_to_kiosk._validate_dotenv_endpoint(url)
     if not url.endswith(MESSAGE_SUFFIX):
         return None, "kiosk URL does not end with /api/message"
-    return (url[: -len(MESSAGE_SUFFIX)] + CALENDAR_SUFFIX, token), None
+    return (url[: -len(MESSAGE_SUFFIX)] + CALENDAR_SUFFIX, token, latch), None
 
 
 def read_config():
@@ -290,19 +301,16 @@ def normalize_events(events, zone):
     return [payload for _, payload in normalized]
 
 
-def _decode_command_response(response):
-    """The command's stdout out of the MCP envelope, or FeedError.
+def _decode_command_response(result):
+    """The command's stdout out of a plow_run_command result, or FeedError.
 
-    Every layer is checked by name — a JSON-RPC error, an isError result, a
-    non-zero exit_code — because each of those is a FAILED gather that would
-    otherwise decode to zero events and publish an empty week to the wall.
+    Every layer is checked by name — the content block, the payload status, a
+    non-zero exit_code — because each of those is a FAILED call that would
+    otherwise read as success: a failed gather decodes to zero events and
+    publishes an empty week, and a failed curl leaves a stale strip on the wall
+    while the run reports fine.
     """
     try:
-        if "error" in response:
-            raise FeedError("relay returned an MCP error")
-        result = response["result"]
-        if result.get("isError") is True:
-            raise FeedError("relay command failed")
         text = next(block["text"] for block in result["content"]
                     if block.get("type") == "text")
         payload = json.loads(text)
@@ -334,16 +342,60 @@ def _post_json(url, token, body, label):
         raise FeedError(f"{label} request failed") from exc
 
 
-def call_relay(url, token, argv):
+def relay(url, token, name, arguments):
+    """One MCP tools/call on the owner's Mac; returns the result object."""
     body, _ = _post_json(url, token, {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-        "params": {"name": "plow_run_command", "arguments": {"argv": argv}},
+        "params": {"name": name, "arguments": arguments},
     }, "relay")
     try:
         envelope = json.loads(body)
     except json.JSONDecodeError as exc:
         raise FeedError("relay returned malformed JSON") from exc
-    return decode_events(_decode_command_response(envelope))
+    if "error" in envelope:
+        # The Mac asleep or Latch not running lands here. One line, and the
+        # next tick re-gathers and re-delivers -- latch-delivery.md's own rule.
+        raise FeedError(f"relay returned an MCP error for {name}")
+    try:
+        result = envelope["result"]
+    except (KeyError, TypeError) as exc:
+        raise FeedError("malformed relay response") from exc
+    if result.get("isError") is True:
+        raise FeedError(f"relay {name} failed")
+    return result
+
+
+def gather(url, token, argv):
+    return decode_events(_decode_command_response(
+        relay(url, token, "plow_run_command", {"argv": argv})))
+
+
+def curl_argv(calendar_url):
+    """The Mac-side POST, verbatim in the shape latch-delivery.md documents.
+
+    One fixed literal per household. The bearer is not in it and must not be:
+    it is in ~/Plow/ld/dashboard.hdr, written once by ld-setup, and `-H @`
+    reads it there rather than putting it on an argv the Mac records.
+    """
+    return ["sh", "-c",
+            "curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+            "-H 'Content-Type: application/json' "
+            f"--data-binary @$HOME/Plow/ld/calendar.json {calendar_url}"]
+
+
+def deliver_via_latch(relay_url, relay_token, calendar_url, feed):
+    """Ship the body from the owner's Mac: write the file, then curl it.
+
+    The two calls latch-delivery.md documents, in that order, made here rather
+    than handed to a model -- there is no model in this run. The run is not
+    done until the curl returned 2xx, which is what _decode_command_response
+    holds the second call to.
+    """
+    relay(relay_url, relay_token, "plow_write_file",
+          {"path": LATCH_BODY_PATH, "content": json.dumps(feed)})
+    _decode_command_response(
+        relay(relay_url, relay_token, "plow_run_command",
+              {"argv": curl_argv(calendar_url), "network": True}))
 
 
 def main(*, now=None):
@@ -360,7 +412,7 @@ def main(*, now=None):
     if kiosk is None:
         print(f"calendar feed not configured: {reason}")
         return 0
-    calendar_url, kiosk_token = kiosk
+    calendar_url, kiosk_token, latch = kiosk
 
     relay, missing = relay_config(dotenv)
     if relay is None:
@@ -370,20 +422,28 @@ def main(*, now=None):
 
     try:
         events = normalize_events(
-            call_relay(relay_url, relay_token,
-                       command_argv(account, calendar_ids)), zone)
-        _, status = _post_json(calendar_url, kiosk_token, {
+            gather(relay_url, relay_token,
+                   command_argv(account, calendar_ids)), zone)
+        feed = {
             "generated_at": datetime.fromtimestamp(now, timezone.utc)
             .isoformat().replace("+00:00", "Z"),
             "window_days": WINDOW_DAYS,
             "events": events,
-        }, "kiosk calendar API")
+        }
+        if latch:
+            deliver_via_latch(relay_url, relay_token, calendar_url, feed)
+            how = "shipped through the Mac"
+        else:
+            _, status = _post_json(calendar_url, kiosk_token, feed,
+                                   "kiosk calendar API")
+            how = f"kiosk HTTP {status}"
     except FeedError as exc:
-        # The next tick is the retry; nothing is remembered between them.
+        # The next tick is the retry; nothing is remembered between them. A
+        # sleeping Mac is the common case and is not an error worth more.
         print(f"calendar feed failed: {exc}")
         return 0
 
-    print(f"calendar feed: {len(events)} events; kiosk HTTP {status}")
+    print(f"calendar feed: {len(events)} events; {how}")
     return 0
 
 

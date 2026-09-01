@@ -43,8 +43,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Location", "http://127.0.0.1:1/stolen")
             self.end_headers()
             return
-        response = (type(self).relay_responses.pop(0)
-                    if self.path.endswith("/mcp") else {"ok": True})
+        response = type(self).answer(body) if self.path.endswith("/mcp") else {"ok": True}
         encoded = json.dumps(response).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -52,17 +51,34 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    @classmethod
+    def answer(cls, body):
+        """Stand in for the Mac, by tool and argv rather than by call order."""
+        params = body["params"]
+        arguments = params.get("arguments", {})
+        if params["name"] == "plow_write_file":
+            return ok_text("wrote")
+        if arguments.get("argv", [""])[0] == "gog":
+            return cls.relay_responses.pop(0)
+        return completed('{"ok":true}')      # the Mac-side curl
+
     def log_message(self, *_args):
         pass
 
 
-def relay_ok(events):
-    """The relay's success envelope: MCP result -> plow_run_command payload ->
-    gog stdout behind Latch's preamble line."""
-    payload = {"status": "completed", "exit_code": 0,
-               "output": "Note: Using direct access token\n" + json.dumps(events)}
+def ok_text(text):
     return {"jsonrpc": "2.0", "id": 1,
-            "result": {"content": [{"type": "text", "text": json.dumps(payload)}]}}
+            "result": {"content": [{"type": "text", "text": text}]}}
+
+
+def completed(output):
+    return ok_text(json.dumps(
+        {"status": "completed", "exit_code": 0, "output": output}))
+
+
+def relay_ok(events):
+    """A successful gog gather, behind Latch's preamble line."""
+    return completed("Note: Using direct access token\n" + json.dumps(events))
 
 
 def event(uid, ical, start, end, **extra):
@@ -106,7 +122,11 @@ def feed(tmp_path, monkeypatch):
         "DOMO_DEVICE_UID=dev1\n"
         "DOMO_MCP_TOKEN=relay-token\n"
         f"DASHBOARD_ENDPOINT_URL={base}/api/message\n"
-        "DASHBOARD_TOKEN=kiosk-token\n")
+        "DASHBOARD_TOKEN=kiosk-token\n"
+        # What mint_wall_token.py writes on every set-up instance, on both its
+        # paths. Testing the direct path instead would test the mode no real
+        # household is in.
+        "DASHBOARD_DELIVERY=latch\n")
     monkeypatch.setattr(module, "CONFIG_FILE", str(tmp_path / "config.json"))
     monkeypatch.setattr(module, "DOTENV", str(tmp_path / "dotenv"))
     monkeypatch.setattr(module, "RELAY_ORIGIN", base)
@@ -123,8 +143,16 @@ def feed(tmp_path, monkeypatch):
         server.server_close()
 
 
+def relay_calls(name=None):
+    calls = [r["body"]["params"] for r in Handler.requests
+             if r["path"].endswith("/mcp")]
+    return [c for c in calls if name is None or c["name"] == name]
+
+
 def published():
-    return [r for r in Handler.requests if r["path"] == "/api/calendar"]
+    """The feed body, read out of the file staged on the Mac."""
+    return [json.loads(c["arguments"]["content"])
+            for c in relay_calls("plow_write_file")]
 
 
 def test_a_private_occurrence_takes_its_siblings_off_the_wall(feed):
@@ -148,7 +176,7 @@ def test_a_private_occurrence_takes_its_siblings_off_the_wall(feed):
 
     assert feed.main(now=1_756_700_000) == 0
 
-    wire = published()[0]["body"]
+    wire = published()[0]
     assert [e["uid"] for e in wire["events"]] == ["ok"]
     assert "Therapy" not in json.dumps(wire)
 
@@ -182,7 +210,7 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
 
     assert feed.main(now=1_756_700_000) == 0
 
-    wire = published()[0]["body"]
+    wire = published()[0]
     # The all-day row sorts by local midnight, ahead of the same day's 9am.
     assert [e["uid"] for e in wire["events"]] == ["allday", "a", "b"]
     assert wire["window_days"] == 7
@@ -192,9 +220,34 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
     # it. Loading it into the process env instead (an EnvironmentFile in the
     # unit) is what used to skip this and hand the bearer to an injected host.
     assert validated == [f"{base}/api/message"]
-    relay = [r for r in Handler.requests if r["path"].endswith("/mcp")][0]
-    assert relay["body"]["params"]["arguments"]["argv"] == [
+    assert relay_calls("plow_run_command")[0]["arguments"]["argv"] == [
         "gog", "calendar", "events", "list",
         "--account=ada@example.com", "--calendars=primary",
         "--days=7", "--json", "--results-only", "--sort=start", "--max=250",
     ]
+
+
+def test_latch_delivery_makes_the_two_documented_calls_itself(feed):
+    """Every set-up household is on DASHBOARD_DELIVERY=latch — mint_wall_token
+    writes it unconditionally — so this is the path that actually runs. The two
+    calls are latch-delivery.md's, in its order, made here because there is no
+    model in a feed run to make them."""
+    module, base = feed
+    Handler.relay_responses = [relay_ok([
+        event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
+
+    assert module.main(now=1_756_700_000) == 0
+
+    names = [c["name"] for c in relay_calls()]
+    assert names == ["plow_run_command", "plow_write_file", "plow_run_command"]
+    curl = relay_calls("plow_run_command")[1]["arguments"]
+    assert curl["network"] is True
+    assert curl["argv"] == ["sh", "-c",
+        "curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+        "-H 'Content-Type: application/json' "
+        f"--data-binary @$HOME/Plow/ld/calendar.json {base}/api/calendar"]
+    # The wall's bearer stays on the Mac in dashboard.hdr; it is never read
+    # here and must not appear anywhere in what crosses the relay.
+    assert "kiosk-token" not in json.dumps(Handler.requests)
+    # Nothing was POSTed from this container -- it is not on the Pi's LAN.
+    assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
