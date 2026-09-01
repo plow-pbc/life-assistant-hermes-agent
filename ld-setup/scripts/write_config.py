@@ -223,6 +223,15 @@ def atomic_write(config_path, text):
     not atomic), chmod BEFORE the PII-bearing content goes in, fsync so the
     bytes are durable before the rename publishes them, then one os.replace.
     A reader sees the old config or the new one, never neither.
+
+    And before that rename, the bytes are read back and parsed with the SAME
+    strict reader ld_config_gate.py uses. Three separate rounds of review found
+    three ways this writer could put something on disk that a downstream reader
+    rejects, and each was closed at its own door. This closes the class instead
+    of a fourth instance: whatever the callers validate, nothing is published
+    unless the file that will exist parses. It is a last line, so it should
+    never fire -- if it does, a door is missing upstream and the refusal says
+    which file to look at.
     """
     directory = os.path.dirname(config_path)
     os.makedirs(directory, exist_ok=True)
@@ -234,7 +243,14 @@ def atomic_write(config_path, text):
             f.write(text)
             f.flush()
             os.fsync(f.fileno())
+        with open(temporary, encoding="utf-8") as f:
+            json.load(f, parse_constant=_reject_constant)
         os.replace(temporary, config_path)
+    except ValueError as exc:
+        os.unlink(temporary)
+        raise SystemExit(
+            f"refusing to write: the serialized config does not parse "
+            f"strictly ({exc}) -- {config_path} is unchanged") from None
     except BaseException:
         os.unlink(temporary)
         raise

@@ -242,3 +242,20 @@ def test_a_patch_carrying_a_non_standard_json_constant_is_refused(
 
     assert token in str(e.value)
     assert target.read_bytes() == before
+
+
+def test_bytes_that_would_not_parse_strictly_are_never_published(tmp_path):
+    """The last line, below every caller-side guard: whatever validation ran
+    upstream, nothing is renamed over the live config unless the file that
+    would exist parses under ld_config_gate's own strict reader. Exercised
+    directly, because the door guards make it unreachable from main()."""
+    target = tmp_path / "ld" / "config.json"
+    wc.atomic_write(str(target), '{"ok": true}\n')
+    before = target.read_bytes()
+
+    with pytest.raises(SystemExit) as e:
+        wc.atomic_write(str(target), '{"lookahead": Infinity}\n')
+
+    assert "does not parse strictly" in str(e.value)
+    assert target.read_bytes() == before
+    assert [p.name for p in target.parent.iterdir()] == ["config.json"]
