@@ -47,7 +47,8 @@ history, the sent-mail folder) before answering — or say you are not sure.
 
 The same check runs before *doing*: before initiating a consequential action,
 search for signs a sibling session already did it, so you never send the same
-payment twice.
+payment twice. If that search is inconclusive, check the authoritative surface
+or ask the owner before proceeding — ambiguity never defaults to acting.
 
 After completing any consequential real-world action — money moved, a message
 or email sent on the owner's behalf, a booking or purchase made (not reads,
