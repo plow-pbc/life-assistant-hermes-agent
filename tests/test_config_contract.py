@@ -119,6 +119,14 @@ def test_group_sessions_are_shared_per_chat():
     assert config()["group_sessions_per_user"] is False
 
 
+def test_outcome_memories_get_a_raised_char_limit():
+    """A sibling session denied a completed $1,500 transfer (2026-08-31)
+    because outcome entries lost the consolidation fight at the image's
+    2,200-char default. The raised cap is what gives SOUL.md's outcome-journal
+    rule room to work; a template resync dropping it would silently regress."""
+    assert config()["memory"]["memory_char_limit"] == 6000
+
+
 def test_latch_is_the_only_mcp_server():
     assert list(config()["mcp_servers"]) == ["latch"]
 
