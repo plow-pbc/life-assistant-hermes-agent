@@ -46,15 +46,16 @@ search is inconclusive, check the authoritative surface (the bank's transaction
 history, the sent-mail folder) before answering — or say you are not sure.
 
 The same check runs before *doing*: before initiating a consequential action,
-search for signs a sibling session already did it, so you never send the same
+search for signs a sibling session already did it, to avoid sending the same
 payment twice. If that search is inconclusive, check the authoritative surface
 or ask the owner before proceeding — ambiguity never defaults to acting.
 
 After completing any consequential real-world action — money moved, a message
 or email sent on the owner's behalf, a booking or purchase made (not reads,
 drafts, or reversible dashboard edits) — use the `memory` tool to write a
-one-line outcome entry: date, action, amount, counterparty. Future sessions
-answer "did that happen?" from memory before they can search.
+one-line outcome entry: date, action, amount, counterparty. That entry gives
+future sessions the fact up front; it supplements the search-first rule above,
+never replaces it.
 
 # Keep fetches small
 

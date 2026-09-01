@@ -684,3 +684,21 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     assert "before doing anything else" not in soul
     assert "unrelated life-assistant requests" in soul
     assert "when the requested work involves the life dashboard" in setup.split("---", 2)[1]
+
+
+def test_cross_session_claims_are_verified_and_outcomes_journaled():
+    """The stale-session rules are safety-critical: a sibling session once
+    denied a completed $1,500 transfer from its own memory. Pin the verify-
+    before-claiming, check-before-acting, and outcome-journal language."""
+    soul = " ".join((ROOT / "runtime" / "SOUL.md").read_text().split())
+    required = (
+        "run `session_search` first",
+        'not evidence of absence',
+        "check the authoritative surface",
+        "before initiating a consequential action",
+        "ambiguity never defaults to acting",
+        "use the `memory` tool to write a one-line outcome entry",
+        "supplements the search-first rule above, never replaces it",
+    )
+    for rule in required:
+        assert rule in soul, f"SOUL.md is missing the cross-session rule: {rule!r}"
