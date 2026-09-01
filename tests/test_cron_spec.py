@@ -332,14 +332,18 @@ ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"}
     ({"TZ": "America/Los_Angeles"}, "the injected env"),
     ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": ""}, "the injected env"),
     ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "   "}, "the injected env"),
+    ({"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_legacy"}, "the injected env"),
     (None, "absent.env"),
-], ids=["unset", "empty", "blank", "absent-dotenv"])
+], ids=["unset", "empty", "blank", "legacy-only", "absent-dotenv"])
 def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path):
     """The silent-drop trap: hermes accepts an empty or half-expanded target,
     so the digest would post its card and message nobody, every Sunday, in
     front of nobody. Registration must stop, say which variable to fix, and
-    name the source it actually consulted — the last row is the production
-    shape (env=None, the dotenv as the sole source, here an absent file)."""
+    name the source it actually consulted. The legacy-only row is an instance
+    still carrying the retired PLOW_CHAT_CHAT_UID and nothing else: that spelling
+    is not read, so it refuses like any other unexpandable target. The last row
+    is the production shape (env=None, the dotenv as the sole source, here an
+    absent file)."""
     mod = spec()
     digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     with pytest.raises(SystemExit) as excinfo:
@@ -367,18 +371,6 @@ def test_the_deliver_target_expands_from_either_source(source, tmp_path):
 
     weather = next(j for j in mod.JOBS if j["name"] == "ld-weather")
     assert "--deliver" not in mod.create_argv(weather, env, dotenv_path=dotenv)
-
-
-def test_the_retired_name_is_not_read(tmp_path):
-    """PLOW_CHAT_CHAT_UID is the pre-unification spelling. Nothing reads it
-    any more: an instance still carrying only it refuses to register rather
-    than creating a chat leg that delivers nowhere."""
-    mod = spec()
-    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
-    env = {"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_legacy"}
-    with pytest.raises(SystemExit) as excinfo:
-        mod.create_argv(digest, env, dotenv_path=tmp_path / "unused.env")
-    assert "PLOW_HOME_CHANNEL" in str(excinfo.value)
 
 
 def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):
