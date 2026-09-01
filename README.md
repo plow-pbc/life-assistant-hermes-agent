@@ -352,9 +352,15 @@ the object or changing any other preference, then require an empty result from
 `ld_config_gate.py`. The three calendar skills now add that account to their
 exact gog argv; manually run and approve each new 1-day, 3-day, and 7-day gather
 shape once through Latch before relying on the unattended crons. The calendar
-strip adds a fourth shape — its `/api/calendar` curl — which `ld-setup` Phase 4
-now runs once while the owner is present, for the same reason: its timer ticks
-with nobody there to answer an approval card.
+strip adds a fourth shape — its `/api/calendar` curl — for the same reason: its
+timer ticks with nobody there to answer an approval card. `ld-setup` Phase 4
+approves it by running the strip once with the owner present, but only on an
+image that has the timer, and only on a run that reaches Phase 4. An instance
+already carrying `/opt/data/ld/setup-complete` skips that phase, so a standalone
+instance set up before this landed needs the step once, by hand: run
+`ld-shared/scripts/calendar_feed.py` with its owner present and approve the
+calls. Fleet instances need nothing until plow-pbc/agent-mgr#109 gives them a
+scheduler.
 
 `skills.tsv` stays as an empty file rather than being deleted or commented:
 `agent-mgr` gates its replay on `[ -s skills.tsv ]` — size, not content — and
