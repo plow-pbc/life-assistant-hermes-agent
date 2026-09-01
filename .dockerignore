@@ -1,0 +1,11 @@
+# Build context is the repo root; only the agent's own content belongs in it.
+.git
+.env
+.env.example
+# `**/` is load-bearing: a bare `__pycache__` matches only the context root,
+# and the ones that matter are under every skill's scripts/ directory. A stray
+# .pyc also carries the pre-rewrite /opt/data paths past the sed pass, which
+# only touches .md/.py/.json.
+**/__pycache__
+**/*.py[co]
+**/.pytest_cache

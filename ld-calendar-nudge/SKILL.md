@@ -99,7 +99,7 @@ before anything posts — never a half-delivered run), reads the handoff
 once, posts its first line — the earliest reminder — as card 1,
 `type: "alert"` (the slot shared with `ld-morning-triage`; the store keeps
 the latest post per card; `DASHBOARD_*` env vars), then messages the owner
-the whole reminder body over Plow Chat (`PLOW_CHAT_*` credentials, bearer
+the whole reminder body over Plow Chat (`PLOW_API_BASE`/`PLOW_HOME_CHANNEL`/`PLOW_AGENT_TOKEN`, bearer
 never in argv), consuming the handoff only after both legs succeed. Fails
 loudly at whichever leg breaks — surface that in the final response.
 Preview with `--dry-run` (body redacted, nothing consumed).

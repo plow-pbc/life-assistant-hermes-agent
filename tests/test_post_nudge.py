@@ -33,12 +33,12 @@ def rig(tmp_path, monkeypatch):
     handoff = tmp_path / "calendar-nudge-text"
     handoff.write_text(LINE1 + "\n" + LINE2 + "\n")
     dotenv = tmp_path / ".env"
-    dotenv.write_text("PLOW_CHAT_BASE_URL=https://dotenv.test\n"
-                      "PLOW_CHAT_CHAT_UID=cht_dotenv\n"
-                      "PLOW_CHAT_TOKEN=tok_dotenv\n")
+    dotenv.write_text("PLOW_API_BASE=https://dotenv.test\n"
+                      "PLOW_HOME_CHANNEL=cht_dotenv\n"
+                      "PLOW_AGENT_TOKEN=tok_dotenv\n")
     monkeypatch.setattr(pn, "HANDOFF", str(handoff))
     monkeypatch.setattr(pn, "DOTENV", str(dotenv))
-    for name in ("PLOW_CHAT_BASE_URL", "PLOW_CHAT_CHAT_UID", "PLOW_CHAT_TOKEN"):
+    for name in ("PLOW_API_BASE", "PLOW_HOME_CHANNEL", "PLOW_AGENT_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(sys, "argv", ["post_nudge.py"])
 
@@ -67,19 +67,34 @@ def test_success_posts_first_line_to_kiosk_full_body_to_chat_then_consumes(rig):
 
 
 def test_env_wins_over_dotenv(rig):
-    rig.monkeypatch.setenv("PLOW_CHAT_CHAT_UID", "cht_env")
+    rig.monkeypatch.setenv("PLOW_HOME_CHANNEL", "cht_env")
     pn.main()
     assert "/v1/chats/cht_env/messages" in rig.calls[1][1]
 
 
+def test_the_retired_names_are_not_read(rig):
+    """These are the names the pre-unification adapter used. Nothing reads
+    them any more: a dotenv carrying only those refuses, loudly, rather than
+    half-delivering. An instance still on them runs `agent-mgr
+    migrate-plugin-env` or re-activates."""
+    rig.dotenv.write_text("PLOW_CHAT_BASE_URL=https://fleet.test\n"
+                          "PLOW_CHAT_CHAT_UID=cht_fleet\n"
+                          "PLOW_CHAT_TOKEN=tok_fleet\n")
+    with pytest.raises(SystemExit) as excinfo:
+        pn.main()
+    assert "PLOW_API_BASE" in str(excinfo.value)
+    assert rig.calls == [], "nothing may post on a broken chat config"
+    assert rig.handoff.exists()
+
+
 @pytest.mark.parametrize("missing", [
-    "PLOW_CHAT_BASE_URL", "PLOW_CHAT_CHAT_UID", "PLOW_CHAT_TOKEN"])
+    "PLOW_API_BASE", "PLOW_HOME_CHANNEL", "PLOW_AGENT_TOKEN"])
 def test_a_missing_credential_refuses_before_anything_posts(rig, missing):
     """The half-delivered trap this ordering exists for: a blank chat config
     must stop the run BEFORE the kiosk posts."""
     rig.dotenv.write_text("".join(
         f"{n}=value\n" for n in
-        ("PLOW_CHAT_BASE_URL", "PLOW_CHAT_CHAT_UID", "PLOW_CHAT_TOKEN")
+        ("PLOW_API_BASE", "PLOW_HOME_CHANNEL", "PLOW_AGENT_TOKEN")
         if n != missing))
     with pytest.raises(SystemExit) as excinfo:
         pn.main()

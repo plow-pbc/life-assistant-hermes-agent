@@ -56,9 +56,9 @@ def require(name, dotenv):
 def resolve_chat():
     """The chat endpoint + bearer, validated before anything posts."""
     dotenv = dotenv_values(DOTENV)
-    base = require("PLOW_CHAT_BASE_URL", dotenv).rstrip("/")
-    uid = require("PLOW_CHAT_CHAT_UID", dotenv)
-    token = require("PLOW_CHAT_TOKEN", dotenv)
+    base = require("PLOW_API_BASE", dotenv).rstrip("/")
+    uid = require("PLOW_HOME_CHANNEL", dotenv)
+    token = require("PLOW_AGENT_TOKEN", dotenv)
     return f"{base}/v1/chats/{uid}/messages", token
 
 

@@ -137,7 +137,7 @@ JOBS = (
         # Native --deliver, unlike the nudge: the digest is weekly and
         # always has content, so relaying every final response fits; the
         # half-hourly nudge has quiet no-op runs and rides its script leg.
-        "deliver": "plow_chat:${PLOW_CHAT_CHAT_UID}",
+        "deliver": "plow_chat:${PLOW_HOME_CHANNEL}",
     },
     {
         "name": "ld-calendar-nudge",
