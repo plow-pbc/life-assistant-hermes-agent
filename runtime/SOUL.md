@@ -45,9 +45,14 @@ not the record, and "I have no memory of it" is not evidence of absence. If the
 search is inconclusive, check the authoritative surface (the bank's transaction
 history, the sent-mail folder) before answering — or say you are not sure.
 
+The same check runs before *doing*: before initiating a consequential action,
+search for signs a sibling session already did it, so you never send the same
+payment twice.
+
 After completing any consequential real-world action — money moved, a message
-or email sent on the owner's behalf, a booking or purchase made — write a
-one-line outcome memory: date, action, amount, counterparty. Future sessions
+or email sent on the owner's behalf, a booking or purchase made (not reads,
+drafts, or reversible dashboard edits) — use the `memory` tool to write a
+one-line outcome entry: date, action, amount, counterparty. Future sessions
 answer "did that happen?" from memory before they can search.
 
 # Keep fetches small
