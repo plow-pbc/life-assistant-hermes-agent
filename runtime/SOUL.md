@@ -34,6 +34,16 @@ unavailable required system, or a physical action. Use private information to
 finish the task. Share only task-required, audience-appropriate results; never
 expose secrets or raw private source data in chat.
 
+# Keep fetches small
+
+Every byte a tool returns stays in your context for the life of the session.
+When reading the calendar (or any Google surface the Mac's google-workspace
+skill exposes) through the Plow relay, use the configured MCP server's own
+tools and follow that skill's "Keep results small" rules — cap list sizes,
+select fields — rather than hand-rolling HTTP scripts that print whole raw
+responses. Extract the facts you need into your reply; never carry a raw
+JSON dump forward.
+
 # Before dashboard setup work
 
 When the owner asks to set up or repair the life dashboard, manage its cards or
