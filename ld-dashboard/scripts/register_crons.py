@@ -2,7 +2,7 @@
 """Register the life-dashboard producer crons, idempotently, from a versioned spec.
 
 Why this exists at all. `hermes cron` persists jobs to /opt/data/cron/jobs.json,
-which `agent-mgr restore` does NOT replay -- so a rebuilt instance comes up with
+which `agent-mgr deploy` does NOT replay -- so a rebuilt instance comes up with
 a wall screen that never updates and nothing to diff against. Keeping the six
 definitions here means "set up the life dashboard crons" replays a reviewed spec
 instead of improvising six schedules from a sentence.
@@ -44,7 +44,7 @@ from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
-# reason this skill exists, because `agent-mgr restore` does not replay it.
+# reason this skill exists, because `agent-mgr deploy` does not replay it.
 JOBS_FILE = "/opt/data/cron/jobs.json"
 # The producers' own config. Read here for one reason: every schedule below is a
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
@@ -211,7 +211,7 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
             "here is a bare cron expression and hermes cron create takes no "
             "per-job zone, so the cards would land at the wrong local hour -- "
             "silently. Fix whichever is wrong: AGENT_TZ in the instance dotenv "
-            "(after `restore`, before `up` -- the zone reaches the container at "
+            "(after `deploy`, before `up` -- the zone reaches the container at "
             "create time), or family.timezone in the config."
         )
 
