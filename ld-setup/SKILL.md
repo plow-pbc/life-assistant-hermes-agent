@@ -351,18 +351,19 @@ only what changes — never the answer set:
     JSON
 
 It merges onto the live file key by key, re-runs the shared gate on the
-**merged** result, writes mode 600, and then re-registers the crons — a setting
-that was blank is why a producer has no job, so the change that fills it is
-when that job should appear. Paste its whole output verbatim: the registration
-line is the only evidence the producer is actually on, and a chat turn does not
-propagate an exit code.
+**merged** result, and writes mode 600. It does **not** touch the crons: Phase 4
+registered all six jobs and nothing here is gated on a producer being
+configured, so a settings change has no schedule to add — and re-running the
+registration would fail the change on unrelated paused cron state. Paste its
+whole output verbatim anyway; a chat turn does not propagate an exit code.
 
 Three things it refuses rather than doing quietly, each naming what is wrong:
-a top-level section that is not one of the seven (a misspelled `wether` would
-otherwise merge in as dead config and the card would keep the old city), a
-merged config the gate rejects (nothing is written), and a `family.timezone`
-the container does not share (that is `AGENT_TZ` on the host — the owner has to
-ask the operator).
+a key that is not in `config.example.json` **at any depth**, list entries
+included — a misspelled `wether`, or `{"family":{"owner":{"nme":…}}}`, would
+otherwise merge in beside the real key, pass the gate on the old value and
+report a change that never happened; a merged config the gate rejects (nothing
+is written); and a `family.timezone` the container does not share (that is
+`AGENT_TZ` on the host — the owner has to ask the operator).
 
 Two things to know before composing one. **Lists replace, they do not grow** —
 `sports.followed` and `calendar.sources` are sets the owner states in full, so

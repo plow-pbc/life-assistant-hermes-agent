@@ -10,6 +10,9 @@ to name it for the owner to relay.
 import importlib.util
 import io
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -126,10 +129,9 @@ def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
 def test_a_patched_list_replaces_rather_than_grows():
     """followed teams and calendar sources are sets the owner states in full;
     a patch that could only append would have no way to drop one."""
-    current = live_config()
     merged = wc.apply_patch(
         {"sports": {"followed": [{"abbr": "bos", "sport": "baseball", "league": "mlb"}]}},
-        current, ENV)
+        live_config(), ENV)
     assert [t["abbr"] for t in merged["sports"]["followed"]] == ["bos"]
 
 
@@ -141,19 +143,21 @@ def test_a_new_city_takes_its_coordinates_with_it():
     assert merged["weather"] == {"location": "Denver", "lat": 39.74, "lon": -104.99}
 
 
-def test_a_misspelled_section_is_refused_rather_than_merged_in():
-    """A patch is composed by a model from a sentence. A dead section would
-    merge cleanly, pass the gate, and tell the owner the change landed."""
+# A patch is composed by a model from a sentence, so a misspelling merges in
+# BESIDE the real key rather than failing -- the gate then passes on the old
+# value and the owner is told a change landed that never did. The nested and
+# list-item rows are the half a top-level section check cannot see.
+@pytest.mark.parametrize("patch,expected", [
+    ({"wether": {"location": "Denver"}}, "'wether'"),
+    ({"family": {"owner": {"nme": "Ro"}}}, "'family.owner.nme'"),
+    ({"sports": {"followed": [{"abbr": "bos", "leage": "mlb"}]}},
+     "'sports.followed[0].leage'"),
+    ({"family": {"timezone": "America/Los_Angeles"}}, "AGENT_TZ"),
+], ids=["section", "nested", "list-item", "timezone"])
+def test_an_invalid_patch_refuses_and_names_what_is_wrong(patch, expected):
     with pytest.raises(SystemExit) as e:
-        wc.apply_patch({"wether": {"location": "Denver"}}, live_config(), ENV)
-    assert "wether" in str(e.value)
-
-
-def test_a_patched_timezone_the_container_does_not_share_refuses():
-    with pytest.raises(SystemExit) as e:
-        wc.apply_patch({"family": {"timezone": "America/Los_Angeles"}},
-                       live_config(), ENV)
-    assert "AGENT_TZ" in str(e.value)
+        wc.apply_patch(patch, live_config(), ENV)
+    assert expected in str(e.value)
 
 
 def test_a_patch_the_gate_would_refuse_never_reaches_the_file(tmp_path, monkeypatch):
@@ -169,30 +173,26 @@ def test_a_patch_the_gate_would_refuse_never_reaches_the_file(tmp_path, monkeypa
     assert target.read_text() == before
 
 
-def test_a_patch_reports_what_registering_the_crons_said(tmp_path, monkeypatch, capsys):
-    """A patch that filled a producer's last missing field has not turned that
-    producer on until its job exists, and a chat turn drops the exit code."""
-    monkeypatch.setattr(wc, "geocode", fake_geocode)
-    target = tmp_path / "ld" / "config.json"
-    wc.main(stdin=io.StringIO(json.dumps(FULL)), env=ENV, config_path=str(target))
+def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
+    """Through __main__, not through main() -- the seam every other test here
+    skips, and the one the documented invocation actually uses.
 
-    calls = []
+    `main()` defaults its argv to [] on purpose, so a library caller never picks
+    up pytest's own argv; the entry point has to pass sys.argv[1:] itself. When
+    it passed [] instead, `--patch` was parsed as no flags and the partial config
+    went through the first-run path, which refuses it as missing answers.
 
-    class Result:
-        returncode, stdout, stderr = 1, "", "hermes not found"
+    Run in place, against the real /opt/data path that does not exist here: the
+    refusal it reaches is the proof. "could not read ... config.json" is the
+    patch path; "missing required answer(s)" is the first-run path.
+    """
+    script = ROOT / "ld-setup" / "scripts" / "write_config.py"
+    proc = subprocess.run(
+        [sys.executable, str(script), "--patch"],
+        input=json.dumps({"family": {"owner": {"name": "Ro"}}}),
+        capture_output=True, text=True, env={**os.environ, "TZ": TZ})
 
-    def fake_run(argv, **kwargs):
-        calls.append(argv)
-        return Result()
-
-    monkeypatch.setattr(wc.subprocess, "run", fake_run)
-    code = wc.main(["--patch"], env=ENV, config_path=str(target),
-                   stdin=io.StringIO(json.dumps({"family": {"owner": {"name": "Ro"}}})))
-
-    assert code == 1
-    assert calls and calls[0][1].endswith("register_crons.py")
-    out = capsys.readouterr().out
-    assert "hermes not found" in out
-    assert "schedule registration failed" in out
-    # Saved first: the change is on disk even though registration did not land.
-    assert json.loads(target.read_text())["family"]["owner"]["name"] == "Ro"
+    combined = proc.stdout + proc.stderr
+    assert "missing required answer(s)" not in combined, (
+        "--patch was dropped and the partial config went through build()")
+    assert "refusing to patch" in combined, combined

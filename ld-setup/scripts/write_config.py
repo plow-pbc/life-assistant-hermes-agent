@@ -37,10 +37,8 @@ SKILL.md owns that registration and proves a card after it.
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import os
-import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -53,15 +51,15 @@ sys.path.insert(
 from ld_config_gate import GateError, gate  # noqa: E402
 
 CONFIG = "/opt/data/ld/config.json"
-REGISTER_CRONS = os.path.join(
+# Every key a patch may name, at every depth, taken from the committed template
+# rather than restated here -- one list to keep in step instead of two. A patch
+# is composed by a model from a sentence, and a misspelling merges in BESIDE the
+# real key rather than failing: {"family":{"owner":{"nme":"Ro"}}} passes the gate
+# on the old name and reports success while the name never changes. A top-level
+# check only catches the shallow half of that.
+EXAMPLE = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
-    "..", "..", "ld-dashboard", "scripts", "register_crons.py")
-# The whole top level, closed on purpose. A patch is composed by a model from a
-# sentence, and a misspelled section ({"wether": ...}) would otherwise merge in
-# as dead config that the gate has no opinion about -- the owner is told the
-# change landed while the card keeps showing the old city.
-SECTIONS = ("family", "calendar", "weekly_digest", "morning_triage",
-            "calendar_nudge", "weather", "sports")
+    "..", "..", "ld-shared", "references", "config.example.json")
 # Keyless, like NWS and ESPN. count=1: the first match is the one the owner
 # meant often enough, and a wrong one shows as the wrong city name on the card.
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?count=1&name="
@@ -131,21 +129,47 @@ def deep_merge(current, patch):
     return merged
 
 
-def apply_patch(patch, current, env, geocoder=None):
+def check_keys(patch, reference, path=""):
+    """Refuse any key the template does not have, at any depth.
+
+    Objects inside a list are checked against the template's first object entry
+    -- config.example.json carries a representative one for every list that
+    holds objects. A template list with no object to compare against is left
+    alone rather than guessed at.
+    """
+    for key, value in patch.items():
+        if key not in reference:
+            raise SystemExit(
+                f"refusing to patch: unknown config key {path + str(key)!r} -- "
+                "no such key in ld-shared/references/config.example.json")
+        expected = reference[key]
+        if isinstance(value, dict) and isinstance(expected, dict):
+            check_keys(value, expected, f"{path}{key}.")
+        elif isinstance(value, list) and isinstance(expected, list):
+            shape = next((e for e in expected if isinstance(e, dict)), None)
+            if shape is not None:
+                for index, entry in enumerate(value):
+                    if isinstance(entry, dict):
+                        check_keys(entry, shape, f"{path}{key}[{index}].")
+
+
+def apply_patch(patch, current, env, geocoder=None, example=EXAMPLE):
     """The live config with `patch` merged in, or SystemExit naming the refusal."""
     if not isinstance(patch, dict):
         raise SystemExit("refusing to patch: the patch is not a JSON object")
-    unknown = [k for k in patch if k not in SECTIONS]
-    if unknown:
+    try:
+        with open(example, encoding="utf-8") as f:
+            reference = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(
-            f"refusing to patch: unknown config section(s): {', '.join(sorted(unknown))} "
-            f"-- the config has only: {', '.join(SECTIONS)}")
+            f"refusing to patch: could not read {example}: {exc}") from None
+    check_keys(patch, reference)
     if not isinstance(current, dict):
         raise SystemExit(
             "refusing to patch: there is no config to patch yet -- run the "
             "interview (this script with no --patch) first")
 
-    merged = deep_merge(copy.deepcopy(current), patch)
+    merged = deep_merge(current, patch)
 
     # Same refusal as build(), because it is the same mistake: the zone is the
     # host's AGENT_TZ, and a config that disagrees with the container puts
@@ -206,20 +230,13 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         json.dump(config, f, indent=2)
         f.write("\n")
     print(f"wrote {config_path} (mode 600); gate: PASS")
-    if not args.patch:
-        return 0
-
-    # Registration is reported, never swallowed: a patch that filled the last
-    # missing field for a producer has not actually turned that producer on
-    # until its job exists, and the chat turn does not propagate an exit code.
-    proc = subprocess.run([sys.executable, os.path.realpath(REGISTER_CRONS)],
-                          capture_output=True, text=True)
-    print((proc.stdout + proc.stderr).strip()
-          or "register_crons.py said nothing")
-    if proc.returncode != 0:
-        print("the change was saved, but schedule registration failed")
-    return proc.returncode
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # sys.argv[1:] explicitly, never argparse's implicit fallback: main() is
+    # also called as a library (the tests), where the implicit fallback would
+    # pick up pytest's own argv. Passing [] here instead -- as this line did
+    # before --patch existed -- silently drops the flag and sends a partial
+    # config through the first-run path, which refuses it as missing answers.
+    sys.exit(main(sys.argv[1:]))
