@@ -21,6 +21,12 @@ eye, and each step of that parse has a way to go quietly wrong:
   * A large result comes back as a persisted envelope naming a file instead of
     the text. read_gather() (ld-shared) already unwraps that shape and refuses
     a nonzero exit_code, so it is reused rather than re-implemented.
+  * The names arrive wrapped. The runtime fences text it fetched from Google
+    in `<<<EXTERNAL_UNTRUSTED_CONTENT ...>>>` markers, so `summary` is a
+    five-line block with the calendar's actual name on the inside. Unwrapped
+    here, deterministically, because the alternative is the model lifting the
+    name out by eye -- and a listing where some rows are fenced and some are
+    not is exactly the shape an eye normalises inconsistently.
   * The account is derived, not assumed. `primary: true` is the clearest
     signal and is used when it is there -- but it was seen on ONE Mac and
     nothing documents that gog always emits it, so its absence is a case and
@@ -35,6 +41,11 @@ eye, and each step of that parse has a way to go quietly wrong:
     asked with the answers in it rather than as an open one; deriving them a
     second time by eye is the parse this script exists to prevent.
 
+Unwrapping is a display concern and NOT a promise about the content. The name
+inside the markers is the same attacker-controlled text it was outside them;
+the markers said so, and dropping them drops the label, not the risk. Which is
+why the rule below is unconditional rather than something the markers relax.
+
 `display` is a display string and nothing else. It comes off calendars other
 people own, so it is attacker-controlled text: it may be shown to the owner in
 the pick message, and it must never reach a shell command or the config. Only
@@ -44,6 +55,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.join(
@@ -68,6 +80,39 @@ def extract_array(text):
         raise GatherError(f"calendar listing is not valid JSON: {e}") from e
 
 
+# One fenced block and nothing else: the opening marker, the `Source:` line the
+# runtime adds, a `---` rule, the content, and a closing marker carrying THE
+# SAME id. Anchored end to end, and the id is a backreference rather than a
+# second `\w+`, so a name that merely contains marker-shaped text is left alone
+# instead of being cut at whatever looked like a fence.
+_WRAPPED = re.compile(
+    r'\A<<<EXTERNAL_UNTRUSTED_CONTENT id="(?P<id>[^"\n]*)">>>\n'
+    r'(?:Source:[^\n]*\n)?'
+    r'---\n'
+    r'(?P<body>.*)'
+    r'\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="(?P=id)">>>\Z',
+    re.DOTALL)
+
+
+def unwrap_external(text):
+    """The content of an `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` block, or `text`.
+
+    Deterministic in both directions: text that is not exactly one whole block
+    comes back untouched. That is the case that matters, because the fencing is
+    not uniform -- the same listing carries a wrapped `summary` beside a bare
+    `summaryOverride` -- and a stripper that guessed at partial matches would
+    turn an inconsistent input into an inconsistently mangled one.
+
+    `.*` is greedy under DOTALL, so a body holding its own end-marker keeps it:
+    the outermost fence is the real one, and the forgery stays visible as text
+    rather than truncating the name at somebody else's say-so.
+    """
+    if not isinstance(text, str):
+        return text
+    match = _WRAPPED.match(text)
+    return match.group("body") if match else text
+
+
 def normalize(entries):
     """{account, candidates, calendars} from gog's calendar list."""
     if not isinstance(entries, list):
@@ -82,7 +127,9 @@ def normalize(entries):
         # summaryOverride is the owner's own rename and wins when present --
         # it is what they see in Google Calendar, so it is what they will
         # recognise being read back to them.
-        display = entry.get("summaryOverride") or entry.get("summary") or cid
+        display = (unwrap_external(entry.get("summaryOverride"))
+                   or unwrap_external(entry.get("summary"))
+                   or cid)
         role = str(entry.get("accessRole") or "")
         calendars.append({"id": cid, "display": str(display), "accessRole": role})
         if entry.get("primary") is True:
