@@ -266,9 +266,12 @@ def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
     """
     denied = ("/etc", "/proc", "/sys", "/dev", "/root", "/boot",
               "/var/log", "/var/lib", "/var/run")
-    gif = "/srv/plow-assets/quick-q.gif"
-    assert f"MEDIA:{gif}" in SKILL
-    assert not any(gif.startswith(f"{d}/") for d in denied)
+    assets = ("/srv/plow-assets/work-1-vault-login.png",
+              "/srv/plow-assets/work-2-instacart-grocery.png",
+              "/srv/plow-assets/work-4-medical-discovery.png")
+    for asset in assets:
+        assert f"MEDIA:{asset}" in SKILL
+        assert not any(asset.startswith(f"{d}/") for d in denied)
 
 
 # --------------------------------------------------------------------------
