@@ -20,7 +20,6 @@ COPY ld-calendar-nudge/   /var/lib/hermes/skills/ld-calendar-nudge/
 COPY ld-dashboard/        /var/lib/hermes/skills/ld-dashboard/
 COPY ld-morning-triage/   /var/lib/hermes/skills/ld-morning-triage/
 COPY ld-morning-updates/  /var/lib/hermes/skills/ld-morning-updates/
-COPY ld-payments/         /var/lib/hermes/skills/ld-payments/
 COPY ld-setup/            /var/lib/hermes/skills/ld-setup/
 COPY ld-shared/           /var/lib/hermes/skills/ld-shared/
 COPY ld-sports/           /var/lib/hermes/skills/ld-sports/

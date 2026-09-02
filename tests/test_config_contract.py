@@ -459,6 +459,13 @@ def override():
 
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
 
+# What actually reaches an agent. ld-payments is the exception, and README
+# "ld-payments is the instruction layer only" is why: the skill tells the agent
+# to stop refusing payment requests, and the fail-closed gate that makes that
+# safe is not live, so it is tracked here for review and deployed nowhere.
+UNDEPLOYABLE = {"ld-payments"}
+DEPLOYED_SKILL_DIRS = [name for name in SKILL_DIRS if name not in UNDEPLOYABLE]
+
 
 def test_the_hermes_volumes_are_exactly_these():
     """Four declarative strings, asserted exactly.
@@ -480,7 +487,7 @@ def test_the_hermes_volumes_are_exactly_these():
     assert set(override()["services"]["hermes"]["volumes"]) == {
         f"${{AGENT_DIR:?set by agent-mgr from the registry}}/{name}"
         f":/opt/data/skills/{name}:ro"
-        for name in SKILL_DIRS
+        for name in DEPLOYED_SKILL_DIRS
     } | {
         # The one non-skill bind: the repo's SOUL.md pinned read-only over the
         # gateway's own copy (HERMES_HOME is /opt/data), so the setup rule it
