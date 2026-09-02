@@ -140,18 +140,28 @@ def test_calendar_discovery_is_one_argv_and_never_auth_list():
 MECHANICS = SKILL[SKILL.index("## How a turn actually sends things"):SKILL.index("### 1 · Opener")]
 
 
-def test_the_sheet_explains_how_a_turn_emits_more_than_one_message():
-    """"Two messages" is not an instruction a model can act on.
+def test_the_sheet_states_the_one_message_per_turn_limit():
+    """A turn delivers exactly one message, and nothing can add a second.
 
-    A turn delivers exactly one message -- the text it ends with. Everything
-    before it is a send_message call. Told only to "send two messages", the
-    model wrote two paragraphs into one reply and the owner got one message
-    with the GIF trailing it. Twice.
+    send_message is defined in the image but registered with no toolset, so it
+    is not callable from a chat turn. Instructions written as "send two
+    messages" produced, in order: one message with two paragraphs, then a
+    message asking the OWNER whether to proceed without the missing tool. An
+    instruction the build cannot satisfy is worse than the limitation.
     """
     text = " ".join(MECHANICS.split())
-    assert "A turn ends with exactly one message" in text
-    assert 'send_message(target="plow_chat"' in MECHANICS
-    assert "Writing both into one final reply gives the owner one message" in text
+    assert "One turn sends exactly one message" in text
+    assert "there is no split marker" in text
+    assert "send_message" in text, "the reason has to be recorded, or it gets re-attempted"
+
+
+def test_the_owner_is_never_told_about_the_machinery():
+    """Sent to a real owner: "this build doesn't have a working send_message
+    tool ... want me to proceed with single combined messages?" -- as a
+    numbered question. They are here to meet an assistant."""
+    text = " ".join(MECHANICS.split())
+    assert "Never tell the owner about your own machinery" in text
+    assert "do the best available thing silently" in text
 
 
 def test_media_tags_are_required_flush_left_and_never_fenced():
@@ -170,7 +180,7 @@ def test_media_tags_are_required_flush_left_and_never_fenced():
     assert "indented HERE because this sheet is a document" in text
 
 
-def test_the_photo_stack_is_one_call_with_four_tags():
+def test_the_photo_stack_is_four_tags_on_one_message():
     """Four attachments on one message, not four messages.
 
     Several MEDIA tags in one message deliver as several attachments in the
@@ -178,13 +188,15 @@ def test_the_photo_stack_is_one_call_with_four_tags():
     keeps them arriving together rather than trickling in.
     """
     intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
-    call = [line for line in intro.splitlines() if "work-1-vault-login.png" in line]
-    assert len(call) == 1, "the stack should be a single send_message line"
-    for name in ("work-2-instacart-grocery.png", "work-3-amazon-shopping.png",
-                 "work-4-medical-discovery.png"):
-        assert name in call[0], f"{name} is not in the same call as work-1"
-    assert "one call carrying four attachments, not four calls, and not a code block" in \
-        " ".join(intro.split())
+    flat = " ".join(intro.split())
+    assert "Four attachments on the one message, not four messages" in flat
+    assert "never inside a code fence" in flat
+    # All four tags, each flush left on its own line, in argument order.
+    tags = [l for l in intro.splitlines() if l.strip().startswith("MEDIA:/srv/plow-assets/work-")]
+    assert len(tags) == 4, f"expected four MEDIA lines, found {len(tags)}"
+    assert [t.strip().rsplit("/", 1)[1] for t in tags] == [
+        "work-1-vault-login.png", "work-2-instacart-grocery.png",
+        "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
 
 
 def test_bookkeeping_never_becomes_the_final_message():
@@ -192,7 +204,7 @@ def test_bookkeeping_never_becomes_the_final_message():
     reply before continuing to city/teams." The last thing written in a turn is
     the message, so a note-to-self left there is sent."""
     text = " ".join(MECHANICS.split())
-    assert "That final text IS the message the owner receives" in text
+    assert "That final text is what the owner reads" in text
     assert "Bookkeeping belongs in your reasoning, never in the last thing you write" in text
 
 
@@ -204,15 +216,17 @@ def test_the_geocode_read_back_stays_internal():
     real and stays; narrating it is the leak.
     """
     city = " ".join(ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
-    assert "That check is yours alone" in city
-    assert "never the numbers, never the fact that you checked" in city
+    assert "That check is yours alone, and it is silent" in city
+    assert "Not one word about coordinates, checking, verifying, matching or being correct" in city
+    # Two counter-examples, both actually sent to an owner, both behind NOT:.
+    assert city.count("NOT: Good —") == 2
 
 
-def test_the_introduction_is_several_sends_not_several_paragraphs():
-    """Same mechanism as the opener: paragraphs are not messages."""
+def test_the_introduction_is_one_short_message():
+    """One message is the only option, so brevity is the only lever."""
     intro = " ".join(ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")].split())
-    assert "Two or three short messages means two or three sends" in intro
-    assert "One reply with three paragraphs is ONE message" in intro
+    assert "**One message, and short.**" in intro
+    assert "the way a person texts, not three paragraphs of prose" in intro
 
 
 def test_latch_state_is_probed_every_turn_not_asked():
@@ -734,11 +748,11 @@ def test_the_opener_is_a_hello_a_gif_and_a_name():
     """
     opener = " ".join(SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")].split())
     assert "`/help`" in opener and "no capability blurb" in opener.lower()
-    # Two SENDS. "Two messages" alone was not enough: the model read it as one
-    # message with two paragraphs and attached the GIF, which delivers the
-    # picture after the question. Observed in the twin transcript, chat_11.
-    assert "two sends, not one message with two paragraphs" in opener
-    assert '"What should I call you?" must not appear anywhere in message one' in opener
+    # One message carrying all three, in a stated order. The picture lands
+    # under the question because attachments follow their message's text;
+    # that is the platform, and the sheet says so rather than wishing.
+    assert "One message, and it holds three things in this order" in opener
+    assert "The picture lands under the question rather than above it" in opener
 
 
 def test_the_latch_url_is_sent_bare_on_its_own_line():
