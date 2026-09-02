@@ -150,9 +150,15 @@ def test_the_sheet_states_the_one_message_per_turn_limit():
     instruction the build cannot satisfy is worse than the limitation.
     """
     text = " ".join(MECHANICS.split())
-    assert "One turn sends exactly one message" in text
+    assert "You cannot split a message on purpose, but you can leak one by accident" in text
     assert "there is no split marker" in text
     assert "send_message" in text, "the reason has to be recorded, or it gets re-attempted"
+    # The real mechanism behind every leak: interim text is delivered.
+    assert "Text you emit BETWEEN tool calls is delivered as its own message" in text
+    assert "call your tools in silence, and speak once, at the end" in text
+    # All three leaks that reached a real owner, quoted so the rule keeps its
+    # evidence -- and behind NOT: so the scan can tell them from instructions.
+    assert MECHANICS.count("    NOT: ") == 3
 
 
 def test_the_owner_is_never_told_about_the_machinery():
@@ -204,8 +210,8 @@ def test_bookkeeping_never_becomes_the_final_message():
     reply before continuing to city/teams." The last thing written in a turn is
     the message, so a note-to-self left there is sent."""
     text = " ".join(MECHANICS.split())
-    assert "That final text is what the owner reads" in text
-    assert "Bookkeeping belongs in your reasoning, never in the last thing you write" in text
+    assert "call your tools in silence, and speak once, at the end" in text
+    assert "If you catch yourself narrating a step as you take it, that sentence is already sent" in text
 
 
 def test_the_geocode_read_back_stays_internal():
@@ -216,7 +222,7 @@ def test_the_geocode_read_back_stays_internal():
     real and stays; narrating it is the leak.
     """
     city = " ".join(ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
-    assert "That check is yours alone, and it is silent" in city
+    assert "That check is yours alone, and it happens between tool calls — so it happens in silence" in city
     assert "Not one word about coordinates, checking, verifying, matching or being correct" in city
     # Two counter-examples, both actually sent to an owner, both behind NOT:.
     assert city.count("NOT: Good —") == 2

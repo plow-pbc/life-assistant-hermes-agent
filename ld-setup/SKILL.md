@@ -129,22 +129,35 @@ already nudged, you have: leave it.
 Three mechanics decide whether the messages below land the way they are
 written. They are not style; getting them wrong loses pictures silently.
 
-**One turn sends exactly one message: the text you finish with.** There is no
-second message. `send_message` exists in this codebase but is registered with
-no toolset, so it is not callable from a chat turn; there is no split marker,
-no blank-line rule, and no other mechanism. Everything a step says goes out
-together, in one message, and the next message waits for the owner to speak.
+**You cannot split a message on purpose, but you can leak one by accident.**
+There is no deliberate split: `send_message` is registered with no toolset and
+so is not callable from a chat turn, and there is no split marker or
+blank-line rule. What a step says goes out together, as one message.
 
-So "keep it short" is not advice here, it is the only lever. A step that wants
-three ideas said gently gets one message to do it in — write it the way a
-person texts, in a few short lines with blank lines between them, not as three
-paragraphs of prose.
+**Text you emit BETWEEN tool calls is delivered as its own message.** Not
+buffered, not held back, not merged into the reply you eventually write —
+sent, immediately, to the owner. That is the whole mechanism behind every
+leak in this conversation so far, each of which reached a real person as a
+message of its own, seconds before the real one:
 
-**That final text is what the owner reads.** Anything you would have said to
-yourself — "Written.", "Now waiting for their reply", "config.json updated",
-"the coordinates check out" — is delivered to them verbatim if you leave it
-there. Bookkeeping belongs in your reasoning, never in the last thing you
-write.
+    NOT: Written. Now waiting for Mary's reply before continuing to city/teams.
+    NOT: Good — those coordinates match Mountain View, CA, so that's correct.
+    NOT: Coordinates check out for Mountain View, California — good.
+
+None of those were meant for the owner. All three were thinking-out-loud
+around a `write_config.py` run or a config read-back, and the owner got them
+as texts.
+
+**So during onboarding: call your tools in silence, and speak once, at the
+end.** Draft the config, read it back, probe the relay, check what came out —
+say nothing at all while doing it. The single message you write after the last
+tool call is the turn's message, and it is the only one the owner should get.
+If you catch yourself narrating a step as you take it, that sentence is
+already sent.
+
+Because one message is all a step gets, "keep it short" is the only lever a
+step has. Write it the way a person texts — a few short lines with blank lines
+between them, not three paragraphs of prose.
 
 **Never tell the owner about your own machinery.** Not which tools this build
 has, not that a skill expected something it cannot do, and never as a question
@@ -368,9 +381,11 @@ Then read `/opt/data/ld/config.json` back and look at the `lat`/`lon` that
 landed. If they are not where that place is, the geocoder took a different city
 of the same name: draft the location again, more specifically.
 
-**That check is yours alone, and it is silent.** The first thing you say about
-their city is the city and the timezone, and there is nothing before it: they
-said "Mountain View", so *"Mountain View — Pacific time, got it."*
+**That check is yours alone, and it happens between tool calls — so it happens
+in silence.** Read the file, look at the numbers, say nothing. The first thing
+you say about their city is the city and the timezone, and there is nothing
+before it: they said "Mountain View", so *"Mountain View — Pacific time, got
+it."*
 
 **Not one word about coordinates, checking, verifying, matching or being
 correct** — not with numbers, not without them. Both of these were sent to a
