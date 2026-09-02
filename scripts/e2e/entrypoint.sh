@@ -53,7 +53,7 @@ chmod 3770 /var/lib/hermes
 # headers and enabled under it.
 #
 # Order: the seeded key if there is exactly one, else $E2E_RELAY_KEY, else the
-# base seed's own name. The env var is the escape hatch for a volume whose
+# base image's own name (`plow`). The env var is the escape hatch for a volume whose
 # relay was removed by a previous no-credentials run, which leaves no key to
 # read; it is not a way to rename the relay, and the check below is what stops
 # it becoming one.
@@ -82,9 +82,9 @@ skills_dir = "/var/lib/hermes/skills"
 url = (os.environ.get("LATCH_MCP_URL") or "").strip()
 token = (os.environ.get("LATCH_MCP_TOKEN") or "").strip()
 
-# What the base seed writes today. Only reached when the config carries no
-# relay at all and nobody named one.
-SEED_RELAY_KEY = "latch"
+# What the base image actually registers (plow-hermes-agent #15). Only reached
+# when the config carries no relay at all and nobody named one.
+SEED_RELAY_KEY = "plow"
 
 # No existence check: `chown hermes:hermes /var/lib/hermes/config.yaml` above
 # runs under `set -e`, so a container missing this file has already exited
@@ -148,7 +148,7 @@ else:
     # pop(b) is not None` short-circuits: with a volume carrying BOTH the
     # second pop never runs and a relay pointing at a real Mac stays in the
     # config on a run that asked for no relay at all.
-    stale = [relay_key, SEED_RELAY_KEY, "plow"]
+    stale = [relay_key, SEED_RELAY_KEY, "latch"]
     removed = [key for key in dict.fromkeys(stale)
                if servers.pop(key, None) is not None]
     if removed:
