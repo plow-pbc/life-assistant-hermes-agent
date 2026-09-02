@@ -162,8 +162,12 @@ done
 
 # Sampled off the VOLUME, before anything starts, so the new gateway cannot
 # write its line between the start and this read.
+# `|| true`, not `|| echo 0`: grep -c PRINTS its count and exits 1 when that
+# count is zero, so `echo 0` ran on top of grep's own "0" and this came back
+# as "00". The `tr` below made that harmless here and an integer expression
+# error at the poll site, which is the wrong place to find out.
 before_ready="$(docker run --rm --platform linux/amd64 -v "$HOME_VOLUME:/home" \
-  alpine sh -c 'grep -c "websocket connected" /home/logs/gateway.log 2>/dev/null || echo 0' \
+  alpine sh -c 'grep -c "websocket connected" /home/logs/gateway.log 2>/dev/null || true' \
   2>/dev/null | tr -d "[:space:]")"
 [ -n "$before_ready" ] || before_ready=0
 

@@ -35,13 +35,12 @@ way to be parsed wrongly and quietly:
   * two ICS imports, whose ids do not look like the group-calendar form
   * one calendar named with a newline and a shell metacharacter, which must
     reach the owner as text and never a shell or the config
-  * names fenced in `<<<EXTERNAL_UNTRUSTED_CONTENT ...>>>` -- on seven of the
-    nine, not all of them. A real listing had all nine summaries fenced beside
-    a BARE summaryOverride, so both shapes reach a consumer in one response;
-    leaving two rows unfenced here puts that mix on the rows as well, where a
-    stripper that assumes uniformity fails instead of passing by luck. The
-    fence is stripped for display and it is not a promise about the content:
-    the hostile name is fenced too, and has to come back out intact.
+  * every summary fenced in `<<<EXTERNAL_UNTRUSTED_CONTENT ...>>>`, beside a
+    BARE summaryOverride -- which is what a real listing served, and is where
+    the mix a consumer has to handle actually comes from. Both shapes reach it
+    in one response without any row having to be invented unfenced. The fence
+    is stripped for display and is not a promise about the content: the
+    hostile name is fenced too, and has to come back out intact.
 """
 from __future__ import annotations
 
@@ -90,16 +89,18 @@ def _fence(cid, text):
 
 def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
               override=None, selected=True, tz="America/Los_Angeles",
-              description="", fenced=True):
+              description=""):
     """One entry with the full field set a real listing carries.
 
     `primary` is present only on the primary calendar, which is what Google
     does -- a stub that wrote `"primary": false` everywhere would hide a
     consumer that tests for presence rather than truth.
 
-    `fenced` wraps `summary` -- and only `summary`. `summaryOverride` stays
-    bare, which is the shape the real listing had: the two names on one row
-    do not agree about whether they are fenced.
+    `summary` is always fenced and `summaryOverride` never is, which is the
+    shape the real listing had: the two names on one row do not agree about
+    whether they are fenced, and that disagreement is the whole mix. No row
+    is left bare to manufacture a second one -- an unfenced summary is not a
+    thing gog has been seen to emit.
     """
     entry = {
         "accessRole": access,
@@ -112,10 +113,10 @@ def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
         # crc32, not hash(): str hashing is salted per process, so etags
         # would differ between runs and a fixture could never pin one.
         "etag": '"%d"' % zlib.crc32(cid.encode()),
-        # The metadata that rides along with a fence, and `False` without one --
-        # a flat False on a fenced row would say the markers were not there.
-        "externalContent": ({"source": "google_api", "untrusted": True,
-                             "wrapped": True} if fenced else False),
+        # The metadata that rides along with a fence. A flat False here -- what
+        # this used to write -- would say the markers were not there.
+        "externalContent": {"source": "google_api", "untrusted": True,
+                            "wrapped": True},
         "foregroundColor": "#000000",
         "id": cid,
         "kind": "calendar#calendarListEntry",
@@ -126,7 +127,7 @@ def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
             ]
         },
         "selected": selected,
-        "summary": _fence(cid, summary) if fenced else summary,
+        "summary": _fence(cid, summary),
         "timeZone": tz,
     }
     if primary:
@@ -137,13 +138,11 @@ def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
 
 
 # Nine calendars: one primary (the account), one summaryOverride, an owner/reader
-# mix, three distinct dataOwner values, two ICS imports, one hostile name, and
-# seven of the nine with a fenced summary -- the two bare ones straddle the
-# owner/reader split so neither role can be handled by assuming the other's
-# shape.
+# mix, three distinct dataOwner values, two ICS imports, one hostile name, and a
+# fenced summary on every row.
 CALENDARS = [
     _calendar(ACCOUNT, ACCOUNT, access="owner", owner=ACCOUNT, primary=True,
-              description="The account's own calendar", fenced=False),
+              description="The account's own calendar"),
     _calendar("fam9d2c@group.calendar.google.com", "Family Calendar",
               access="owner", owner=ACCOUNT, override="Ours",
               description="Shared with the household"),
@@ -165,7 +164,7 @@ CALENDARS = [
     _calendar("f4a1c0de3b@import.calendar.google.com", "US Holidays",
               access="reader", owner=ACCOUNT, selected=False),
     _calendar("8b7d2e91aa@import.calendar.google.com", "Trash & Recycling",
-              access="reader", owner="office@school.example.org", fenced=False),
+              access="reader", owner="office@school.example.org"),
     _calendar("birthdays@group.v.calendar.google.com", "Birthdays",
               access="reader", owner=ACCOUNT, selected=False),
 ]
@@ -205,7 +204,7 @@ def listing_text(mode):
             base = dict(CALENDARS[i % len(CALENDARS)])
             if not base.get("primary"):
                 base["id"] = f"bulk{i:04d}@group.calendar.google.com"
-                base["summary"] = f"Bulk Calendar {i:04d}"
+                base["summary"] = _fence(base["id"], f"Bulk Calendar {i:04d}")
                 base["description"] = "padding. " * 40
                 base.pop("summaryOverride", None)
                 calendars.append(base)
