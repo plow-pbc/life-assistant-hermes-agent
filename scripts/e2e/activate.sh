@@ -10,50 +10,141 @@
 # The $100 welcome credit rides along: a user created on this path is created
 # with one (webhook.py, WELCOME_CREDIT_USD), and without a positive balance
 # every model call comes back 402 Insufficient balance. Nothing to seed.
+#
+# usage: activate.sh [handset]
+#   ACTIVATE_TRIES   attempts before giving up (default 8)
+#   LINE_TIMEOUT     seconds to wait for one attempt's redeem (default 20)
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 API="${PLOW_API_HOST_BASE:-https://api.plow.orb.local}"
 TWIN="${TWIN_HOST_BASE:-https://dtu-linq.plow.orb.local}"
 
-# The member phone plays the owner's handset. It must be OUTSIDE the twin's
-# managed pool (+15550000001..6) and must not already hold a thread with
-# another account on the line /activate picks, or provisioning dies with
-# CrossOwnerCollisionError and the redeem stays "pending" forever. A random
-# suffix is the cheap way to stay clear of the leftovers in a long-lived dev DB.
-MEMBER="${1:-+1555765$(printf '%04d' $((RANDOM % 10000)))}"
+# A handset given here pins every attempt to it -- for reusing one already
+# known to work. Left off (the normal case) every attempt gets a fresh one.
+FIXED_MEMBER="${1:-}"
 
-activation="$(curl -fsS -X POST -H "Content-Type: application/json" \
-  -d '{"name":"e2e-onboarding-v2","provision_chat":true}' "$API/v1/auth/activate")"
-code="$(printf '%s' "$activation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["display_code"])')"
-secret="$(printf '%s' "$activation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["activation_secret"])')"
-line="$(printf '%s' "$activation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["send_to"])')"
-echo "activation on $line; the handset is $MEMBER"
+python3 - "$API" "$TWIN" "$E2E_DIR/.env" "$FIXED_MEMBER" <<'PY'
+"""Retry activation until a (line, handset) pair provisions cleanly.
 
-# The code goes in through the twin, never at Plow: POST /channels/linq/event
-# is HMAC-verified and only the twin holds the secret.
-curl -fsS -X POST -H "Content-Type: application/json" \
-  -d "$(python3 -c 'import json,sys;print(json.dumps({"to_phone":sys.argv[1],"remote_phone":sys.argv[2],"text":sys.argv[3]}))' "$line" "$MEMBER" "$code")" \
-  "$TWIN/ui/inbound" >/dev/null
+The line is NOT ours to choose. `POST /v1/auth/activate` picks it itself --
+`secrets.choice(pool)` in auth_routes/router.py -- so there is no field to ask
+for one and no way to walk the pool deliberately. What an attempt gets is
+whichever line the server rolled.
 
-redeem=""
-for _ in $(seq 1 15); do
-  sleep 2
-  redeem="$(curl -fsS -X POST -H "Content-Type: application/json" \
-    -d "{\"activation_secret\":\"$secret\"}" "$API/v1/auth/activate/redeem")"
-  case "$redeem" in *'"verified"'*) break;; esac
-done
-case "$redeem" in
-  *'"verified"'*) ;;
-  *) echo "activation never completed (last: $redeem)." >&2
-     echo "check: docker logs plow-api-1 | grep CrossOwnerCollision -- then retry with another handset:" >&2
-     echo "  scripts/e2e/activate.sh +15557650123" >&2
-     exit 1;;
-esac
+That matters because in a long-lived dev DB some (line, roster) pairs are
+poisoned: if the rolled line already carries a chat owned by ANOTHER account
+with the same member roster, provisioning raises CrossOwnerCollisionError, the
+redeem stays "pending" forever, and the twin retries the failing webhook in a
+loop. The old script made exactly one attempt and told the operator to guess a
+different handset by hand.
 
-python3 - "$redeem" "$API" "$TWIN" "$line" "$MEMBER" "$E2E_DIR/.env" <<'PY'
-import json, os, sys
-redeem, api, twin, line, member, dest = sys.argv[1:7]
-d = json.loads(redeem)
+So: retry, with a brand-new random handset EACH time. Fresh per attempt and not
+once per run, because the collision is a property of the pair -- retrying with
+the same handset re-rolls only the line, and a handset that collided against
+one line is no evidence about the next. A miss is "no verified redeem in
+LINE_TIMEOUT", which is the shape this failure actually takes: not an error
+response, just a redeem that never leaves "pending".
+
+Nothing here writes to the stack. An abandoned attempt leaves an unused pairing
+code, which expires on its own; no row is touched and the twin is only ever
+sent the inbound text an owner would have sent.
+"""
+import json
+import random
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+
+api, twin, dest, fixed_member = sys.argv[1:5]
+
+TRIES = int(os.environ.get("ACTIVATE_TRIES", "8"))
+LINE_TIMEOUT = float(os.environ.get("LINE_TIMEOUT", "20"))
+POLL_EVERY = 2.0
+
+
+def post(url, payload):
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def handset():
+    """A member phone in the range the loop uses, outside the managed pool."""
+    return fixed_member or "+1555765%04d" % random.randrange(10000)
+
+
+def attempt(n):
+    """One activation. Returns the winning details, or None for a miss."""
+    try:
+        activation = post(f"{api}/v1/auth/activate",
+                          {"name": "e2e-onboarding-v2", "provision_chat": True})
+    except urllib.error.HTTPError as exc:
+        print(f"  {n}: activate failed -- HTTP {exc.code} {exc.read()[:200]!r}")
+        return None
+
+    line = activation.get("send_to")
+    member = handset()
+    # The line is logged on every attempt, hit or miss: which lines keep losing
+    # is the only signal anyone has about which are poisoned, and it is not
+    # visible anywhere else without reading the API's logs.
+    print(f"  {n}: line {line} / handset {member} ... ", end="", flush=True)
+
+    # The code goes in through the twin, never at Plow: POST
+    # /channels/linq/event is HMAC-verified and only the twin holds the secret.
+    try:
+        post(f"{twin}/ui/inbound", {"to_phone": line, "remote_phone": member,
+                                    "text": activation["display_code"]})
+    except urllib.error.HTTPError as exc:
+        print(f"twin refused the inbound (HTTP {exc.code})")
+        return None
+
+    deadline = time.time() + LINE_TIMEOUT
+    last = ""
+    while time.time() < deadline:
+        time.sleep(POLL_EVERY)
+        try:
+            redeem = post(f"{api}/v1/auth/activate/redeem",
+                          {"activation_secret": activation["activation_secret"]})
+        except urllib.error.HTTPError as exc:
+            last = f"HTTP {exc.code}"
+            continue
+        last = redeem.get("status", "")
+        if last == "verified":
+            print("verified")
+            return {"redeem": redeem, "line": line, "member": member}
+    print(f"no verify in {LINE_TIMEOUT:.0f}s (last: {last or 'none'})")
+    return None
+
+
+won = None
+print(f"activating -- up to {TRIES} attempts, "
+      + (f"handset pinned to {fixed_member}" if fixed_member else "a fresh handset each"))
+for n in range(1, TRIES + 1):
+    won = attempt(n)
+    if won:
+        break
+
+if not won:
+    # Flushed first: the attempt lines go to stdout and this goes to stderr, and
+    # unflushed stdout would print the last miss AFTER the explanation of it.
+    sys.stdout.flush()
+    print(f"\nno attempt completed activation in {TRIES} tries.", file=sys.stderr)
+    if fixed_member:
+        print(f"Every attempt used the handset you pinned ({fixed_member}), so the", file=sys.stderr)
+        print("retry could only re-roll the line. Drop the argument to let each", file=sys.stderr)
+        print("attempt pick its own -- the collision is on the pair, not the line.", file=sys.stderr)
+    else:
+        print("Each used its own handset, so this is not the collision the retry", file=sys.stderr)
+        print("exists for. Check the stack is up and that its lines are active:", file=sys.stderr)
+    print("  docker logs plow-api-1 | grep -i crossowner", file=sys.stderr)
+    print("  ACTIVATE_TRIES=20 scripts/e2e/activate.sh   # more attempts", file=sys.stderr)
+    raise SystemExit(1)
+
+d = won["redeem"]
 token, chat = d["token"], d["chat"]
 mine = {
     "PLOW_API_HOST_BASE": api,
@@ -63,8 +154,11 @@ mine = {
     "HERMES_CUSTOM_PLOW_API_KEY": token,
     "PLOW_HOME_CHANNEL": chat["uid"],
     "TWIN_THREAD": chat["provider_key"],
-    "LINE_PHONE": line,
-    "MEMBER_PHONE": member,
+    # The line the winning attempt landed on. Recorded because nothing else
+    # remembers it: the next run rolls again, and anyone reading this file to
+    # find out where the chat lives would otherwise have to go to the API.
+    "LINE_PHONE": won["line"],
+    "MEMBER_PHONE": won["member"],
     "TZ": "America/Los_Angeles",
 }
 # MERGE, never clobber. This file is also where a person hands the loop things
@@ -85,7 +179,7 @@ if os.path.exists(dest):
 kept += [f"{k}={v}\n" for k, v in mine.items() if k not in seen]
 with open(dest, "w") as f:
     f.writelines(kept)
-print(f"wrote {dest}: chat {chat['uid']} / twin thread {chat['provider_key']}")
+print(f"wrote {dest}: line {won['line']} / chat {chat['uid']} / twin thread {chat['provider_key']}")
 extra = sorted(k for k in (l.split("=", 1)[0].strip() for l in kept if "=" in l and not l.startswith("#")) if k not in mine)
 if extra:
     print("kept, untouched: " + ", ".join(extra))

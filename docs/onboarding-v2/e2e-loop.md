@@ -291,12 +291,26 @@ Each of these cost a debugging round; none of them announce themselves.
 - **The image is `linux/amd64` on an arm64 Mac**, so every run is emulated.
   That is most of the ~10s startup and some of the turn latency.
 
-- **Activation can wedge on a stale chat.** `/activate` picks a line at random,
-  and if that line already carries a chat owned by another account with the
-  same member roster, provisioning raises `CrossOwnerCollisionError`, the
-  redeem stays `pending` forever, and the twin retries the failing webhook in a
-  loop. `activate.sh` randomizes the handset to dodge it; if it still fails,
-  pass an unused number (`scripts/e2e/activate.sh +15557650123`).
+- **Activation can wedge on a stale chat.** `/activate` picks the line itself
+  (`secrets.choice`, `auth_routes/router.py`) — there is no field to ask for
+  one — and if the line it rolls already carries a chat owned by another
+  account with the same member roster, provisioning raises
+  `CrossOwnerCollisionError`, the redeem stays `pending` forever, and the twin
+  retries the failing webhook in a loop. It is not an error response: the
+  redeem simply never leaves `pending`.
+
+  `activate.sh` retries for it — up to `ACTIVATE_TRIES` (8) attempts, each
+  with a brand-new random handset, treating "no verified redeem in
+  `LINE_TIMEOUT` (20s)" as a miss. The handset is fresh per *attempt* rather
+  than per run because the collision is a property of the (line, roster) pair:
+  reusing one handset only re-rolls the line, and a handset that collided
+  against one line says nothing about the next. Every attempt prints the line
+  it landed on, hit or miss, which is the only visibility anyone has into which
+  lines are poisoned; the winning line is written to `LINE_PHONE`.
+
+  Passing a handset (`scripts/e2e/activate.sh +15557650123`) pins it for every
+  attempt — useful to reuse one already known to work, and exactly wrong when
+  you are trying to escape a collision.
 
 - **Twin thread id ≠ Plow chat uid.** `/ui/chats/{id}` wants `chat_N`;
   `PLOW_HOME_CHANNEL` wants `cht_…`. Both are in `.env`.
