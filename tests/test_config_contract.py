@@ -732,3 +732,65 @@ def test_cross_session_claims_are_verified_and_outcomes_journaled():
     )
     for rule in required:
         assert rule in soul, f"SOUL.md is missing the cross-session rule: {rule!r}"
+
+
+def prose(*parts):
+    """One of the agent's own instruction files, whitespace normalized."""
+    return " ".join(ROOT.joinpath(*parts).read_text().split())
+
+
+# The lines an owner's experience actually rests on, each one put there by
+# something that went wrong without it. They are prose, so nothing but a
+# string match holds them: a reworded SOUL.md is a behaviour change with no
+# other signal. One row per sentence that has to survive an edit.
+SOUL = ("runtime", "SOUL.md")
+SETUP = ("ld-setup", "SKILL.md")
+
+CONTRACTS = [
+    # A first message answered "What can I help with?" by an assistant that
+    # runs six named things for the household.
+    (SOUL, "Six producers run on a schedule"),
+    (SOUL, "**Morning updates**"),
+    (SOUL, "**Morning triage**"),
+    (SOUL, "**Weekly digest**"),
+    (SOUL, "**Calendar nudge**"),
+    (SOUL, "**Weather**"),
+    (SOUL, "**Sports**"),
+    (SOUL, 'Never answer only "What can I help with?"'),
+    # Only ld-morning-updates and ld-weekly-digest carry the shared-screen rule
+    # ("skip medical, private, or sensitive titles"). ld-morning-triage has no
+    # such filter -- it paraphrases one real inbound iMessage onto the same
+    # wall -- so a blanket kid-safe promise covers the one producer that cannot
+    # keep it.
+    (SOUL, "do not extend that promise to the morning alert"),
+    # The strip is a seventh producer with no model in it, on a systemd timer
+    # the fleet does not run -- so it may be neither claimed nor promised.
+    (SOUL, "Not every deployment runs one, so never promise it unprompted"),
+    (SOUL, "not yours to claim you refreshed"),
+    # skills.tsv is empty: an offer to check someone's mail cannot be kept.
+    (SOUL, "Never advertise smart-home control, documents, spreadsheets, or email"),
+    # Browsing is the one that cannot be flatly denied -- the Latch server does
+    # expose browser tools -- so it is bounded by whether a skill asks for them,
+    # not by naming tasks that sound webby. No skill is named here: ld-payments
+    # is the one that would use them and it is not deployable yet (README, "the
+    # instruction layer only"), so the bound is written to outlast that.
+    (SOUL, "Use it where one of your own skills calls for it"),
+    (SOUL, "What you do not have is general-purpose browsing"),
+    # ld-setup Phase 3's no-Mac path texts the wall's bearer to "the owner",
+    # and in a group that is everyone. Gated where it is offered and where it
+    # is sent; trust does not lift it, a raw token is out of a group either way.
+    (SOUL, "**and only in the owner's own one-to-one thread**"),
+    (SOUL, "Never offer or run setup in a group, trusted or not"),
+    (SETUP, "**Run this only in the owner's own one-to-one thread.**"),
+    (SETUP, "in the owner's own one-to-one thread and nowhere else*"),
+    # Unqualified, the silence default reached the owner's own DM, where it
+    # reads as a broken assistant rather than as tact.
+    (SOUL, "In a group, if none of that is true, stay silent"),
+    (SOUL, "The owner's own thread is different"),
+]
+
+
+@pytest.mark.parametrize(("surface", "required"), CONTRACTS,
+                         ids=[f"{s[-1]}:{r[:40]}" for s, r in CONTRACTS])
+def test_the_assistant_still_says_what_it_was_taught_to_say(surface, required):
+    assert required in prose(*surface), f"{'/'.join(surface)} no longer carries it"
