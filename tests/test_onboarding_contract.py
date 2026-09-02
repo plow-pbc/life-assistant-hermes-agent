@@ -456,11 +456,19 @@ def test_the_listing_file_is_written_only_where_a_listing_exists():
     # Structural: the path is named in §5 and nowhere before it, so no earlier
     # turn has anything to write it from -- and it is per-turn, like the drafts,
     # because two turns sharing one staging name is one file each overwrites.
-    assert "calendar-listing-<turn>.json" in ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert "calendar-listing-<turn>.txt" in ONBOARDING[ONBOARDING.index("### 5 ·"):]
     assert "calendar-listing" not in ONBOARDING[:ONBOARDING.index("### 5 ·")]
-    for staged in re.findall(r"/opt/data/ld/\.?[a-z-]*(?:draft|wall|listing)[a-z-]*\.json",
-                             SKILL):
-        assert "<turn>" in staged, f"a staging path is shared between turns: {staged}"
+    # Every staged path in the sheet, per-turn or not. The placeholder is part
+    # of the name, so the character class has to admit `<` and `>` -- without
+    # them this matched nothing and the loop below asserted about an empty
+    # list. `.txt` as well as `.json`: the listing is staged raw, so its name
+    # cannot claim JSON -- see test_the_staged_listing_is_never_named_json.
+    staged = re.findall(
+        r"/opt/data/ld/\.?[a-z<>-]*(?:draft|wall|listing)[a-z<>-]*\.(?:json|txt)",
+        SKILL)
+    assert staged, "no staged path found in the sheet -- this regex has gone stale"
+    for path in staged:
+        assert "<turn>" in path, f"a staging path is shared between turns: {path}"
 
 
 def test_the_connected_branch_turns_on_the_listing_not_on_the_probe():
@@ -749,6 +757,47 @@ def test_the_listing_is_normalised_by_a_script_not_by_eye():
     section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
     assert "calendar_list.py" in section
     assert (ROOT / "ld-setup/scripts/calendar_list.py").is_file()
+
+
+def test_the_staged_listing_is_never_named_json():
+    """The listing is not JSON, so a `.json` name is a file tool that refuses.
+
+    gog's `Note:` line comes before the array. A file tool that validates by
+    extension rejects the write, the script never gets a path to read, and the
+    turn falls back to the one thing this step exists to prevent -- reading the
+    calendars by eye. On the run that found this the owner got their calendar
+    names recited from a listing no script had ever parsed.
+    """
+    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    staged = re.findall(r"calendar-listing-<turn>\.(\w+)", section)
+    assert staged, "the sheet no longer names the staged listing file"
+    assert set(staged) == {"txt"}, f"staged listing named .{set(staged) - {'txt'}}"
+
+
+# ids= keeps the whole sheet out of the test id -- the parameter is a file.
+@pytest.mark.parametrize("sheet,text", [(
+    "ld-setup", SKILL), ("ld-wall-setup", WALL)], ids=["ld-setup", "ld-wall-setup"])
+def test_the_sheet_carries_no_literal_turn_id_to_copy(sheet, text):
+    """`<turn>` has to be generated, and a sample is a thing to copy.
+
+    A run copied an eight-hex example verbatim, which is a fixed staging name
+    wearing a random one's clothes: every turn writes the same path, and two
+    that overlap have the second overwrite the first before the first is read.
+    So a sheet that stages by turn carries the generating command and no
+    specimen -- any bare 8-hex literal sitting where `<turn>` belongs is one
+    waiting to be copied.
+
+    BOTH sheets, because both stage by turn and each is entered on its own: the
+    wall is a separate skill an owner reaches without onboarding running in the
+    same conversation, so a rule that lives only in ld-setup is one its reader
+    never sees. That is exactly what the split left behind -- `.wall-<turn>.json`
+    in one file and the definition of `<turn>` in another.
+    """
+    assert "<turn>" in text, f"{sheet} no longer stages by turn -- retarget this test"
+    assert "openssl rand -hex 4" in text, f"{sheet} must show how to generate one"
+    literal = re.findall(
+        r"(?:draft|calendar-listing|wall)-([0-9a-f]{8})\b", text, re.IGNORECASE)
+    assert not literal, f"a copyable turn id is in {sheet}: {literal}"
 
 
 # --------------------------------------------------------------------------

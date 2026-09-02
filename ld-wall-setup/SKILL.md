@@ -105,6 +105,19 @@ drafts follow, because an embedded quote in an owner's answer would otherwise
 execute before the script's validation (which holds `pi_address` and `pi_user`
 to the safe charset Phase 3's `ssh` argv depends on) could see it.
 
+**`<turn>` is eight random hex characters you GENERATE, fresh each run.** Run:
+
+    openssl rand -hex 4
+
+and use what it printed. Do not invent one by hand, do not reuse the last
+run's, and do not copy a hex-looking string out of this sheet or any example —
+a copied id is a fixed staging name wearing a random one's clothes, and two
+runs that overlap have the second overwrite the first before the first is read.
+Nor is it the inbound message's id or a session id: those are text from
+outside, and this name ends up on a command line. Written out in full in
+`ld-setup`'s `<turn>` note, which governs the drafts this file's staging
+follows.
+
 Stage this at `/opt/data/ld/.wall-<turn>.json`:
 
     {"pi_address": "...", "pi_user": "...", "ical_url": "..."}

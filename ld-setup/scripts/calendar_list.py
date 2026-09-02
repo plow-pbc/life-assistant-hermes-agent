@@ -21,6 +21,13 @@ eye, and each step of that parse has a way to go quietly wrong:
   * A large result comes back as a persisted envelope naming a file instead of
     the text. read_gather() (ld-shared) already unwraps that shape and refuses
     a nonzero exit_code, so it is reused rather than re-implemented.
+  * The names arrive wrapped. The runtime fences text it fetched from Google
+    in `<<<EXTERNAL_UNTRUSTED_CONTENT ...>>>` markers, so `summary` is a
+    five-line block with the calendar's actual name on the inside.
+    unwrap_external() (ld-shared) takes it off, because the alternative is the
+    model lifting the name out by eye -- and a listing where some rows are
+    fenced and some are not is exactly the shape an eye normalises
+    inconsistently.
   * The account is derived, not assumed. `primary: true` is the clearest
     signal and is used when it is there -- but it was seen on ONE Mac and
     nothing documents that gog always emits it, so its absence is a case and
@@ -34,6 +41,11 @@ eye, and each step of that parse has a way to go quietly wrong:
     `candidates` carries the owner-role addresses so that question can be
     asked with the answers in it rather than as an open one; deriving them a
     second time by eye is the parse this script exists to prevent.
+
+Unwrapping is a display concern and NOT a promise about the content. The name
+inside the markers is the same attacker-controlled text it was outside them;
+the markers said so, and dropping them drops the label, not the risk. Which is
+why the rule below is unconditional rather than something the markers relax.
 
 `display` is a display string and nothing else. It comes off calendars other
 people own, so it is attacker-controlled text: it may be shown to the owner in
@@ -49,6 +61,7 @@ import sys
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"))
 
+from external_content import unwrap_external  # noqa: E402
 from gather_result import GatherError, read_gather  # noqa: E402
 
 
@@ -82,7 +95,9 @@ def normalize(entries):
         # summaryOverride is the owner's own rename and wins when present --
         # it is what they see in Google Calendar, so it is what they will
         # recognise being read back to them.
-        display = entry.get("summaryOverride") or entry.get("summary") or cid
+        display = (unwrap_external(entry.get("summaryOverride"))
+                   or unwrap_external(entry.get("summary"))
+                   or cid)
         role = str(entry.get("accessRole") or "")
         calendars.append({"id": cid, "display": str(display), "accessRole": role})
         if entry.get("primary") is True:
