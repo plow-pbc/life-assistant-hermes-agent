@@ -5,17 +5,27 @@ description: First-run onboarding over chat, and the optional wall that can foll
 
 # Onboarding, and the wall that may follow
 
+**Run this only in the owner's own one-to-one thread.** Every part of it either
+reaches that owner's Mac, writes this household's config, or — on the no-Mac
+path in Phase 3 — hands over the wall's bearer token, and a group thread is
+read by people who are not the owner. Trust does not lift this: a trusted group
+may ask for the assistant's normal tools, and a raw token is excluded from a
+group either way. If any of it is asked for anywhere but that thread, do not
+start and do not collect answers; say the owner can start it privately, and
+stop.
+
 Two halves, and the second is optional. **Onboarding** is a conversation with
 a new owner, and it ends when the config holds their answers. **The wall** is
 the Pi dashboard — three phases, run only if the owner wants one, ending at
 `/opt/data/ld/setup-complete`.
 
-The markers are separate and neither implies the other. An owner who never
-wants a screen in their kitchen has the first and never the second, and that is
-a finished install; `/opt/data/SOUL.md` checks each for its own half. Every
-step is gated on the durable artifact it produces, so a step that has already
-landed is skipped and an interrupted chat picks up where it stopped. Deleting a
-marker re-runs its half from whichever artifact is missing.
+The two are separate and neither implies the other. Onboarding is finished when
+the config holds the owner's answers; the wall is finished at
+`/opt/data/ld/setup-complete`, and an owner who never wants a screen in their
+kitchen gets the first and never the second. `/opt/data/SOUL.md` checks each
+for its own half. Every wall phase is gated on the artifact it produces, so a
+phase that has already landed is skipped and an interrupted chat picks up where
+it stopped.
 
 Everything under **How this reaches the Pi**, and the two rules after it, is
 the wall's; onboarding needs none of it — read on when the owner takes the wall
@@ -61,12 +71,17 @@ may cross chat and once.
 
 ## Onboarding — the first conversation
 
-This is a conversation, not a form. **`/opt/data/ld/config.json` is what says
-how far it got** — read it first, every time, and continue from the first
-thing missing. A config already holding a name and a city belongs to someone
-who has been through this: write the marker if it is absent, and ask them
-nothing. The marker itself records only that teams was asked, which the config
-cannot show — "none" is a real answer and leaves `sports.followed` empty.
+This is a conversation, not a form. **`/opt/data/ld/config.json` is the only
+record of how far it got** — read it first, every time, and continue from the
+first key missing: `family.owner.name`, `weather.location`, `sports.followed`,
+`calendar.sources`. The test for each is whether the KEY is there. A
+present-but-empty `sports.followed` is answered, not unasked — "none" is a
+real answer and drafting `[]` is how it is recorded.
+
+Name and city alone are NOT "done". An owner who gave both and then stopped is
+resumed at teams, not congratulated: there is no marker, so nothing but the
+config can say this finished, and it says so only when all four keys are
+there.
 
 It runs only where that conversation belongs: **a solo one-to-one DM with the owner.** Three things
 have to be true of the turn before any of this starts, and the chat platform
@@ -193,8 +208,7 @@ conversation would notice.
 Ordered this way, the config can only ever under-claim. A restart in the gap
 costs one repeated question, which the owner answers again in four seconds;
 the other order costs the introduction and the install, silently and for good.
-(§4's marker is already the same rule: it is written after the close has been
-sent, not before.)
+
 
 **Every answer is written the moment it lands**, one at a time, never as one
 blob at the end:
@@ -270,8 +284,7 @@ it waits for a reason: what you do lands differently once you can say it to
 someone by name. So the opener carries **no capability blurb, no menu, no
 `/help`**, and none of §2's material — not "I handle calendar, reminders and
 day-to-day logistics", not the errands, not the Mac, not the privacy line, not
-the link. Two messages, and between them nothing but: hello, your name, a GIF,
-and what to call them.
+the link. The whole of §1 is: hello, your name, a GIF, and what to call them.
 
 ### 2 · Their name, then who you are
 
@@ -346,6 +359,14 @@ back, whether that is thirty seconds later or next week, and whether or not
 they mention it. If they do say they have installed it, that is a nice thing to
 acknowledge, not the trigger; the trigger already fired.
 
+**Once, though.** §5 runs only while `calendar.sources` is ABSENT from the
+config. A listing coming back on a later turn is not a reason to ask again:
+with sources already written, the probe told you Latch is up and nothing more,
+and you continue from the first onboarding field still missing — or, if none
+are, you answer whatever they actually said. An owner who picked their
+calendars before naming their city must not be asked to pick them a second
+time on the next message.
+
 ### 3 · While they install
 
 Do not wait for the install to finish; the next two questions are what the wait
@@ -418,9 +439,8 @@ nothing can store is a promise you would be breaking.
 
 ### 4 · Close
 
-This message goes out BEFORE the teams draft of §3 and before the marker below;
-both of them are what a resumed turn reads to decide this section already
-happened.
+This message goes out BEFORE the teams draft of §3: `sports.followed` present
+is what tells a resumed turn this section already happened.
 
 Tell them they are set, and offer the wall as the optional extra it is: if they
 want a physical display in the kitchen, the build is at
@@ -428,9 +448,8 @@ want a physical display in the kitchen, the build is at
 the link, and you take it from there. That is what the wall phases below are
 for; run them only if the owner takes the offer.
 
-Then stop. There is no marker to write and nothing else to say: the config
-already holds every answer, and the wall offer was the last thing this
-conversation had for them.
+Then stop. Nothing else to say: the config already holds every answer, and the
+wall offer was the last thing this conversation had for them.
 
 Nothing here writes `/opt/data/ld/setup-complete` — that belongs to the wall
 and lands only after Phase 4's proof card. An owner with no wall finishes here
@@ -441,11 +460,13 @@ and never gets it, and that is a finished install.
 The owner never types a calendar address. Their calendars are discovered from
 the Mac, and this runs the moment Latch can answer — which may be mid-
 onboarding, right after they say they installed it, or a week later when they
-mention it. It is not gated on the marker: an owner whose onboarding is already
-complete and who has just connected Latch gets this too.
+mention it. An owner whose other answers are long since stored and who has just
+connected Latch gets this too.
 
-The cue is the turn-top probe coming back with a listing — you do not wait to
-be told, and you do not ask. It is one call, exactly this argv — one plain argv, no
+The cue is the turn-top probe coming back with a listing **and
+`calendar.sources` being absent from the config** — you do not wait to be told,
+you do not ask, and you do not run this twice. Sources already written means
+this is done, however many listings later probes return. It is one call, exactly this argv — one plain argv, no
 shell, no flags of your own; Latch injects what it needs:
 
     plow_run_command(argv=["gog", "calendar", "calendars", "--json", "--results-only"])
@@ -455,10 +476,25 @@ Gmail and Calendar subcommands and nothing else, so `auth` is refused under
 every binary name — measured against a real Latch, not guessed. The listing
 below carries the account anyway, which is why one call is enough.
 
-Do not parse that output yourself. Redirect it to a gather file and hand it to
-the normalizer, which knows the shapes gog actually returns:
+Do not parse that output yourself — hand it to the normalizer, which knows the
+shapes gog actually returns.
 
-    python3 /opt/data/skills/ld-setup/scripts/calendar_list.py <gather-file>
+`plow_run_command` has no redirect, so the listing arrives one of two ways and
+both end at the same file:
+
+- **A persisted result** — the call returns a handle or a path rather than the
+  text. Pass that path straight to the script.
+- **Inline text** — the call returns the output itself. Write it, byte for
+  byte, to `/opt/data/ld/calendar-listing.json` **with your file tool**, and
+  pass that path.
+
+The file tool, and never a heredoc, for the inline case. That text contains
+calendar names a stranger wrote; a heredoc puts them in a shell, which is the
+whole hazard this section exists to avoid. Copy the tool's output into the
+file's content and change nothing about it — not the preamble, not the
+formatting. The script expects gog's output exactly as gog produced it.
+
+    python3 /opt/data/skills/ld-setup/scripts/calendar_list.py /opt/data/ld/calendar-listing.json
 
 It prints one object — `{"account": "…", "calendars": [{"id", "display",
 "accessRole"}, …]}` — and refuses loudly rather than guessing. It exists
@@ -691,17 +727,17 @@ they just gave you — do not repeat the URL back (it is a private feed and
 they already hold it), and never the token line again — then
 `systemctl --user restart life-dashboard-viewer`. Otherwise the
 fallback is the direct one, and the token crosses chat once — acknowledged,
-not ideal, and the only place in this sheet where that is allowed.
+not ideal, and the only place in this sheet where that is allowed. It is
+allowed *in the owner's own one-to-one thread and nowhere else*, and never in
+a group. This is
+the wall's bearer token: whoever holds it can write to the screen in that
+household's kitchen. Every participant in a group can read it, forever, out of
+their own message history — and unlike a leaked password there is nothing to
+rotate without re-minting and re-shipping the Pi. If this phase is reached
+anywhere but that thread, say the lines have to go to the owner directly, stop,
+and continue when they message you alone.
 
-**Only in a solo DM with the owner, and never in a group.** This is the wall's
-bearer token: whoever holds it can write to the screen in that household's
-kitchen. Every participant in a group can read it, forever, out of their own
-message history — and unlike a leaked password there is nothing to rotate
-without re-minting and re-shipping the Pi. If this phase is reached anywhere
-but a one-to-one DM with the owner, say the lines have to go to them directly,
-stop, and continue when they message you alone.
-
-In that DM, text the owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
+There, text the owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
 `/opt/data/ld/pi.env` (read with your file tool; this is the one place its
 content may be pasted), and say: run the first two on the Pi over ssh or at
 its keyboard, then put those two lines in `~/ld-data/.env` on the Pi,
@@ -795,8 +831,8 @@ one thing the API cannot show you.
 Only now — after the owner's confirmation, this phase's for a Mac install,
 Phase 3's `pi-brought-up` for a no-Mac one — mark the wall done; this is the
 only thing that writes this file, and nothing before this line should. It says
-nothing about onboarding, which has its own marker and may have finished long
-before the owner ever wanted a screen:
+nothing about onboarding, which may have finished long before the owner ever
+wanted a screen:
 
     date -u +%FT%TZ > /opt/data/ld/setup-complete
 

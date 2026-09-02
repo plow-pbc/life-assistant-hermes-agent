@@ -348,6 +348,41 @@ def test_a_source_without_a_name_still_passes_the_gate():
     assert gate(config) == ""
 
 
+def test_discovery_runs_only_while_the_sources_are_absent():
+    """Probing every turn plus "any listing opens the pick" is a loop.
+
+    An owner who chose calendars before naming their city would be asked to
+    choose again on the next message, and again after that -- the probe keeps
+    returning a listing, because Latch is up.
+    """
+    text = " ".join(ONBOARDING.split())
+    assert "§5 runs only while `calendar.sources` is ABSENT" in text
+    assert "must not be asked to pick them a second time" in text
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "`calendar.sources` being absent from the config**" in section
+    assert "you do not run this twice" in section
+
+
+def test_name_and_city_alone_are_not_a_finished_conversation():
+    """With the marker gone, "has a name and a city" was left meaning done --
+    which strands an owner who answered both and never reached teams."""
+    text = " ".join(ONBOARDING.split())
+    assert "Name and city alone are NOT \"done\"" in text
+    assert "resumed at teams" in text
+
+
+def test_the_inline_listing_reaches_the_script_without_a_shell():
+    """plow_run_command cannot redirect, so the listing arrives inline or as a
+    persisted path -- and the inline case is the dangerous one: the text holds
+    calendar names a stranger wrote, so it goes to a file through the file
+    tool, never through a heredoc."""
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "A persisted result" in section and "Inline text" in section
+    assert "with your file tool" in section
+    assert "The file tool, and never a heredoc" in section
+    assert "/opt/data/ld/calendar-listing.json" in section
+
+
 def test_the_account_is_taken_from_primary_not_dataowner():
     """dataOwner varies across the list -- the real listing had three distinct
     values across nine calendars, because shares keep their own owner -- so
@@ -444,5 +479,5 @@ def test_the_wall_token_handoff_is_dm_only():
     re-minting and re-shipping the Pi."""
     wall = SKILL[SKILL.index("**No Mac (or no Latch):**"):]
     handoff = " ".join(wall[:wall.index("date -u +%FT%TZ > /opt/data/ld/pi-brought-up")].split())
-    assert "Only in a solo DM with the owner, and never in a group" in handoff
-    assert handoff.index("Only in a solo DM") < handoff.index("text the owner, verbatim")
+    assert "in the owner's own one-to-one thread and nowhere else*, and never in a group" in handoff
+    assert handoff.index("one-to-one thread and nowhere else") < handoff.index("text the owner, verbatim")
