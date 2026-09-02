@@ -445,7 +445,7 @@ the way it always has.
 ```sh
 # ECR Public 403s HEAD on a digest reference, and BuildKit resolves FROM with
 # HEAD -- so pull the pinned base first (pull uses GET), then build.
-docker pull public.ecr.aws/e1h7x4a2/plow-cloud-agents@sha256:2e3f0163654a98728458120f66f3f58e32518eb43d3e2548f8e3801b845de8f7
+docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
 docker build .
 ```
 
