@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat, and the optional wall that can follow it — meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /opt/data/ld/config.json as each answer lands, discover their calendars from the Mac through Latch once it is connected (never asking them to type one), and mark /opt/data/ld/onboarding-complete. Then, only if they want a Pi dashboard, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use on any inbound message while /opt/data/ld/onboarding-complete is missing, when the owner says Latch is installed and their calendars are not yet in the config, when the owner asks to set up or re-set-up their wall, when its config is missing or refused, when the wall has never shown a card, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name) — see "Changing one setting later". Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat, and the optional wall that can follow it — meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /opt/data/ld/config.json as each answer lands, discover their calendars from the Mac through Latch once it is connected (never asking them to type one), and mark /opt/data/ld/onboarding-complete. Then, only if they want a Pi dashboard, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use on an inbound message in the owner's own solo DM — sender is the owner, chat type is a DM, and the roster is just the two of you — while /opt/data/ld/onboarding-complete is missing; never in a group or in a DM from anyone else, when the owner says Latch is installed and their calendars are not yet in the config, when the owner asks to set up or re-set-up their wall, when its config is missing or refused, when the wall has never shown a card, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name) — see "Changing one setting later". Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, and the wall that may follow
@@ -61,11 +61,23 @@ may cross chat and once.
 
 ## Onboarding — the first conversation
 
-This is a conversation, not a form. It runs on the first inbound message from
-an owner who has no `/opt/data/ld/onboarding-complete`, and it is done when
-that file exists. Everything below is what to cover and in what order; the
-words are yours, in your own voice, and you already know your own name — use
-it.
+This is a conversation, not a form. It is done when
+`/opt/data/ld/onboarding-complete` exists, and it runs only where that
+conversation belongs: **a solo one-to-one DM with the owner.** Three things
+have to be true of the turn before any of this starts, and the chat platform
+reports all three —
+
+- the sender's role is **owner**, not a member or another agent,
+- the chat's type is a **DM**, not a group,
+- the DM's roster is just the two of you.
+
+Any one of them false and none of this applies: answer what was actually
+asked, ask none of the questions below, and write nothing — no `--draft`, no
+config, no marker. The owner's name, city and teams are their own details, and
+a group chat is not where someone is introduced to their assistant.
+
+Everything below is what to cover and in what order; the words are yours, in
+your own voice.
 
 Three rules hold across the whole thing. **One or two questions per message, no
 bullet lists** — this lands on a phone, as a text. **Answer what they actually

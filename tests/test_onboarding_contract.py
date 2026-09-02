@@ -458,6 +458,30 @@ def test_onboarding_is_gated_to_a_solo_dm_with_the_owner():
     assert "no `--draft`, no config, no marker" in trigger
 
 
+@pytest.mark.parametrize("where,text", [
+    # The frontmatter is what the skill scanner reads to decide whether to load
+    # this sheet at all, so it is an entry instruction in its own right.
+    ("the frontmatter", " ".join(SKILL.split("---", 2)[1].split())),
+    # And the section's own opening lines are what the model reads once it is
+    # loaded. Three statements of one rule that can disagree is worse than one:
+    # a turn that finds the loosest of them has its permission.
+    ("the onboarding section's entry condition",
+     " ".join(SKILL[SKILL.index("## Onboarding"):SKILL.index("### 1 · Opener")].split())),
+])
+def test_every_entry_point_states_the_same_three_part_gate(where, text):
+    """SOUL.md, the frontmatter and the section all gate the same way.
+
+    They were three different instructions: SOUL.md required a solo owner DM,
+    the frontmatter said "any inbound message", and the section said "the first
+    inbound message from an owner" with nothing about where. A model reconciles
+    competing permissions by taking the widest, so the strictest one was the
+    one that did not count.
+    """
+    assert "any inbound message" not in text, f"{where} still admits any inbound"
+    assert "owner" in text and "DM" in text, f"{where} does not name the gate"
+    assert "roster is just the two of you" in text, f"{where} omits the solo condition"
+
+
 def test_the_wall_token_handoff_is_dm_only():
     """The one place a bearer token is allowed to cross chat.
 
