@@ -34,7 +34,16 @@ chmod 3770 /var/lib/hermes
 # system prompt from the CWD, and from the image's own /root it walks up
 # looking for a .git and dies on `PermissionError: '/root/.git'` -- uid 10000
 # cannot stat it. Every turn fails with "an unexpected error" until this is set.
+
 # A real Latch relay, wired in only when the loop was given one.
+#
+# This runs on EVERY start, and it removes the server as readily as it writes
+# it. config.yaml lives on the home volume and outlives the container, so a
+# block written by one `run-agent.sh --latch` would otherwise still be there
+# for every plain `run-agent.sh` after it -- the relay opted into once and
+# reachable forever, which is the opposite of what opt-in means when the device
+# on the other end is a person's actual Mac. Absent credentials must therefore
+# mean "take it out", never "leave whatever is already there".
 #
 # The server is named `plow`, NOT `latch`. Tool names are derived from the
 # server name (mcp__plow__plow_run_command), and every ld-* SKILL.md calls
@@ -50,23 +59,46 @@ chmod 3770 /var/lib/hermes
 # Written into the config rather than passed as env because Hermes reads its
 # MCP servers from config.yaml; the file is the agent's own (first-boot hands
 # it to uid 10000) so this runs before the chown below.
-if [ -n "${LATCH_MCP_URL:-}" ] && [ -n "${LATCH_MCP_TOKEN:-}" ]; then
-  /usr/bin/python3 - <<'LATCH_PY'
+/usr/bin/python3 - <<'LATCH_PY'
 import os
 import yaml
+
 path = "/var/lib/hermes/config.yaml"
+url = (os.environ.get("LATCH_MCP_URL") or "").strip()
+token = (os.environ.get("LATCH_MCP_TOKEN") or "").strip()
+
+# The image bakes this file, so it is here on every ordinary start. Guarded all
+# the same: this block now runs unconditionally under `set -e`, and a missing
+# config must not turn a plain no-Latch run into a container that will not boot.
+# There is nothing to remove from a file that does not exist -- but a run that
+# ASKED for the relay and cannot write it has to say so rather than come up
+# quietly without it.
+if not os.path.exists(path):
+    if url and token:
+        raise SystemExit(f"e2e-entrypoint: --latch was given but {path} is missing")
+    print(f"e2e-entrypoint: no Latch relay ({path} does not exist yet)")
+    raise SystemExit(0)
+
 with open(path) as f:
     config = yaml.safe_load(f) or {}
-config.setdefault("mcp_servers", {})["plow"] = {
-    "url": os.environ["LATCH_MCP_URL"],
-    "headers": {"Authorization": "Bearer " + os.environ["LATCH_MCP_TOKEN"]},
-    "enabled": True,
-}
+servers = config.setdefault("mcp_servers", {})
+
+if url and token:
+    servers["plow"] = {
+        "url": url,
+        "headers": {"Authorization": "Bearer " + token},
+        "enabled": True,
+    }
+    print("e2e-entrypoint: wired the plow (Latch relay) MCP server into config.yaml")
+elif servers.pop("plow", None) is not None:
+    print("e2e-entrypoint: no Latch credentials -- removed the plow MCP server "
+          "an earlier --latch run left in config.yaml")
+else:
+    print("e2e-entrypoint: no Latch relay (config.yaml names no plow MCP server)")
+
 with open(path, "w") as f:
     yaml.safe_dump(config, f, sort_keys=False)
-print("e2e-entrypoint: wired the plow (Latch relay) MCP server into config.yaml")
 LATCH_PY
-fi
 
 # The twin's upload origin, forwarded before the gateway starts so the first
 # attachment does not race it. Root here, and it stays root: it binds a port

@@ -31,7 +31,16 @@ BASE_IMAGE=public.ecr.aws/e1h7x4a2/plow-cloud-agents@sha256:84b46cbb9e7f6ea87825
 # by OrbStack's own DNS, which resolves inside a container on the default
 # bridge and whose cert is trusted there, so no compose network is joined and
 # no host port is written down (ports move per worktree; the names do not).
-PLOW_REPO=/Users/plucas/plow-pbc/plow/main
+#
+# Its checkout is the one path outside this repo any of this reads --
+# run-agent.sh derives the twin's host port from that checkout's .plow-dev-env.
+# The default is the conventional sibling layout next to this repo; PLOW_MAIN
+# overrides it for a checkout that lives anywhere else, and is read from the
+# environment or from .env (load_env re-resolves after sourcing it).
+plow_repo() {
+  printf '%s' "${PLOW_MAIN:-$(cd "$REPO_DIR/../.." && pwd)/plow/main}"
+}
+PLOW_REPO="$(plow_repo)"
 
 load_env() {
   if [ ! -f "$E2E_DIR/.env" ]; then
@@ -42,6 +51,9 @@ load_env() {
   # shellcheck disable=SC1091
   . "$E2E_DIR/.env"
   set +a
+  # Re-resolved: PLOW_REPO was set when this file was sourced, before .env had
+  # been read, so a PLOW_MAIN that lives in .env would otherwise be ignored.
+  PLOW_REPO="$(plow_repo)"
 }
 
 require() {

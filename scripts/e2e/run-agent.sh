@@ -16,6 +16,22 @@ for arg in "$@"; do
   [ "$arg" = "--latch" ] && WITH_LATCH=1
 done
 
+# Asked for and not available is an error, not a warning. Passing the flag with
+# nothing behind it used to print "wired (real Mac)" and start a container with
+# empty LATCH_* -- the entrypoint would then take the relay OUT, and the run
+# would look armed while ld-setup's every Latch call failed for want of a
+# server. A flag that says it did something has to have done it.
+if [ -n "$WITH_LATCH" ]; then
+  for name in LATCH_MCP_URL LATCH_MCP_TOKEN; do
+    if [ -z "${!name:-}" ]; then
+      echo "--latch needs $name in scripts/e2e/.env, and it is empty." >&2
+      echo "Nothing mints it: paste the relay's URL and bearer in yourself." >&2
+      echo "activate.sh merges rather than rewrites, so they will survive." >&2
+      exit 1
+    fi
+  done
+fi
+
 if [ "${1:-}" = "--fresh" ] || [ "${2:-}" = "--fresh" ]; then
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   docker volume rm "$HOME_VOLUME" >/dev/null 2>&1 || true

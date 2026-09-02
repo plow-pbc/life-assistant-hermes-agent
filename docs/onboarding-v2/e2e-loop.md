@@ -22,8 +22,10 @@ it. The only thing this loop owns is the agent container.
 Reach it by OrbStack's names, never by a port:
 `https://api.plow.orb.local`, `https://dtu-linq.plow.orb.local`. Host ports move
 with the worktree and the compose project; the names do not. The one place a
-port is unavoidable (the upload shim, below) derives it from
-`plow/main/.plow-dev-env` rather than hard-coding it.
+port is unavoidable (the upload shim, below) derives it from the plow
+checkout's `.plow-dev-env` rather than hard-coding it. That checkout is assumed
+to sit in the conventional sibling layout (`../../plow/main` from this repo);
+set `PLOW_MAIN` if yours is somewhere else.
 
 ## Setup, once
 
@@ -226,6 +228,14 @@ Each of these cost a debugging round; none of them announce themselves.
   need it should not be able to touch it. Without `--latch`, the loop exercises
   Phase 1 (the interview and `write_config.py`) and stops where the first Latch
   call would be.
+
+  **Opt-in means every run, not just the first.** `config.yaml` lives on the
+  home volume and outlives the container, so a server written by one `--latch`
+  run would still be there for every plain `run-agent.sh` after it. The
+  entrypoint therefore rewrites that config on *every* start and takes the
+  `plow` server back out whenever the credentials are absent. `--latch` with an
+  empty `LATCH_MCP_URL` or `LATCH_MCP_TOKEN` refuses to start rather than
+  coming up looking armed.
 
   The server must be named **`plow`**, not `latch`: tool names derive from the
   server name, and every `ld-*` SKILL.md calls `plow_run_command` /
