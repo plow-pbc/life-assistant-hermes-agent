@@ -127,6 +127,17 @@ def test_outcome_memories_get_a_raised_char_limit():
     assert config()["memory"]["memory_char_limit"] == 6000
 
 
+def test_the_main_model_has_somewhere_to_fall_back_to():
+    """The image only fails over into the top-level chain, so its absence -- not
+    the overload burst -- is what reaches the owner as a provider-failed
+    message. An entry equal to the primary cannot help: the shed request would
+    land on the same overloaded route."""
+    chain = config()["fallback_providers"]
+
+    assert chain == [{"provider": "openai-codex", "model": "gpt-5.5"}]
+    assert chain[0]["model"] != config()["model"]["default"]
+
+
 def test_compression_has_somewhere_to_fall_back_to():
     """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
     a cheaper-sounding id installs a fallback that can never fire -- and a naive
