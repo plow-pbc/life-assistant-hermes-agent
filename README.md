@@ -558,10 +558,11 @@ docker exec -it <container> /command/s6-setuidgid hermes \
 It prints a GitHub device URL and code. Until that is done the reporter runs
 and reports nothing.
 
-An instance authorised before the scoped-key change still holds a `gho_`
-GitHub bearer on disk: only `--login` performs the exchange, and the hourly
-supervisor runs ordinary reporting. Re-run the command above once on any such
-instance.
+An instance authorised before the scoped-key change is upgraded on its own:
+any run that finds a `gho_`/`ghu_`/`ghp_` credential exchanges it for a scoped
+key and rewrites the file. Nobody has to be present, and no re-login is
+needed. A failed exchange keeps the existing credential and reports normally
+rather than failing the run.
 
 After that it reports hourly on its own. A run that collects nothing says so
 rather than publishing a zero it never measured, so an agent reading as idle
