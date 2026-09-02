@@ -35,6 +35,13 @@ way to be parsed wrongly and quietly:
   * two ICS imports, whose ids do not look like the group-calendar form
   * one calendar named with a newline and a shell metacharacter, which must
     reach the owner as text and never a shell or the config
+  * names fenced in `<<<EXTERNAL_UNTRUSTED_CONTENT ...>>>` -- on seven of the
+    nine, not all of them. A real listing had all nine summaries fenced beside
+    a BARE summaryOverride, so both shapes reach a consumer in one response;
+    leaving two rows unfenced here puts that mix on the rows as well, where a
+    stripper that assumes uniformity fails instead of passing by luck. The
+    fence is stripped for display and it is not a promise about the content:
+    the hostile name is fenced too, and has to come back out intact.
 """
 from __future__ import annotations
 
@@ -66,14 +73,33 @@ AUTH_REFUSAL = "this Mac reaches only Gmail and Calendar through plow-gog"
 DISCOVERY_ARGV = ["gog", "calendar", "calendars", "--json", "--results-only"]
 
 
+def _fence(cid, text):
+    """`text` inside the runtime's untrusted-content markers.
+
+    The id is derived from the calendar id rather than random for the same
+    reason the etags are: a value that moved between runs is one no fixture
+    could ever pin. Open and close carry the SAME id, which is what a consumer
+    matching them end to end depends on.
+    """
+    marker = "%08x%08x" % (zlib.crc32(b"open:" + cid.encode()),
+                           zlib.crc32(b"close:" + cid.encode()))
+    return (f'<<<EXTERNAL_UNTRUSTED_CONTENT id="{marker}">>>\n'
+            f"Source: google_api\n---\n{text}\n"
+            f'<<<END_EXTERNAL_UNTRUSTED_CONTENT id="{marker}">>>')
+
+
 def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
               override=None, selected=True, tz="America/Los_Angeles",
-              description=""):
+              description="", fenced=True):
     """One entry with the full field set a real listing carries.
 
     `primary` is present only on the primary calendar, which is what Google
     does -- a stub that wrote `"primary": false` everywhere would hide a
     consumer that tests for presence rather than truth.
+
+    `fenced` wraps `summary` -- and only `summary`. `summaryOverride` stays
+    bare, which is the shape the real listing had: the two names on one row
+    do not agree about whether they are fenced.
     """
     entry = {
         "accessRole": access,
@@ -86,7 +112,10 @@ def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
         # crc32, not hash(): str hashing is salted per process, so etags
         # would differ between runs and a fixture could never pin one.
         "etag": '"%d"' % zlib.crc32(cid.encode()),
-        "externalContent": False,
+        # The metadata that rides along with a fence, and `False` without one --
+        # a flat False on a fenced row would say the markers were not there.
+        "externalContent": ({"source": "google_api", "untrusted": True,
+                             "wrapped": True} if fenced else False),
         "foregroundColor": "#000000",
         "id": cid,
         "kind": "calendar#calendarListEntry",
@@ -97,7 +126,7 @@ def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
             ]
         },
         "selected": selected,
-        "summary": summary,
+        "summary": _fence(cid, summary) if fenced else summary,
         "timeZone": tz,
     }
     if primary:
@@ -108,10 +137,13 @@ def _calendar(cid, summary, *, access="reader", owner=ACCOUNT, primary=False,
 
 
 # Nine calendars: one primary (the account), one summaryOverride, an owner/reader
-# mix, three distinct dataOwner values, two ICS imports, and one hostile name.
+# mix, three distinct dataOwner values, two ICS imports, one hostile name, and
+# seven of the nine with a fenced summary -- the two bare ones straddle the
+# owner/reader split so neither role can be handled by assuming the other's
+# shape.
 CALENDARS = [
     _calendar(ACCOUNT, ACCOUNT, access="owner", owner=ACCOUNT, primary=True,
-              description="The account's own calendar"),
+              description="The account's own calendar", fenced=False),
     _calendar("fam9d2c@group.calendar.google.com", "Family Calendar",
               access="owner", owner=ACCOUNT, override="Ours",
               description="Shared with the household"),
@@ -133,7 +165,7 @@ CALENDARS = [
     _calendar("f4a1c0de3b@import.calendar.google.com", "US Holidays",
               access="reader", owner=ACCOUNT, selected=False),
     _calendar("8b7d2e91aa@import.calendar.google.com", "Trash & Recycling",
-              access="reader", owner="office@school.example.org"),
+              access="reader", owner="office@school.example.org", fenced=False),
     _calendar("birthdays@group.v.calendar.google.com", "Birthdays",
               access="reader", owner=ACCOUNT, selected=False),
 ]

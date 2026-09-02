@@ -52,6 +52,20 @@ DEFAULT_RUNS = Path(os.environ.get("E2E_RUNS_DIR") or (E2E_DIR / "runs"))
 NOISE_PREFIXES = ("⏳", "↪", "💡", "⚡")
 
 
+def env_file():
+    """The dotenv for THIS instance, resolved the way lib.sh resolves it.
+
+    Instances exist so two cooks can drive their own agent without stopping
+    each other's, and each one has its own `.env.<instance>`. Reading the
+    shared `.env` regardless pointed every report at the default instance's
+    twin thread -- so a run rendered somebody else's conversation, or nothing,
+    with no error either way.
+    """
+    instance = os.environ.get("E2E_INSTANCE") or "default"
+    scoped = E2E_DIR / f".env.{instance}"
+    return scoped if scoped.exists() else E2E_DIR / ".env"
+
+
 def load_env():
     """The two non-secret keys this needs, read from the loop's own .env.
 
@@ -59,7 +73,7 @@ def load_env():
     token, and nothing here should be able to put those in an HTML file.
     """
     env = {}
-    path = E2E_DIR / ".env"
+    path = env_file()
     if not path.exists():
         return env
     for line in path.read_text().splitlines():
@@ -334,7 +348,8 @@ def main():
         thread = thread or chat.get("id", "?")
     else:
         if not twin or not thread:
-            sys.exit("need --twin/--thread (or TWIN_HOST_BASE/TWIN_THREAD in scripts/e2e/.env)")
+            sys.exit("need --twin/--thread (or TWIN_HOST_BASE/TWIN_THREAD in "
+                     f"scripts/e2e/{env_file().name})")
         chat = fetch_json(f"{twin.rstrip('/')}/ui/chats/{thread}")
 
     (out_dir / "transcript.json").write_text(json.dumps(chat, indent=2))

@@ -115,7 +115,13 @@ fi
 if [ -n "$WITH_STUB" ]; then
   echo "latch relay: wired (STUB -- no real Mac)"
 else
-  echo "latch relay: ${WITH_LATCH:+wired (real Mac)}${WITH_LATCH:-not wired}"
+  # Not one expansion: WITH_LATCH=1 makes `:+` print the label and `:-` print
+  # the VALUE, so the line came out "wired (real Mac)1".
+  if [ -n "$WITH_LATCH" ]; then
+    echo "latch relay: wired (real Mac)"
+  else
+    echo "latch relay: not wired"
+  fi
 fi
 
 echo "instance: $E2E_INSTANCE (container $CONTAINER, env ${ENV_FILE#"$E2E_DIR"/})"
@@ -191,8 +197,14 @@ docker run -d --name "$CONTAINER" --platform linux/amd64 \
 # start is the only thing that distinguishes them.
 echo -n "$CONTAINER started; waiting for the plow_chat websocket"
 for _ in $(seq 1 60); do
+  # `grep -c` PRINTS its count and exits 1 when that count is zero, so a
+  # trailing `|| echo 0` ran ON TOP of grep's own "0" and `now` came back as
+  # two lines -- "0\n0" -- which `[ -gt ]` reports as an integer expression
+  # error on every poll before the gateway comes up. `|| true` keeps grep's
+  # count; a missing log (exit 2, no output) falls through to the default.
   now="$(docker exec "$CONTAINER" sh -c \
-    'grep -c "websocket connected" /var/lib/hermes/logs/gateway.log 2>/dev/null || echo 0')"
+    'grep -c "websocket connected" /var/lib/hermes/logs/gateway.log 2>/dev/null || true' \
+    | tr -d "[:space:]")"
   if [ "${now:-0}" -gt "${before_ready:-0}" ]; then
     echo " -- up"
     docker exec "$CONTAINER" grep -E "plow_chat|Gateway running" \
