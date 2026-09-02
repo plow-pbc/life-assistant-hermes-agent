@@ -51,8 +51,12 @@ Email, calendars, Mac username are **not asked**; they arrive via Latch connecto
   current meaning.
 - **Resume:** the record of progress is `config.json` itself — the agent reads it at the start of a turn and
   continues from the first missing field. No separate state file (revisit only if e2e shows fumbling).
-- **Writes:** every answer is written as it lands via `write_config.py --patch` (deep-merge, re-gated, geocoding
-  on `weather.location`), not one blob at the end. **No new config fields**: `config.example.json` is the schema
+- **Writes:** every answer is written as it lands, not one blob at the end. Before the config passes the shared
+  gate (it cannot until calendars exist), writes use `write_config.py --draft`: same deep-merge, key allow-list,
+  timezone refusal and geocoding as `--patch`, but it may start from no file and tolerates only *absent*
+  gate-required keys — any value actually supplied that fails the gate is refused exactly as `--patch` would.
+  Once the config passes the gate, `--patch` is used unchanged. (Decision 2026-09-02: `--patch` alone was
+  unworkable because the gate demands calendar keys onboarding never asks for.) **No new config fields**: `config.example.json` is the schema
   and stays as is. Existing optional fields not in the Figma (`family.people`, `weekly_digest.length`,
   `family.owner.imessage`) are not asked in v2; they remain patchable on demand.
 - **Assets:** `quick-q.gif` is baked into the image at a fixed path **outside `/var/lib`** (Hermes' MEDIA
@@ -122,12 +126,12 @@ Done when: a twin transcript shows a text reply and a GIF attachment (bytes fetc
 
 ### Chunk 2: Conversation + trigger + config plumbing
 Implements: §2, §3, §5
-Interfaces: consumes Chunk 1 harness and `write_config.py --patch` · produces the rewritten `ld-setup/SKILL.md` Phase 1, the `runtime/SOUL.md` trigger, the completion marker, the baked GIF, tests for the marker
+Interfaces: consumes Chunk 1 harness and `write_config.py --draft`/`--patch` · produces the rewritten `ld-setup/SKILL.md` Phase 1, the `runtime/SOUL.md` trigger, the completion marker, the baked GIF, tests for the marker
 Done when: `just test` green; an e2e transcript from a fresh container shows the full flow — opener with GIF, name → intro → Latch URL, city and teams each landing in `config.json` (shown via `cat` inside the container), completion marker written, wall offered and declined; a second transcript shows resume: kill the container mid-flow, restart (the loop needs a volume over `HERMES_HOME` for this — add it to `scripts/e2e/`), next inbound continues from the first missing field without re-asking.
 
 ### Chunk 4: Calendar discovery
 Implements: §4b
-Interfaces: consumes Chunk 2's flow (runs after the Latch step) and `write_config.py --patch` · produces the calendar section of `ld-setup/SKILL.md`, a contract test pinning the single discovery argv and inverting the current "do not ask calendars / stop at calendar keys" assertions
+Interfaces: consumes Chunk 2's flow (runs after the Latch step) and `write_config.py --draft`/`--patch` · produces the calendar section of `ld-setup/SKILL.md`, a contract test pinning the single discovery argv and inverting the current "do not ask calendars / stop at calendar keys" assertions
 Done when: `just test` green; an e2e transcript against the REAL Latch in scripts/e2e/.env shows the agent, told "Latch is installed", listing calendars and, after the owner picks two, `config.json` holding `calendar.account`, both `calendar.sources` with exact ids, and `calendar_nudge.owner_identities`; a second transcript (Latch env vars unset) shows the refused/unavailable case handled without blocking.
 
 ### Chunk 3: Doc fix
