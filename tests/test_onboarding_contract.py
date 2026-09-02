@@ -26,7 +26,6 @@ DOCKERFILE = (ROOT / "Dockerfile").read_text()
 ONBOARDING = SKILL[SKILL.index("## Onboarding"):SKILL.index("## The wall (optional)")]
 TRIGGER = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].split())
 
-MARKER = "/opt/data/ld/onboarding-complete"
 WALL_MARKER = "/opt/data/ld/setup-complete"
 # The one call Latch permits, byte for byte as the skill must emit it.
 DISCOVERY_ARGV = 'argv=["gog", "calendar", "calendars", "--json", "--results-only"]'
@@ -251,21 +250,6 @@ def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
 # When onboarding runs at all
 # --------------------------------------------------------------------------
 
-def test_the_config_not_the_marker_decides_whether_to_onboard():
-    """A marker as second authority is wrong in both directions.
-
-    Backwards: every owner already running predates it, so a populated config
-    with no marker re-opens the interview on their next message. Forwards: the
-    marker lands before calendars exist, so gating on it stops the skill being
-    invoked and a Latch installed next week is never picked up.
-    """
-    assert "the config is what says how far this got, not the marker" in TRIGGER.lower()
-    assert "`family.owner.name` or `weather.location` is missing" in TRIGGER
-    assert "`calendar.sources` is missing" in TRIGGER
-    assert "stays true after the marker is written" in TRIGGER
-    assert "Write the marker on first sight and ask them nothing" in TRIGGER
-    assert "teams was asked" in TRIGGER, "the one thing the config cannot record"
-
 
 @pytest.mark.parametrize("where,text", [
     ("SOUL.md", TRIGGER),
@@ -298,41 +282,34 @@ def test_a_group_gets_no_questions_and_no_writes():
 # The marker, and the wall's separate one
 # --------------------------------------------------------------------------
 
-def test_the_marker_is_written_once_and_only_at_the_close():
-    """A marker written before the questions are asked ends the conversation
-    while the config is still empty -- and nothing re-checks."""
-    writes = re.findall(rf"^\s*date -u \+%FT%TZ > {re.escape(MARKER)}\s*$", SKILL, re.MULTILINE)
-    assert len(writes) == 1
-    assert SKILL.index(f"> {MARKER}") > SKILL.index("### 4 · Close")
 
 
-def test_the_marker_does_not_close_calendar_discovery():
-    """Onboarding finishes before the calendars exist, by design -- Latch may
-    be installed days later."""
-    close = " ".join(ONBOARDING[ONBOARDING.index("### 4 ·"):ONBOARDING.index("### 5 ·")].split())
-    assert "The marker does not end §5" in close
+def test_the_config_alone_says_whether_to_onboard():
+    """A second progress source fails both ways.
+
+    Backwards: every owner already running predates a marker, so a populated
+    config plus no marker re-opens the interview. Forwards: a marker written
+    before the calendars exist stops the skill being invoked at all, and a
+    Latch installed next week is never picked up.
+    """
+    for field in ("`family.owner.name`", "`weather.location`",
+                  "`sports.followed`", "`calendar.sources`"):
+        assert field in TRIGGER, f"{field} is not part of the condition"
+    assert "present and empty counts as answered" in TRIGGER
+    assert "stays missing until Latch is connected" in TRIGGER
+    assert "onboarding-complete" not in SOUL and "onboarding-complete" not in SKILL, \
+        "the marker is back as a second authority"
 
 
 def test_the_wall_marker_stays_the_walls_own():
     """They mean different things: an owner with no Pi finishes onboarding and
     never gets a setup-complete. Collapsing them either strands a wall-less
     owner mid-conversation or reports a blank wall as done."""
-    onboarding_half = SKILL[SKILL.index("## Onboarding"):SKILL.index("## The wall (optional)")]
-    assert f"> {WALL_MARKER}" not in onboarding_half
+    assert f"> {WALL_MARKER}" not in ONBOARDING
     assert len(re.findall(rf"^\s*date -u \+%FT%TZ > {re.escape(WALL_MARKER)}\s*$",
                           SKILL, re.MULTILINE)) == 1
 
 
-def test_both_documents_name_the_same_marker():
-    """A marker that drifts between them has no failing surface: the skill
-    writes one path, the soul checks another, and the owner is re-onboarded on
-    every message they ever send."""
-    assert MARKER in SOUL and MARKER in SKILL
-
-
-# --------------------------------------------------------------------------
-# Calendar discovery
-# --------------------------------------------------------------------------
 
 def test_discovery_is_one_argv_and_never_auth_list():
     """Latch allows Gmail and Calendar subcommands and nothing else, measured
@@ -346,20 +323,47 @@ def test_discovery_is_one_argv_and_never_auth_list():
     assert not re.search(r'argv=\[[^]]*"auth"', SKILL)
 
 
+def test_no_display_name_is_persisted_or_shelled():
+    """A calendar's display name is written by whoever owns it.
+
+    The pick is composed into a shell heredoc, so a calendar named
+    `"; rm -rf ~; echo "` is a command if it reaches one. Producers read
+    calendar_id and nothing else, and the gate accepts a source without a name.
+    """
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "Ids only — no `name` key" in section
+    assert '"sources": [{"calendar_id": "<id from the script>"}' in ONBOARDING
+    assert '"name": "<display name>"' not in ONBOARDING
+
+
+def test_a_source_without_a_name_still_passes_the_gate():
+    """The claim the ids-only write rests on."""
+    config = {"family": {"owner": {"name": "M"}, "timezone": "UTC"},
+              "calendar": {"account": "a@b.test", "sources": [{"calendar_id": "a@b.test"}]},
+              "calendar_nudge": {"owner_identities": ["a@b.test"],
+                                 "lookahead_virtual_minutes": 30,
+                                 "lookahead_in_person_minutes": 60},
+              "weather": {"location": "X", "lat": 1, "lon": 2},
+              "sports": {"followed": []}}
+    assert gate(config) == ""
+
+
 def test_the_account_is_taken_from_primary_not_dataowner():
     """dataOwner varies across the list -- the real listing had three distinct
     values across nine calendars, because shares keep their own owner -- so
     deriving the account from it picks whichever calendar was read last."""
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "the `primary` entry's id rather than `dataOwner`" in section
+
+
+def test_the_listing_is_normalised_by_a_script_not_by_eye():
+    """gog prints a note line before the array, a large result arrives as a
+    persisted envelope, and the account is the primary entry rather than
+    dataOwner. Each is a silent wrong answer if a model does it by hand."""
     section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
-    assert "`primary` is true" in section
-    assert "Take it from `primary`" in section
-
-
-def test_the_listing_is_parsed_past_its_preamble():
-    """gog prints a note line before the JSON array, so the output is not JSON.
-    A consumer that parses the whole string fails on a working call and reports
-    the calendar unavailable when it is right there."""
-    assert "skip to the first `[`" in ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert "calendar_list.py" in section
+    assert "Do not parse that output yourself" in section
+    assert (ROOT / "ld-setup/scripts/calendar_list.py").is_file()
 
 
 def test_calendar_names_are_named_as_untrusted():
@@ -391,7 +395,7 @@ def test_the_reply_is_the_step_not_a_report_of_it():
     sentence instead of a message.
     """
     text = " ".join(ONBOARDING.split())
-    assert "it is the step's own message" in text
+    assert "write the step's own message" in text
     assert "Not a report of what you just did" in text
     assert "has skipped its own step" in text
 
@@ -404,8 +408,8 @@ def test_clarify_is_forbidden_during_onboarding():
     Banning numbered menus in prose did not cover the tool that renders them.
     """
     text = " ".join(ONBOARDING.split())
-    assert "Never call `clarify` during onboarding" in text
-    assert "it blocks the turn" in text
+    assert "Never call `clarify`" in text
+    assert "blocks the turn until the owner picks something" in text
     assert "through the `clarify` tool" in text, "the prose ban must name the tool too"
 
 

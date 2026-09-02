@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """write_config.py -- the ld-setup interview's answers, written as /opt/data/ld/config.json.
 
-THREE modes, one file, because they must not disagree about what a valid config
-is. Each reads ONE JSON object on stdin (the agent composes it from the owner's
-replies; nothing reaches argv) and each writes mode 600, because family.owner
-and the calendar ids are a person's data. Two of them judge the result by the
-shared gate -- ld_config_gate.gate() imported, not restated -- before writing.
-
-  (default)  the first-run interview. Stdin is the ANSWER set (owner_name,
-             owner_email, city, ...) and the whole config is built from it.
+TWO modes, one file, because they must not disagree about what a valid config
+is. Both read ONE JSON object on stdin (the agent composes it from the owner's
+replies; nothing reaches argv) and both write mode 600, because family.owner
+and the calendar ids are a person's data. Both judge the result by the shared
+gate -- ld_config_gate.gate() imported, not restated -- before writing, and
+differ only in what they excuse.
 
   --patch    a later change. Stdin is a PARTIAL CONFIG -- the same shape
              config.example.json describes, carrying only what changes -- and
@@ -97,9 +95,6 @@ EXAMPLE = os.path.join(
 # Keyless, like NWS and ESPN. count=1: the first match is the one the owner
 # meant often enough, and a wrong one shows as the wrong city name on the card.
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search?count=1&name="
-REQUIRED = ("owner_name", "owner_email", "city", "timezone", "has_mac")
-
-
 def _reject_constant(token):
     """Refuse JSON's non-standard NaN/Infinity tokens, at every door.
 
@@ -124,45 +119,6 @@ def geocode(city):
         raise SystemExit(f"refusing to write: no place matches {city!r} -- ask the owner for a nearby city")
     return results[0]["latitude"], results[0]["longitude"]
 
-
-def build(answers, env, geocoder=None):
-    """The config for a set of answers, or SystemExit naming what is wrong."""
-    # has_mac gates the Messages db path, so a truthy non-bool ("no", 0) would
-    # decide it silently -- it has to arrive as a real boolean or not at all.
-    missing = [k for k in REQUIRED if answers.get(k) in (None, "")]
-    if "has_mac" not in missing and not isinstance(answers["has_mac"], bool):
-        missing.append("has_mac")
-    if answers.get("has_mac") is True and not (answers.get("mac_username") or "").strip():
-        missing.append("mac_username")
-    if missing:
-        raise SystemExit(f"refusing to write: missing required answer(s): {', '.join(missing)}")
-    container = (env.get("TZ") or "").strip()
-    if answers["timezone"] != container:
-        raise SystemExit(
-            f"refusing to write: the owner says {answers['timezone']!r} but this container "
-            f"runs in {container!r}. The zone is AGENT_TZ in the instance dotenv on the host "
-            "-- tell the owner to ask the operator to change it, then run setup again."
-        )
-    lat, lon = (geocoder or geocode)(answers["city"])
-    sources = [{"calendar_id": answers["owner_email"], "name": "Personal"}]
-    sources += [{"calendar_id": c, "name": c} for c in (answers.get("extra_calendar_ids") or [])]
-    chat_db = (f"/Users/{answers['mac_username']}/Library/Messages/chat.db"
-               if answers["has_mac"] and answers.get("mac_username") else "")
-    return {
-        "family": {
-            "owner": {"name": answers["owner_name"], "imessage": answers.get("owner_imessage") or ""},
-            "people": list(answers.get("people") or []),
-            "timezone": answers["timezone"],
-        },
-        "calendar": {"account": answers["owner_email"], "sources": sources},
-        "weekly_digest": {"length": answers.get("digest_length") or "", "long_lead": []},
-        "morning_triage": {"chat_db_path": chat_db, "ranking_instructions": "",
-                           "exclude": {"imessage_handles": []}},
-        "calendar_nudge": {"lookahead_virtual_minutes": 30, "lookahead_in_person_minutes": 60,
-                           "owner_identities": [answers["owner_email"]]},
-        "weather": {"location": answers["city"], "lat": lat, "lon": lon},
-        "sports": {"followed": list(answers.get("teams") or [])},
-    }
 
 
 # What the gate requires, and a stand-in for each that its own check accepts.
@@ -378,7 +334,11 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
                 f"refusing to {verb}: could not read {config_path}: {exc}") from None
         config = apply_patch(payload, current, env, gated=not args.draft)
     else:
-        config = build(payload, env)
+        raise SystemExit(
+            "refusing to write: pass --draft (onboarding, answer by answer) or "
+            "--patch (a later change). There is no whole-config mode: it built "
+            "the file from a full answer set, which is a form, and rebuilding "
+            "from one silently dropped every preference nobody restated.")
     try:
         verdict = gate(config)
     except GateError as exc:

@@ -490,7 +490,14 @@ def test_the_hermes_volumes_are_exactly_these():
         # Same exact-string discipline: drop :ro, reroot the source, or mount
         # a directory and this fails with both sets printed.
         "${AGENT_DIR:?set by agent-mgr from the registry}"
-        "/runtime/SOUL.md:/opt/data/SOUL.md:ro"
+        "/runtime/SOUL.md:/opt/data/SOUL.md:ro",
+        # Onboarding's GIF, at the path ld-setup names. The Dockerfile bakes it
+        # for the cloud image; the fleet has only these mounts, so without this
+        # the opener's MEDIA: tag points at nothing on every agent-mgr instance
+        # and the attachment is dropped with no error. Outside /opt/data
+        # because Hermes' media denylist covers the home.
+        "${AGENT_DIR:?set by agent-mgr from the registry}"
+        "/docs/onboarding-v2/assets:/srv/plow-assets:ro"
     }
 
 
@@ -717,7 +724,7 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     # that may fire on any inbound, and it ends at its own marker -- so the
     # routing clause has to name that marker rather than the wall's.
     description = setup.split("---", 2)[1]
-    assert "while /opt/data/ld/onboarding-complete is missing" in description
+    assert "while /opt/data/ld/config.json is missing any of" in description
     assert "when the owner asks to set up or re-set-up their wall" in description
 
 

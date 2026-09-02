@@ -49,69 +49,30 @@ def fake_geocode(city):
     return 41.85, -87.65
 
 
-@pytest.mark.parametrize("answers,expected_chat_db", [
-    (FULL, "/Users/rowan/Library/Messages/chat.db"),
-    (MINIMAL, ""),
-], ids=["every-answer", "required-only"])
-def test_answers_become_a_config_the_shared_gate_accepts(answers, expected_chat_db):
-    config = wc.build(answers, ENV, geocoder=fake_geocode)
-    assert gate(config) == ""
-    assert config["calendar"]["account"] == "rowan@example.test"
-    assert config["calendar"]["sources"][0]["calendar_id"] == "rowan@example.test"
-    assert config["calendar_nudge"]["owner_identities"] == ["rowan@example.test"]
-    assert config["weather"] == {"location": "Chicago", "lat": 41.85, "lon": -87.65}
-    assert config["family"]["timezone"] == TZ
-    assert config["morning_triage"]["chat_db_path"] == expected_chat_db
 
 
-@pytest.mark.parametrize("drop", sorted(wc.REQUIRED))
-def test_a_missing_required_answer_refuses_by_name(drop):
-    with pytest.raises(SystemExit) as e:
-        wc.build({k: v for k, v in FULL.items() if k != drop}, ENV, geocoder=fake_geocode)
-    assert drop in str(e.value)
 
 
-@pytest.mark.parametrize("has_mac", ["yes", "false", 1], ids=["yes", "false-string", "one"])
-def test_a_non_boolean_has_mac_refuses_by_name(has_mac):
-    """has_mac decides whether the Messages db path is written at all, so a
-    truthy string or a 1 must refuse rather than quietly resolve as a Mac."""
-    with pytest.raises(SystemExit) as e:
-        wc.build({**FULL, "has_mac": has_mac}, ENV, geocoder=fake_geocode)
-    assert "has_mac" in str(e.value)
-
-
-def test_has_mac_true_without_mac_username_refuses_by_name():
-    """Silently dropping to an empty chat_db_path would disable morning_triage
-    with no diagnostic, unlike every other missing-answer case in this file."""
-    with pytest.raises(SystemExit) as e:
-        wc.build({k: v for k, v in FULL.items() if k != "mac_username"}, ENV, geocoder=fake_geocode)
-    assert "mac_username" in str(e.value)
-
-
-def test_a_timezone_that_is_not_the_containers_refuses_and_names_agent_tz():
-    with pytest.raises(SystemExit) as e:
-        wc.build(FULL, {"TZ": "America/Los_Angeles"}, geocoder=fake_geocode)
-    msg = str(e.value)
-    assert "America/Chicago" in msg and "America/Los_Angeles" in msg and "AGENT_TZ" in msg
-
-
-def test_main_writes_the_file_mode_600_and_reports_the_gate(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(wc, "geocode", fake_geocode)
-    target = tmp_path / "ld" / "config.json"
-    assert wc.main(stdin=io.StringIO(json.dumps(FULL)), env=ENV, config_path=str(target)) == 0
-    assert oct(target.stat().st_mode & 0o777) == "0o600"
-    assert gate(json.loads(target.read_text())) == ""
-    assert "gate: PASS" in capsys.readouterr().out
-
-
-# --- --patch: a later change, without re-running the interview -------------
-#
-# The mode exists because the whole-config path resets every answer the owner
-# is not restating. So these test what survives a patch, not just what it sets.
 
 
 def live_config():
-    return wc.build(FULL, ENV, geocoder=fake_geocode)
+    # Built here rather than through a whole-config mode: that mode was a form,
+    # and it is gone. This is the shape --patch expects to find on disk.
+    return {
+        "family": {"owner": {"name": FULL["owner_name"], "imessage": FULL["owner_imessage"]},
+                   "people": list(FULL["people"]), "timezone": TZ},
+        "calendar": {"account": FULL["owner_email"],
+                     "sources": [{"calendar_id": FULL["owner_email"], "name": "Personal"},
+                                 {"calendar_id": FULL["extra_calendar_ids"][0],
+                                  "name": FULL["extra_calendar_ids"][0]}]},
+        "weekly_digest": {"length": FULL["digest_length"], "long_lead": []},
+        "morning_triage": {"chat_db_path": f"/Users/{FULL['mac_username']}/Library/Messages/chat.db",
+                           "ranking_instructions": "", "exclude": {"imessage_handles": []}},
+        "calendar_nudge": {"lookahead_virtual_minutes": 30, "lookahead_in_person_minutes": 60,
+                           "owner_identities": [FULL["owner_email"]]},
+        "weather": {"location": FULL["city"], "lat": 41.85, "lon": -87.65},
+        "sports": {"followed": list(FULL["teams"])},
+    }
 
 
 def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
@@ -163,7 +124,7 @@ def test_an_invalid_patch_refuses_and_names_what_is_wrong(patch, expected):
 def test_a_patch_the_gate_would_refuse_never_reaches_the_file(tmp_path, monkeypatch):
     monkeypatch.setattr(wc, "geocode", fake_geocode)
     target = tmp_path / "ld" / "config.json"
-    wc.main(stdin=io.StringIO(json.dumps(FULL)), env=ENV, config_path=str(target))
+    target.parent.mkdir(parents=True, exist_ok=True); target.write_text(json.dumps(live_config()))
     before = target.read_text()
 
     with pytest.raises(SystemExit) as e:
@@ -206,7 +167,7 @@ def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypa
     down at once, silently."""
     monkeypatch.setattr(wc, "geocode", fake_geocode)
     target = tmp_path / "ld" / "config.json"
-    wc.main(stdin=io.StringIO(json.dumps(FULL)), env=ENV, config_path=str(target))
+    target.parent.mkdir(parents=True, exist_ok=True); target.write_text(json.dumps(live_config()))
     before = target.read_bytes()
 
     def boom(*_args):
@@ -232,7 +193,7 @@ def test_a_patch_carrying_a_non_standard_json_constant_is_refused(
     JSON" and stands every producer down. Refuse at the door instead."""
     monkeypatch.setattr(wc, "geocode", fake_geocode)
     target = tmp_path / "ld" / "config.json"
-    wc.main(stdin=io.StringIO(json.dumps(FULL)), env=ENV, config_path=str(target))
+    target.parent.mkdir(parents=True, exist_ok=True); target.write_text(json.dumps(live_config()))
     before = target.read_bytes()
 
     with pytest.raises(SystemExit) as e:
