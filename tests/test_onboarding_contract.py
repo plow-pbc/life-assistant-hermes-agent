@@ -100,7 +100,7 @@ def test_a_draft_records_an_answer_the_gate_would_refuse(tmp_path):
      "not unique"),
     ('{"calendar_nudge": {"owner_identities": []}}', "non-empty list"),
     ('{"calendar_nudge": {"lookahead_virtual_minutes": -5}}', "positive number"),
-    ('{"family": {"timezone": "America/New_York"}}', "AGENT_TZ"),
+    ('{"family": {"timezone": "America/New_York"}}', "restart"),
     ('{"wether": {"location": "Denver"}}', "unknown config key"),
 ])
 def test_a_draft_refuses_a_value_that_was_actually_supplied(tmp_path, payload, complaint):

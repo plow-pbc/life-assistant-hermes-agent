@@ -128,7 +128,7 @@ def feed(tmp_path, monkeypatch):
         # household is in.
         "DASHBOARD_DELIVERY=latch\n")
     monkeypatch.setattr(module, "CONFIG_FILE", str(tmp_path / "config.json"))
-    monkeypatch.setattr(module, "DOTENV", str(tmp_path / "dotenv"))
+    monkeypatch.setattr(module, "AGENT_DOTENV", str(tmp_path / "dotenv"))
     monkeypatch.setattr(module, "RELAY_ORIGIN", base)
     # post_to_kiosk's endpoint validator pins the Pi's exact `:5174/api/message`
     # shape, which a loopback server on an ephemeral port cannot wear. Its rules

@@ -66,13 +66,14 @@ def test_the_job_contract_is_exactly_this():
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
 def test_no_schedule_carries_a_timezone(job):
     """`hermes cron create` takes no per-job zone -- jobs fire in the container's,
-    which is agent-mgr's AGENT_TZ. A tz written into a schedule here is not
+    which this image sets at boot from family.timezone. A tz written into a
+    schedule here is not
     rejected by anything; it is simply ignored, so the job runs at the wrong hour
     while the spec claims otherwise."""
     schedule = job["schedule"]
     assert not re.search(r"[A-Za-z]+/[A-Za-z_]+", schedule), (
         f"{job['name']} schedule {schedule!r} names a timezone; the container's "
-        "AGENT_TZ is the only zone there is"
+        "the container zone is the only zone there is"
     )
     assert re.fullmatch(r"[\d*,/\- ]+", schedule), (
         f"{job['name']} schedule {schedule!r} is not a plain cron expression"
@@ -390,7 +391,7 @@ def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):
         mod.require_timezone_agreement(config, {"TZ": "America/Los_Angeles"})
     message = str(excinfo.value)
     assert "America/Chicago" in message and "America/Los_Angeles" in message
-    assert "AGENT_TZ" in message, "the message has to name what to fix"
+    assert "restart" in message, "the message has to name what to do about it"
 
     # Agreement passes.
     mod.require_timezone_agreement(config, {"TZ": "America/Chicago"})
@@ -414,7 +415,7 @@ def test_the_container_zone_comes_from_TZ_not_etc_localtime(tmp_path):
 
     with pytest.raises(SystemExit) as excinfo:
         mod.require_timezone_agreement(config, {"TZ": ""})
-    assert "AGENT_TZ" in str(excinfo.value)
+    assert "TZ is empty" in str(excinfo.value)
 
 
 def test_main_refuses_before_creating_anything_when_the_zones_disagree(

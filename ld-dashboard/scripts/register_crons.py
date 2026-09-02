@@ -68,7 +68,7 @@ LD_CONFIG = "/opt/data/ld/config.json"
 #     by construction.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
-# the container's zone, which is agent-mgr's AGENT_TZ.
+# the container's zone, which this image sets at boot from family.timezone.
 # require_timezone_agreement() below refuses to register unless that zone equals
 # family.timezone; the ld-config gate does not.
 JOBS = (
@@ -166,7 +166,7 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
 
     Every schedule here is a bare cron expression and `hermes cron create` takes
     no per-job timezone, so jobs fire in the CONTAINER's zone -- agent-mgr's
-    AGENT_TZ -- while all three SKILL.md files promise 06:00 in
+    TZ -- while all three SKILL.md files promise 06:00 in
     `family.timezone`. Nothing else compares them: ld_config_gate.py checks only
     that the zone is non-blank, which a valid America/Chicago config satisfies
     while its cards land at 08:00 family time. Silent, and wrong in exactly the
@@ -181,9 +181,10 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
     container = (env.get("TZ") or "").strip()
     if not container:
         raise SystemExit(
-            "refusing to register: TZ is empty in this container. agent-mgr sets "
-            "it from AGENT_TZ at create time, so an empty one means the schedules "
-            "would fire in a zone nothing here can name."
+            "refusing to register: TZ is empty in this container. The image sets "
+            "it at boot from family.timezone, falling back to UTC, so an empty "
+            "one means that step did not run and the schedules would fire in a "
+            "zone nothing here can name."
         )
     path = pathlib.Path(config_path)
     try:
@@ -210,9 +211,9 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
             f"{family!r} but this container runs in {container!r}. Every schedule "
             "here is a bare cron expression and hermes cron create takes no "
             "per-job zone, so the cards would land at the wrong local hour -- "
-            "silently. Fix whichever is wrong: AGENT_TZ in the instance dotenv "
-            "(after `deploy`, before `up` -- the zone reaches the container at "
-            "create time), or family.timezone in the config."
+            "silently. TZ is fixed at boot from family.timezone, so this means "
+            "the config changed after the container started: restart it to pick "
+            "the new zone up, or fix family.timezone if THAT is what is wrong."
         )
 
 

@@ -4,7 +4,7 @@ Behavior, not shape: each row is judged by the SHARED gate
 (ld-shared/scripts/ld_config_gate.py, imported), because that gate is the
 single definition of "installed" and a config it refuses is a 06:00 failure
 in front of nobody. The timezone check lives here too -- the owner is the
-one answering, and AGENT_TZ is the operator's to change, so the refusal has
+one answering, and the container's zone is fixed at boot, so the refusal has
 to name it for the owner to relay.
 """
 import importlib.util
@@ -153,7 +153,7 @@ def test_a_new_city_takes_its_coordinates_with_it():
     ({"family": {"owner": {"nme": "Ro"}}}, "'family.owner.nme'"),
     ({"sports": {"followed": [{"abbr": "bos", "leage": "mlb"}]}},
      "'sports.followed[0].leage'"),
-    ({"family": {"timezone": "America/Los_Angeles"}}, "AGENT_TZ"),
+    ({"family": {"timezone": "America/Los_Angeles"}}, "restart"),
 ], ids=["section", "nested", "list-item", "timezone"])
 def test_an_invalid_patch_refuses_and_names_what_is_wrong(patch, expected):
     with pytest.raises(SystemExit) as e:

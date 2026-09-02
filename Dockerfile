@@ -50,12 +50,15 @@ RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills -type f \
       \( -name '*.md' -o -name '*.py' -o -name '*.json' \) \
       -exec sed -i 's|/opt/data|/var/lib/hermes|g' {} +
 
-# The calendar strip's schedule. Cloud image only: the fleet container has no
-# systemd, so ld-shared/scripts/calendar_feed.py ships there and nothing calls
-# it until agent-mgr grows a command slot. Both units name /var/lib/hermes
-# outright — they land in /etc/systemd, which the rewrite above does not walk.
-COPY runtime/life-calendar-feed.service runtime/life-calendar-feed.timer /etc/systemd/system/
-RUN systemctl enable life-calendar-feed.timer
+# The calendar strip's schedule, as a supervised service beside the gateway.
+# It names /var/lib/hermes outright — the run script lands in /etc/s6-overlay,
+# which the rewrite above does not walk.
+COPY image/s6-overlay/ /etc/s6-overlay/
+
+# The process timezone, resolved from this household's config before any
+# service starts. The base image sets none; every cron schedule this agent
+# registers fires in whatever this leaves behind.
+COPY --chmod=0755 image/cont-init.d/10-life-timezone /etc/cont-init.d/10-life-timezone
 
 # Onboarding's own assets, and NOT under the home. Hermes refuses to deliver a
 # model-emitted MEDIA: path whose prefix is on its media denylist -- /etc /proc

@@ -58,8 +58,10 @@ differ only in what they excuse.
 
 The timezone is checked against the container's TZ in both modes rather than
 left to register_crons.py (which also refuses): the owner is the one answering,
-and the fix is AGENT_TZ in the instance dotenv on the HOST, which only the
-operator can edit -- so the refusal names it for the owner to relay.
+and a zone that disagrees with the running container is one the owner has to be
+told about before they answer four more questions against it. TZ is fixed at
+boot from this very file, so a disagreement means the config changed since the
+container started and a restart is what applies it.
 
 NO mode touches the crons. This script writes one file and nothing else; the
 six schedules are register_crons.py's, run from the wall phases of SKILL.md,
@@ -244,7 +246,7 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
     merged = deep_merge(current, patch)
 
     # Same refusal as build(), because it is the same mistake: the zone is the
-    # host's AGENT_TZ, and a config that disagrees with the container puts
+    # zone this container booted with, and a config that disagrees with it puts
     # every card at the wrong local hour without failing anything.
     container = (env.get("TZ") or "").strip()
     zone = merged.get("family", {}).get("timezone")
@@ -257,8 +259,8 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
         if zone != container:
             raise SystemExit(
                 f"refusing to {verb}: the config would say {zone!r} but this container "
-                f"runs in {container!r}. The zone is AGENT_TZ in the instance dotenv on "
-                "the host -- tell the owner to ask the operator to change it.")
+                f"runs in {container!r}. TZ is fixed at boot from this config, so "
+                "the container needs a restart to pick the new zone up.")
 
     # A location without its coordinates is the one patch that fails silently:
     # the card's title changes to the new city and the forecast stays the old

@@ -684,14 +684,17 @@ The owner does not know a geocoder ran, has no opinion about a lat/lon, and
 cannot act on either. Saying it out loud is an assistant narrating its own
 plumbing to someone who asked about the weather. Do the check. Say the city.
 
-The timezone rides along with the city, but it is **not yours to choose**. It
-must equal the container's `$TZ`. Run `echo $TZ`, tell them that zone in plain
-words ("Pacific time, got it"), and draft `family.timezone` as that exact
-value. If they say they are somewhere else, the script refuses and says why:
-the zone is `AGENT_TZ` in the instance dotenv on the host, which only their
-operator can change. Tell them that and stop drafting the zone. Do not write
-one that disagrees with the container, because every card would land at the
-wrong hour.
+The timezone rides along with the city. Run `echo $TZ`, tell them that zone in
+plain words ("Pacific time, got it"), and draft `family.timezone` as that exact
+value.
+
+If they say they are somewhere else, write the zone they actually live in, and
+then tell them plainly that **it takes effect when their agent next restarts**.
+`TZ` is read once at boot from this same config, so until that restart the
+container is still on the old zone and the script will refuse a config that
+disagrees with it. Say that in one sentence, and do not keep drafting against
+the old zone: a config that quietly agrees with a stale `TZ` puts every card at
+the wrong hour and nothing downstream re-checks it.
 
 **Their teams**, if any. You fold scores and game times into their mornings.
 Interpret what they say with everything you know. "Kings" from someone in
@@ -1010,9 +1013,9 @@ Three things it refuses rather than doing quietly, each naming what is wrong:
 a key that is not in `config.example.json` **at any depth**, list entries
 included (a misspelled `wether`, or `{"family":{"owner":{"nme":…}}}`, would
 otherwise merge in beside the real key, pass the gate on the old value and
-report a change that never happened); a merged config the gate rejects (nothing
-is written); and a `family.timezone` the container does not share (that is
-`AGENT_TZ` on the host, so the owner has to ask the operator).
+report a change that never happened; a merged config the gate rejects (nothing
+is written); and a `family.timezone` the container does not share, which means
+the zone changed since it booted, so it takes a restart to apply.
 
 Two things to know before composing one. **Lists replace, they do not grow.**
 `sports.followed` and `calendar.sources` are sets the owner states in full, so

@@ -74,7 +74,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import post_to_kiosk  # noqa: E402
 from bearer_http import open_no_redirect  # noqa: E402
 from external_content import strip_markers  # noqa: E402
-from runtime_env import DOTENV, dotenv_values  # noqa: E402
+from runtime_env import AGENT_DOTENV, agent_values  # noqa: E402
 
 CONFIG_FILE = "/opt/data/ld/config.json"
 # Fixed, never from the dotenv. runtime/config.yaml and the justfile's
@@ -389,7 +389,9 @@ def deliver_via_latch(relay_url, relay_token, calendar_url, feed):
 
 def main(*, now=None):
     now = int(time.time()) if now is None else now
-    dotenv = dotenv_values(DOTENV)
+    # The agent's own file: the wall's endpoint and the relay pair are the
+    # agent's to record, and it cannot record them in the provisioner's dotenv.
+    dotenv = agent_values(AGENT_DOTENV)
 
     try:
         account, calendar_ids, zone = read_config()

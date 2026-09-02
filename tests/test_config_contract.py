@@ -13,8 +13,10 @@ to a different person.
 """
 import importlib.util
 import json
+import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -366,11 +368,6 @@ def _verdict():
     return _latch_module().verdict
 
 
-
-
-
-
-
 def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
     """A ${NAME} with no matching key ships a literal, unexpanded string.
 
@@ -409,7 +406,6 @@ def test_check_latch_actually_runs_the_verdict_script():
     )
 
 
-
 def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
     # curl's own -w already emits 000 on a failed transfer; a `|| printf 000`
     # next to it is what produced "000000".
@@ -418,8 +414,6 @@ def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
         "curl already writes 000 via -w on a failed transfer; a fallback printf "
         "doubles it and the transport-failure verdict becomes unreachable"
     )
-
-
 
 
 def test_latch_verdict_recognises_a_real_answer_in_any_framing():
@@ -454,8 +448,6 @@ def test_latch_verdict_recognises_a_real_answer_in_any_framing():
     # degraded rendering it also exercised.
     four = '{"id":1,"result":{"tools":[{"name":"a"},{"name":"b"},{"name":"c"},{"name":"d"}]}}'
     assert "4 tools (a, b, c…)" in v("200", four)
-
-
 
 
 @pytest.mark.parametrize("code,body", [
@@ -501,7 +493,6 @@ def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
     assert "did NOT answer" in msg
     assert code in msg, "the status has to be in the message"
     assert (body in msg) if body.strip() else ("(empty body)" in msg)
-
 
 
 def test_split_probe_survives_a_body_that_never_arrived():
@@ -891,3 +882,97 @@ CONTRACTS = [
                          ids=[f"{s[-1]}:{r[:40]}" for s, r in CONTRACTS])
 def test_the_assistant_still_says_what_it_was_taught_to_say(surface, required):
     assert required in prose(*surface), f"{'/'.join(surface)} no longer carries it"
+
+
+# --- the calendar strip's schedule, and the file the agent may write ---------
+
+FEED_SERVICE = ROOT / "image" / "s6-overlay" / "s6-rc.d" / "life-calendar-feed"
+
+# The names the agent itself records after setup. They live in the agent's own
+# file because the provisioner's dotenv is root-owned -- which is the point of
+# it: a turn must not be able to re-point the API base its bearer is sent to.
+AGENT_OWNED = {
+    "DASHBOARD_DELIVERY", "DASHBOARD_ENDPOINT_URL", "DASHBOARD_PI_USER",
+    "DASHBOARD_TOKEN", "DOMO_DEVICE_UID", "DOMO_MCP_TOKEN",
+}
+AGENT_NAME_RE = re.compile(r"""["'](DOMO_[A-Z0-9_]+|DASHBOARD_[A-Z0-9_]+)["']""")
+DOTENV_READERS = sorted(
+    str(path.relative_to(ROOT))
+    for path in ROOT.glob("ld-*/scripts/*.py")
+    if not path.name.startswith("test_")
+)
+
+
+def test_the_calendar_strip_is_a_supervised_service_that_waits_for_first_boot():
+    """The strip's schedule, as the four facts that make it one.
+
+    A service directory the supervisor cannot parse is not a build error: s6
+    skips what it does not understand, the image comes up with a gateway and no
+    strip, and the wall shows a week-old calendar with nothing saying why.
+
+    The dependency is the half that is easy to drop. Without it the loop is free
+    to fire before first boot has finished -- before the provisioner's dotenv
+    exists, before the home's ownership is restored -- and its first tick reads
+    a home it cannot use and stands down, which looks exactly like a household
+    that has not set up its wall."""
+    assert (FEED_SERVICE / "type").read_text().strip() == "longrun"
+    assert (FEED_SERVICE / "dependencies.d" / "plow-init").is_file()
+    assert (ROOT / "image/s6-overlay/s6-rc.d/user/contents.d/life-calendar-feed").is_file()
+    assert (FEED_SERVICE / "run").stat().st_mode & 0o111
+
+
+def test_the_calendar_service_hands_the_producer_no_environment():
+    """No `with-contenv`, and nothing that sources either dotenv.
+
+    calendar_feed.py reads the agent's own file itself and holds what it finds
+    there to the household-network check before the run may hand that endpoint
+    a bearer. The gate keys on WHERE the value came from, so putting that file
+    into this process would launder every line of something the agent can write
+    into something the script reads as trusted. The provisioner's dotenv is not
+    read here either: this service runs as root until it drops."""
+    lines = (FEED_SERVICE / "run").read_text().splitlines()
+    assert lines[0] == "#!/bin/sh", (
+        "the interpreter line is the whole mechanism: a #!/command/with-contenv "
+        "shebang is how a service asks for the container environment")
+    # Code only -- the script SAYS with-contenv in the comment explaining why it
+    # has none, and a whole-file check would read that as the thing it forbids.
+    code = " ".join(l for l in lines[1:] if not l.lstrip().startswith("#"))
+    assert "with-contenv" not in code
+    for spelling in (". /var/lib/hermes/.env", "source /var/lib/hermes/.env", "set -a"):
+        assert spelling not in code, f"the run script sources a dotenv ({spelling!r})"
+    assert "ld/.env" not in code, "the supervisor must not touch the agent's file"
+
+
+def test_the_agent_owned_names_are_read_from_the_agents_own_file():
+    """Every DOMO_/DASHBOARD_ name a producer reads comes from agent_values.
+
+    A producer left on the provisioner's dotenv would read a name nothing can
+    write there any more and stand down for the life of the agent -- and
+    `calendar feed not configured` is what a household with no wall looks like
+    too, so nobody would find it."""
+    checked = []
+    for relative in DOTENV_READERS:
+        text = (ROOT / relative).read_text()
+        named = set(AGENT_NAME_RE.findall(text)) & AGENT_OWNED
+        # Only files that read a dotenv at all: ld-viewer-dev's verify_deploy
+        # names two of these and takes them from the process environment.
+        if not named or ("dotenv_values" not in text and "agent_values" not in text):
+            continue
+        checked.append(relative)
+        assert "agent_values" in text or "AGENT_DOTENV" in text, (
+            f"{relative} names {sorted(named)} but does not read the agent's own file")
+        assert "dotenv_values(DOTENV)" not in text, (
+            f"{relative} reads an agent-owned name out of the provisioner's dotenv")
+    assert len(checked) >= 4, f"only {checked} were checked -- the scan stopped finding producers"
+
+
+def test_the_agents_own_file_lives_in_a_directory_it_owns():
+    """The image enforces the DIRECTORY (0700, uid 10000). The file's own 0600
+    comes from the writer's fchmod, on create and on rewrite -- ld/.env does not
+    exist at build time."""
+    runtime_env = (ROOT / "ld-shared/scripts/runtime_env.py").read_text()
+    assert 'AGENT_DOTENV = "/opt/data/ld/.env"' in runtime_env
+    assert "install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld" in (ROOT / "Dockerfile").read_text()
+    mint = (ROOT / "ld-wall-setup/scripts/mint_wall_token.py").read_text()
+    assert "dotenv_path=AGENT_DOTENV" in mint, "the writer's default target is the agent's file"
+    assert "os.fchmod(fd, 0o600)" in mint, "the writer must tighten the mode it opens"
