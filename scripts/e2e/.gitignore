@@ -1,0 +1,4 @@
+# Live credentials and generated state. Nothing here is committed.
+.env
+staging/
+.pending-reply

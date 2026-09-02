@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# (Re)start the agent container on the staged skills. This is the whole
+# per-iteration step: edit a skill, run this, text the agent.
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+load_env
+require PLOW_API_BASE PLOW_AGENT_TOKEN PLOW_HOME_CHANNEL
+
+# --fresh: throw the home away and start from an unset-up agent. That is the
+# first half of a resume test (and what you want after an image rebuild);
+# without it the container comes back onto the state it had.
+# --latch: hand the container the REAL relay from .env. Off by default and
+# deliberately opt-in -- the device on the other end is a person's actual Mac,
+# and a run that does not need it should not be able to touch it.
+WITH_LATCH=""
+for arg in "$@"; do
+  [ "$arg" = "--latch" ] && WITH_LATCH=1
+done
+
+if [ "${1:-}" = "--fresh" ] || [ "${2:-}" = "--fresh" ]; then
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker volume rm "$HOME_VOLUME" >/dev/null 2>&1 || true
+  echo "removed $HOME_VOLUME -- this run starts from a brand new home"
+fi
+echo "latch relay: ${WITH_LATCH:+wired (real Mac)}${WITH_LATCH:-not wired}"
+
+"$E2E_DIR/sync-skills.sh"
+
+# Derived, never written down: host ports move with the worktree and the
+# compose project, and this is the same `plow-dev-env print` the stack's own
+# `just api chat` uses. Only read -- the stack is not this loop's to change.
+TWIN_UPLOAD_PORT="$("$PLOW_REPO/scripts/plow-dev-env" print "$PLOW_REPO/.plow-dev-env" PLOW_DTU_LINQ_PORT)"
+[ -n "$TWIN_UPLOAD_PORT" ] || { echo "could not read PLOW_DTU_LINQ_PORT from $PLOW_REPO/.plow-dev-env" >&2; exit 1; }
+
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+
+# --platform: the published base is linux/amd64 and this is an arm64 Mac, so
+# the run is emulated. Naming it here keeps docker from picking a manifest that
+# does not exist rather than emulating.
+#
+# Every ld-* skill and SOUL.md is mounted from the staging tree, read-only --
+# the agent runs them, it does not edit them. The mounts land flat under
+# /var/lib/hermes/skills because every SKILL.md names an absolute skills path
+# and each wrapper hops ../../ld-shared off its own realpath.
+# The design assets ride along at a fixed path so an image round trip has
+# something real to send without a `docker cp` after every restart.
+#
+# /srv, NOT anywhere under the home. Hermes refuses to deliver a model-emitted
+# MEDIA: path under /var/lib (its media denylist is /etc /proc /sys /dev /root
+# /boot /var/log /var/lib /var/run), and this image's whole HERMES_HOME is
+# /var/lib/hermes -- so an asset parked inside the home is rejected with
+# "Skipping unsafe MEDIA directive path" and the reply arrives as text only.
+# Only the Hermes cache roots under the home are allowlisted past that.
+mounts=(-v "$HOME_VOLUME:/var/lib/hermes"
+        -v "$E2E_DIR/entrypoint.sh:/usr/local/bin/e2e-entrypoint:ro"
+        -v "$E2E_DIR/upload-shim.py:/usr/local/bin/e2e-upload-shim:ro"
+        -v "$STAGING/SOUL.md:/var/lib/hermes/SOUL.md:ro"
+        -v "$REPO_DIR/docs/onboarding-v2/assets:/srv/e2e-assets:ro")
+for skill in "$STAGING"/skills/*/; do
+  mounts+=(-v "$skill:/var/lib/hermes/skills/$(basename "$skill"):ro")
+done
+
+# Sampled off the VOLUME, before anything starts, so the new gateway cannot
+# write its line between the start and this read.
+before_ready="$(docker run --rm --platform linux/amd64 -v "$HOME_VOLUME:/home" \
+  alpine sh -c 'grep -c "websocket connected" /home/logs/gateway.log 2>/dev/null || echo 0' \
+  2>/dev/null | tr -d "[:space:]")"
+[ -n "$before_ready" ] || before_ready=0
+
+docker run -d --name "$CONTAINER" --platform linux/amd64 \
+  -e PLOW_API_BASE="$PLOW_API_BASE" \
+  -e PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
+  -e PLOW_HOME_CHANNEL="$PLOW_HOME_CHANNEL" \
+  -e HERMES_CUSTOM_PLOW_API_KEY="$HERMES_CUSTOM_PLOW_API_KEY" \
+  -e HERMES_HOME=/var/lib/hermes \
+  -e HERMES_DISABLE_LAZY_INSTALLS=1 \
+  -e API_SERVER_HOST=127.0.0.1 -e API_SERVER_PORT=8642 \
+  -e PYTHONUNBUFFERED=1 \
+  -e TZ="$TZ" \
+  -e TWIN_UPLOAD_PORT="$TWIN_UPLOAD_PORT" \
+  -e LATCH_MCP_URL="${WITH_LATCH:+${LATCH_MCP_URL:-}}" \
+  -e LATCH_MCP_TOKEN="${WITH_LATCH:+${LATCH_MCP_TOKEN:-}}" \
+  "${mounts[@]}" \
+  --entrypoint /usr/local/bin/e2e-entrypoint \
+  "$IMAGE" >/dev/null
+
+# Readiness is the plugin's own websocket line, and it is read from the log
+# FILE rather than `docker logs`: the gateway writes its startup banner to
+# stdout but everything after it goes to $HERMES_HOME/logs/gateway.log, so a
+# stdout grep waits out the whole timeout on a container that came up fine.
+#
+# Counted, not matched. That log lives on the home volume, so it SURVIVES the
+# container -- a bare grep matches the previous run's "websocket connected" and
+# returns instantly, reporting a gateway that has not started yet and printing
+# the last run's lines as if they were this one's. The count taken before the
+# start is the only thing that distinguishes them.
+echo -n "$CONTAINER started; waiting for the plow_chat websocket"
+for _ in $(seq 1 60); do
+  now="$(docker exec "$CONTAINER" sh -c \
+    'grep -c "websocket connected" /var/lib/hermes/logs/gateway.log 2>/dev/null || echo 0')"
+  if [ "${now:-0}" -gt "${before_ready:-0}" ]; then
+    echo " -- up"
+    docker exec "$CONTAINER" grep -E "plow_chat|Gateway running" \
+      /var/lib/hermes/logs/gateway.log | tail -4
+    exit 0
+  fi
+  echo -n "."
+  sleep 2
+done
+echo " -- TIMED OUT"
+docker exec "$CONTAINER" tail -20 /var/lib/hermes/logs/gateway.log 2>&1 || true
+exit 1
