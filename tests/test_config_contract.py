@@ -127,6 +127,25 @@ def test_outcome_memories_get_a_raised_char_limit():
     assert config()["memory"]["memory_char_limit"] == 6000
 
 
+def test_the_main_model_has_somewhere_to_fall_back_to():
+    """The owner reads a provider-failed message when a codex 503 burst outlasts
+    the loop's three retries (~15s, 2026-09-01). The image only fails over into
+    the top-level chain, so its absence -- not the burst -- is what reaches the
+    thread. Same target as compression: the only other id this account serves,
+    on the instance's own auth, so no new credential."""
+    chain = config()["fallback_providers"]
+
+    assert [e["model"] for e in chain] == ["gpt-5.5"]
+    assert chain[0]["provider"] == "openai-codex", (
+        "the fallback rides this instance's own codex auth -- a provider "
+        "needing a new credential would not resolve here at all"
+    )
+    assert chain[0]["model"] != config()["model"]["default"], (
+        "a chain entry equal to the primary is a fallback that cannot help: "
+        "the shed request would land on the same overloaded route"
+    )
+
+
 def test_compression_has_somewhere_to_fall_back_to():
     """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
     a cheaper-sounding id installs a fallback that can never fire -- and a naive
