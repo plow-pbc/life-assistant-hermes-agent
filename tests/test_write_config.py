@@ -13,7 +13,6 @@ import json
 import os
 import subprocess
 import sys
-import threading
 from pathlib import Path
 
 import pytest
@@ -57,35 +56,6 @@ def fake_geocode(city):
 
 
 
-
-def run_concurrently(*calls):
-    """Run `calls` from a common barrier and return whatever they raised.
-
-    The barrier is the test, not decoration: threads started one after another
-    usually finish one after another, and a race that only shows under real
-    overlap is a race a suite can pass every time while the bug ships. Each call
-    is a zero-argument callable; failures are collected rather than raised in a
-    worker thread, where pytest would never see them.
-    """
-    start = threading.Barrier(len(calls))
-    errors = []
-
-    def wrap(call):
-        def run():
-            try:
-                start.wait(timeout=5)
-                call()
-            except BaseException as exc:        # noqa: BLE001 - reported to the caller
-                errors.append(exc)
-        return threading.Thread(target=run)
-
-    threads = [wrap(call) for call in calls]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=20)
-        assert not thread.is_alive(), "a writer never finished -- the lock deadlocked"
-    return errors
 
 
 def live_config():
@@ -233,10 +203,12 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
         [sys.executable, str(script), "--patch"],
         input=json.dumps({"family": {"owner": {"name": "Ro"}}}),
         capture_output=True, text=True,
-        # The copy lives outside the repo, so the shared gate it imports by
-        # relative path has to be reachable some other way.
+        # The copy lives outside the repo, so the shared gate and the sibling
+        # lock helper it imports by relative path have to be reachable some
+        # other way.
         env={**os.environ, "TZ": TZ,
-             "PYTHONPATH": str(ROOT / "ld-shared" / "scripts")})
+             "PYTHONPATH": os.pathsep.join([str(ROOT / "ld-shared" / "scripts"),
+                                            str(ROOT / "ld-setup" / "scripts")])})
 
     combined = proc.stdout + proc.stderr
     assert "missing required answer(s)" not in combined, (
@@ -294,7 +266,7 @@ def test_a_patch_carrying_a_non_standard_json_constant_is_refused(
 
 
 
-def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch):
+def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch, run_concurrently):
     """The loss a lock exists to prevent, and the reason it is not theoretical.
 
     Both modes here are read-modify-write. Two turns can run at once -- an owner
@@ -325,7 +297,7 @@ def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch):
     assert written["calendar"] == live_config()["calendar"]
 
 
-def test_two_first_drafts_race_before_the_directory_exists(tmp_path):
+def test_two_first_drafts_race_before_the_directory_exists(tmp_path, run_concurrently):
     """The case fail-open got wrong, and the reason the lock creates the dir.
 
     On a FIRST draft there is no `ld/` yet. An earlier version took the lock

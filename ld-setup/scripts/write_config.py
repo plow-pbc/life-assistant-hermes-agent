@@ -73,9 +73,7 @@ cron state it has no business judging.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import copy
-import fcntl
 import json
 import os
 import sys
@@ -88,6 +86,11 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
+# This script's own directory, for the sibling helper: a skill is copied
+# to /var/lib/hermes/skills/<name>/ whole, so siblings are found by realpath
+# rather than by anything that assumes a working directory.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from exclusive_lock import exclusive_lock  # noqa: E402
 from ld_config_gate import GateError, gate  # noqa: E402
 
 CONFIG = "/opt/data/ld/config.json"
@@ -273,56 +276,6 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
     return merged, None
 
 
-@contextlib.contextmanager
-def config_lock(config_path):
-    """Hold `<config>.lock` across the whole read-merge-gate-write.
-
-    Two turns can run at once -- an owner texting while a cron producer patches,
-    or two answers arriving back to back -- and both modes here are
-    read-modify-write. Without a lock the second read happens before the first
-    write lands, and the second `os.replace` publishes a merge that never saw
-    the first answer: not a corrupt file, a clean file missing a reply the owner
-    already gave, which is the kind of loss nobody traces back.
-
-    A separate lock file, not the config itself: `atomic_write` replaces the
-    config by rename, so a descriptor held on it would be a lock on a path that
-    no longer exists the moment the first writer finishes. Advisory `flock` is
-    enough because every writer of this file comes through here.
-
-    FAIL CLOSED. An earlier version ran the work anyway when the lock could not
-    be taken, on the reasoning that the only cause was an unwritable directory
-    which the write would refuse by itself. That reasoning is wrong for the case
-    that matters most: on a FIRST draft the directory does not exist yet, so
-    neither writer could take a lock, both created it, and both wrote -- the
-    race reproduced ten times out of ten with an answer lost each time. So the
-    directory is created BEFORE the lock is taken, and a lock that still cannot
-    be taken refuses the write rather than proceeding without it.
-    """
-    lock_path = config_path + ".lock"
-    handle = None
-    try:
-        # Before the lock, not after: the first draft of a new household has no
-        # directory yet, and two writers racing to create one are two writers
-        # with no lock between them.
-        parent = os.path.dirname(lock_path)
-        if parent:
-            os.makedirs(parent, mode=0o700, exist_ok=True)
-        handle = open(lock_path, "a+")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-    except OSError as exc:
-        if handle is not None:
-            handle.close()
-        raise SystemExit(
-            f"refusing to write: could not take the config lock ({exc}). "
-            "Another write may be in progress; nothing was changed.") from None
-    try:
-        yield
-    finally:
-        with contextlib.suppress(OSError):
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
-
-
 def atomic_write(config_path, text):
     """Replace the config in one step, or leave the old one untouched.
 
@@ -405,7 +358,7 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     # Everything from the read to the rename happens under one lock: both modes
     # merge onto what is already there, so a concurrent writer between our read
     # and our write would have its answer replaced by a merge that never saw it.
-    with config_lock(config_path):
+    with exclusive_lock(config_path, "refusing to write"):
         if args.patch or args.draft:
             verb = "draft" if args.draft else "patch"
             try:

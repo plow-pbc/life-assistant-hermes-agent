@@ -12,7 +12,6 @@ import json
 import re
 from pathlib import Path
 
-import threading
 
 import pytest
 
@@ -335,33 +334,8 @@ def test_ical_url_lands_only_in_pi_env(home, capsys, ical, expected):
     assert ICAL not in out
 
 
-def run_concurrently(*calls):
-    """A barrier, so the two mints actually overlap. Same shape as the one in
-    test_write_config.py, and the same reason: threads started in sequence
-    usually finish in sequence, and a race that only shows under real overlap
-    passes a suite every time while the bug ships."""
-    start = threading.Barrier(len(calls))
-    errors = []
 
-    def wrap(call):
-        def run():
-            try:
-                start.wait(timeout=5)
-                call()
-            except BaseException as exc:        # noqa: BLE001 - reported to the caller
-                errors.append(exc)
-        return threading.Thread(target=run)
-
-    threads = [wrap(call) for call in calls]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=20)
-        assert not thread.is_alive(), "a mint never finished -- the lock deadlocked"
-    return errors
-
-
-def test_two_mints_at_once_leave_one_token_in_both_files(home, capsys):
+def test_two_mints_at_once_leave_one_token_in_both_files(home, capsys, run_concurrently):
     """The bearer is minted once and written twice -- pi.env and dashboard.hdr.
 
     The dotenv read decides whether one already exists, so two runs that both

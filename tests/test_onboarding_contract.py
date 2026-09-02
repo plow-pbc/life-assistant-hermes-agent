@@ -605,6 +605,12 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
         # from the comment would put it at the nested key and answer
         # "configured" for a build with no relay of ours at all.
         "mcp_servers:\n    # deeper than the servers\n  other:\n    latch:\n      url: x\n",
+        # A trailing space is valid YAML and the same mapping, and it is still
+        # not the stanza the deployment writes -- yaml.safe_dump never emits
+        # one, so a line carrying it was edited by hand. Unconfigured is the
+        # safe direction: an install link the owner has already followed, rather
+        # than a call to a tool that may not be registered.
+        "mcp_servers:\n  latch: \n    url: https://x.test\n",
         # A name with nothing under it registers no tool: no url, no bearer.
         "mcp_servers:\n  latch:\n",
         "mcp_servers:\n  latch:\nmodel:\n  default: x\n",

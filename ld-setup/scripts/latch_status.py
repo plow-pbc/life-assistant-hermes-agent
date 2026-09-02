@@ -68,9 +68,16 @@ def relay_configured(text):
 
     Each of those was a YAML parser in miniature, judged against a file this
     does not have to parse. One string comparison cannot backtrack, cannot
-    misread a nesting level, and is legible without running it. Anything it does
-    not recognise is "unconfigured", which costs a calendar step and never
-    invents a Mac that is not there.
+    misread a nesting level, and is legible without running it.
+
+    The comparison is against the RAW line, trailing spaces and all. `  latch: `
+    is valid YAML meaning the same thing, and this reports it as unconfigured --
+    deliberately, because the deployment writes this file with yaml.safe_dump
+    and never emits a trailing space, so a line that has one was edited by hand
+    and is not the stanza this recognises. Erring that way costs a calendar step
+    and an install link the owner has already followed; erring the other way
+    calls a tool that may not be registered, which is where every ❓ in this
+    branch's history came from.
 
     Standard library only -- the sheet runs this as plain `python3`, and PyYAML
     lives in Hermes' own venv rather than the system interpreter in at least one
@@ -87,7 +94,7 @@ def relay_configured(text):
             continue                      # blanks and comments, at any indent
         if not line.startswith(" "):
             return False                  # the next top-level key: block over
-        if line.rstrip() != "  latch:":
+        if line != "  latch:":
             continue                      # some other server, or its settings
         # The relay, named at the servers' level. It counts only with settings
         # under it -- `latch:` alone registers nothing.

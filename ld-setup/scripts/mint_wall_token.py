@@ -55,8 +55,6 @@ never printed.
 """
 from __future__ import annotations
 
-import contextlib
-import fcntl
 import json
 import os
 import re
@@ -69,6 +67,11 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 from runtime_env import DOTENV, dotenv_values, household_host  # noqa: E402
+# This script's own directory, for the sibling helper: a skill is copied
+# to /var/lib/hermes/skills/<name>/ whole, so siblings are found by realpath
+# rather than by anything that assumes a working directory.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from exclusive_lock import exclusive_lock  # noqa: E402
 
 LD_DIR = "/opt/data/ld"
 # A LAN IP or an mDNS/DNS name. It lands inside a URL in the dotenv and inside
@@ -125,45 +128,6 @@ def converge_dotenv(path, values, pairs):
     return set(changed)
 
 
-@contextlib.contextmanager
-def wall_lock(dotenv_path):
-    """Hold `<dotenv>.wall.lock` from the dotenv read through both file writes.
-
-    This mints a bearer and then writes it to two places -- `pi.env` and
-    `dashboard.hdr` -- after reading the dotenv to decide whether one already
-    exists. Two runs at once (a resume while a retry is in flight, an owner
-    re-asking while a cron turn works) both read "no token yet", both mint, and
-    the pair of files ends up carrying different bearers: the Pi authenticates
-    with one and the Mac ships the other, and the wall goes quiet with every
-    file looking correct.
-
-    A separate lock file next to the dotenv, for the reason write_config.py
-    uses one: the files here are replaced by rename, so a descriptor on any of
-    them is a lock on a path that stops existing. Fails closed -- a token minted
-    without the lock is the exact loss it prevents.
-    """
-    lock_path = dotenv_path + ".wall.lock"
-    handle = None
-    try:
-        parent = os.path.dirname(lock_path)
-        if parent:
-            os.makedirs(parent, mode=0o700, exist_ok=True)
-        handle = open(lock_path, "a+")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-    except OSError as exc:
-        if handle is not None:
-            handle.close()
-        raise SystemExit(
-            f"refusing: could not take the wall lock ({exc}). Another mint may "
-            "be in progress; nothing was written.") from None
-    try:
-        yield
-    finally:
-        with contextlib.suppress(OSError):
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
-
-
 def write_private(path, text):
     """Create-or-rewrite, mode 600. fchmod BEFORE the write: O_CREAT's mode only
     applies to a new file, and a rewrite of a looser-permissioned one would
@@ -215,7 +179,7 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR, argv=None):
     # lock: the read decides whether a token already exists, and two runs that
     # both read "no" mint two, leaving the Pi and the Mac holding different
     # bearers.
-    with wall_lock(dotenv_path):
+    with exclusive_lock(dotenv_path, "refusing"):
         values = dotenv_values(dotenv_path)
         # Lowercased once at intake: DNS and mDNS names are case-insensitive, and
         # urlsplit lowercases on recovery -- without this a mixed-case address
