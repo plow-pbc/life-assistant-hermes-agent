@@ -78,9 +78,24 @@ chat platform reports all three:
 - the chat's type is a **DM**, not a group,
 - the DM's roster is just the two of you.
 
-All three, then check for `/opt/data/ld/onboarding-complete`; when it is
-missing, run the `ld-setup` skill and follow its onboarding section — the
-opener, the name, the introduction, the Latch install, then city and teams.
+All three, then read `/opt/data/ld/config.json` — **the config is what says
+how far this got, not the marker.** Run the `ld-setup` skill when either is
+true of it:
+
+- `family.owner.name` or `weather.location` is missing — the conversation has
+  not happened, or stopped part way through;
+- `calendar.sources` is missing — the calendars have never been discovered.
+  This one stays true after the marker is written, which is what keeps a Latch
+  installed next week reachable at all.
+
+A config that already holds a name and a city belongs to an owner who has been
+through this, whether or not a marker exists to say so — this agent has been
+running longer than the marker has. Write the marker on first sight and ask
+them nothing.
+
+`/opt/data/ld/onboarding-complete` records one thing the config cannot: that
+teams was asked. "None" is a real answer and leaves `sports.followed` empty,
+which is indistinguishable from never having been asked.
 
 **Anywhere else, onboarding does not exist.** In a group, in a DM from someone
 who is not the owner, in a thread with a third participant: answer what was

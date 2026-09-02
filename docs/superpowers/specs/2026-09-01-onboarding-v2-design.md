@@ -121,13 +121,16 @@ Outcomes:
   earlier, open the calendar pick on this turn without waiting for the owner to say "installed".
 The owner is never asked "have you installed it?".
 
-## 5. Photo stack (delivered 2026-09-02)
+## 5. Photo stack — slot pending redacted or synthetic assets; none shipped
 
-Four screenshots of the agent at work, in `docs/onboarding-v2/assets/work-{1..4}-*.png` (vault login, Instacart
-grocery run, Amazon price-match + reorder, medical-records read). Baked next to the GIF under `/srv/plow-assets/`
-and sent as images in the §2 intro, after the privacy line and before "only catch — I'm not on your Mac yet".
-Sent in that order, in one turn, as four attachments; text of that message is one line ("Want to see the kind of
-thing I mean?").
+The four screenshots delivered on 2026-09-02 carried real personal data — faces, a date of birth, lab results and
+diagnoses, an order with a home address, a named $30K transfer — and were baked into a public image and sent to
+every owner who onboards. They are removed from the tree, from the Dockerfile and from the skill, and the branch
+history was purged of the blobs.
+
+The slot in `ld-setup/SKILL.md` §2 stays as a marked comment. Nothing fills it until assets exist that carry no
+real personal data. The lead-in question ("want to see the kind of thing I mean?") is out with them: asked with
+nothing behind it, it is worse than not asking.
 
 ## Chunks
 

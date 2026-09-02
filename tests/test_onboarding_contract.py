@@ -48,6 +48,35 @@ def load(name, rel):
 wc = load("write_config", "ld-setup/scripts/write_config.py")
 
 
+def test_the_config_not_the_marker_decides_whether_to_onboard():
+    """A marker as second authority is wrong in both directions.
+
+    Backwards: every owner already running predates it, so their populated
+    config plus no marker would re-open the interview on their next DM.
+    Forwards: the marker lands before calendars exist, so gating on it stops
+    the skill being invoked at all and a Latch installed next week is never
+    picked up.
+    """
+    trigger = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].split())
+    assert "the config is what says how far this got, not the marker" in trigger.lower()
+    # Both conditions, and the calendar one has to outlive the marker.
+    assert "`family.owner.name` or `weather.location` is missing" in trigger
+    assert "`calendar.sources` is missing" in trigger
+    assert "stays true after the marker is written" in trigger
+    # A pre-marker populated config is a finished owner, not a new one.
+    assert "Write the marker on first sight and ask them nothing" in trigger
+    # And the one thing only the marker can record.
+    assert "teams was asked" in trigger
+
+
+def test_the_marker_does_not_close_calendar_discovery():
+    """Onboarding finishes before the calendars exist -- by design, since Latch
+    may be installed days later. The marker must not read as "done with all of
+    it"."""
+    close = " ".join(ONBOARDING[ONBOARDING.index("### 4 ·"):ONBOARDING.index("### 5 ·")].split())
+    assert "The marker does not end §5" in close
+
+
 def test_both_documents_name_the_same_completion_marker():
     """SOUL.md decides when to run onboarding; SKILL.md decides when it is done.
 
@@ -188,24 +217,6 @@ def test_media_tags_are_required_flush_left_and_never_fenced():
     # And the sheet warns that its OWN examples are indented for the document.
     assert "indented HERE because this sheet is a document" in text
 
-
-def test_the_photo_stack_is_four_tags_on_one_message():
-    """Four attachments on one message, not four messages.
-
-    Several MEDIA tags in one message deliver as several attachments in the
-    order written, so the stack is one send_message call -- which is also what
-    keeps them arriving together rather than trickling in.
-    """
-    intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
-    flat = " ".join(intro.split())
-    assert "Four attachments on the one message, not four messages" in flat
-    assert "never inside a code fence" in flat
-    # All four tags, each flush left on its own line, in argument order.
-    tags = [l for l in intro.splitlines() if l.strip().startswith("MEDIA:/srv/plow-assets/work-")]
-    assert len(tags) == 4, f"expected four MEDIA lines, found {len(tags)}"
-    assert [t.strip().rsplit("/", 1)[1] for t in tags] == [
-        "work-1-vault-login.png", "work-2-instacart-grocery.png",
-        "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
 
 
 def test_bookkeeping_never_becomes_the_final_message():
@@ -707,30 +718,6 @@ def test_the_privacy_line_is_verbatim_and_does_not_claim_local_execution():
     assert "NOT: I run on your own machine" in intro, "the counter-example is what makes it stick"
 
 
-def test_the_photo_stack_is_baked_and_sent_in_order():
-    """Four screenshots, in the order that makes the argument.
-
-    Vault login first because it is the privacy line made concrete, then the
-    ordinary errands, then the medical one -- small trust to larger. A stack
-    that ships in a different order than it is baked in is a silent 404 or a
-    picture in the wrong place, neither of which raises anything.
-    """
-    intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
-    assert "Want to see the kind of thing I mean?" in intro
-    names = ["work-1-vault-login.png", "work-2-instacart-grocery.png",
-             "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
-    positions = []
-    for name in names:
-        assert f"MEDIA:/srv/plow-assets/{name}" in intro, f"{name} is not sent"
-        assert f"COPY docs/onboarding-v2/assets/{name} /srv/plow-assets/{name}" in DOCKERFILE
-        assert (ROOT / "docs/onboarding-v2/assets" / name).is_file()
-        positions.append(intro.index(name))
-    assert positions == sorted(positions), "the stack is sent out of order"
-    # After the privacy line, before the Latch link -- the slot the spec names.
-    assert intro.index(PRIVACY_LINE) < positions[0] < intro.index("https://plow.co/latch")
-    # And it does not become a checkpoint the conversation waits on.
-    assert "a question you do not wait for an answer to" in intro
-
 
 def test_a_nameless_agent_still_opens_the_conversation():
     """Observed: with no name configured, the agent asked the OWNER to name it
@@ -759,6 +746,35 @@ def test_the_owners_name_may_only_come_from_their_reply():
     assert "comes from their reply and from nothing else" in intro
     assert "roster preamble" in intro
     assert "`You`" in intro
+
+
+def test_no_personal_data_ships_as_an_asset():
+    """The only baked asset is the GIF.
+
+    Four screenshots shipped on 2026-09-02 carrying faces, a date of birth,
+    lab results and diagnoses, an order with a home address and a named $30K
+    transfer -- into a public image, sent to every owner who onboards. They are
+    out until redacted or synthetic ones exist, and the slot must not quietly
+    refill: an asset baked here reaches everyone.
+    """
+    assets = ROOT / "docs/onboarding-v2/assets"
+    assert sorted(f.name for f in assets.iterdir()) == ["quick-q.gif"]
+    baked = [l for l in DOCKERFILE.splitlines() if "/srv/plow-assets/" in l and l.startswith("COPY")]
+    assert baked == ["COPY docs/onboarding-v2/assets/quick-q.gif /srv/plow-assets/quick-q.gif"]
+    # And nothing sends what is not there -- including the lead-in question,
+    # which with nothing behind it is worse than not asking. The slot itself is
+    # an HTML comment, so strip comment blocks before scanning the live text.
+    live, in_comment = [], False
+    for line in ONBOARDING.splitlines():
+        if "<!--" in line:
+            in_comment = True
+        if not in_comment:
+            live.append(line)
+        if "-->" in line:
+            in_comment = False
+    live = "\n".join(live)
+    assert "work-" not in live
+    assert "Want to see the kind of thing I mean?" not in live
 
 
 def test_the_opener_is_a_hello_a_gif_and_a_name():
