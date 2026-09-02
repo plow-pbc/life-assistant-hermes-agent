@@ -104,6 +104,19 @@ different Google account, the agent explains it can only see the default one for
 Known gap accepted for this PR: no provenance check that a written id came from the listing. Reviewers may note
 it as Minor.
 
+## 4c. Latch state is probed, never asked
+
+On each owner-DM turn while onboarding or calendars are incomplete, the agent probes the relay with the one
+read-only call it already needs: `plow_run_command ["gog","calendar","calendars","--json","--results-only"]`.
+Outcomes:
+- **Tool absent** (no `plow` server configured): behave as if not connected; never mention an error.
+- **Not connected** (relay error such as "… is not connected" / 503): the §2 pitch and `https://plow.co/latch`
+  link stand; on later turns at most one gentle nudge, never every turn, never the raw error.
+- **Connected, listing returned**: if the intro has not been sent yet, send it without the "I'm not on your Mac
+  yet" paragraph and without the link; then open the §4b calendar pick immediately. If the intro was sent
+  earlier, open the calendar pick on this turn without waiting for the owner to say "installed".
+The owner is never asked "have you installed it?".
+
 ## 5. Photo stack (delivered 2026-09-02)
 
 Four screenshots of the agent at work, in `docs/onboarding-v2/assets/work-{1..4}-*.png` (vault login, Instacart
@@ -138,6 +151,11 @@ Done when: `just test` green; an e2e transcript from a fresh container shows the
 Implements: §4b
 Interfaces: consumes Chunk 2's flow (runs after the Latch step) and `write_config.py --draft`/`--patch` · produces the calendar section of `ld-setup/SKILL.md`, a contract test pinning the single discovery argv and inverting the current "do not ask calendars / stop at calendar keys" assertions
 Done when: `just test` green; an e2e transcript against the REAL Latch in scripts/e2e/.env shows the agent, told "Latch is installed", listing calendars and, after the owner picks two, `config.json` holding `calendar.account`, both `calendar.sources` with exact ids, and `calendar_nudge.owner_identities`; a second transcript (Latch env vars unset) shows the refused/unavailable case handled without blocking.
+
+### Chunk 5: Latch is checked, not asked about
+Implements: §4c
+Interfaces: consumes §4b's single discovery call and the `plow` relay's error shape · produces the probe rule in `ld-setup/SKILL.md` §2/§5 and contract tests
+Done when: `just test` green; three transcripts: (a) Latch never connected — pitch + link sent, one later nudge at most, no error text; (b) Latch connected BEFORE the first message — no download pitch, calendar pick opens right after the intro; (c) Latch connects mid-flow — the next owner turn opens the calendar pick without the owner saying "installed". Evidence: transcript reports + config.json.
 
 ### Chunk 3: Doc fix
 Implements: housekeeping found during recon
