@@ -84,3 +84,14 @@ check-latch agent:
       cat /tmp/latch-body 2>/dev/null || true
       rm -f /tmp/latch-body' > "$raw"
     {{justfile_directory()}}/scripts/latch-verdict.py "$raw"
+
+# Nothing announces a base change: plow-hermes-agent ships no CI, so a commit
+# there neither builds nor tags itself, and this repo's FROM can be arbitrarily
+# stale with no signal. Run before every deploy -- step 0 of the runbook.
+#
+# Exits non-zero on UPGRADE RECOMMENDED, so it can gate. The verdict is a path
+# classification, not a reading of the change: it says the reader was shown the
+# commits, not that the upgrade is right. Read them.
+[doc("Compare the pinned base against plow-hermes-agent main and say whether to upgrade.")]
+check-base-drift *ARGS:
+    {{justfile_directory()}}/scripts/check-base-drift.py {{ARGS}}
