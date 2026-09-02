@@ -102,10 +102,13 @@ different Google account, the agent explains it can only see the default one for
 Known gap accepted for this PR: no provenance check that a written id came from the listing. Reviewers may note
 it as Minor.
 
-## 5. Open slot
+## 5. Photo stack (delivered 2026-09-02)
 
-Photo stack (4 screenshots of the agent at work) — design is producing them. The skill text leaves a clearly
-marked slot after the intro; when files arrive they are baked next to the GIF and sent as images.
+Four screenshots of the agent at work, in `docs/onboarding-v2/assets/work-{1..4}-*.png` (vault login, Instacart
+grocery run, Amazon price-match + reorder, medical-records read). Baked next to the GIF under `/srv/plow-assets/`
+and sent as images in the §2 intro, after the privacy line and before "only catch — I'm not on your Mac yet".
+Sent in that order, in one turn, as four attachments; text of that message is one line ("Want to see the kind of
+thing I mean?").
 
 ## Chunks
 
