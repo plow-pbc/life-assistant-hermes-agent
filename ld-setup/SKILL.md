@@ -261,6 +261,14 @@ listing belongs to step 4, on the one turn that asks about calendars.
 It prints one object: `missing` (ordered), `ask` (`name` / `city` / `teams` /
 `calendars` / `null`), `write_now`, `defer`, `intro_due`, `latch`.
 
+**That object is yours and never theirs.** Not quoted, not summarised, not
+mentioned. `write_now needs name + weather.location drafted now` went to a real
+owner as its own message, seconds before the sentence she was actually waiting
+for. The words `write_now`, `defer`, `intro_due`, `missing`, `ask` and `latch`
+have no meaning to a person being introduced to their assistant, and neither
+does the fact that a script ran. Read it, act on it, say the step's own
+sentence.
+
 **3 · Do exactly what it said.** If `write_now` is non-empty, stage those
 answers as a partial config with your file tool at `/opt/data/ld/.draft.json`
 and draft it:
@@ -301,19 +309,15 @@ one: *"The opener step calls for a simple hello and asking their name."*
 **`--draft`, not `--patch`.** The staged file is a PARTIAL CONFIG in the shape
 of `/opt/data/skills/ld-shared/references/config.example.json`, deep-merged
 onto whatever is there — and unlike `--patch` it works before the file exists
-and excuses the shared gate for the questions not yet asked. It has to: the
-gate wants a calendar account and its sources, and onboarding never asks for
-those. So a long `gate:` line listing the calendar keys is the EXPECTED output,
-not a failure. A value you actually supplied is still judged: `refusing to
-draft:` means the answer as you composed it is wrong — fix what it names and
-run it again.
+and excuses the gate for the questions not yet asked. So a long `gate:` line
+listing the calendar keys is the EXPECTED output, not a failure; `refusing to
+draft:` means the answer as you composed it is wrong.
 
-**That output is yours, not the owner's.** No pasted `gate:` line, no exit
-status, no file paths, no "wrote config.json". A person who just told you their
-name should hear their name back, not a validator. If a draft refuses and you
-cannot fix it from what they said, ask them the one question that resolves it,
-in plain words. (The paste-everything rule further down belongs to the wall
-phases, where the owner is deliberately being walked through an install.)
+Every script's output here is yours the same way — no pasted `gate:` line, no
+exit status, no file paths. If a draft refuses and you cannot fix it from what
+they said, ask them the one question that resolves it, in plain words. (The
+paste-everything rule further down belongs to the wall phases, where the owner
+is deliberately being walked through an install.)
 
 ### 1 · Opener
 

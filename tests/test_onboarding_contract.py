@@ -504,6 +504,10 @@ def test_the_sheet_presents_the_decision_and_does_not_restate_it():
     # the way past cost ten tool calls before the opener, a narration leak, and
     # a verifier footer inside an owner's introduction.
     assert "Only when `ask` is `calendars`" in ONBOARDING
+    # The decision object is machinery, and a new script is a new surface for
+    # the oldest leak here. Observed: "write_now needs name + weather.location
+    # drafted now", delivered to an owner as its own message.
+    assert "That object is yours and never theirs" in ONBOARDING
     # No table of turn shapes, and no second copy of the ordering rule.
     assert "| the turn | tool calls |" not in ONBOARDING
     assert "| what the config already holds |" not in ONBOARDING
