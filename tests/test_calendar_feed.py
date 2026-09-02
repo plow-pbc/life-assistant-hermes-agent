@@ -90,7 +90,7 @@ def event(uid, ical, start, end, **extra):
 CONFIG = {
     "family": {"timezone": "America/Los_Angeles"},
     "calendar": {"account": "ada@example.com",
-                 "sources": [{"calendar_id": "primary"}]},
+                 "sources": [{"calendar_id": "ada@example.com"}]},
 }
 
 
@@ -222,7 +222,7 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
     assert validated == [f"{base}/api/message"]
     assert relay_calls("plow_run_command")[0]["arguments"]["argv"] == [
         "gog", "calendar", "events", "list",
-        "--account=ada@example.com", "--calendars=primary",
+        "--account=ada@example.com", "--calendars=ada@example.com",
         "--days=7", "--json", "--results-only", "--sort=start", "--max=250",
     ]
 

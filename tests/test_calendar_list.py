@@ -112,6 +112,34 @@ def test_no_signal_at_all_leaves_the_account_null():
                            {"id": "b@example.test", "summary": "B", "accessRole": "reader"}])
     assert result["account"] is None
     assert [c["id"] for c in result["calendars"]] == ["a@example.test", "b@example.test"]
+    assert result["candidates"] == [], "no owner-role row voted, so there is nothing to offer"
+
+
+def test_a_null_account_hands_back_the_addresses_to_ask_about():
+    """"Ask the owner" is only answerable if the question has the candidates in
+    it. Deriving them a second time means the model re-parsing the raw listing,
+    which is the parse this script exists to replace -- so they come back with
+    the account that could not be decided, in a stable order.
+    """
+    result = cl.normalize([
+        {"id": "a@example.test", "summary": "Mine", "accessRole": "owner",
+         "dataOwner": "b@example.test"},
+        {"id": "c@example.test", "summary": "Also mine", "accessRole": "owner",
+         "dataOwner": "a@example.test"},
+        # A share does not vote here either: it is not an address of theirs.
+        {"id": "team@group.calendar.google.test", "summary": "Team",
+         "accessRole": "reader", "dataOwner": "someone@else.test"},
+    ])
+    assert result["account"] is None, "two owner-role addresses decide nothing"
+    assert result["candidates"] == ["a@example.test", "b@example.test"]
+
+
+def test_a_decided_account_is_still_one_of_the_candidates():
+    """The field is not a null-only branch: it is what the owner-role rows
+    said, whether or not that settled the account."""
+    result = cl.normalize(LISTING)
+    assert result["account"] == "mary@example.test"
+    assert result["candidates"] == ["mary@example.test"]
 
 
 @pytest.mark.parametrize("label,entries", [

@@ -443,6 +443,17 @@ def test_the_reply_is_the_step_not_a_report_of_it():
     assert "has skipped its own step" in text
 
 
+def turn_table():
+    """The table as {step: (tool calls, the message it ends on)}."""
+    table = ONBOARDING[ONBOARDING.index("| the turn |"):]
+    table = table[:table.index("\n\n")].splitlines()[2:]
+    rows = {}
+    for line in table:
+        step, calls, message = [c.strip() for c in line.strip("|").split("|")]
+        rows[step.split(" ·")[0]] = (calls, message)
+    return rows
+
+
 def test_every_step_has_a_row_in_the_turn_table():
     """A step with no row is a step with no defined shape.
 
@@ -451,11 +462,61 @@ def test_every_step_has_a_row_in_the_turn_table():
     fresh volumes. Adding the row fixed it on the next run. A turn that cannot
     find its own row reaches for a way to ask.
     """
-    table = ONBOARDING[ONBOARDING.index("| the turn |"):]
-    table = table[:table.index("\n\n")]
-    for step in ("§1 ·", "§2 ·", "§3 ·", "§4 ·", "§5 ·"):
-        assert step in table, f"{step} has no row in the turn table"
+    assert set(turn_table()) == {"§1", "§2", "§3", "§4", "§5a", "§5b"}
     assert "Every turn of this conversation is in that table" in " ".join(ONBOARDING.split())
+
+
+def test_the_table_says_what_each_turn_calls_and_what_it_ends_on():
+    """Labels alone let the table drift from the sections it governs, and the
+    drift is invisible: a row reading "§5 · Latch answers" said nothing about
+    whether the listing and the picks were one turn or two, and the section
+    below it described two.
+    """
+    rows = turn_table()
+    # The turns that only talk: a draft here would record progress the owner
+    # has not been told about yet.
+    for step in ("§1", "§2"):
+        assert "none" in rows[step][0].lower(), f"{step} must make no draft"
+    assert "no draft" in rows["§5a"][0].lower(), "the listing turn writes nothing"
+    # The turns that write: exactly one draft each, never a second.
+    for step in ("§3", "§4", "§5b"):
+        assert rows[step][0].count("ONE draft") == 1, f"{step} makes one draft"
+    # And each ends on a message, not on the write.
+    assert "city" in rows["§2"][1], "§2 must end on the question §3 answers"
+    assert "teams question" in rows["§3"][1]
+    assert "wall offer" in rows["§4"][1]
+    assert "which of them to track" in rows["§5a"][1]
+
+
+def test_a_deferred_write_needs_a_turn_that_is_certain_to_come():
+    """The loop this rule exists to stop.
+
+    Deferring the name onto "the city turn" assumes the city turn happens. With
+    weather.location already present -- an off-script order, or a half-finished
+    earlier run -- it never does: nothing writes the name, every turn reads the
+    config and opens by asking for it again, and the owner cannot get past it.
+    """
+    text = " ".join(ONBOARDING.split())
+    assert "A write is deferred only onto a turn that is certain to come" in text
+    assert "If this turn asks nothing further" in text
+    assert "the answer in hand is written HERE" in text
+    assert "Every draft writes everything you have collected and not yet written" in text
+    # The failing state is named, so a reader can recognise it in a transcript.
+    assert "`weather.location` present and `family.owner.name` absent" in text
+
+
+def test_the_null_account_is_asked_about_and_never_stood_in_for():
+    """calendar.account is the identity every producer authenticates as. The
+    script returns null when nothing in the listing decides it, and null with
+    no branch to answer it is an account written by whatever the turn improvised
+    -- or sources written without one, which the gate then refuses forever while
+    §5 never runs again.
+    """
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "If `account` came back `null`, ask — do not substitute one" in section
+    assert "`candidates` holds those owner-role addresses" in section
+    assert "Nothing is written until that answer lands" in section
+    assert "account and sources go in the SAME draft" in section
 
 
 def test_clarify_is_forbidden_during_onboarding():

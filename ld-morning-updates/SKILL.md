@@ -62,11 +62,11 @@ under the one `calendar.account` Latch's gog is authenticated as. Each source
 is just a `calendar_id` (there is no per-source account key): the id
 is a calendar's whole address and must be the globally-unique form (the
 `...@group.calendar.google.com` / email ids), visible to that account.
-`primary` names only the gog account's own calendar, so at most one source
-may use it — the shared gate (`ld_config_gate.py`) refuses blank or
-duplicate ids. Including non-primary calendars (the household's shared
-"Family Calendar" etc.) is the whole point — omitting them silently drops
-events from the kiosk message. Note anything a family member might be excited or nervous
+Onboarding writes the ids gog itself returned, so the account's own calendar
+appears under its address (`ada@example.com`) like any other — the shared gate
+(`ld_config_gate.py`) refuses blank or duplicate ids. Including the shared
+calendars (the household's "Family Calendar" etc.) is the whole point —
+omitting them silently drops events from the kiosk message. Note anything a family member might be excited or nervous
 about — a game, a recital, a trip, a test, a visitor.
 
 A busy window's result is too large to fit in context, so the runtime

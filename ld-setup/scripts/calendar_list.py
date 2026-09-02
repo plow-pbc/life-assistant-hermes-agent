@@ -8,6 +8,7 @@ Reads the gather file written by
 and prints ONE object on stdout:
 
     {"account": "<the owner's address, or null when it cannot be derived>",
+     "candidates": ["<owner-role dataOwner>", ...],
      "calendars": [{"id": ..., "display": ..., "accessRole": ...}, ...]}
 
 Everything here exists because the alternative was a model parsing this by
@@ -30,6 +31,9 @@ eye, and each step of that parse has a way to go quietly wrong:
     account is `null` and the caller asks the owner, which is the honest
     answer -- guessing here writes a shared calendar's address into
     `calendar.account` and every producer authenticates as somebody else.
+    `candidates` carries the owner-role addresses so that question can be
+    asked with the answers in it rather than as an open one; deriving them a
+    second time by eye is the parse this script exists to prevent.
 
 `display` is a display string and nothing else. It comes off calendars other
 people own, so it is attacker-controlled text: it may be shown to the owner in
@@ -65,7 +69,7 @@ def extract_array(text):
 
 
 def normalize(entries):
-    """{account, calendars} from gog's calendar list."""
+    """{account, candidates, calendars} from gog's calendar list."""
     if not isinstance(entries, list):
         raise GatherError("calendar listing is not a list")
     calendars, flagged, owned_by = [], [], set()
@@ -92,7 +96,9 @@ def normalize(entries):
                 owned_by.add(owner_of)
     if not calendars:
         raise GatherError("no calendars in the listing")
-    return {"account": derive_account(flagged, owned_by), "calendars": calendars}
+    return {"account": derive_account(flagged, owned_by),
+            "candidates": sorted(owned_by),
+            "calendars": calendars}
 
 
 def derive_account(flagged, owned_by):
