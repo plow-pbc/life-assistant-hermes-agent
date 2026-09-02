@@ -606,47 +606,56 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
     box with no relay at all rather than raising -- that is the whole case."""
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
     configured = [
-        "mcp_servers:\n  plow:\n    url: https://x.test\n",
-        # A relay beside another server, one carrying only headers, one quoted,
-        # one with a comment above it, and one that is not the first key in the
-        # file -- every shape the deployment's own stanza has been seen in.
-        "mcp_servers:\n  other:\n    url: x\n  plow:\n    url: y\n",
-        "mcp_servers:\n  plow:\n    headers:\n      Authorization: Bearer x\n",
-        "mcp_servers:\n  # the relay\n  plow:\n    url: y\n",
+        # The seeded stanza with the flag flipped -- what provisioning writes
+        # when a relay actually exists.
+        "mcp_servers:\n  plow:\n    url: https://x.test\n    enabled: true\n",
+        # A relay beside another server, one with a comment above it, one that
+        # is not the first key in the file, one whose flag sits before the url
+        # -- every shape the deployment's own stanza has been seen in.
+        "mcp_servers:\n  other:\n    url: x\n  plow:\n    url: y\n    enabled: true\n",
+        "mcp_servers:\n  plow:\n    enabled: true\n    url: y\n",
+        "mcp_servers:\n  # the relay\n  plow:\n    url: y\n    enabled: true\n",
         # A comment indented deeper than the servers, and a blank line before
         # them: the level comes from the first real KEY, not the first indented
         # line, or a stray comment would set it too far in.
-        "mcp_servers:\n      # indented however its author felt\n  plow:\n    url: y\n",
-        "mcp_servers:\n\n  plow:\n    url: y\n",
-        "model:\n  a: b\nmcp_servers:\n  plow:\n    url: x\nplugins:\n  a: b\n",
+        "mcp_servers:\n      # indented however its author felt\n  plow:\n    url: y\n    enabled: true\n",
+        "mcp_servers:\n\n  plow:\n    url: y\n    enabled: true\n",
+        "model:\n  a: b\nmcp_servers:\n  plow:\n    url: x\n    enabled: true\nplugins:\n  a: b\n",
+        # Nested settings between the key and the flag do not hide it.
+        "mcp_servers:\n  plow:\n    headers:\n      Authorization: Bearer x\n    enabled: true\n",
     ]
     unconfigured = [
+        # THE case this probe exists for: the base image seeds this stanza on
+        # every agent, relay or no relay, and provisioning flips the flag only
+        # when there is a Mac to reach. Presence answered "configured" for
+        # every agent ever built.
+        "mcp_servers:\n  plow:\n    url: https://x.test\n    enabled: false\n",
+        # No flag at all is not the deployment's stanza, whatever Hermes would
+        # default it to. Unconfigured is the safe direction.
+        "mcp_servers:\n  plow:\n    url: https://x.test\n",
         "mcp_servers: {}\n",
         "mcp_servers:\n",
         "model:\n  default: x\n",
-        "mcp_servers:\n  other:\n    url: x\n",
-        # `plow:` nested inside ANOTHER server's settings is not our relay --
+        "mcp_servers:\n  other:\n    url: x\n    enabled: true\n",
+        # A flag belonging to ANOTHER server does not switch ours on.
+        "mcp_servers:\n  other:\n    enabled: true\n  plow:\n    url: x\n",
+        # `plow:` nested inside another server's settings is not our relay --
         # it registers no tool, so reading it as one would answer "configured"
-        # for a build that cannot reach a Mac and send the turn to call a tool
-        # that is not there.
-        "mcp_servers:\n  other:\n    plow:\n      url: https://x.test\n",
-        "mcp_servers:\n  other:\n    headers:\n      plow:\n        url: x\n",
-        # Both together: a deeper comment AND a nested plow. Deriving the level
-        # from the comment would put it at the nested key and answer
-        # "configured" for a build with no relay of ours at all.
-        "mcp_servers:\n    # deeper than the servers\n  other:\n    plow:\n      url: x\n",
+        # for a build that cannot reach a Mac.
+        "mcp_servers:\n  other:\n    plow:\n      url: https://x.test\n      enabled: true\n",
+        "mcp_servers:\n  other:\n    headers:\n      plow:\n        enabled: true\n",
+        # Both together: a deeper comment AND a nested plow.
+        "mcp_servers:\n    # deeper than the servers\n  other:\n    plow:\n      enabled: true\n",
         # A trailing space is valid YAML and the same mapping, and it is still
         # not the stanza the deployment writes -- yaml.safe_dump never emits
-        # one, so a line carrying it was edited by hand. Unconfigured is the
-        # safe direction: an install link the owner has already followed, rather
-        # than a call to a tool that may not be registered.
-        "mcp_servers:\n  plow: \n    url: https://x.test\n",
-        # A name with nothing under it registers no tool: no url, no bearer.
+        # one, so a line carrying it was edited by hand.
+        "mcp_servers:\n  plow: \n    url: https://x.test\n    enabled: true\n",
+        # A name with nothing under it registers no tool.
         "mcp_servers:\n  plow:\n",
         "mcp_servers:\n  plow:\nmodel:\n  default: x\n",
         # And the old spelling is not the relay: the tool would be registered
         # under a prefix the sheet does not name.
-        "mcp_servers:\n  latch:\n    url: https://x.test\n",
+        "mcp_servers:\n  latch:\n    url: https://x.test\n    enabled: true\n",
         # A commented-out relay is not a relay.
         "mcp_servers:\n  # plow: gone\n  other:\n    url: x\n",
     ]
@@ -709,8 +718,8 @@ def test_the_relay_key_is_plow_and_only_plow():
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
     # Behaviour, not a constant: what matters is that the old spelling does not
     # answer "configured", whatever the code calls the name it looks for.
-    assert not ls.relay_configured("mcp_servers:\n  latch:\n    url: https://x\n")
-    assert ls.relay_configured("mcp_servers:\n  plow:\n    url: https://x\n")
+    assert not ls.relay_configured("mcp_servers:\n  latch:\n    url: https://x\n    enabled: true\n")
+    assert ls.relay_configured("mcp_servers:\n  plow:\n    url: https://x\n    enabled: true\n")
 
 
 def test_discovery_is_one_argv_and_never_auth_list():
