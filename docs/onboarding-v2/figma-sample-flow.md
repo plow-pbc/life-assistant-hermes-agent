@@ -4,8 +4,8 @@ Source: https://www.figma.com/design/PsRf23eXbb6N6zPkkzocZK/Plow-Latch?node-id=1
 Frame: MessageThread_ob2, 430×1682 iMessage mockup. Two copies on canvas: first half and scrolled second half.
 
 Assets: `assets/quick-q.gif` (320×320 GIF, Figma layer "hot chocolate", original upload `ivl4cUj8Te4waUlw-upload.gif`),
-`assets/reference-imessage-screenshot.png` (real iMessage thread the "4 Photos" stack was traced from),
-`assets/figma-prototype-top.jpg` (prototype render).
+
+
 
 ## Transcript (agent = grey, user = blue)
 
