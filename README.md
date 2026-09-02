@@ -208,8 +208,8 @@ mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 
-# Only for an instance that reports usage (AGENT_INDEX=1 in its
-# compose.override.yml — see Usage reporting). One-time, per instance: the
+# Only for an instance that reports usage (AGENT_INDEX=1 in its own
+# ~/.hermes-<agent>/.env — see Usage reporting). One-time, per instance: the
 # token lands in that instance's own home, so a rebuild does not repeat it.
 docker exec -it hermes-<agent> /command/s6-setuidgid hermes \
   env HOME=/opt/data /opt/hermes/.venv/bin/python3 \
@@ -492,8 +492,9 @@ is the trade for the supply-chain guarantee.
 ## Usage reporting
 
 Each instance can report its own token usage to the Agent Index. It is **off
-unless asked for**: `agent-mgr` passes `AGENT_INDEX=0` fleet-wide, and the
-service exits without reporting unless it is truthy.
+unless that instance's own dotenv asks for it**: `agent-mgr` resolves
+`AGENT_INDEX` from `$AGENT_HOME/.env`, and the service exits without reporting
+unless it is truthy.
 
 Delivered by mount, not baked. `agent-mgr` runs the pinned upstream image and
 never builds this repo's `Dockerfile`, so a `COPY` there reaches the standalone
@@ -506,14 +507,18 @@ The client is `vendor/agent_index_client.py`, vendored from
 `plow-pbc/agent-index-client` at the sha in its header. That repo is private,
 so it is copied rather than fetched at build time.
 
-To turn it on for an instance, add to its `compose.override.yml`:
+To turn it on, opt that instance in from its **own** dotenv:
 
-```yaml
-services:
-  hermes:
-    environment:
-      - AGENT_INDEX=1
+```sh
+echo AGENT_INDEX=1 >> ~/.hermes-<agent>/.env
+agent-mgr restart <agent>
 ```
+
+Not `compose.override.yml`, and not an exported variable. This file is shared
+by every instance registered against the checkout, so putting the switch here
+opts in a sibling who did not choose it -- the same reason `AGENT_TZ` is
+per-person. `agent-mgr` scrubs an exported `AGENT_INDEX` for the matching
+reason: it would follow every agent the operator brings up.
 
 `AGENT_ID` needs no setting — `agent-mgr` supplies it from the registry name,
 so two instances of this repo report as two agents rather than one.

@@ -1,4 +1,4 @@
-# VENDORED from plow-pbc/agent-index-client @ a014b64a06efcfa3dd2e8236c2807b8ae893cc3f
+# VENDORED from plow-pbc/agent-index-client @ c54ed672fa4a70ca2542a23a7a724564905c88c6
 #   path: standalone/agent_index_client.py   owner: eng-550
 # Copied, not fetched: that repo is PRIVATE, so a build-time curl 404s.
 # To update: copy the file again from that repo and bump the sha above.
@@ -25,6 +25,16 @@ flow; the token is stored 0600 and only ever sent to github.com and the index.
 """
 import json, os, sqlite3, subprocess, sys, time, urllib.error, urllib.request
 from collections import defaultdict
+
+# Line-buffer stdout. Under a supervisor the output is a pipe, not a terminal,
+# so Python block-buffers it — and the login instruction ("open this URL, enter
+# this code") sits in a buffer while the user waits at a blank log wondering
+# whether anything is happening. Everything this prints is meant to be read as
+# it happens.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+except AttributeError:          # Python < 3.7
+    pass
 
 CLIENT_ID = "Ov23lirUZHTGqWCMVUXV"          # public by design; device flow uses no secret
 API = os.environ.get("AGENT_INDEX_API", "https://agent-index-server.vercel.app")
