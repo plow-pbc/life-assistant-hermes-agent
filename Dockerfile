@@ -8,7 +8,13 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-0748104fafa74e35c3050538f47f33fcb828d1ac@sha256:3fa78094a269edf4579a60e212720d1d50d9524d4927ea19e1c22182f0122177
+# The digest is absent for exactly as long as it takes plow to publish this tag.
+# The tag is pushed by plow's build-agent-image workflow, which refuses to
+# overwrite an existing one, so `base-<sha>` already names one immutable set of
+# bytes and this pin is exact without it. The `@sha256:` is appended in a
+# one-line follow-up the moment the tag lands, so the guarantee is restated in
+# the file rather than only in that policy.
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-87d5e28408b39230f2c0f98328ec75b1d8ce01c8
 
 # Flat, the same layout compose.override.yml produces at /opt/data/skills: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
