@@ -13,15 +13,19 @@ from __future__ import annotations
 import ipaddress
 import pathlib
 
-# The provisioner's file. Root-owned 0640, group hermes: the agent reads it and
-# cannot write it, which is what stops a turn re-pointing PLOW_API_BASE and
-# sending its own bearer somewhere else.
+# Hermes' own dotenv. Read for the gateway's local API key; the tenant values
+# are NOT here.
+#
+# PLOW_API_BASE, PLOW_AGENT_TOKEN and PLOW_HOME_CHANNEL live in the container
+# environment, which first boot fills from the credential the host dropped in
+# and which the agent cannot write -- that, not this file's mode, is what stops
+# a turn re-pointing the API base and sending its own bearer somewhere else.
 DOTENV = "/opt/data/.env"
 
 # The agent's own file, in the instance directory it already owns. Everything
 # the agent itself records after setup lives here -- the wall's endpoint and
-# token, the relay pair its owner minted -- for the plain reason that it cannot
-# write the file above and must not be able to.
+# token, the relay pair its owner minted -- because those are the agent's to
+# write and the tenant's credential is not.
 #
 # The split is a boundary, not a second copy: no name appears in both, nothing
 # running as root reads this file, and what it holds stays UNTRUSTED. An

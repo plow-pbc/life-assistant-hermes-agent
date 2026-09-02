@@ -19,8 +19,9 @@
 # trusted, and an injected endpoint would walk the wall's bearer to a host with
 # nothing to refuse it. Provenance is the gate; this is where it is kept.
 #
-# Nothing here reads the provisioner's /var/lib/hermes/.env either. This
-# service runs as root until it drops, and that file is the credential's.
+# Nothing here reads Hermes' own /var/lib/hermes/.env either. This service runs
+# as root until it drops, and the tenant's values are in the container
+# environment rather than in any file this could source.
 set -eu
 
 # Explicit, and absolute paths below it. A service script inherits whatever

@@ -889,8 +889,9 @@ def test_the_assistant_still_says_what_it_was_taught_to_say(surface, required):
 FEED_SERVICE = ROOT / "image" / "s6-overlay" / "s6-rc.d" / "life-calendar-feed"
 
 # The names the agent itself records after setup. They live in the agent's own
-# file because the provisioner's dotenv is root-owned -- which is the point of
-# it: a turn must not be able to re-point the API base its bearer is sent to.
+# file because the tenant's credential does not: PLOW_API_BASE, PLOW_AGENT_TOKEN
+# and PLOW_HOME_CHANNEL are in the container environment, which the agent cannot
+# write, so a turn cannot re-point the API base its bearer is sent to.
 AGENT_OWNED = {
     "DASHBOARD_DELIVERY", "DASHBOARD_ENDPOINT_URL", "DASHBOARD_PI_USER",
     "DASHBOARD_TOKEN", "DOMO_DEVICE_UID", "DOMO_MCP_TOKEN",
@@ -911,8 +912,8 @@ def test_the_calendar_strip_is_a_supervised_service_that_waits_for_first_boot():
     strip, and the wall shows a week-old calendar with nothing saying why.
 
     The dependency is the half that is easy to drop. Without it the loop is free
-    to fire before first boot has finished -- before the provisioner's dotenv
-    exists, before the home's ownership is restored -- and its first tick reads
+    to fire before first boot has finished -- before the credential has been
+    resolved, before the home's ownership is restored -- and its first tick reads
     a home it cannot use and stands down, which looks exactly like a household
     that has not set up its wall."""
     assert (FEED_SERVICE / "type").read_text().strip() == "longrun"
@@ -928,8 +929,8 @@ def test_the_calendar_service_hands_the_producer_no_environment():
     there to the household-network check before the run may hand that endpoint
     a bearer. The gate keys on WHERE the value came from, so putting that file
     into this process would launder every line of something the agent can write
-    into something the script reads as trusted. The provisioner's dotenv is not
-    read here either: this service runs as root until it drops."""
+    into something the script reads as trusted. Hermes' own dotenv is not read
+    here either: this service runs as root until it drops."""
     lines = (FEED_SERVICE / "run").read_text().splitlines()
     assert lines[0] == "#!/bin/sh", (
         "the interpreter line is the whole mechanism: a #!/command/with-contenv "
@@ -946,8 +947,8 @@ def test_the_calendar_service_hands_the_producer_no_environment():
 def test_the_agent_owned_names_are_read_from_the_agents_own_file():
     """Every DOMO_/DASHBOARD_ name a producer reads comes from agent_values.
 
-    A producer left on the provisioner's dotenv would read a name nothing can
-    write there any more and stand down for the life of the agent -- and
+    A producer left on Hermes' own dotenv would read a name nothing writes
+    there and stand down for the life of the agent -- and
     `calendar feed not configured` is what a household with no wall looks like
     too, so nobody would find it."""
     checked = []
@@ -962,7 +963,7 @@ def test_the_agent_owned_names_are_read_from_the_agents_own_file():
         assert "agent_values" in text or "AGENT_DOTENV" in text, (
             f"{relative} names {sorted(named)} but does not read the agent's own file")
         assert "dotenv_values(DOTENV)" not in text, (
-            f"{relative} reads an agent-owned name out of the provisioner's dotenv")
+            f"{relative} reads an agent-owned name out of Hermes' own dotenv")
     assert len(checked) >= 4, f"only {checked} were checked -- the scan stopped finding producers"
 
 

@@ -390,7 +390,7 @@ def deliver_via_latch(relay_url, relay_token, calendar_url, feed):
 def main(*, now=None):
     now = int(time.time()) if now is None else now
     # The agent's own file: the wall's endpoint and the relay pair are the
-    # agent's to record, and it cannot record them in the provisioner's dotenv.
+    # agent's to record; the tenant's credential is not, and is not in a file.
     dotenv = agent_values(AGENT_DOTENV)
 
     try:
