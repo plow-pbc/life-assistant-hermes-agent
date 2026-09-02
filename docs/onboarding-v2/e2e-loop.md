@@ -389,7 +389,7 @@ Each of these cost a debugging round; none of them announce themselves.
 - **The Pi and the cards.** `ld-setup`'s later phases reach the owner's Pi over
   the household LAN, which does not exist here. Latch does, but only if you give
   it one: `run-agent.sh --latch` wires the relay named in `.env` into the
-  container as the `plow` MCP server. It is opt-in and off by default, because
+  container as the `latch` MCP server. It is opt-in and off by default, because
   the device on the other end is a real person's Mac and a run that does not
   need it should not be able to touch it. Without `--latch`, the loop exercises
   Phase 1 (the interview and `write_config.py`) and stops where the first Latch
@@ -403,10 +403,11 @@ Each of these cost a debugging round; none of them announce themselves.
   empty `LATCH_MCP_URL` or `LATCH_MCP_TOKEN` refuses to start rather than
   coming up looking armed.
 
-  The server must be named **`plow`**, not `latch`: tool names derive from the
-  server name, and every `ld-*` SKILL.md calls `plow_run_command` /
-  `plow_write_file`. A server called `latch` would expose `mcp__latch__*` and the
-  skills would be naming tools that do not exist.
+  The key is **`latch`** and the tool it exposes is **`plow_run_command`** —
+  two different strings, which the skills spell out together as
+  `mcp__latch__plow_run_command` (`ld-setup/SKILL.md`). The key has to match
+  what the base seed and `runtime/config.yaml` register; get it wrong and the
+  skill names a tool the build never registered.
 - **Owner→agent images.** The twin has `POST /ui/inbound/media` and the plugin
   downloads inbound attachments into Hermes' media cache, but this loop has not
   exercised that direction.

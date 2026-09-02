@@ -83,15 +83,16 @@ def envelope_of(result):
 
 # --- registration -----------------------------------------------------------
 
-def test_initialize_names_the_server_plow(server):
-    """serverInfo.name must be `plow`, or the projected tool names change.
+def test_initialize_names_the_server_latch(server):
+    """serverInfo.name must be `latch` -- the key, not the tool name.
 
-    The ld-* skills call plow_run_command / plow_write_file by name, and those
-    come from the server key. A stub that called itself anything else would
-    register cleanly and then be invisible to every skill.
+    The two are different strings and the skills spell out the pair:
+    ld-setup/SKILL.md calls mcp__latch__plow_run_command. The key has to match
+    what the base seed and runtime/config.yaml register; the tool keeps its own
+    name, which the tools/list test below pins separately.
     """
     result = rpc(server, "initialize")["result"]
-    assert result["serverInfo"]["name"] == "plow"
+    assert result["serverInfo"]["name"] == "latch"
     assert result["protocolVersion"] == stub.PROTOCOL_VERSION
 
 

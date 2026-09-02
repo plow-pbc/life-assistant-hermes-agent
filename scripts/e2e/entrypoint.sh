@@ -45,13 +45,13 @@ chmod 3770 /var/lib/hermes
 # on the other end is a person's actual Mac. Absent credentials must therefore
 # mean "take it out", never "leave whatever is already there".
 #
-# The server is named `plow`, NOT `latch`. Tool names are derived from the
-# server name (mcp__plow__plow_run_command), and every ld-* SKILL.md calls
-# `plow_run_command` / `plow_write_file` by those names -- a server called
-# `latch` here would expose mcp__latch__* and the skills would be naming tools
-# that do not exist. `plow` is also what the cloud image's own seed config
-# calls it; runtime/config.yaml's `latch` block is the fleet's, and is dead on
-# this image.
+# The server key is `latch`, and the TOOL it exposes is `plow_run_command` --
+# the two are not the same string and an earlier version of this comment had
+# them confused. The skills spell the pair out: ld-setup/SKILL.md calls
+# mcp__latch__plow_run_command. So the key here has to match what the base seed
+# and runtime/config.yaml register (`latch`), while the tool name stays
+# `plow_run_command`; a stale key means the skill names a tool the build never
+# registered and the turn goes hunting for it.
 #
 # The URL and the bearer come from the environment so the credential is never
 # written into a repo file.
@@ -82,23 +82,36 @@ with open(path) as f:
 # not reach an existing volume. Set here too, or the loop tests an agent that
 # still has the tool the product has taken away.
 config.setdefault("agent", {})["disabled_toolsets"] = ["clarify"]
+config.setdefault("display", {})["file_mutation_verifier"] = False
 
 servers = config.setdefault("mcp_servers", {})
 
 if url and token:
-    servers["plow"] = {
+    servers["latch"] = {
         "url": url,
         "headers": {"Authorization": "Bearer " + token},
         "enabled": True,
     }
-    print("e2e-entrypoint: wired the plow (Latch relay) MCP server into config.yaml")
-elif servers.pop("plow", None) is not None:
-    print("e2e-entrypoint: no Latch credentials -- removed the plow MCP server "
-          "an earlier --latch run left in config.yaml")
+    # `latch`, not `plow`: the base seed standardised on it (plow-hermes-agent
+    # #2) and runtime/config.yaml matches. The key is also the tool's prefix --
+    # mcp__latch__plow_run_command -- so a stale key here means the sheet names
+    # a tool the build does not register, and the turn goes hunting.
+    servers.pop("plow", None)
+    print("e2e-entrypoint: wired the latch relay MCP server into config.yaml")
 else:
-    print("e2e-entrypoint: no Latch relay (config.yaml names no plow MCP server)")
+    # Both keys, and popped unconditionally. `pop(a) is not None or pop(b) is
+    # not None` short-circuits: with a volume carrying BOTH -- which is every
+    # volume seeded before the rename and latched once since -- the `plow` pop
+    # never runs and a relay pointing at a real Mac stays in the config on a
+    # run that asked for no relay at all.
+    removed = [key for key in ("latch", "plow") if servers.pop(key, None) is not None]
+    if removed:
+        print("e2e-entrypoint: no Latch credentials -- removed the relay MCP "
+              f"server ({', '.join(removed)}) an earlier --latch run left behind")
+    else:
+        print("e2e-entrypoint: no Latch relay (config.yaml names no relay MCP server)")
 
-print("e2e-entrypoint: clarify disabled (agent.disabled_toolsets)")
+print("e2e-entrypoint: clarify disabled; file-mutation verifier footer off")
 
 with open(path, "w") as f:
     yaml.safe_dump(config, f, sort_keys=False)

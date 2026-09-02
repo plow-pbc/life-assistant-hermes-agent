@@ -19,7 +19,7 @@ credential, no Mac, and no way to reach one.
     STUB_MODE=large   scripts/e2e/run-agent.sh --latch-stub
 
 Protocol: MCP over streamable HTTP -- JSON-RPC POSTed to one URL, which is what
-`mcp_servers.plow` in Hermes' config.yaml means. initialize / tools/list /
+`mcp_servers.latch` in Hermes' config.yaml means. initialize / tools/list /
 tools/call, answered as application/json.
 
 The listing is built to be awkward on purpose, because every one of these has a
@@ -46,7 +46,11 @@ import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_NAME = "plow"
+# The server KEY. The tool it exposes is `plow_run_command` -- a different
+# string, and the pair is what the skills spell out as
+# mcp__latch__plow_run_command. Must match what the base seed and
+# runtime/config.yaml register, or the skills name a tool nothing serves.
+SERVER_NAME = "latch"
 
 # gog prints this before the array on a working call. Kept because it is the
 # reason calendar_list.py cannot simply json.loads() the output -- a stub that
