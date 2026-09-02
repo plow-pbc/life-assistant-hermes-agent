@@ -7,7 +7,7 @@ writes. Every value that could carry private content is `<scrubbed>`; the field
 
 | file | captured from | version |
 |---|---|---|
-| `hermes-cron-jobs.json` | `/var/lib/hermes/cron/jobs.json` in the live `str` agent on `wakeup`, 2026-08-27 | Hermes Agent v0.19.0 (2026.7.20), upstream `b4f8c491` |
+| `hermes-cron-jobs.json` | `/var/lib/hermes/cron/jobs.json` on a running agent | Hermes Agent v0.19.0 (2026.7.20), upstream `b4f8c491` |
 
 Re-capture with:
 
@@ -15,11 +15,10 @@ Re-capture with:
 
 ## Measured, not captured
 
-`/var/lib/hermes/cron/` exists before any cron job does — the gateway creates it at
-start, not lazily on first save. Checked on two homes that never had a single
-job: the retired `~/.hermes-life` (stood up 04:50, torn down 14:45, never
-activated) and `~/.hermes-sam-property`, both carrying `cron/` with
-`executions.db`, `.jobs.lock`, `output/` and **no `jobs.json`**.
+`/var/lib/hermes/cron/` exists before any cron job does — the gateway creates it
+at start, not lazily on first save. Checked on two homes that never had a single
+job: both carried `cron/` with `executions.db`, `.jobs.lock`, `output/` and
+**no `jobs.json`**.
 
 That shape — the directory present, the file absent — is what a fresh instance
 looks like to `registered_jobs()`, and it takes the `FileNotFoundError` branch.

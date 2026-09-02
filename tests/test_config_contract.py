@@ -285,9 +285,9 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
 
 
 def test_cross_session_claims_are_verified_and_outcomes_journaled():
-    """The stale-session rules are safety-critical: a sibling session once
-    denied a completed $1,500 transfer from its own memory. Pin the verify-
-    before-claiming, check-before-acting, and outcome-journal language."""
+    """The stale-session rules are safety-critical: an agent that trusts its own
+    memory over a fresh read can deny a transfer it actually completed. Pin the
+    verify-before-claiming, check-before-acting, and outcome-journal language."""
     soul = " ".join((ROOT / "runtime" / "SOUL.md").read_text().split())
     required = (
         "run `session_search` first",

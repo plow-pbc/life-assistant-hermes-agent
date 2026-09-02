@@ -8,8 +8,8 @@ The module is imported and its path constants rebound to a scratch
 directory — a seam reachable only by an importer, never by the CLI the
 sheet invokes — because the real handoff lives under /var/lib/hermes.
 
-Field spellings are pinned against a REAL gather captured through the live
-Latch door (probe on the hermes-life container, 2026-08-28): camelCase
+Field spellings are pinned against a real gather captured through Latch:
+camelCase
 `iCalUID` / `start.dateTime` / `hangoutLink` / `attendees[].responseStatus`,
 `visibility` absent on default-visibility events, free-text fields wrapped in
 EXTERNAL_UNTRUSTED_CONTENT markers by Latch, and a "Note:" preamble line
@@ -45,8 +45,8 @@ BASE_CONFIG = {
 }
 
 # The real gog 0.36 shape: the open marker is followed by a `Source:` metadata
-# line and a `---` rule (measured live 2026-08-28 — a fixture without them let
-# "Source: google_api ---" reach the kiosk).
+# line and a `---` rule. A fixture without them lets "Source: google_api ---"
+# through to the kiosk, so both belong in the wrapper under test.
 WRAP_OPEN = '<<<EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>\nSource: google_api\n---\n'
 WRAP_CLOSE = '\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>'
 
