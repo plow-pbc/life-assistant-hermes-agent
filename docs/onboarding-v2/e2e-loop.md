@@ -90,7 +90,39 @@ top of them, so the only thing an edit costs is a restart.
 | `send-file.sh <host path>` | push a file into the chat with no model turn, via Plow's own media contract |
 | `logs.sh [n]` | the gateway's log **inside** the container |
 | `build.sh` / `down.sh` | rebuild the image / remove the container |
+| `render_transcript.py --run-id <id>` | the run as an HTML report you can send someone |
 | `sync-skills.sh` | staging only; `run-agent.sh` calls it |
+
+### Writing up a run
+
+`transcript.sh` is for reading a conversation in the terminal;
+`render_transcript.py` is for showing one to somebody else.
+
+```sh
+scripts/e2e/render_transcript.py --run-id T1-fresh
+```
+
+That pulls the thread from the twin and writes
+`scripts/e2e/runs/T1-fresh/` (gitignored) holding `transcript.json`, the
+`attachments/`, and a self-contained `report.html` — bubbles in the shape of the
+app the copy was written for, Hermes' own runtime notices greyed out as the
+harness talking rather than the agent's voice, and every attachment embedded as
+a `data:` URI so the file still works after the twin is gone. `E2E_RUNS_DIR` or
+`--runs-dir` puts it somewhere else, and `--transcript saved.json` re-renders a
+run offline.
+
+To show what an answer did to the config, drop `after-<N>.json` snapshots
+alongside it — N being the owner turn they were captured after — and each one
+folds into the report as a diff:
+
+```sh
+docker exec life-agent-e2e cat /var/lib/hermes/ld/config.json > after-2.json
+scripts/e2e/render_transcript.py --run-id T1-fresh --snapshots .
+```
+
+It reads only `TWIN_HOST_BASE` and `TWIN_THREAD` out of `.env`, deliberately —
+the agent bearer and the Latch token live in that same file and nothing here
+should be able to put them in an HTML page.
 
 ### Why the skills are staged rather than mounted straight
 
