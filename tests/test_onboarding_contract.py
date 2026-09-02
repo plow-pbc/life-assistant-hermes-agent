@@ -387,6 +387,48 @@ def test_no_script_output_is_pasted_to_the_owner_during_onboarding():
     assert "pasted verbatim" in SKILL[:SKILL.index("## Onboarding")] or "Paste" in wall
 
 
+def test_the_opener_carries_none_of_the_introduction():
+    """Spec 2.1 and 2.2: the opener gives a name, 2 gives the pitch.
+
+    An earlier draft told the opener to "say who you are", one section above
+    the one that introduces you -- read either way and both were defensible,
+    which is exactly the shape that produces a capability blurb before anyone
+    has said hello.
+    """
+    opener = SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")]
+    assert "Give your name, and only your name" in opener
+    assert "The introduction is §2, not §1" in opener
+    # None of 2's material may leak forward into it.
+    for pitched in ("dog food", "refund", "vault", "plow.co/latch", "boundaries"):
+        assert pitched not in opener, f"the opener pitches {pitched!r}; that is §2"
+
+
+def test_a_message_the_owner_must_see_is_sent_before_its_answer_is_written():
+    """Config is the resume record, so it must never claim more than was shown.
+
+    The name is what makes a resumed turn skip the introduction. Written before
+    that introduction is sent, a restart in the gap leaves a config saying the
+    question was answered while the owner never saw the pitch OR the Latch
+    link -- and nothing later in the conversation would ever notice, because
+    every subsequent turn reads the same config and skips the same section.
+    """
+    assert "the message goes out before the answer goes in" in ONBOARDING.lower()
+
+    intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    assert "Introduce yourself first, then draft the name" in intro
+    # And the draft instruction physically follows the link in the section.
+    assert intro.index("https://plow.co/latch") < intro.index("**Now** draft their name"), \
+        "the name is drafted before the link is sent"
+
+    teams = ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")]
+    assert "Send §4's close before drafting either" in teams
+
+    close = ONBOARDING[ONBOARDING.index("### 4 ·"):ONBOARDING.index("### 5 ·")]
+    assert "goes out BEFORE the teams draft" in close
+    # The marker was already ordered this way; keep it that way.
+    assert close.index("Tell them they are set") < close.index("> /opt/data/ld/onboarding-complete")
+
+
 def test_the_opener_is_a_hello_a_gif_and_a_name():
     """Spec 2.1, and the two transcripts that failed it.
 
@@ -397,8 +439,7 @@ def test_the_opener_is_a_hello_a_gif_and_a_name():
     """
     opener = SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")]
     assert "Two messages" in opener
-    assert "`/help`" in opener and "No capability blurb" in opener
-    assert "by the name you have" in opener
+    assert "`/help`" in opener and "no capability blurb" in opener.lower()
 
 
 def test_no_mode_of_write_config_touches_the_crons():
