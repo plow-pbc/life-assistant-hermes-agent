@@ -299,18 +299,31 @@ Each of these cost a debugging round; none of them announce themselves.
   retries the failing webhook in a loop. It is not an error response: the
   redeem simply never leaves `pending`.
 
-  `activate.sh` retries for it — up to `ACTIVATE_TRIES` (8) attempts, each
-  with a brand-new random handset, treating "no verified redeem in
-  `LINE_TIMEOUT` (20s)" as a miss. The handset is fresh per *attempt* rather
-  than per run because the collision is a property of the (line, roster) pair:
-  reusing one handset only re-rolls the line, and a handset that collided
-  against one line says nothing about the next. Every attempt prints the line
-  it landed on, hit or miss, which is the only visibility anyone has into which
-  lines are poisoned; the winning line is written to `LINE_PHONE`.
+  **A miss is not free, and the cost is not ours.** The inbound that failed to
+  provision leaves a webhook delivery in the *twin's* fanout queue that answers
+  500 forever, and that queue is ordered — the stuck delivery head-of-line
+  blocks delivery for **every chat on the twin**, not just this activation,
+  until the container is restarted. So `activate.sh` makes **one** attempt by
+  default (`ACTIVATE_TRIES`). Looping is worse than useless: after the first
+  miss the queue is already blocked, so no later attempt's inbound can reach
+  Plow at all, and each one adds another stuck delivery.
 
-  Passing a handset (`scripts/e2e/activate.sh +15557650123`) pins it for every
-  attempt — useful to reuse one already known to work, and exactly wrong when
-  you are trying to escape a collision.
+  When it misses:
+
+  ```sh
+  docker logs plow-api-1 | grep -i crossowner   # confirm what happened
+  docker restart plow-dtu-linq-1                # the head chef's call: shared
+  ```
+
+  Only then activate again. The twin is shared, so that restart interrupts
+  anyone else on the stack — it is not a step to take unilaterally.
+
+  Every attempt prints the line it landed on, hit or miss, which is the only
+  visibility anyone has into which lines are poisoned; the winning line is
+  written to `LINE_PHONE`. Passing a handset
+  (`scripts/e2e/activate.sh +15557650123`) pins it — useful for reusing a pair
+  already known to work, and no help at all against a collision, which is a
+  property of the (line, roster) pair.
 
 - **Twin thread id ≠ Plow chat uid.** `/ui/chats/{id}` wants `chat_N`;
   `PLOW_HOME_CHANNEL` wants `cht_…`. Both are in `.env`.

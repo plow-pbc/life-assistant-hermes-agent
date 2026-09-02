@@ -12,7 +12,7 @@
 # every model call comes back 402 Insufficient balance. Nothing to seed.
 #
 # usage: activate.sh [handset]
-#   ACTIVATE_TRIES   attempts before giving up (default 8)
+#   ACTIVATE_TRIES   attempts before giving up (default 1 -- read why below)
 #   LINE_TIMEOUT     seconds to wait for one attempt's redeem (default 20)
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -38,16 +38,34 @@ redeem stays "pending" forever, and the twin retries the failing webhook in a
 loop. The old script made exactly one attempt and told the operator to guess a
 different handset by hand.
 
-So: retry, with a brand-new random handset EACH time. Fresh per attempt and not
-once per run, because the collision is a property of the pair -- retrying with
-the same handset re-rolls only the line, and a handset that collided against
-one line is no evidence about the next. A miss is "no verified redeem in
-LINE_TIMEOUT", which is the shape this failure actually takes: not an error
-response, just a redeem that never leaves "pending".
+A miss is "no verified redeem in LINE_TIMEOUT", which is the shape this failure
+actually takes: not an error response, just a redeem that never leaves
+"pending".
 
-Nothing here writes to the stack. An abandoned attempt leaves an unused pairing
-code, which expires on its own; no row is touched and the twin is only ever
-sent the inbound text an owner would have sent.
+RETRYING IS EXPENSIVE, AND NOT TO US. This defaults to ONE attempt.
+
+A miss does not simply expire. The inbound that failed to provision leaves a
+webhook delivery in the TWIN's fanout queue that answers 500 forever, and that
+queue is ordered: the stuck delivery head-of-line blocks EVERY chat on the twin,
+not just this activation, until somebody restarts the container. So a retry loop
+does not merely waste attempts -- each miss degrades the shared stack a little
+further for everyone using it, and after the first miss the queue is already
+blocked, which means no later attempt's inbound can reach Plow at all. The
+retries cannot succeed; they can only add more stuck deliveries.
+
+An earlier version of this file claimed an abandoned attempt "expires on its own
+-- no row is touched". That was wrong, and it was wrong in the direction that
+does damage.
+
+If activation misses:
+
+  1. Look, before retrying:   docker logs plow-api-1 | grep -i crossowner
+  2. Clearing the wedged queue costs everyone on the stack a restart of
+     plow-dtu-linq-1, so it is the head chef's call, not this script's:
+         docker restart plow-dtu-linq-1
+  3. Only then try again. ACTIVATE_TRIES=n raises the attempt count, and is
+     worth using only against a freshly restarted twin -- on a wedged one the
+     extra attempts are pure cost.
 """
 import json
 import random
@@ -59,7 +77,9 @@ import urllib.request
 
 api, twin, dest, fixed_member = sys.argv[1:5]
 
-TRIES = int(os.environ.get("ACTIVATE_TRIES", "8"))
+# ONE. Every miss wedges the twin's fanout queue for every chat on the stack
+# (see the module docstring), so looping is not this script's decision to make.
+TRIES = int(os.environ.get("ACTIVATE_TRIES", "1"))
 LINE_TIMEOUT = float(os.environ.get("LINE_TIMEOUT", "20"))
 POLL_EVERY = 2.0
 
@@ -121,8 +141,9 @@ def attempt(n):
 
 
 won = None
-print(f"activating -- up to {TRIES} attempts, "
-      + (f"handset pinned to {fixed_member}" if fixed_member else "a fresh handset each"))
+print(f"activating -- {TRIES} attempt{'' if TRIES == 1 else 's'}, "
+      + (f"handset pinned to {fixed_member}" if fixed_member else
+         "a fresh handset" + ("" if TRIES == 1 else " each")))
 for n in range(1, TRIES + 1):
     won = attempt(n)
     if won:
@@ -132,16 +153,23 @@ if not won:
     # Flushed first: the attempt lines go to stdout and this goes to stderr, and
     # unflushed stdout would print the last miss AFTER the explanation of it.
     sys.stdout.flush()
-    print(f"\nno attempt completed activation in {TRIES} tries.", file=sys.stderr)
+    plural = "one attempt" if TRIES == 1 else f"{TRIES} attempts"
+    print(f"\nactivation did not complete in {plural}.", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("That miss has almost certainly left a 500ing delivery in the twin's", file=sys.stderr)
+    print("fanout queue, which blocks delivery for EVERY chat on this stack --", file=sys.stderr)
+    print("so do not just run this again. In order:", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("  1. docker logs plow-api-1 | grep -i crossowner", file=sys.stderr)
+    print("  2. ask the head chef to restart the twin (it is shared):", file=sys.stderr)
+    print("       docker restart plow-dtu-linq-1", file=sys.stderr)
+    print("  3. then activate again -- against a wedged twin no attempt can", file=sys.stderr)
+    print("     succeed, because the inbound never reaches Plow.", file=sys.stderr)
     if fixed_member:
-        print(f"Every attempt used the handset you pinned ({fixed_member}), so the", file=sys.stderr)
-        print("retry could only re-roll the line. Drop the argument to let each", file=sys.stderr)
-        print("attempt pick its own -- the collision is on the pair, not the line.", file=sys.stderr)
-    else:
-        print("Each used its own handset, so this is not the collision the retry", file=sys.stderr)
-        print("exists for. Check the stack is up and that its lines are active:", file=sys.stderr)
-    print("  docker logs plow-api-1 | grep -i crossowner", file=sys.stderr)
-    print("  ACTIVATE_TRIES=20 scripts/e2e/activate.sh   # more attempts", file=sys.stderr)
+        print("", file=sys.stderr)
+        print(f"You pinned the handset ({fixed_member}). The collision is on the", file=sys.stderr)
+        print("(line, roster) pair, so pinning cannot escape one -- drop the", file=sys.stderr)
+        print("argument once the twin is healthy.", file=sys.stderr)
     raise SystemExit(1)
 
 d = won["redeem"]
