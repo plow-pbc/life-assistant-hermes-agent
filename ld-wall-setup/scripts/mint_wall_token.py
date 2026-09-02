@@ -67,10 +67,6 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 from runtime_env import DOTENV, dotenv_values, household_host  # noqa: E402
-# This script's own directory, for the sibling helper: a skill is copied
-# to /var/lib/hermes/skills/<name>/ whole, so siblings are found by realpath
-# rather than by anything that assumes a working directory.
-sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from exclusive_lock import exclusive_lock  # noqa: E402
 
 LD_DIR = "/opt/data/ld"
