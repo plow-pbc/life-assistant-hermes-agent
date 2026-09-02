@@ -55,8 +55,10 @@ Email, calendars, Mac username are **not asked**; they arrive via Latch connecto
   on `weather.location`), not one blob at the end. **No new config fields**: `config.example.json` is the schema
   and stays as is. Existing optional fields not in the Figma (`family.people`, `weekly_digest.length`,
   `family.owner.imessage`) are not asked in v2; they remain patchable on demand.
-- **Assets:** `quick-q.gif` is baked into the image at a fixed path under the skill; sent with the existing
-  image hook (`send_image_file` → plugin attachment contract).
+- **Assets:** `quick-q.gif` is baked into the image at a fixed path **outside `/var/lib`** (Hermes' MEDIA
+  denylist silently drops anything under `/var/lib`, and the cloud image's `HERMES_HOME` is `/var/lib/hermes`);
+  sent with the existing image hook (`send_image_file` → plugin attachment contract). The e2e loop mounts assets
+  at `/srv/e2e-assets`; use the same convention (`/srv/...`) for the baked path.
 
 ## 4. Testing
 
@@ -91,7 +93,7 @@ Done when: a twin transcript shows a text reply and a GIF attachment (bytes fetc
 ### Chunk 2: Conversation + trigger + config plumbing
 Implements: §2, §3, §5
 Interfaces: consumes Chunk 1 harness and `write_config.py --patch` · produces the rewritten `ld-setup/SKILL.md` Phase 1, the `runtime/SOUL.md` trigger, the completion marker, the baked GIF, tests for the marker
-Done when: `just test` green; an e2e transcript from a fresh container shows the full flow — opener with GIF, name → intro → Latch URL, city and teams each landing in `config.json` (shown via `cat` inside the container), completion marker written, wall offered and declined; a second transcript shows resume: kill the container mid-flow, restart, next inbound continues from the first missing field without re-asking.
+Done when: `just test` green; an e2e transcript from a fresh container shows the full flow — opener with GIF, name → intro → Latch URL, city and teams each landing in `config.json` (shown via `cat` inside the container), completion marker written, wall offered and declined; a second transcript shows resume: kill the container mid-flow, restart (the loop needs a volume over `HERMES_HOME` for this — add it to `scripts/e2e/`), next inbound continues from the first missing field without re-asking.
 
 ### Chunk 3: Doc fix
 Implements: housekeeping found during recon
