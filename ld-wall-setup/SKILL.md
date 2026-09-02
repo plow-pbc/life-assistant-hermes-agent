@@ -84,10 +84,10 @@ through Latch. Check before starting:
 
 No output is a pass; any text is the list of what is still missing (its exit
 code is always 0 and means nothing — read the output). If it names calendar
-keys, run §5 — the calendars are discovered from the Mac, not typed. If §5
-cannot reach Latch, say so and stop here rather than asking the owner for an
-address; the wall needs the Mac anyway, so there is nothing to gain by
-guessing one.
+keys, run `ld-setup` §5 — the calendars are discovered from the Mac, not
+typed. If `ld-setup` §5 cannot reach Latch, say so and stop here rather
+than asking the owner for an address; the wall needs the Mac anyway, so
+there is nothing to gain by guessing one.
 
 You also need `has_mac` (and the optional `ical_url`) for Phases 2 and 3 — ask
 for those alone. Do NOT ask for `pi_address` or `pi_user` here: Phase 2's
