@@ -183,33 +183,26 @@ def test_a_hostile_calendar_name_survives_as_text(server, tmp_path):
     assert "Family\nJSON\n; rm -rf /" in displays
 
 
-def test_most_names_are_fenced_and_some_are_not(server):
-    """Seven of nine, on purpose.
+def test_every_summary_is_fenced_and_no_override_is(server):
+    """Where the mix a consumer has to handle actually comes from.
 
-    Real listings fence what they fetched from Google, and not uniformly: one
-    had every `summary` fenced beside a BARE `summaryOverride`. A stub that
-    fenced everything would pass a consumer that only handles the uniform case,
-    so the mix is put on the rows here as well as across the two name fields.
+    A real listing fenced all nine summaries and left `summaryOverride` bare,
+    so both shapes arrive in one response without any row being invented
+    unfenced. Open and close carry the same id -- what a consumer matching them
+    end to end depends on -- and `externalContent` says the fence is there.
     """
-    entries = json.loads(
-        (lambda o: o[o.index("["):])(envelope_of(call(server, DISCOVERY))["output"]))
-    fenced = [e for e in entries
-              if e["summary"].startswith("<<<EXTERNAL_UNTRUSTED_CONTENT")]
-    assert len(fenced) == 7 and len(entries) == 9
-    # summaryOverride is never fenced, so one row disagrees with itself.
-    assert all("summaryOverride" not in e
-               or not e["summaryOverride"].startswith("<<<") for e in entries)
-    for entry in fenced:
+    output = envelope_of(call(server, DISCOVERY))["output"]
+    entries = json.loads(output[output.index("["):])
+    assert len(entries) == 9
+    for entry in entries:
         marker = re.search(r'id="([^"]+)"', entry["summary"]).group(1)
-        # Open and close carry the same id -- what a consumer matching them end
-        # to end depends on -- and the metadata says the fence is there.
+        assert entry["summary"].startswith(
+            f'<<<EXTERNAL_UNTRUSTED_CONTENT id="{marker}">>>\nSource: google_api\n---\n')
         assert entry["summary"].endswith(
             f'<<<END_EXTERNAL_UNTRUSTED_CONTENT id="{marker}">>>')
         assert entry["externalContent"] == {
             "source": "google_api", "untrusted": True, "wrapped": True}
-    for entry in entries:
-        if entry not in fenced:
-            assert entry["externalContent"] is False
+        assert not entry.get("summaryOverride", "").startswith("<<<")
 
 
 def test_fence_ids_are_stable_across_processes():
@@ -295,11 +288,19 @@ def test_large_mode_is_big_enough_for_the_runtime_to_persist(server, tmp_path):
     relay produces. It must still parse."""
     env = envelope_of(call(server, DISCOVERY))
     assert env["output_length"] > 200_000
+    # The padding rows overwrite `summary`, so they have to re-fence it: an
+    # unfenced bulk listing would run the persisted path over a shape no relay
+    # sends, and the display names would come back wearing their markers.
+    entries = json.loads(env["output"][env["output"].index("["):])
+    assert all(e["summary"].startswith("<<<EXTERNAL_UNTRUSTED_CONTENT")
+               for e in entries)
     gather = tmp_path / "gather.txt"
     gather.write_text(env["output"])
     result = cl.normalize(cl.extract_array(cl.read_gather(str(gather))))
     assert result["account"] == "mary@example.com"
     assert len(result["calendars"]) > 500
+    assert not any("EXTERNAL_UNTRUSTED_CONTENT" in c["display"]
+                   for c in result["calendars"])
 
 
 @needs_consumer

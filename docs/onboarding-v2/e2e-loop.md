@@ -91,7 +91,7 @@ top of them, so the only thing an edit costs is a restart.
 | `logs.sh [n]` | the gateway's log **inside** the container |
 | `build.sh` / `down.sh` | rebuild the image / remove the container |
 | `latch_stub.py` | a fake relay; `run-agent.sh --latch-stub` starts it for you |
-| `render_transcript.py --run-id <id>` | the run as an HTML report you can send someone |
+| `render_transcript.py --run-id <id>` | the run as an HTML report you can send someone (prefix `E2E_INSTANCE=<name>` like the rest) |
 | `sync-skills.sh` | staging only; `run-agent.sh` calls it |
 
 ### Two cooks at once
@@ -111,6 +111,11 @@ renaming them would strand every container that exists today.
 
 An instance without its own `.env.<name>` falls back to the shared `.env`, so a
 second instance can share one activation or, after `activate.sh`, hold its own.
+**Every script resolves it that way, `render_transcript.py` included** — so it
+wants the same `E2E_INSTANCE=<name>` prefix the shell scripts do. Without it a
+report renders the DEFAULT instance's thread: someone else's conversation, or
+an empty one, and no error either way, because a thread that exists is not a
+thread that is yours.
 
 `run-agent.sh` also takes a lock (`.lock<-instance>`) holding the invoking
 shell's pid. A second *shell* on the same instance is refused; re-running from
@@ -183,6 +188,7 @@ on a branch without `ld-setup`.
 
 ```sh
 scripts/e2e/render_transcript.py --run-id T1-fresh
+E2E_INSTANCE=alice scripts/e2e/render_transcript.py --run-id T1-fresh
 ```
 
 That pulls the thread from the twin and writes
@@ -203,9 +209,11 @@ docker exec life-agent-e2e cat /var/lib/hermes/ld/config.json > after-2.json
 scripts/e2e/render_transcript.py --run-id T1-fresh --snapshots .
 ```
 
-It reads only `TWIN_HOST_BASE` and `TWIN_THREAD` out of `.env`, deliberately —
-the agent bearer and the Latch token live in that same file and nothing here
-should be able to put them in an HTML page.
+It reads only `TWIN_HOST_BASE` and `TWIN_THREAD` out of the dotenv,
+deliberately — the agent bearer and the Latch token live in that same file and
+nothing here should be able to put them in an HTML page. Which dotenv is
+`E2E_INSTANCE`'s to say: `.env.<instance>` when that file exists, the shared
+`.env` otherwise, the same resolution `lib.sh` does for every other script.
 
 ### Why the skills are staged rather than mounted straight
 
