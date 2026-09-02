@@ -66,10 +66,14 @@ own Anthropic key.
 ```sh
 # edit ld-*/SKILL.md, a script, or runtime/SOUL.md
 scripts/e2e/run-agent.sh                       # ~10s
-scripts/e2e/send.sh "I want to set up my life dashboard."
-scripts/e2e/await-reply.sh                     # ~10s
+scripts/e2e/turn.sh "I want to set up my life dashboard."
 scripts/e2e/transcript.sh
 ```
+
+`turn.sh` is the one to reach for. `send.sh` + `await-reply.sh` are the
+primitives under it and remain the right pair for "did anything come back at
+all", but a reply is usually several messages and only `turn.sh` waits for the
+last of them — see below.
 
 No rebuild. `run-agent.sh` re-stages the skills and recreates the container on
 top of them, so the only thing an edit costs is a restart.
@@ -78,6 +82,8 @@ top of them, so the only thing an edit costs is a restart.
 |---|---|
 | `run-agent.sh [--fresh] [--latch]` | stage skills, (re)start the container, wait for the plow_chat websocket |
 | `send.sh "text"` | text the agent as the owner's handset, through the twin |
+| `turn.sh "text" [timeout]` | send, then wait for the agent to stop talking — a whole turn |
+| `converse.sh "one" "two" …` | walk a scripted conversation, a turn at a time |
 | `await-reply.sh [timeout] [--since N]` | block until the next outbound message lands; prints the latency |
 | `transcript.sh` | the conversation as the handset sees it, media parts included |
 | `fetch-attachment.sh [out]` | download the latest attachment and run `file` on it |
@@ -174,6 +180,24 @@ Each of these cost a debugging round; none of them announce themselves.
   A readiness check that greps `docker logs` waits out its whole timeout on a
   container that came up fine.
 
+- **A reply is several messages, and the next send must wait for all of them.**
+  Hermes treats a message arriving mid-turn as a *redirect* of that turn rather
+  than a new one, so a conversation paced on the first reply collapses into one
+  turn that answers everything at the end and leaves a transcript with no
+  conversation in it. Measured: five sends became a single 425-second turn, 49
+  api calls, one summary message. `turn.sh` waits for a quiet window instead.
+
+  **Typing is not the stop signal**, though it looks like one. The twin clears
+  the indicator on *every* outbound message it stores
+  (`_add_outbound_message`, `dtu/linq/linq_twin/store.py`), so it is already
+  false when the first of three messages lands — the same instant
+  `await-reply.sh` returns. It also has a 90-second TTL, so a turn that dies
+  mid-flight leaves it true and a typing-only wait hangs for a minute and a
+  half. What typing *is* good for is the opposite case: it stays true across a
+  long tool call, which is the silence a bare quiet window would misread as the
+  end. `turn.sh` uses it that way — as the second half of the test, never the
+  first.
+
 - **The image is `linux/amd64` on an arm64 Mac**, so every run is emulated.
   That is most of the ~10s startup and some of the turn latency.
 
@@ -244,6 +268,6 @@ Each of these cost a debugging round; none of them announce themselves.
 - **Owner→agent images.** The twin has `POST /ui/inbound/media` and the plugin
   downloads inbound attachments into Hermes' media cache, but this loop has not
   exercised that direction.
-- **Typing indicators.** The plugin drives them automatically and the twin
-  stores the state (`GET /ui/chats/{id}` carries a `typing` block, and the
-  twin's inbox at `/` renders it live), but nothing here asserts on them.
+- **Typing indicators, as a thing to assert on.** `turn.sh` reads the state to
+  decide when a turn has settled, and the twin's inbox at `/` renders it live,
+  but no check here fails because an indicator did or did not appear.

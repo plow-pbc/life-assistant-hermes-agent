@@ -65,18 +65,59 @@ require() {
   done
 }
 
+# The thread as a waiter needs to see it: "<outbound count> <typing 0|1>".
+#
+# Both halves in ONE request because turn.sh reads them together every couple of
+# seconds, and two round trips against the same endpoint is twice the traffic
+# for a less consistent answer -- the count and the indicator would be read at
+# different instants and could disagree about the same moment.
+#
+# Typing is only ever the SECOND half of a done-talking test. The twin clears it
+# on every outbound message it stores (`_add_outbound_message`,
+# dtu/linq/linq_twin/store.py), so it is already false when the first of three
+# messages lands. What it is good for is the opposite case: it stays true across
+# a long tool call, which is exactly the silence a quiet window would otherwise
+# read as the end of the turn.
+chat_state() {
+  python3 - "$TWIN_HOST_BASE" "$TWIN_THREAD" <<'STATE_PY'
+import json, sys, urllib.request
+twin, thread = sys.argv[1:3]
+with urllib.request.urlopen(f"{twin}/ui/chats/{thread}") as resp:
+    chat = json.load(resp)
+
+# Hermes' own runtime notices are outbound messages too: the progress ticker,
+# the redirect/interrupt notice, the one-time /busy tip. Counting them as
+# replies makes a wait return while the turn is still running, and the next
+# scripted send then REDIRECTS that turn instead of starting a new one -- the
+# whole conversation collapses into a single turn that answers everything at the
+# end and leaves a transcript with no conversation in it. Measured: five paced
+# sends became one 425-second turn, 49 api calls, one summary message. The
+# opening glyph is the only marker they carry.
+#
+# They are dropped here rather than in outbound_count so that turn.sh's quiet
+# window does not see them either: a ticker arriving every few seconds would
+# otherwise reset that window for as long as the turn ran, and a turn that
+# emitted nothing but notices would look like a reply.
+NOTICE = ("\u23f3", "\u21aa", "\U0001f4a1", "\u26a1")
+replies = 0
+for message in chat.get("messages", []):
+    if message["direction"] != "outbound":
+        continue
+    text = "".join(part.get("value", "") for part in message.get("parts", [])
+                   if part.get("type") == "text").lstrip()
+    if text.startswith(NOTICE):
+        continue
+    replies += 1
+print(replies, 1 if (chat.get("typing") or {}).get("is_typing") else 0)
+STATE_PY
+}
+
 # How many messages the agent has sent in this thread. The baseline every wait
 # is measured against, and the reason it lives here: send.sh has to read it
 # BEFORE it posts and await-reply.sh has to compare against it after, so the
 # two cannot each keep their own idea of what counting means.
 outbound_count() {
-  python3 - "$TWIN_HOST_BASE" "$TWIN_THREAD" <<'COUNT_PY'
-import json, sys, urllib.request
-twin, thread = sys.argv[1:3]
-with urllib.request.urlopen(f"{twin}/ui/chats/{thread}") as resp:
-    chat = json.load(resp)
-print(sum(1 for m in chat.get("messages", []) if m["direction"] == "outbound"))
-COUNT_PY
+  chat_state | cut -d" " -f1
 }
 
 # Where send.sh leaves the pre-send baseline for await-reply.sh to pick up.
