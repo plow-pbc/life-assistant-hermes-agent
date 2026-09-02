@@ -37,6 +37,22 @@ group_sessions_per_user: false
 # So the commentary stays a prompt problem (ld-setup/SKILL.md), and this key
 # stays absent until something can suppress notes without suppressing the
 # message they were written beside.
+# `clarify` is the tool behind the ❓ rows: it renders a blocking menu and stops
+# the turn until the owner picks something. In this product nothing is worth
+# one -- and it has never been reached deliberately. It is what a turn grabs
+# when it cannot find the mechanism it wants, and it arrived three times as the
+# entire first thing the agent ever said to a new owner ("❓ placeholder",
+# "❓ dummy", a menu asking the owner to name the assistant).
+#
+# The prompt has forbidden it for as long as those incidents have been known,
+# and the ban held right up until a turn was confused, which is exactly when it
+# does not. So it is taken away instead: `clarify` is the only tool in its
+# toolset, so disabling the toolset removes it and nothing else (measured
+# against the image: 21 tools offered, 20 with this set).
+agent:
+  disabled_toolsets:
+    - clarify
+
 model:
   default: gpt-5.6-sol
   provider: openai-codex

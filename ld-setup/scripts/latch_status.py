@@ -24,6 +24,15 @@ where they are registered.
 image and this repo have disagreed about it before, and a status script that
 answers "unconfigured" because the key was renamed would take the whole
 calendar step out of the run with nothing in the log to say why.
+
+Standard library only, and that is not an aesthetic. The sheet tells a turn to
+run this with plain `python3`, and PyYAML lives in Hermes' own venv rather than
+the system interpreter in at least one build we ship -- the e2e entrypoint
+carries a comment about exactly that, from the day an `import yaml` under
+/usr/bin/python3 took down every start. A probe that raises is worse than no
+probe: the turn improvises, and improvising is what this file exists to stop.
+So the one question it asks -- is there a relay key under mcp_servers -- is
+answered by reading the indentation, not by parsing YAML.
 """
 from __future__ import annotations
 
@@ -39,36 +48,69 @@ def config_path(env=None):
     return os.path.join(home, "config.yaml")
 
 
-def relay_configured(config):
+def relay_configured(text):
     """True when config.yaml registers a relay to the owner's Mac.
 
-    Anything that is not a mapping of server names -- absent, null, an empty
-    mapping, or a scalar someone typed by hand -- is "no relay". The question
-    this answers is whether a tool will be there, and only a populated mapping
-    puts one there.
+    A deliberately small YAML reader for one question. `mcp_servers:` is a
+    top-level key, so it sits at column zero, and its servers are the keys
+    indented directly under it. A relay key with nothing under it (`plow:` on
+    its own, or `mcp_servers: {}`) registers no tool and is not a relay.
+
+    Anything this cannot make sense of reads as no relay, which is the safe
+    answer: the pitch and the link still go out, and no tool is reached for.
     """
-    servers = config.get("mcp_servers") if isinstance(config, dict) else None
-    if not isinstance(servers, dict):
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if not line.startswith("mcp_servers:"):
+            continue
+        if line.split(":", 1)[1].strip() not in ("", "{}", "null", "~"):
+            return False          # an inline mapping we will not parse, or a scalar
+        child_indent = None
+        for follower in lines[index + 1:]:
+            if not follower.strip() or follower.lstrip().startswith("#"):
+                continue
+            indent = len(follower) - len(follower.lstrip())
+            if indent == 0:
+                break             # the next top-level key: the block is over
+            if child_indent is None:
+                child_indent = indent
+            if indent != child_indent:
+                continue          # deeper: a server's own settings, not its name
+            name = follower.strip().split(":", 1)[0].strip().strip("\"'")
+            if name in RELAY_KEYS and _has_body(lines, follower, child_indent):
+                return True
         return False
-    return any(servers.get(key) for key in RELAY_KEYS)
+    return False
+
+
+def _has_body(lines, header, indent):
+    """True when the server named by `header` has settings under it.
+
+    `plow:` with nothing beneath it registers nothing -- the url and the bearer
+    are what make a server -- so it is not a relay, and reading it as one would
+    send the turn off to call a tool that is not there.
+    """
+    for follower in lines[lines.index(header) + 1:]:
+        if not follower.strip() or follower.lstrip().startswith("#"):
+            continue
+        return len(follower) - len(follower.lstrip()) > indent
+    return False
 
 
 def main(argv=None, env=None):
-    import yaml  # deferred: the message matters more than the import site
-
     path = config_path(env)
     try:
         with open(path) as handle:
-            config = yaml.safe_load(handle)
+            text = handle.read()
     except FileNotFoundError:
         # No config to read is no relay configured. This is a status probe, not
         # a health check: it answers the question or says the safe thing.
         print("unconfigured")
         return 0
-    except (OSError, yaml.YAMLError) as exc:
+    except OSError as exc:
         raise SystemExit(f"refusing to report latch status: {exc}") from None
 
-    print("configured" if relay_configured(config) else "unconfigured")
+    print("configured" if relay_configured(text) else "unconfigured")
     return 0
 
 

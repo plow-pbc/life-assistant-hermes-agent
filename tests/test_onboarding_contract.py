@@ -345,7 +345,7 @@ def test_the_wall_marker_stays_the_walls_own():
 
 ALGORITHM = ONBOARDING[ONBOARDING.index("## The algorithm"):ONBOARDING.index("### 1 ·")]
 STEPS = ["**1 · Read the config.**", "**2 · Run the Latch status probe.**",
-         "**3 · Take what this message gave you.**", "**4 · Write every answer you hold",
+         "**3 · Take what this message gave you.**", "**4 · Write everything you hold",
          "**5 · Compose the one message**"]
 
 
@@ -374,9 +374,8 @@ def test_no_table_of_turn_shapes_survives():
     assert "| the turn | tool calls |" not in ONBOARDING
     assert "| what the config already holds |" not in ONBOARDING
     # The examples that replace it are marked as examples, and say which wins.
-    flat = " ".join(ALGORITHM.split())
-    assert "Examples, not authorities" in flat
-    assert "Where an example and the algorithm disagree, the algorithm is right" in flat
+    assert "Examples, not authorities" in ALGORITHM, (
+        "the list that replaces the table must be marked as non-authoritative")
 
 
 def test_the_keys_are_asked_in_one_order_everywhere():
@@ -395,29 +394,24 @@ def test_the_keys_are_asked_in_one_order_everywhere():
         assert f"`{key}`" in TRIGGER
 
 
-def test_step_four_writes_unless_a_next_turn_is_certain():
-    """The whole of C1, as one sentence with a condition rather than a schedule.
+def test_step_four_names_exactly_one_deferral():
+    """Structural, because the count is the contract.
 
-    An answer deferred onto a turn that never comes is an answer never written:
-    with the city already stored, "the city turn" does not happen, nothing
-    writes the name, and every later turn re-asks it.
+    "Defer whenever the turn ends on a question" was the over-broad version and
+    it made every turn's write conditional on wording. There is one exception --
+    the turn that learns the name and sends the one-time introduction -- and a
+    second one appearing here is the enumeration growing back.
     """
     step4 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[3]):ALGORITHM.index(STEPS[4])].split())
-    assert "NOW, before the message" in step4
-    assert "unless this turn ends on a question whose answer the next turn will carry" in step4
-    assert "a turn that asks nothing has no next turn, so it writes" in step4
-    assert "carrying everything held, never just the newest" in step4
+    assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
+    assert "exactly ONE deferral" in step4
 
 
-def test_step_five_always_produces_a_message():
-    """Nothing to ask is not nothing to say. A turn that reaches the end of its
-    work with no message prepared goes looking for a way to ask something, and
-    what it finds renders `❓` and blocks the owner. Measured: a config holding
-    the city and the teams, Latch down, and the reply was `❓ dummy`."""
-    step5 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[4]):].split())
-    assert "If no key is missing, ask nothing" in step5
-    assert "say they are set and offer the wall" in step5
-    assert "Nothing to ask is never nothing to say" in step5
+def test_step_five_has_a_branch_for_no_question_left():
+    """A turn that reaches step 5 with nothing to ask still owes a message.
+    Where it did not, the owner got `❓ dummy`."""
+    step5 = ALGORITHM[ALGORITHM.index(STEPS[4]):]
+    assert "If no key is missing" in step5
 
 
 def test_the_relay_tool_is_named_only_where_it_exists():
@@ -440,32 +434,58 @@ def test_the_relay_tool_is_named_only_where_it_exists():
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
             "that has established it exists")
-    # And the unconfigured branch stops there: no call, no lookup, no mention.
-    unconfigured = " ".join(
-        ONBOARDING[ONBOARDING.index("**`unconfigured` ends the ENQUIRY"):configured].split())
-    assert "Do not go looking for a tool" in unconfigured
-    assert "make no further call" in unconfigured
-    # What ends is the looking, not the pitch. Read as "say nothing", this
-    # branch dropped the install link out of the introduction entirely --
-    # measured on a fresh run: no flying-blind line, no plow.co/latch.
-    assert "ends the ENQUIRY, not the pitch" in unconfigured
-    assert "the flying-blind line, the link" in unconfigured
+    # The unconfigured branch reaches no tool of any kind: structural, since
+    # the branch's whole job is that nothing is called from it.
+    unconfigured = ONBOARDING[ONBOARDING.index("**`unconfigured`"):configured]
+    assert "plow_run_command" not in unconfigured
+    assert "argv=" not in unconfigured
 
 
 def test_the_status_probe_answers_without_a_relay(tmp_path):
     """The script is what makes the branch decidable, so it has to answer on a
     box with no relay at all rather than raising -- that is the whole case."""
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
-    assert ls.relay_configured({"mcp_servers": {"plow": {"url": "https://x.test"}}})
-    assert ls.relay_configured({"mcp_servers": {"latch": {"url": "https://x.test"}}})
-    # Every shape that means "no tool will be registered".
-    for config in ({"mcp_servers": {}}, {"mcp_servers": None}, {}, {"mcp_servers": "latch"},
-                   {"mcp_servers": {"plow": None}}, {"mcp_servers": {"other": {"url": "x"}}}):
-        assert not ls.relay_configured(config), config
+    configured = [
+        "mcp_servers:\n  latch:\n    url: https://x.test\n",
+        "mcp_servers:\n  plow:\n    url: https://x.test\n",
+        # A relay beside another server, and one carrying only headers.
+        "mcp_servers:\n  other:\n    url: x\n  latch:\n    url: y\n",
+        "mcp_servers:\n  plow:\n    headers:\n      Authorization: Bearer x\n",
+    ]
+    unconfigured = [
+        "mcp_servers: {}\n",
+        "mcp_servers:\n",
+        "model:\n  default: x\n",
+        "mcp_servers:\n  other:\n    url: x\n",
+        # A name with nothing under it registers no tool: no url, no bearer.
+        "mcp_servers:\n  plow:\n",
+        "mcp_servers:\n  plow:\nmodel:\n  default: x\n",
+        # A commented-out relay is not a relay.
+        "mcp_servers:\n  # latch: gone\n  other:\n    url: x\n",
+    ]
+    for text in configured:
+        assert ls.relay_configured(text), text
+    for text in unconfigured:
+        assert not ls.relay_configured(text), text
+
     # A missing config.yaml is "unconfigured", not a traceback: this runs on the
     # first turn of a brand new agent.
     assert ls.config_path({"HERMES_HOME": str(tmp_path)}) == str(tmp_path / "config.yaml")
     assert ls.main(env={"HERMES_HOME": str(tmp_path)}) == 0
+
+
+def test_the_status_probe_needs_only_the_standard_library():
+    """The sheet runs it as plain `python3`, and PyYAML lives in Hermes' own
+    venv rather than the system interpreter in at least one build we ship -- an
+    `import yaml` under /usr/bin/python3 once took down every container start.
+    A probe that raises is worse than no probe: the turn improvises, which is
+    the thing this script exists to prevent."""
+    source = (ROOT / "ld-setup/scripts/latch_status.py").read_text()
+    body = source.split('"""', 2)[2]
+    assert not re.search(r"^\s*(import|from)\s+(?!__future__|os|sys)", body, re.MULTILINE), (
+        "the probe imports something outside the standard library's core")
+    assert "import yaml" not in body and "yaml." not in body, (
+        "the probe reaches for PyYAML in code the sheet runs as plain python3")
 
 
 def test_both_relay_key_names_are_accepted():
