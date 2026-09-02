@@ -24,6 +24,10 @@ SKILL = (ROOT / "ld-setup" / "SKILL.md").read_text()
 SOUL = (ROOT / "runtime" / "SOUL.md").read_text()
 DOCKERFILE = (ROOT / "Dockerfile").read_text()
 
+ONBOARDING = SKILL[SKILL.index("## Onboarding"):SKILL.index("## The wall (optional)")]
+# The one call Latch actually permits, byte for byte as the skill must emit it.
+DISCOVERY_ARGV = 'argv=["gog", "calendar", "calendars", "--json", "--results-only"]'
+
 MARKER = "/opt/data/ld/onboarding-complete"
 WALL_MARKER = "/opt/data/ld/setup-complete"
 GIF = "/srv/plow-assets/quick-q.gif"
@@ -98,15 +102,131 @@ def test_the_opener_gif_is_baked_where_hermes_will_deliver_it():
 
 
 def test_onboarding_never_asks_for_what_latch_supplies():
-    """Email, calendar ids and the Mac username arrive through connectors.
+    """Email, calendar ids and the Mac username arrive through the Mac.
 
     Asking for them is not merely redundant -- it is a question the owner
     cannot answer usefully at that point, in the middle of the one conversation
-    that decides whether they stay.
+    that decides whether they stay. Calendars are now DISCOVERED rather than
+    absent, which is the same guarantee reached the other way round: the owner
+    still never types one.
     """
-    onboarding = SKILL[SKILL.index("## Onboarding"):SKILL.index("## The wall (optional)")]
     for asked in ("owner_email", "extra_calendar_ids", "mac_username"):
-        assert asked not in onboarding, f"onboarding asks for {asked}"
+        assert asked not in ONBOARDING, f"onboarding asks for {asked}"
+    assert "never types a calendar address" in ONBOARDING
+
+
+def test_calendar_discovery_is_one_argv_and_never_auth_list():
+    """Latch allows Gmail and Calendar subcommands and nothing else.
+
+    `gog auth list` is refused under every binary name -- measured against a
+    real Latch, not guessed -- so a discovery flow that starts by enumerating
+    accounts dead-ends on a Mac that is working correctly, and the failure
+    reads as "no calendars" rather than "wrong command".
+    """
+    assert DISCOVERY_ARGV in ONBOARDING
+    assert ONBOARDING.count(DISCOVERY_ARGV) == 1, "one call, not a loop of them"
+    # No `auth` subcommand reaches an argv anywhere in this sheet. The section
+    # names it in prose, deliberately, to say why it is not used -- so the
+    # check is on the argv shape, not on the word.
+    assert not re.search(r'argv=\[[^]]*"auth"', SKILL)
+
+
+def test_the_account_is_taken_from_primary_not_dataowner():
+    """dataOwner varies across the list; calendar.account is one identity.
+
+    The real listing carried three distinct dataOwner values across nine
+    calendars -- shares keep their own owner -- so deriving the account from it
+    picks whichever calendar happened to be read last.
+    """
+    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert "`primary` is true" in section
+    assert "dataOwner" in section, "the trap has to be named to be avoided"
+    assert "Take it from `primary`" in section
+
+
+def test_the_listing_is_parsed_past_its_preamble():
+    """gog prints a note line before the JSON array, so the output is not JSON.
+
+    A consumer that json.loads() the whole string fails on a working call, and
+    the flow reports the calendar as unavailable when it is right there.
+    """
+    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert "skip to the first `[`" in section
+
+
+def test_calendar_names_are_named_as_untrusted():
+    """They come off someone else's calendar and are shown to a model."""
+    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert "untrusted data" in section
+
+
+def test_the_nudge_lookaheads_are_written_with_the_calendars():
+    """Without them a config with calendars still fails the gate.
+
+    Nothing asks the owner for a lookahead, the gate requires both to be
+    positive numbers, and no other step writes them -- so a run that discovered
+    calendars and stopped there leaves a config that looks complete in chat and
+    can never start the wall.
+    """
+    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert '"lookahead_virtual_minutes": 30' in section
+    assert '"lookahead_in_person_minutes": 60' in section
+    example = json.loads((ROOT / "ld-shared/references/config.example.json").read_text())
+    assert example["calendar_nudge"]["lookahead_virtual_minutes"] == 30
+    assert example["calendar_nudge"]["lookahead_in_person_minutes"] == 60
+
+
+def test_the_wall_routes_a_missing_calendar_to_discovery():
+    """The wall used to stop dead on calendar keys, which was right when
+    nothing could fill them and is wrong now that discovery exists."""
+    wall = SKILL[SKILL.index("## The wall (optional)"):]
+    assert "run §5" in wall
+    assert "asking them to type an email" not in wall
+
+
+def test_a_discovered_calendar_makes_the_config_installable(tmp_path):
+    """The point of the whole chunk, end to end.
+
+    Onboarding's own answers can never pass the shared gate. These writes are
+    what turn that draft into a config the producers will run on -- and if any
+    one of account, sources, owner_identities or the two lookaheads is left
+    out, it stays refused.
+    """
+    config = tmp_path / "config.json"
+    env = {"TZ": "America/Los_Angeles"}
+    for answer in ('{"family": {"owner": {"name": "Mary"}}}',
+                   '{"family": {"timezone": "America/Los_Angeles"}}',
+                   '{"weather": {"location": "Mountain View, California", "lat": 37.4, "lon": -122.1}}',
+                   '{"sports": {"followed": []}}'):
+        wc.main(["--draft"], env=env, config_path=str(config), stdin=io.StringIO(answer))
+    gate = load("ld_config_gate", "ld-shared/scripts/ld_config_gate.py").gate
+    assert gate(json.loads(config.read_text())), "should still be short of installed"
+
+    account = "mary@example.test"
+    wc.main(["--draft"], env=env, config_path=str(config), stdin=io.StringIO(json.dumps({
+        "calendar": {"account": account,
+                     "sources": [{"calendar_id": account, "name": "Personal"},
+                                 {"calendar_id": "fam@group.calendar.google.test", "name": "Family"}]},
+        "calendar_nudge": {"owner_identities": [account],
+                           "lookahead_virtual_minutes": 30,
+                           "lookahead_in_person_minutes": 60}})))
+    written = json.loads(config.read_text())
+    assert gate(written) == "", f"still refused: {gate(written)}"
+    assert [s["calendar_id"] for s in written["calendar"]["sources"]] == \
+        [account, "fam@group.calendar.google.test"]
+    assert written["family"]["owner"]["name"] == "Mary", "discovery clobbered an earlier answer"
+
+
+def test_the_lookaheads_alone_do_not_make_it_installable(tmp_path):
+    """Guards the inverse: writing the defaults is necessary, not sufficient."""
+    config = tmp_path / "config.json"
+    env = {"TZ": "America/Los_Angeles"}
+    wc.main(["--draft"], env=env, config_path=str(config), stdin=io.StringIO(json.dumps({
+        "family": {"owner": {"name": "Mary"}, "timezone": "America/Los_Angeles"},
+        "calendar_nudge": {"lookahead_virtual_minutes": 30,
+                           "lookahead_in_person_minutes": 60}})))
+    gate = load("ld_config_gate", "ld-shared/scripts/ld_config_gate.py").gate
+    assert "calendar.account is blank" in gate(json.loads(config.read_text()))
 
 
 def test_a_draft_records_an_answer_the_gate_would_refuse(tmp_path):
