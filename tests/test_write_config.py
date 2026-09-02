@@ -58,6 +58,36 @@ def fake_geocode(city):
 
 
 
+def run_concurrently(*calls):
+    """Run `calls` from a common barrier and return whatever they raised.
+
+    The barrier is the test, not decoration: threads started one after another
+    usually finish one after another, and a race that only shows under real
+    overlap is a race a suite can pass every time while the bug ships. Each call
+    is a zero-argument callable; failures are collected rather than raised in a
+    worker thread, where pytest would never see them.
+    """
+    start = threading.Barrier(len(calls))
+    errors = []
+
+    def wrap(call):
+        def run():
+            try:
+                start.wait(timeout=5)
+                call()
+            except BaseException as exc:        # noqa: BLE001 - reported to the caller
+                errors.append(exc)
+        return threading.Thread(target=run)
+
+    threads = [wrap(call) for call in calls]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive(), "a writer never finished -- the lock deadlocked"
+    return errors
+
+
 def live_config():
     # Built here rather than through a whole-config mode: that mode was a form,
     # and it is gone. This is the shape --patch expects to find on disk.
@@ -267,8 +297,7 @@ def test_a_patch_carrying_a_non_standard_json_constant_is_refused(
 def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch):
     """The loss a lock exists to prevent, and the reason it is not theoretical.
 
-    Both modes here are read-modify-write: read the live config, merge the
-    partial onto it, gate, replace. Two turns can run at once -- an owner
+    Both modes here are read-modify-write. Two turns can run at once -- an owner
     answering while a cron producer patches, or two answers arriving back to
     back -- and unlocked, the second read happens before the first rename lands,
     so the second write publishes a merge that never saw the first answer.
@@ -281,33 +310,18 @@ def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch):
     target.parent.mkdir(parents=True)
     target.write_text(json.dumps(live_config()))
 
-    start = threading.Barrier(2)
-    errors = []
-
     def patch(payload):
-        def run():
-            try:
-                start.wait(timeout=5)
-                wc.main(["--patch"], stdin=io.StringIO(json.dumps(payload)),
-                        env=ENV, config_path=str(target))
-            except BaseException as exc:            # noqa: BLE001 - reported below
-                errors.append(exc)
-        return threading.Thread(target=run)
+        return lambda: wc.main(["--patch"], stdin=io.StringIO(json.dumps(payload)),
+                               env=ENV, config_path=str(target))
 
-    threads = [patch({"family": {"owner": {"name": "Ro"}}}),
-               patch({"weekly_digest": {"length": "long"}})]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=20)
-        assert not thread.is_alive(), "a writer never finished -- the lock deadlocked"
-    assert not errors, errors
+    assert not run_concurrently(patch({"family": {"owner": {"name": "Ro"}}}),
+                                patch({"weekly_digest": {"length": "long"}}))
 
     written = json.loads(target.read_text())
     assert written["family"]["owner"]["name"] == "Ro", "the name write was lost"
     assert written["weekly_digest"]["length"] == "long", "the digest write was lost"
-    # And the rest of the config is intact, so neither writer replaced the file
-    # with its own partial view of it.
+    # And the rest is intact, so neither writer replaced the file with its own
+    # partial view of it.
     assert written["calendar"] == live_config()["calendar"]
 
 
@@ -317,35 +331,17 @@ def test_two_first_drafts_race_before_the_directory_exists(tmp_path):
     On a FIRST draft there is no `ld/` yet. An earlier version took the lock
     inside that directory and ran the work anyway when it could not -- so
     neither writer held a lock, both created the directory, both read nothing,
-    and both wrote: an answer lost every time, reproduced ten runs out of ten.
-
-    So the directory is created BEFORE the lock, and a lock that still cannot be
-    taken refuses rather than proceeding. Both answers survive.
+    and both wrote: an answer lost every time, five runs out of five.
     """
     target = tmp_path / "ld" / "config.json"
     assert not target.parent.exists(), "the point of this test is the missing dir"
 
-    start = threading.Barrier(2)
-    errors = []
-
     def draft(payload):
-        def run():
-            try:
-                start.wait(timeout=5)
-                wc.main(["--draft"], stdin=io.StringIO(json.dumps(payload)),
-                        env=ENV, config_path=str(target))
-            except BaseException as exc:            # noqa: BLE001 - reported below
-                errors.append(exc)
-        return threading.Thread(target=run)
+        return lambda: wc.main(["--draft"], stdin=io.StringIO(json.dumps(payload)),
+                               env=ENV, config_path=str(target))
 
-    threads = [draft({"family": {"owner": {"name": "Ro"}}}),
-               draft({"sports": {"followed": []}})]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=20)
-        assert not thread.is_alive(), "a writer never finished -- the lock deadlocked"
-    assert not errors, errors
+    assert not run_concurrently(draft({"family": {"owner": {"name": "Ro"}}}),
+                                draft({"sports": {"followed": []}}))
 
     written = json.loads(target.read_text())
     assert written["family"]["owner"]["name"] == "Ro", "the name draft was lost"

@@ -352,9 +352,12 @@ this sheet for a reason: a heredoc composed around someone's words is a command
 built out of their input, and a calendar called `"; rm -rf ~; echo "` is a
 string to show the owner, not a command to run.
 
-**`<turn>` is a token unique to THIS turn** — the inbound message's id, or
-failing that eight random hex characters. Not a session id and not a timestamp:
-a session spans every turn of the conversation, and two turns can share a second.
+**`<turn>` is eight random hex characters, generated fresh each turn.** Not the
+inbound message's id, not a session id, not a timestamp: an id from the chat
+platform is text that came from outside, and this name ends up on a command
+line — the one place this sheet spends its whole length keeping other people's
+strings out of. Random is also simply correct here, where a session spans every
+turn of the conversation and two turns can share a second.
 One fixed staging name is one file two turns write at once — an owner texting
 while a cron producer runs, or two answers landing back to back — and the second
 stage overwrites the first before the first is read. The config itself is safe

@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+import threading
+
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -331,3 +333,114 @@ def test_ical_url_lands_only_in_pi_env(home, capsys, ical, expected):
     tok = token_in(dotenv)
     assert (ld / "pi.env").read_text() == f"ICAL_URL={expected}\nDASHBOARD_TOKEN={tok}\n"
     assert ICAL not in out
+
+
+def run_concurrently(*calls):
+    """A barrier, so the two mints actually overlap. Same shape as the one in
+    test_write_config.py, and the same reason: threads started in sequence
+    usually finish in sequence, and a race that only shows under real overlap
+    passes a suite every time while the bug ships."""
+    start = threading.Barrier(len(calls))
+    errors = []
+
+    def wrap(call):
+        def run():
+            try:
+                start.wait(timeout=5)
+                call()
+            except BaseException as exc:        # noqa: BLE001 - reported to the caller
+                errors.append(exc)
+        return threading.Thread(target=run)
+
+    threads = [wrap(call) for call in calls]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive(), "a mint never finished -- the lock deadlocked"
+    return errors
+
+
+def test_two_mints_at_once_leave_one_token_in_both_files(home, capsys):
+    """The bearer is minted once and written twice -- pi.env and dashboard.hdr.
+
+    The dotenv read decides whether one already exists, so two runs that both
+    read "no" mint two: the Pi authenticates with one bearer and the Mac ships
+    the other, every file looks correct, and the wall goes quiet. That is the
+    loss the lock spans the read and both writes to prevent.
+    """
+    dotenv, ld = home
+
+    def mint():
+        return lambda: mwt.main(stdin=io.StringIO(json.dumps({"pi_address": PI, "pi_user": "pi"})),
+                                dotenv_path=str(dotenv), ld_dir=str(ld))
+
+    assert not run_concurrently(mint(), mint())
+    capsys.readouterr()
+
+    header = (ld / "dashboard.hdr").read_text().strip()
+    token = header.split("Bearer ", 1)[1]
+    assert f"DASHBOARD_TOKEN={token}" in (ld / "pi.env").read_text(), (
+        "the Pi and the Mac are holding different bearers")
+    assert (dotenv.read_text().count("DASHBOARD_TOKEN=")) == 1, (
+        "the dotenv carries two tokens")
+
+
+def test_a_staged_input_is_consumed_on_success_and_kept_on_refusal(home, tmp_path):
+    """It can hold an ical_url and the Pi's address, so one left behind is a
+    second copy of the owner's own words with no reader. Removed only on
+    success: after a refusal the turn's next move is to fix what it staged."""
+    dotenv, ld = home
+    staged = tmp_path / "wall-a1b2c3d4.json"
+
+    staged.write_text(json.dumps({"pi_address": PI, "pi_user": "pi"}))
+    assert mwt.main(argv=["--input", str(staged)],
+                    dotenv_path=str(dotenv), ld_dir=str(ld)) == 0
+    assert not staged.exists(), "the staged answers outlived the mint"
+
+    staged.write_text(json.dumps({"pi_address": "not a host", "pi_user": "pi"}))
+    with pytest.raises(SystemExit):
+        mwt.main(argv=["--input", str(staged)], dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert staged.exists(), "a refusal deleted the file the turn has to fix"
+
+
+def test_an_input_that_is_a_file_this_writes_is_refused(home, tmp_path):
+    """The staged file is consumed on success, so an input that IS the dotenv or
+    one of the two private files would delete it under a success line."""
+    dotenv, ld = home
+    for target in (dotenv, ld / "pi.env", ld / "dashboard.hdr"):
+        with pytest.raises(SystemExit) as refusal:
+            mwt.main(argv=["--input", str(target)],
+                     dotenv_path=str(dotenv), ld_dir=str(ld))
+        assert "--input is a file this writes" in str(refusal.value)
+    assert dotenv.read_text() == SEED, "the dotenv was touched"
+
+
+def test_a_staged_input_that_cannot_be_removed_is_reported(home, tmp_path, monkeypatch):
+    """Not swallowed, and not reported as a clean run either.
+
+    The staged file can hold an ical_url and the Pi's address, so one left
+    behind is a second copy of the owner's own words with no reader. But the
+    private writes DID land -- the token is on disk in both files -- and a
+    caller told only "could not remove" would re-run a mint that already
+    succeeded. So the refusal carries both halves and exits non-zero.
+    """
+    dotenv, ld = home
+    staged = tmp_path / "wall-a1b2c3d4.json"
+    staged.write_text(json.dumps({"pi_address": PI, "pi_user": "pi"}))
+
+    def refuse_remove(path):
+        raise OSError(13, "Permission denied")
+    monkeypatch.setattr(mwt.os, "remove", refuse_remove)
+
+    with pytest.raises(SystemExit) as refusal:
+        mwt.main(argv=["--input", str(staged)], dotenv_path=str(dotenv), ld_dir=str(ld))
+
+    message = str(refusal.value)
+    assert "could not remove the staged answers" in message
+    assert "pi.env" in message and "dashboard.hdr" in message, (
+        "the caller is not told the private writes landed")
+    assert staged.exists(), "the file the message says to delete is gone"
+    # And they really did land: this is a partial success, reported as one.
+    assert (ld / "dashboard.hdr").read_text().startswith("Authorization: Bearer ")
+    assert "DASHBOARD_TOKEN=" in (ld / "pi.env").read_text()
