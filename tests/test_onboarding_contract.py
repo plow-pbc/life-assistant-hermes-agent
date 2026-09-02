@@ -214,6 +214,20 @@ def test_bookkeeping_never_becomes_the_final_message():
     assert "If you catch yourself narrating a step as you take it, that sentence is already sent" in text
 
 
+def test_nothing_follows_the_close():
+    """Observed, its own message, after the wall offer: "Onboarding is
+    complete. I'll stay quiet unless Mary follows up."
+
+    Interim text around the marker write, delivered like every other leak of
+    its kind. The owner was told they are set one message earlier; announcing
+    that you will now be quiet is not being quiet.
+    """
+    close = " ".join(ONBOARDING[ONBOARDING.index("### 4 ·"):ONBOARDING.index("### 5 ·")].split())
+    assert "the marker is written in silence, like every other tool call" in close
+    assert "NOT: Onboarding is complete" in close
+    assert "Saying you will now be quiet is not being quiet" in close
+
+
 def test_the_geocode_read_back_stays_internal():
     """Observed in the owner's chat: "Good -- those coordinates match Mountain
     View, CA, so that's correct."

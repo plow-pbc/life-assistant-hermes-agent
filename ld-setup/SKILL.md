@@ -449,6 +449,17 @@ separate from `/opt/data/ld/setup-complete`, which belongs to the wall and
 lands only after Phase 4's proof card. An owner with no wall has the first and
 never the second, and that is a finished install.
 
+**Then stop — the marker is written in silence, like every other tool call.**
+The message offering the wall was the last thing the owner hears from this
+conversation. A sentence after it announcing that onboarding is complete is
+bookkeeping, and it is delivered:
+
+    NOT: Onboarding is complete. I'll stay quiet unless Mary follows up.
+
+They were not waiting to be told the setup finished; they were told they are
+set, in their own words, one message ago. Saying you will now be quiet is not
+being quiet.
+
 ### 5 · Calendars, once Latch is connected
 
 The owner never types a calendar address. Their calendars are discovered from
