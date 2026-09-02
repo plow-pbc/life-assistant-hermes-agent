@@ -93,21 +93,46 @@ blob at the end:
 `--draft`, not `--patch`. Stdin is a PARTIAL CONFIG in the shape of
 `/opt/data/skills/ld-shared/references/config.example.json`, deep-merged onto
 whatever is there — and unlike `--patch` it works before the file exists and
-reports the shared gate instead of enforcing it. It has to: the gate wants a
-calendar account and its sources, and onboarding never asks for those, because
-the calendar arrives through Latch's connectors later. So a long `gate:` line
-listing the calendar keys is the EXPECTED output here, not a failure. What is
-a failure is `refusing to draft:` — fix what it names and run it again. Paste
-its output verbatim with its exit status, as everywhere else in this sheet.
+excuses the shared gate for the questions not yet asked. It has to: the gate
+wants a calendar account and its sources, and onboarding never asks for those,
+because the calendar arrives through Latch's connectors later. So a long
+`gate:` line listing the calendar keys is the EXPECTED output, not a failure.
+A value you actually supplied is still judged: `refusing to draft:` means the
+answer as you composed it is wrong — fix what it names and run it again.
+
+**This output is yours, not the owner's.** Read it, act on it, and say nothing
+script-shaped in chat: no pasted `gate:` line, no exit status, no file paths,
+no "wrote config.json". The owner is having a conversation, and a person who
+just told you their name should hear their name back, not a validator. (The
+paste-everything rule further down this sheet belongs to the wall phases,
+where the owner is deliberately being walked through an install.) If a draft
+refuses and you cannot fix it from what they said, ask them the one question
+that resolves it, in plain words.
 
 ### 1 · Opener
 
-One warm line that they showed up — not a greeting card, one line. Then the
-GIF, sent as an attachment:
+**Two messages, in this order.** The first is one warm line that they showed
+up — one line, not a greeting card — and the GIF:
 
     MEDIA:/srv/plow-assets/quick-q.gif
 
-Then, on its own: what should I call you?
+The second, on its own, is the question: what should I call you?
+
+Two messages because attachments ride out behind the text of the message that
+carries them: put the question in the same message as the GIF and it arrives
+*before* the picture, which reads as an interrogation with a stray image after
+it. Sent separately, the GIF lands with the hello and the question follows it.
+
+**Say who you are, by the name you have.** Use it — "I'm ⟨name⟩" — the way you
+would introducing yourself to someone at a door. Do not invent a name you were
+not given, and do not fall back on describing yourself as "your life
+assistant" as though that were one.
+
+Nothing else belongs in the opener. **No capability blurb, no menu, no
+`/help`** — not "I handle calendar, reminders and day-to-day logistics", not a
+list of what you can do. What you do is §2, and it lands far better once you
+can say it to someone by name. The whole of §1 is: hello, a GIF, and their
+name.
 
 ### 2 · Their name, then who you are
 

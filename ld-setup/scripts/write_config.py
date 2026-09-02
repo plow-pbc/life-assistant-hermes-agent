@@ -22,16 +22,26 @@ shared gate -- ld_config_gate.gate() imported, not restated -- before writing.
              need not exist yet, and the shared gate is REPORTED rather than
              enforced.
 
-             That exemption is the whole reason this mode exists, and it is
-             narrow. The gate demands calendar.account, a non-blank unique
+             The exemption is for ABSENT keys ONLY, and that boundary is
+             the mode. The gate demands calendar.account, a non-blank unique
              calendar_id per source, and a non-empty
              calendar_nudge.owner_identities. Onboarding never asks for any of
              them -- the calendar arrives later, through Latch's connectors --
              so a config carrying only the name, the city and the teams can
-             never pass, and --patch would refuse every single answer as it
-             landed. Refusing to record what the owner just said, because of
-             something they have not been asked yet, is the failure this
-             avoids. Nothing downstream is loosened: the producers still read
+             never pass, and --patch would refuse every answer as it landed.
+             Refusing to record what the owner just said, because of something
+             they have not been asked yet, is what this avoids.
+
+             It does NOT excuse a value that was supplied. Every check that
+             judges something actually present is enforced exactly as --patch
+             enforces it: a blank owner name, a placeholder left in, a
+             duplicate calendar id, a lookahead that is not a positive number.
+             Waving those through would be worse than refusing them, because
+             the draft IS the record of progress -- a bad value written here
+             reads on the next turn as a question already answered, and the
+             owner is never asked again.
+
+             Nothing downstream is loosened either: the producers still read
              the gate's verdict, a draft config still stands them down, and the
              wall path (SKILL.md Phases 2-4) still runs --patch under the full
              gate.
@@ -56,6 +66,7 @@ SKILL.md owns that registration and proves a card after it.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -149,6 +160,48 @@ def build(answers, env, geocoder=None):
         "weather": {"location": answers["city"], "lat": lat, "lon": lon},
         "sports": {"followed": list(answers.get("teams") or [])},
     }
+
+
+# What the gate requires, and a stand-in for each that its own check accepts.
+# Only used to answer one question -- "would this config pass if the unasked
+# questions had been answered?" -- so the values need to be valid and nothing
+# more. Absent keys get filled; a key that is PRESENT is never touched, so a
+# supplied value is always judged on its own merits.
+_GATE_STANDINS = (
+    (("family", "owner", "name"), "unasked"),
+    (("family", "timezone"), "UTC"),
+    (("calendar", "account"), "unasked@unasked.invalid"),
+    (("calendar", "sources"), [{"calendar_id": "unasked@unasked.invalid", "name": "unasked"}]),
+    (("calendar_nudge", "owner_identities"), ["unasked@unasked.invalid"]),
+    (("calendar_nudge", "lookahead_virtual_minutes"), 30),
+    (("calendar_nudge", "lookahead_in_person_minutes"), 60),
+)
+
+
+def fill_unasked(config):
+    """A copy of `config` with the gate's required-but-ABSENT keys stood in for.
+
+    Gating this copy asks the one question --draft actually needs answered: is
+    anything wrong here something the owner has SAID, rather than something
+    they have not been asked? A complaint that survives the fill can only come
+    from a supplied value, so it is refused; a complaint the fill removes was
+    an unasked question and is merely reported.
+
+    Descends only through dicts. A non-dict where the gate expects an object is
+    left exactly as it is -- that shape is itself a supplied value, and the
+    gate is the right thing to judge it.
+    """
+    filled = copy.deepcopy(config)
+    for path, standin in _GATE_STANDINS:
+        node = filled
+        for key in path[:-1]:
+            if not isinstance(node, dict):
+                break
+            node = node.setdefault(key, {})
+        else:
+            if isinstance(node, dict) and path[-1] not in node:
+                node[path[-1]] = standin
+    return filled
 
 
 def deep_merge(current, patch):
@@ -327,7 +380,18 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         verdict = gate(config)
     except GateError as exc:
         verdict = f"not valid JSON ({exc})"
-    if verdict and not args.draft:
+    if args.draft:
+        # A draft is excused only for questions not yet asked. Gate the config
+        # again with those stood in for: whatever still fails came from a value
+        # the owner actually supplied, and that is refused exactly as --patch
+        # would refuse it.
+        try:
+            supplied = gate(fill_unasked(config))
+        except GateError as exc:
+            supplied = f"not valid JSON ({exc})"
+        if supplied:
+            raise SystemExit(f"refusing to draft: the gate says: {supplied}")
+    elif verdict:
         raise SystemExit(f"refusing to write: the gate says: {verdict}")
     # allow_nan=False, the writer's half of the rule the two reads enforce:
     # Python emits NaN/Infinity back out as bare tokens, and a config carrying

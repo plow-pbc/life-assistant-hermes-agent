@@ -199,6 +199,88 @@ def test_a_draft_without_a_timezone_yet_is_not_a_disagreement(tmp_path):
     assert "timezone" not in json.loads(config.read_text())["family"]
 
 
+@pytest.mark.parametrize("payload,complaint", [
+    # A name the owner never really gave. Written, it reads on the next turn as
+    # a question already answered, and they are never asked again.
+    ('{"family": {"owner": {"name": "   "}}}', "family.owner.name is blank"),
+    ('{"family": {"owner": {"name": "[OWNER_NAME]"}}}', "placeholder"),
+    ('{"family": {"owner": {"name": 5}}}', "not valid JSON"),
+    # Calendar values ARE supplied later, by discovery -- the exemption covers
+    # them only while they are absent.
+    ('{"calendar": {"account": "a@b.test", "sources": [{"calendar_id": "", "name": "A"}]}}',
+     "calendar.sources[].calendar_id is blank"),
+    ('{"calendar": {"account": "a@b.test", "sources": ['
+     '{"calendar_id": "x@y.test", "name": "A"}, {"calendar_id": "x@y.test", "name": "B"}]}}',
+     "not unique"),
+    ('{"calendar_nudge": {"owner_identities": []}}', "non-empty list"),
+    ('{"calendar_nudge": {"lookahead_virtual_minutes": -5}}', "positive number"),
+])
+def test_a_draft_refuses_a_value_that_was_actually_supplied(tmp_path, payload, complaint):
+    """The exemption is for questions not yet asked, and nothing else.
+
+    A draft is the record of progress, so a bad value written here is worse
+    than a refusal: the next turn reads it as answered and moves on, and the
+    owner never gets asked again. Every gate check that judges something
+    PRESENT is enforced exactly as --patch enforces it.
+    """
+    config = tmp_path / "config.json"
+    with pytest.raises(SystemExit) as refusal:
+        wc.main(["--draft"], env={"TZ": "America/Los_Angeles"}, config_path=str(config),
+                stdin=io.StringIO(payload))
+    assert "refusing to draft" in str(refusal.value)
+    assert complaint in str(refusal.value)
+    assert not config.exists(), "a refused draft must leave nothing behind"
+
+
+def test_the_stand_ins_only_fill_what_is_absent():
+    """fill_unasked() is the whole boundary between the two behaviours.
+
+    If it ever overwrote a key that was present, a supplied blank name would be
+    replaced by a valid stand-in and sail through -- which is exactly the bug
+    the fill exists to avoid.
+    """
+    supplied = {"family": {"owner": {"name": "   "}},
+                "calendar_nudge": {"lookahead_virtual_minutes": -5}}
+    filled = wc.fill_unasked(supplied)
+    assert filled["family"]["owner"]["name"] == "   "
+    assert filled["calendar_nudge"]["lookahead_virtual_minutes"] == -5
+    # ... while the untouched neighbours DO get stood in for.
+    assert filled["calendar"]["account"]
+    assert filled["calendar_nudge"]["lookahead_in_person_minutes"] > 0
+    assert supplied == {"family": {"owner": {"name": "   "}},
+                        "calendar_nudge": {"lookahead_virtual_minutes": -5}}, "fill mutated its input"
+
+
+def test_no_script_output_is_pasted_to_the_owner_during_onboarding():
+    """Onboarding is a conversation; the wall install is a walkthrough.
+
+    The paste-everything rule exists for the wall, where the owner is watching
+    an install. Applying it to onboarding puts a gate verdict full of calendar
+    keys in front of someone who has just said their name -- and that verdict
+    is EXPECTED noise there, so it reads as a fault when nothing is wrong.
+    """
+    onboarding = SKILL[SKILL.index("## Onboarding"):SKILL.index("## The wall (optional)")]
+    assert "This output is yours, not the owner's" in onboarding
+    assert "Paste its output verbatim" not in onboarding
+    # The wall keeps the rule.
+    wall = SKILL[SKILL.index("## The wall (optional)"):]
+    assert "pasted verbatim" in SKILL[:SKILL.index("## Onboarding")] or "Paste" in wall
+
+
+def test_the_opener_is_a_hello_a_gif_and_a_name():
+    """Spec 2.1, and the two transcripts that failed it.
+
+    The model opened with a capability blurb and a /help menu, and put the
+    question in the same message as the GIF so the picture landed after it.
+    Both are pinned here because both read as a form, which is the one thing
+    this rewrite exists to stop being.
+    """
+    opener = SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")]
+    assert "Two messages" in opener
+    assert "`/help`" in opener and "No capability blurb" in opener
+    assert "by the name you have" in opener
+
+
 def test_draft_and_patch_are_not_both_accepted():
     """Two merge modes with different verdicts; silently preferring one would
     make the strict one unreachable from a caller that thought it asked."""
