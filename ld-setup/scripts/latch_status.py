@@ -53,6 +53,12 @@ def config_path(env=None):
 def relay_configured(text):
     """True when config.yaml registers the relay to the owner's Mac.
 
+    `latch:` must be a DIRECT child of `mcp_servers:` -- one level in, not any
+    level in. A deeper `latch:` belongs to some other server's settings (a
+    header, a nested block someone added) and registers no tool of ours, so
+    reading it as the relay would answer "configured" for a build that cannot
+    reach a Mac, and the turn would call a tool that is not there.
+
     The stanza is written by the deployment, not by hand, and it always has the
     same shape -- a top-level `mcp_servers:` mapping with `latch:` as one of its
     keys and that server's settings under it:
@@ -76,18 +82,26 @@ def relay_configured(text):
                       text, re.MULTILINE)
     if not block:
         return False
-    # The servers, and each one's settings beneath it. `latch:` with nothing
-    # under it registers no tool -- the url and the bearer are what make a
-    # server -- so the trailing group is required, not optional.
+    body = block.group(0)
+
+    # The servers sit at the first indent inside the mapping; whatever that
+    # indent is, it is the ONLY level the relay may be named at.
+    child = re.search(r"^([ \t]+)\S", body[body.index("\n") + 1:], re.MULTILINE)
+    if not child:
+        return False
+    indent = re.escape(child.group(1))
+
+    # And a key with nothing under it registers no tool -- the url and the
+    # bearer are what make a server -- so the settings beneath it are required.
     match = re.search(
-        r"^(?P<indent>[ \t]+)[\"']?latch[\"']?:[ \t]*$"
+        rf"^{indent}[\"']?latch[\"']?:[ \t]*$"
         r"(?:\n[ \t]*(?:#.*)?)*"
-        r"\n(?P=indent)[ \t]+\S",
-        block.group(0), re.MULTILINE)
+        rf"\n{indent}[ \t]+\S",
+        body, re.MULTILINE)
     return match is not None
 
 
-def main(argv=None, env=None):
+def main(env=None):
     path = config_path(env)
     try:
         with open(path) as handle:

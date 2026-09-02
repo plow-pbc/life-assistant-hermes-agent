@@ -516,14 +516,17 @@ def test_the_relay_tool_is_named_only_where_it_exists():
     """
     configured = ONBOARDING.index("**`configured` means")
     assert "latch_status.py" in ONBOARDING[:configured], "the probe must come first"
-    for hit in re.finditer(r"plow_run_command|plow_write_file", ONBOARDING):
+    # Every relay tool, not the two that happened to appear first: the family is
+    # `plow_<something>` and the next one added would otherwise slip in bare.
+    for hit in re.finditer(r"(?<!mcp__latch__)\bplow_[a-z_]+\b", ONBOARDING):
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
             "that has established it exists")
         # And named as registered, prefix and all: the bare suffix is a tool the
         # build does not have, which sends the turn hunting for it.
-        assert ONBOARDING[hit.start() - len("mcp__latch__"):hit.start()] == "mcp__latch__", (
-            "a relay tool is named without its server prefix")
+        raise AssertionError(
+            f"a relay tool is named without its server prefix: "
+            f"{ONBOARDING[hit.start():hit.start() + 30]!r}")
     assert RELAY_TOOL in ONBOARDING[configured:]
     # The unconfigured branch reaches no tool of any kind: structural, since
     # the branch's whole job is that nothing is called from it.
@@ -552,6 +555,12 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
         "mcp_servers:\n",
         "model:\n  default: x\n",
         "mcp_servers:\n  other:\n    url: x\n",
+        # `latch:` nested inside ANOTHER server's settings is not our relay --
+        # it registers no tool, so reading it as one would answer "configured"
+        # for a build that cannot reach a Mac and send the turn to call a tool
+        # that is not there.
+        "mcp_servers:\n  other:\n    latch:\n      url: https://x.test\n",
+        "mcp_servers:\n  other:\n    headers:\n      latch:\n        url: x\n",
         # A name with nothing under it registers no tool: no url, no bearer.
         "mcp_servers:\n  latch:\n",
         "mcp_servers:\n  latch:\nmodel:\n  default: x\n",

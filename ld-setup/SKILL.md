@@ -44,7 +44,7 @@ directly rather than through a shell, so anything needing a redirect, a `&&`
 or a `~` is written as `["sh","-c","…"]`. Its `network` defaults to false
 and every call below that leaves the Mac passes `network=true`; its `timeout`
 is in milliseconds and defaults to 10000, and a call that exceeds it comes
-back as a job handle to poll with `plow_get_output`. Paths under `~/Plow`
+back as a job handle to poll with `mcp__latch__plow_get_output`. Paths under `~/Plow`
 auto-approve.
 
 Cards refresh only while that Mac is awake with Latch running — an accepted
@@ -999,7 +999,7 @@ confirm it ran, re-probe; do not proceed on a refused probe.
 
 Once the probe succeeds, run each Pi line the same way with `network=true`
 and a `timeout` of `600000` (ten minutes — `apt-get` is slow on a Pi; a run
-this long comes back as a job handle, so poll it with `plow_get_output`
+this long comes back as a job handle, so poll it with `mcp__latch__plow_get_output`
 rather than waiting on the call). `<pi_line_1>` and `<pi_line_2>` are the two
 values Phase 2 printed, each dropped whole into one argv element:
 
