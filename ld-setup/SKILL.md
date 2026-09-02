@@ -5,6 +5,14 @@ description: First-run setup for the life dashboard — interview the owner over
 
 # Life Dashboard — Setup
 
+**Run this only in the owner's own one-to-one thread.** Every phase either
+reaches that owner's Mac, writes this household's config, or — on the no-Mac
+path in Phase 3 — hands over the wall's bearer token, and a group thread is
+read by people who are not the owner. Trust does not lift this: a trusted group
+may ask for the assistant's normal tools, and a raw token is excluded from a
+group either way. If setup is asked for anywhere but that thread, do not start
+it and do not collect answers; say the owner can start it privately, and stop.
+
 Four phases. Each is gated on the durable artifact it produces, so a phase
 that has already landed is skipped and the run resumes where it stopped — a
 reset, a rebuilt home or an interrupted chat all pick up from here.
@@ -262,8 +270,10 @@ they just gave you — do not repeat the URL back (it is a private feed and
 they already hold it), and never the token line again — then
 `systemctl --user restart life-dashboard-viewer`. Otherwise the
 fallback is the direct one, and the token crosses chat once — acknowledged,
-not ideal, and the only place in this sheet where that is allowed. Text the
-owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
+not ideal, and the only place in this sheet where that is allowed. It is
+allowed *in the owner's own one-to-one thread and nowhere else*; if this run is
+happening anywhere but there, stop here rather than send it. Text the owner,
+verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
 `/opt/data/ld/pi.env` (read with your file tool; this is the one place its
 content may be pasted), and say: run the first two on the Pi over ssh or at
 its keyboard, then put those two lines in `~/ld-data/.env` on the Pi,
