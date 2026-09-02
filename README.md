@@ -134,9 +134,9 @@ now; they are stated here as design, not as something this tree enforces:
   property access facts, door and keypad codes among them.
 - **Hostex and Seam** *(agent-mgr's compose contract)*. No PMS access, no lock control — those belong to the
   rentals agent and reach a different person's property.
-- **Anyone else's Mac** *(asserted here)*. `tests/` asserts `latch` is the only `mcp_servers`
+- **Anyone else's Mac** *(asserted here)*. `tests/` asserts `plow` is the only `mcp_servers`
   entry, so a sibling's block arriving by copy-paste fails loudly. Which Mac
-  `latch` reaches is the dotenv's business, not this tree's.
+  `plow` reaches is the dotenv's business, not this tree's.
 
 One mount here against the rentals agent's six. That asymmetry is the design,
 not an omission to be tidied up later.
