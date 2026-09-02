@@ -128,21 +128,12 @@ def test_outcome_memories_get_a_raised_char_limit():
 
 
 def test_compression_has_somewhere_to_fall_back_to():
-    """Compaction must not be one provider stall away from freezing.
-
-    On a full-budget timeout the aux client deliberately skips the
-    same-provider retry for compression, so it needs another target. Without
-    one it has none: the implicit chain wants keys no instance carries, and the
-    last-resort net is the same (provider, model) that just stalled. That
-    emptiness cost ~30h on 2026-08-31 -- every turn on an oversized session
-    retried, stalled, cooled down 60s, and the transcript grew meanwhile.
-
-    The chain model is pinned, not free-form: a ChatGPT-account codex serves
-    ONLY gpt-5.6-sol and gpt-5.5. Every other id answers 400 "not supported
-    when using Codex with a ChatGPT account", so a well-meaning swap to a
-    cheaper-sounding one (gpt-5-mini, codex-mini-latest) installs a fallback
-    that can never fire -- and a naive probe would not catch it, because the
-    implicit main-model fallback reports success on the caller's behalf."""
+    """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
+    a cheaper-sounding id installs a fallback that can never fire -- and a naive
+    probe misses it, because the implicit main-model fallback reports success on
+    the caller's behalf. The ordering matters as much as the model: the primary
+    must give up sooner than the fallback runs, or widening its budget silently
+    delays the only thing that can still succeed."""
     compression = config()["auxiliary"]["compression"]
     chain = compression["fallback_chain"]
 
