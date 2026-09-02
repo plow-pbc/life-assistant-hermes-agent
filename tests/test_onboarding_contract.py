@@ -26,9 +26,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = (ROOT / "ld-setup" / "SKILL.md").read_text()
+WALL = (ROOT / "ld-wall-setup" / "SKILL.md").read_text()
 SOUL = (ROOT / "runtime" / "SOUL.md").read_text()
 DOCKERFILE = (ROOT / "Dockerfile").read_text()
-ONBOARDING = SKILL[SKILL.index("## Onboarding"):SKILL.index("## The wall (optional)")]
+# The whole sheet is onboarding now: the wall moved to its own skill, and the
+# section boundary that used to separate them is the file boundary.
+ONBOARDING = SKILL[SKILL.index("## Onboarding"):]
 TRIGGER = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].split())
 
 WALL_MARKER = "/opt/data/ld/setup-complete"
@@ -339,10 +342,11 @@ def test_the_wall_marker_stays_the_walls_own():
     """They mean different things: an owner with no Pi finishes onboarding and
     never gets a setup-complete. Collapsing them either strands a wall-less
     owner mid-conversation or reports a blank wall as done."""
-    assert f"> {WALL_MARKER}" not in ONBOARDING
+    # Mentioning it is fine and necessary -- onboarding says the marker is not
+    # its to write. What must not appear is the WRITE.
+    assert f"> {WALL_MARKER}" not in ONBOARDING, "onboarding writes the wall's marker"
     assert len(re.findall(rf"^\s*date -u \+%FT%TZ > {re.escape(WALL_MARKER)}\s*$",
-                          SKILL, re.MULTILINE)) == 1
-
+                          WALL, re.MULTILINE)) == 1
 
 
 # --------------------------------------------------------------------------
@@ -515,6 +519,19 @@ def test_every_calendar_is_shown_including_the_odd_ones():
     assert "shown as TEXT" in section
 
 
+def test_the_wall_names_its_relay_tools_as_the_image_registers_them():
+    """The last bare ones in the repo, and the same defect: an MCP tool carries
+    its server's key as a prefix, so `plow_run_command` names a tool the build
+    does not register and a turn that cannot find it hunts through tool_search
+    instead of calling it. Measured on the onboarding side at twenty-one API
+    calls and no reply to the owner."""
+    for hit in re.finditer(r"(?<!mcp__latch__)\bplow_[a-z_]+\b", WALL):
+        raise AssertionError(
+            f"the wall names a relay tool without its prefix: "
+            f"{WALL[hit.start():hit.start() + 30]!r}")
+    assert RELAY_TOOL in WALL, "the wall stopped naming the relay at all"
+
+
 def test_the_relay_tool_is_named_only_where_it_exists():
     """The sheet must not name a tool the build may not have.
 
@@ -562,7 +579,7 @@ def test_the_scripts_print_relay_tools_qualified_too():
     the MCP server exposes -- so this covers printed instructions only.
     """
     for rel in ("ld-shared/scripts/post_to_kiosk.py",
-                "ld-setup/scripts/mint_wall_token.py"):
+                "ld-wall-setup/scripts/mint_wall_token.py"):
         source = (ROOT / rel).read_text()
         printed = re.findall(r'"[^"\n]*\bplow_[a-z_]+[^"\n]*"', source)
         for literal in printed:
@@ -820,8 +837,9 @@ def test_the_privacy_line_does_not_claim_local_execution():
 def test_the_wall_token_handoff_is_dm_only():
     """The one place a bearer token crosses chat. In a group every participant
     keeps it in their history forever, and there is nothing to rotate short of
-    re-minting and re-shipping the Pi."""
-    wall = SKILL[SKILL.index("**No Mac (or no Latch):**"):]
+    re-minting and re-shipping the Pi. It moved with the wall; the assertion
+    moved with it."""
+    wall = WALL[WALL.index("**No Mac (or no Latch):**"):]
     handoff = " ".join(wall[:wall.index("date -u +%FT%TZ > /opt/data/ld/pi-brought-up")].split())
     assert "in the owner's own one-to-one thread and nowhere else*, and never in a group" in handoff
     assert handoff.index("one-to-one thread and nowhere else") < handoff.index("text the owner, verbatim")

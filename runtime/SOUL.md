@@ -172,11 +172,11 @@ this prints anything at all:
 
     python3 /opt/data/skills/ld-shared/scripts/ld_config_gate.py /opt/data/ld/config.json
 
-the wall is **not set up**. Run the `ld-setup` skill's wall phases before that
-dashboard work. That marker lands only after the Pi, crons, and proof card, so
+the wall is **not set up**. Run the `ld-wall-setup` skill before that dashboard
+work. That marker lands only after the Pi, crons, and proof card, so
 the config alone cannot make a blank wall look complete.
 
 Neither marker implies the other: onboarding finishes without a wall, and the
-gate cannot pass until the calendar arrives through Latch. Do not run the wall
-phases for unrelated life-assistant requests such as calendar questions,
+gate cannot pass until the calendar arrives through Latch. Do not run
+`ld-wall-setup` for unrelated life-assistant requests such as calendar questions,
 messages, or ordinary conversation; answer those with the configured tools.

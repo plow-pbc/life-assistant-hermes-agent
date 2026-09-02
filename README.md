@@ -238,8 +238,8 @@ inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
 **A turn costs you the exit code.** `write_config.py`, `mint_wall_token.py` and
 `register_crons.py` all refuse loudly with a non-zero exit, but a chat turn
-returns the *turn's* status. `ld-setup/SKILL.md` therefore holds the agent to
-`ld-dashboard`'s contract — paste each script's output verbatim with its
+returns the *turn's* status. `ld-setup/SKILL.md` and `ld-wall-setup/SKILL.md`
+therefore hold the agent to `ld-dashboard`'s contract — paste each script's output verbatim with its
 exit status, and treat the phase as unfinished until it has. `refusing`,
 `WARNING` or `PAUSED` anywhere in that output means bring-up did not finish.
 
@@ -361,7 +361,8 @@ the object or changing any other preference, then require an empty result from
 exact gog argv; manually run and approve each new 1-day, 3-day, and 7-day gather
 shape once through Latch before relying on the unattended crons. The calendar
 strip adds a fourth shape — its `/api/calendar` curl — for the same reason: its
-timer ticks with nobody there to answer an approval card. `ld-setup` Phase 4
+timer ticks with nobody there to answer an approval card. `ld-wall-setup`
+Phase 4
 approves it by running the strip once with the owner present, but only on an
 image that has the timer, and only on a run that reaches Phase 4. An instance
 already carrying `/opt/data/ld/setup-complete` skips that phase, so a standalone
@@ -402,8 +403,9 @@ ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 (scheduled by runtime/life-calendar-feed.timer, cloud image only)
 ld-dashboard/   the six cron schedules, all registered
 ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
-ld-setup/       first-run onboarding over chat (config), and the OPTIONAL wall
-                that may follow it: wall token -> Pi over Latch -> crons
+ld-setup/       first-run onboarding over chat (config)
+ld-wall-setup/  the OPTIONAL wall that may follow onboarding: wall token ->
+                Pi over Latch -> crons
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 Dockerfile      builds this agent as a standalone image -- adapter only (see below)

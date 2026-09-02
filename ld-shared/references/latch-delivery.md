@@ -16,7 +16,7 @@ Make exactly those two calls, in that order: the JSON verbatim as the
 `content` of step 1, the argv verbatim in step 2. Paths under `~/Plow`
 auto-approve on the Mac; `network=true` is required for the LAN request. The
 token never appears in the block and never should: it is in
-`~/Plow/ld/dashboard.hdr` on the Mac, written once by `ld-setup`, and
+`~/Plow/ld/dashboard.hdr` on the Mac, written once by `ld-wall-setup`, and
 `-H @…` reads it there.
 
 **The run is not done until step 2 returned 2xx.** Paste both outputs

@@ -65,9 +65,9 @@ without printing the dotenv's secrets:
 
     python3 -c 'import sys; sys.path.insert(0, "/opt/data/skills/ld-shared/scripts"); from urllib.parse import urlsplit; from runtime_env import DOTENV, dotenv_values; v = dotenv_values(DOTENV); print(v.get("DASHBOARD_PI_USER", "") + "@" + (urlsplit(v.get("DASHBOARD_ENDPOINT_URL", "")).hostname or ""))'
 
-A blank half means Phase 2 of `ld-setup` has not persisted it yet — run
-`ld-setup`'s `mint_wall_token.py` resume (`{}` on stdin) or ask the owner;
-do not improvise a login.
+A blank half means Phase 2 of `ld-wall-setup` has not persisted it yet — run
+`ld-wall-setup`'s `mint_wall_token.py` resume (`{}` on stdin) or ask the
+owner; do not improvise a login.
 
     ssh -i /opt/data/ld-dev/ssh/pi_key <pi> '<command>'
 

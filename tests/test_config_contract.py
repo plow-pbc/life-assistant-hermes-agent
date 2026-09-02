@@ -782,12 +782,15 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     setup = (ROOT / "ld-setup" / "SKILL.md").read_text()
     assert "before doing anything else" not in soul
     assert "unrelated life-assistant requests" in soul
-    # The wall's trigger stays scoped to wall work. Onboarding is the one thing
-    # that may fire on any inbound, and it ends at its own marker -- so the
-    # routing clause has to name that marker rather than the wall's.
+    # The wall's trigger stays scoped to wall work, and it is now the wall
+    # skill's own: onboarding is the one thing that may fire on any inbound, so
+    # its routing clause names the config's keys and nothing about a Pi.
     description = setup.split("---", 2)[1]
     assert "while /opt/data/ld/config.json is missing any of" in description
-    assert "when the owner asks to set up or re-set-up their wall" in description
+    assert "re-set-up their wall" not in description, (
+        "ld-setup still claims the wall's trigger")
+    wall = (ROOT / "ld-wall-setup" / "SKILL.md").read_text().split("---", 2)[1]
+    assert "when the owner asks to set up or re-set-up their wall" in wall
 
 
 def test_cross_session_claims_are_verified_and_outcomes_journaled():
@@ -819,6 +822,7 @@ def prose(*parts):
 # other signal. One row per sentence that has to survive an edit.
 SOUL = ("runtime", "SOUL.md")
 SETUP = ("ld-setup", "SKILL.md")
+WALL = ("ld-wall-setup", "SKILL.md")
 
 CONTRACTS = [
     # A first message answered "What can I help with?" by an assistant that
@@ -856,7 +860,7 @@ CONTRACTS = [
     (SOUL, "**and only in the owner's own one-to-one thread**"),
     (SOUL, "Never offer or run setup in a group, trusted or not"),
     (SETUP, "**Run this only in the owner's own one-to-one thread.**"),
-    (SETUP, "in the owner's own one-to-one thread and nowhere else*"),
+    (WALL, "in the owner's own one-to-one thread and nowhere else*"),
     # Unqualified, the silence default reached the owner's own DM, where it
     # reads as a broken assistant rather than as tact.
     (SOUL, "In a group, if none of that is true, stay silent"),

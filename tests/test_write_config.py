@@ -203,12 +203,10 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
         [sys.executable, str(script), "--patch"],
         input=json.dumps({"family": {"owner": {"name": "Ro"}}}),
         capture_output=True, text=True,
-        # The copy lives outside the repo, so the shared gate and the sibling
-        # lock helper it imports by relative path have to be reachable some
-        # other way.
+        # The copy lives outside the repo, so the shared gate and lock helper
+        # it imports by relative path have to be reachable some other way.
         env={**os.environ, "TZ": TZ,
-             "PYTHONPATH": os.pathsep.join([str(ROOT / "ld-shared" / "scripts"),
-                                            str(ROOT / "ld-setup" / "scripts")])})
+             "PYTHONPATH": str(ROOT / "ld-shared" / "scripts")})
 
     combined = proc.stdout + proc.stderr
     assert "missing required answer(s)" not in combined, (
