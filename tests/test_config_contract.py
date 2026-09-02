@@ -184,15 +184,7 @@ def test_compression_has_somewhere_to_fall_back_to():
     """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
     a cheaper-sounding id installs a fallback that can never fire -- and a naive
     probe misses it, because the implicit main-model fallback reports success on
-    the caller's behalf.
-
-    The chain entry carries its own timeout because the task-level one is
-    deliberately absent: the image floors a config-derived compression timeout
-    at 300s (#54915), so a lower value is silently raised and a value that DID
-    bite would cut off a slow summary into the deterministic context marker.
-    Without a per-entry timeout the fallback inherits the 30s auxiliary default
-    instead -- far too short to summarise the transcript it was reached for.
-    """
+    the caller's behalf."""
     compression = config()["auxiliary"]["compression"]
     chain = compression["fallback_chain"]
 
