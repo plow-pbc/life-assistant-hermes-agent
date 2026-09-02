@@ -1,9 +1,9 @@
 """calendar_feed.py — the three behaviours whose failure is silent.
 
-Here rather than beside the script, and pytest rather than the vendored counter
-style, deliberately: a `test_*.py` under ld-shared/ is executed as a SUBPROCESS
-by tests/test_vendored_suites.py, so a pytest-shaped file there would exit 0
-having run nothing and report green forever.
+Here rather than beside the script: every suite in this repo lives in tests/
+and is collected by pytest, which is what makes a failure a failure. The ones
+that used to sit beside their code counted rather than raised, and needed a
+shim to read the tally.
 
 Three tests, one per way this producer can be wrong without anyone noticing —
 a private title reaching a display the whole house reads, the kiosk bearer

@@ -27,11 +27,12 @@
 # so EVERY recipe stops working, `check-latch` included. This repo is shared by
 # every instance, so that lands on an owner's Mac whose just nobody checked.
 
-# `pytest -q tests/`, never a bare `pytest`. The vendored ld- suites under
-# ld-shared/ and test_wrappers.py are named test_*.py and define test_* functions,
-# so an unscoped run collects them -- but they report through a counter instead of
-# raising, so every one of them passes even when it fails. They run as subprocesses
-# from tests/test_vendored_suites.py instead, where the exit code is the verdict.
-[doc("Run the whole suite: this repo's contracts plus the vendored ld- suites.")]
+# `pytest -q tests/` runs everything. The three suites that came from
+# plow-pbc/life-dashboard-skills used to report through a counter and never
+# raise, so they lived beside the code they test and a shim ran each as a
+# subprocess to read its exit code; they are ordinary pytest files in tests/
+# now, and the shim is gone.
+
+[doc("Run the whole suite: this agent's contracts and the ld- producer suites.")]
 test:
     uv run --no-project --python 3.13 --with pytest==8.4.2 --with pyyaml==6.0.2 pytest -q tests/

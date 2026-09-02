@@ -27,7 +27,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-GATE = Path(__file__).resolve().parent / "ld_config_gate.py"
+import pytest
+
+GATE = Path(__file__).resolve().parent.parent / "ld-shared" / "scripts" / "ld_config_gate.py"
 
 # The ORIGINAL jq filter, verbatim from the seeds' install-time ld_config_gate()
 # and verify-time v-ld-config — the byte-for-byte spec the python gate must match.
@@ -244,36 +246,29 @@ def jq_gate(raw):
     return out if rc == 0 else "not valid JSON"  # the `|| echo "not valid JSON"` arm
 
 
-def main():
-    py_runner = [sys.executable, str(GATE)]
-    have_jq = shutil.which("jq") is not None
-    passed = failed = 0
-
-    if not have_jq:
-        print("NOTE: jq not present — running spec assertions only (Pi-side mode), "
-              "skipping the byte-for-byte jq cross-check.")
-
-    for label, raw, expected, jq_crosscheck in CASES:
-        got = run_gate(py_runner, raw)
-        if got == expected:
-            passed += 1
-            print(f"PASS - {label}: {got!r}")
-        else:
-            failed += 1
-            print(f"FAIL - {label}: expected {expected!r}, got {got!r}")
-
-        if have_jq and jq_crosscheck:
-            jq_out = jq_gate(raw)
-            if got == jq_out:
-                passed += 1
-                print(f"PASS - {label} [py==jq]: {jq_out!r}")
-            else:
-                failed += 1
-                print(f"FAIL - {label} [py==jq]: python {got!r} != jq {jq_out!r}")
-
-    print(f"\n{passed} passed, {failed} failed")
-    sys.exit(0 if failed == 0 else 1)
+PY_RUNNER = [sys.executable, str(GATE)]
+HAVE_JQ = shutil.which("jq") is not None
 
 
-if __name__ == "__main__":
-    main()
+@pytest.mark.parametrize(
+    "label,raw,expected,jq_crosscheck", CASES, ids=[c[0] for c in CASES])
+def test_the_gate_returns_the_spec_verdict(label, raw, expected, jq_crosscheck):
+    """One case per row, so a failure names the shape that broke it.
+
+    These ran inside a `main()` loop that counted rather than raised, which is
+    the whole reason a subprocess shim had to read its exit code."""
+    assert run_gate(PY_RUNNER, raw) == expected
+
+
+@pytest.mark.parametrize(
+    "label,raw,expected,jq_crosscheck",
+    [c for c in CASES if c[3]], ids=[c[0] for c in CASES if c[3]])
+def test_the_python_gate_matches_the_jq_filter_it_replaced(
+        label, raw, expected, jq_crosscheck):
+    """The gate runs ON THE PI, where jq is not provisioned -- it replaced a jq
+    filter each install step used to carry verbatim. Where jq is present, the
+    two must still agree byte for byte; where it is not, the spec assertions
+    above are the whole check and this skips rather than passing quietly."""
+    if not HAVE_JQ:
+        pytest.skip("jq is not installed -- spec assertions only, as on the Pi")
+    assert run_gate(PY_RUNNER, raw) == jq_gate(raw)
