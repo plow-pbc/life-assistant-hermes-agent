@@ -371,6 +371,27 @@ def test_calendar_names_are_named_as_untrusted():
 # Two sentences that carry an invariant
 # --------------------------------------------------------------------------
 
+def test_mid_turn_commentary_is_switched_off_in_config():
+    """The half of the fix that does not depend on the model complying.
+
+    Hermes delivers prose emitted around a tool call as its own chat message,
+    and the default is ON -- so thinking-out-loud reaches the owner as a text.
+    A prompt rule alone has been tried across five runs and leaks anyway.
+    """
+    import yaml
+    config = yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
+    assert config["display"]["interim_assistant_messages"] is False
+
+
+def test_the_framework_name_is_not_the_agents_name():
+    """Observed: "I'm Hermes." That is the software it runs on, the way a
+    person is not called Android -- and it was said on a turn where no name
+    existed to give."""
+    opener = " ".join(SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")].split())
+    assert '"Hermes" is not your name' in opener
+    assert "do not borrow the framework's" in opener
+
+
 def test_the_privacy_line_does_not_claim_local_execution():
     """The agent runs in a cloud VM; Latch is what is on the Mac, and the vault
     is Latch's. The earlier wording invited "I run on your machine, not someone

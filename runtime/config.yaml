@@ -21,6 +21,21 @@
 # thread-reply incident), and the plow-chat plugin's config.extra flag never
 # reaches the gateway session store — this gateway-level key is the control.
 group_sessions_per_user: false
+# The agent's mid-turn commentary is not for the owner. Hermes delivers any
+# prose the model emits around a tool call as its own chat message
+# (gateway/run.py, interim_assistant_callback), and the default is ON -- so
+# thinking-out-loud arrives as a text. Measured, in a first-run conversation:
+# "Good, assets exist. Let me send the opener now.", "Since there's no
+# plow_run_command tool at all here...", "Onboarding is complete. No further
+# action needed right now." Each landed seconds before the real message.
+#
+# Onboarding is the worst case for it -- the owner is meeting this assistant
+# for the first time and every one of those sentences is about machinery they
+# have no idea exists -- but nothing else on this instance wants it either.
+# SKILL.md carries the prompt-side rule as well; this is the half that does not
+# depend on the model complying.
+display:
+  interim_assistant_messages: false
 model:
   default: gpt-5.6-sol
   provider: openai-codex
