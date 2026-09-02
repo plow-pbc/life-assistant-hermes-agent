@@ -348,6 +348,58 @@ def test_the_observed_behaviours_are_marked_as_observed():
     assert "if it does not hold" in section
 
 
+def test_the_relay_tool_is_named_only_where_it_exists():
+    """The sheet must not name a tool the build may not have.
+
+    Whether a relay tool is registered is a property of the image -- config.yaml
+    either holds the server or it does not -- and a model told to call one that
+    is absent does not conclude "not connected". It searches, searches again
+    under another name, and narrates the hunt. All three reached a real owner in
+    one turn: "There's no Latch-specific tool search hit for ... let me check if
+    those exist under a different name", a `clarify` call, and the sheet's own
+    rule quoted back at her.
+
+    So the turn-top probe is a terminal command, which every build has, and the
+    relay's tool is named only after it has answered `configured`.
+    """
+    configured = ONBOARDING.index("**`configured` means")
+    assert "latch_status.py" in ONBOARDING[:configured], "the probe must come first"
+    for hit in re.finditer(r"plow_run_command|plow_write_file", ONBOARDING):
+        assert hit.start() > configured, (
+            f"onboarding names a relay tool at {hit.start()}, before the branch "
+            "that has established it exists")
+    # And the unconfigured branch stops there: no call, no lookup, no mention.
+    unconfigured = " ".join(
+        ONBOARDING[ONBOARDING.index("**`unconfigured` ends it.**"):configured].split())
+    assert "Do not go looking for a tool" in unconfigured
+    assert "make no further call" in unconfigured
+
+
+def test_the_status_probe_answers_without_a_relay(tmp_path):
+    """The script is what makes the branch decidable, so it has to answer on a
+    box with no relay at all rather than raising -- that is the whole case."""
+    ls = load("latch_status", "ld-setup/scripts/latch_status.py")
+    assert ls.relay_configured({"mcp_servers": {"plow": {"url": "https://x.test"}}})
+    assert ls.relay_configured({"mcp_servers": {"latch": {"url": "https://x.test"}}})
+    # Every shape that means "no tool will be registered".
+    for config in ({"mcp_servers": {}}, {"mcp_servers": None}, {}, {"mcp_servers": "latch"},
+                   {"mcp_servers": {"plow": None}}, {"mcp_servers": {"other": {"url": "x"}}}):
+        assert not ls.relay_configured(config), config
+    # A missing config.yaml is "unconfigured", not a traceback: this runs on the
+    # first turn of a brand new agent.
+    assert ls.config_path({"HERMES_HOME": str(tmp_path)}) == str(tmp_path / "config.yaml")
+    assert ls.main(env={"HERMES_HOME": str(tmp_path)}) == 0
+
+
+def test_both_relay_key_names_are_accepted():
+    """The cloud image and this repo have disagreed about whether the server is
+    called `plow` or `latch`. A status script that answered "unconfigured"
+    because of the rename would take the calendar step out of every run with
+    nothing in the log to say why."""
+    ls = load("latch_status", "ld-setup/scripts/latch_status.py")
+    assert set(ls.RELAY_KEYS) == {"plow", "latch"}
+
+
 def test_discovery_is_one_argv_and_never_auth_list():
     """Latch allows Gmail and Calendar subcommands and nothing else, measured
     against a real relay: `gog auth list` is refused under every binary name,

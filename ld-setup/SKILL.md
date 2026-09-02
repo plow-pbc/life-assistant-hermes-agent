@@ -117,24 +117,37 @@ IS the unanswered question.
 
 **And you find out where Latch stands by looking, not by asking.** At the top
 of every one of these turns — while onboarding is unfinished, or finished but
-with no calendars in the config yet — make the one read-only call §5 already
-needs:
+with no calendars in the config yet — ask the status script first. It is a
+terminal command, so it is there in every deployment, whatever tools this build
+happens to register:
+
+    python3 /opt/data/skills/ld-setup/scripts/latch_status.py
+
+**`unconfigured` ends it.** This deployment has no relay to a Mac at all — not
+a Mac that is asleep, a build with nothing to reach one. Treat it exactly as
+not connected, make no further call, and never say a word about it. **Do not
+go looking for a tool.** There is none to find, and searching for one is how a
+turn ends up narrating its own plumbing: *"There's no Latch-specific tool
+search hit for the relay's tools — let me check if those exist under a
+different name"* went to a real owner, followed by a `clarify` call and the
+rule above quoted back at her. The script answered the question. Believe it.
+
+**`configured` means, and only then, make the one read-only call §5 needs:**
 
     plow_run_command(argv=["gog", "calendar", "calendars", "--json", "--results-only"])
 
-Three outcomes, and each changes what this turn says:
+Two outcomes from there:
 
 | what comes back | what it means | what you do |
 |---|---|---|
-| no such tool — there is no `plow` server at all | this deployment cannot reach a Mac | treat it exactly as not connected, and never say a word about it |
-| a relay error — "… is not connected", a 503 | Latch is not running on their Mac yet | the §2 pitch and the link stand |
+| anything that is not a listing — "… is not connected", a 503, a refusal, an error of any kind | Latch is not running on their Mac yet | the §2 pitch and the link stand, and the failure is never mentioned |
 | a calendar listing | Latch is up | skip the link, go to §5 |
 
 **Never ask "have you installed it yet?"** You can see the answer, and asking
 puts the owner in the position of reporting on homework. Nor do you ever put
-the failure itself in front of them: "… is not connected", a 503, a missing
-tool and a stack trace are all the same sentence to a person who did not ask
-for any of them, and the sentence is not about them. Say nothing, and carry on
+the failure itself in front of them: "… is not connected", a 503, a script's
+one-word answer and a stack trace are all the same sentence to a person who did
+not ask for any of them, and the sentence is not about them. Say nothing, and carry on
 with what this turn is for.
 
 **One nudge, later, at most.** The link goes out once, in §2, where it belongs.
