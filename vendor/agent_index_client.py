@@ -1,4 +1,4 @@
-# VENDORED from plow-pbc/agent-index-client @ c8243915d49b0fbb20665f160abf7b7019187406
+# VENDORED from plow-pbc/agent-index-client @ a014b64a06efcfa3dd2e8236c2807b8ae893cc3f
 #   path: standalone/agent_index_client.py   owner: eng-550
 # Copied, not fetched: that repo is PRIVATE, so a build-time curl 404s.
 # To update: copy the file again from that repo and bump the sha above.
@@ -31,6 +31,12 @@ API = os.environ.get("AGENT_INDEX_API", "https://agent-index-server.vercel.app")
 TOKEN_PATH = os.path.expanduser("~/.agent-index/token")
 KEYS = ("input", "output", "cache_read", "cache_write")
 
+# Collectors append here when a read genuinely FAILED, as opposed to finding
+# nothing. Without the distinction a broken agentsview or a SQLite error is
+# reported as an idle agent, which is the one thing this client must never do:
+# it publishes a number people compare agents on.
+FAILURES = []
+
 
 def _post(url, body, headers):
     req = urllib.request.Request(url, data=json.dumps(body).encode(),
@@ -46,8 +52,13 @@ def _post(url, body, headers):
 
 def login():
     """GitHub device flow. Works with no browser on this machine and no secret."""
+    # No scope. The server only reads the `login` field of GET /user, which is
+    # public profile data and needs no scope at all — verified against a token
+    # holding gist/read:org/repo and NOT read:user, which still returned it.
+    # This token is forwarded on every report, so it should grant as close to
+    # nothing as GitHub allows.
     _, d = _post("https://github.com/login/device/code",
-                 {"client_id": CLIENT_ID, "scope": "read:user"}, {})
+                 {"client_id": CLIENT_ID, "scope": ""}, {})
     if "device_code" not in d:
         sys.exit(f"github refused the device request: {d}")
     print(f"\n  Open {d['verification_uri']} and enter:  {d['user_code']}\n")
@@ -84,12 +95,16 @@ def from_agentsview(days):
                             "/opt/homebrew/bin/agentsview", "/usr/local/bin/agentsview")
                 if os.access(p, os.X_OK)), None)
     if not exe:
+        print("  agentsview not installed — skipping that collector")
         return {}
     try:
         raw = subprocess.run([exe, "usage", "daily", "--json"], capture_output=True,
                              text=True, timeout=120).stdout
         rows = json.loads(raw)
-    except Exception:
+    except Exception as e:
+        # Say it. Swallowing this made a broken agentsview indistinguishable
+        # from an agent that did nothing, and the index would show it idle.
+        FAILURES.append(f"agentsview: {type(e).__name__}: {e}")
         return {}
     rows = rows if isinstance(rows, list) else rows.get("daily") or rows.get("data") or []
     out = {}
@@ -136,7 +151,8 @@ def from_hermes(days, home=None):
         for d, m, i, o, cr, cw in c.execute(q, (f"-{days} days",)):
             if d and (i or o or cr or cw):
                 out[d][m] = {"input": i, "output": o, "cache_read": cr, "cache_write": cw}
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        FAILURES.append(f"hermes store {db}: {e}")
         return {}
     return dict(out)
 
@@ -206,8 +222,14 @@ def main(argv):
     days = int(argv[argv.index("--days") + 1]) if "--days" in argv else 28
     payload = {"days": merge(from_agentsview(days), from_hermes(days))}
     total = sum(m[k] for d in payload["days"] for m in d["models"] for k in KEYS)
+    for f in FAILURES:
+        print(f"  COLLECTOR FAILED — {f}")
     print(f"  agent={agent} days={len(payload['days'])} tokens={total:,}")
     if not payload["days"]:
+        if FAILURES:
+            # Reporting nothing here would publish "idle" for an agent we simply
+            # failed to read. Exit non-zero so a supervisor notices.
+            sys.exit("  every collector failed and nothing was collected — NOT reporting")
         print("  nothing collected — check HERMES_HOME and that agentsview is installed")
     if "--dry-run" in argv:
         return print(json.dumps(payload, indent=1)[:2000])

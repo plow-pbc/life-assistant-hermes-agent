@@ -207,6 +207,13 @@ mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
+
+# Only for an instance that reports usage (AGENT_INDEX=1 in its
+# compose.override.yml — see Usage reporting). One-time, per instance: the
+# token lands in that instance's own home, so a rebuild does not repeat it.
+docker exec -it hermes-<agent> /command/s6-setuidgid hermes \
+  env HOME=/opt/data /opt/hermes/.venv/bin/python3 \
+  /usr/local/bin/agent-index-client --login
 just check-latch <agent>             # can this container reach that owner's Mac?
 
 # Then the owner replies to the agent's 👋 from their phone. That reply IS the
@@ -481,6 +488,61 @@ BuildKit resolves a `FROM` with `HEAD` — so a clean `docker build .` fails at
 metadata resolution until the digest is in the local store. `docker pull` takes
 the `GET` path and puts it there. The tag-only form has no such problem, which
 is the trade for the supply-chain guarantee.
+
+## Usage reporting
+
+Each instance can report its own token usage to the Agent Index. It is **off
+unless asked for**: `agent-mgr` passes `AGENT_INDEX=0` fleet-wide, and the
+service exits without reporting unless it is truthy.
+
+Delivered by mount, not baked. `agent-mgr` runs the pinned upstream image and
+never builds this repo's `Dockerfile`, so a `COPY` there reaches the standalone
+image above and no fleet agent — `compose.override.yml` mounts the client and
+its s6 service the same way the skills arrive. s6-overlay compiles
+`/etc/s6-overlay/s6-rc.d` at boot, so a mounted service is indistinguishable
+from a baked one.
+
+The client is `vendor/agent_index_client.py`, vendored from
+`plow-pbc/agent-index-client` at the sha in its header. That repo is private,
+so it is copied rather than fetched at build time.
+
+To turn it on for an instance, add to its `compose.override.yml`:
+
+```yaml
+services:
+  hermes:
+    environment:
+      - AGENT_INDEX=1
+```
+
+`AGENT_ID` needs no setting — `agent-mgr` supplies it from the registry name,
+so two instances of this repo report as two agents rather than one.
+
+Then authorise it **once**, per instance. The token is written to the
+instance's own home (`/opt/data/.agent-index/token`, mode 0600), so it is not
+in the image and survives a rebuild:
+
+```sh
+docker exec -it <container> /command/s6-setuidgid hermes \
+  env HOME=/opt/data /opt/hermes/.venv/bin/python3 \
+  /usr/local/bin/agent-index-client --login
+```
+
+It prints a GitHub device URL and code. Until that is done the reporter runs
+and reports nothing.
+
+After that it reports hourly on its own. A run that collects nothing says so
+rather than publishing a zero it never measured, so an agent reading as idle
+on the index is idle rather than broken:
+
+```
+COLLECTOR FAILED — hermes store /opt/data/state.db: file is not a database
+every collector failed and nothing was collected — NOT reporting
+```
+
+A failing collector does not restart the service. It is a data problem, not a
+liveness one, and flapping the slot because `agentsview` was briefly busy would
+cost more than the missed hour.
 
 ## Open
 

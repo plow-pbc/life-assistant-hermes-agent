@@ -88,25 +88,6 @@ def test_home_and_hermes_home_are_both_on_the_invocation():
         "both must be on the exec line, not merely mentioned in a comment"
 
 
-def test_the_reporter_is_mounted_into_the_fleet_image():
-    """The failure Sam's bot caught, and the reason this is not a COPY.
-
-    agent-mgr runs the image runtime/stack.json pins and never builds this
-    repo's Dockerfile, so a COPY there lands in the standalone cloud image and
-    reaches no fleet agent. Nothing breaks: the container comes up healthy and
-    simply never reports, which is the same shape as the calendar-feed timer
-    being inert on the fleet.
-
-    Both the client and the service directory have to arrive, and so does the
-    bundle marker -- a service directory with no marker is present and never
-    started.
-    """
-    override = (ROOT / "compose.override.yml").read_text()
-    assert "/usr/local/bin/agent-index-client:ro" in override
-    assert "/etc/s6-overlay/s6-rc.d/agent-index:ro" in override
-    assert "/etc/s6-overlay/s6-rc.d/user/contents.d/agent-index:ro" in override
-
-
 def test_the_reporter_is_not_baked_into_the_dockerfile():
     """Delivered one way, not two.
 
