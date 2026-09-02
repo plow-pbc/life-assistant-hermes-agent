@@ -133,9 +133,26 @@ def write_private(path, text):
         f.write(text)
 
 
-def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
+def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR, argv=None):
+    # --input PATH, and nothing else: the answers are the owner's own words, so
+    # the turn stages them with its file tool rather than composing a heredoc
+    # around them. Same rule as the onboarding drafts, same reason.
+    # [] rather than argparse's usual sys.argv fallback: main() is called as a
+    # library by the tests, and would otherwise parse pytest's own argv.
+    argv = [] if argv is None else argv
+    staged = None
+    if argv:
+        if argv[0] != "--input" or len(argv) != 2:
+            raise SystemExit("usage: mint_wall_token.py [--input <staged.json>]")
+        staged = argv[1]
     try:
-        answers = json.load(stdin or sys.stdin)
+        if staged is not None:
+            with open(staged, encoding="utf-8") as handle:
+                answers = json.load(handle)
+        else:
+            answers = json.load(stdin or sys.stdin)
+    except OSError as exc:
+        raise SystemExit(f"refusing: could not read {staged}: {exc}") from None
     except json.JSONDecodeError as exc:
         raise SystemExit(f"refusing: stdin is not one JSON object: {exc}") from None
     unknown = set(answers) - {"pi_address", "pi_user", "ical_url"}
@@ -254,4 +271,5 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # sys.argv[1:] explicitly, never argparse's implicit fallback -- see main().
+    sys.exit(main(argv=sys.argv[1:]))

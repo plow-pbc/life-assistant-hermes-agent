@@ -2,9 +2,15 @@
 """write_config.py -- the ld-setup interview's answers, written as /opt/data/ld/config.json.
 
 TWO modes, one file, because they must not disagree about what a valid config
-is. Both read ONE JSON object on stdin (the agent composes it from the owner's
-replies; nothing reaches argv) and both write mode 600, because family.owner
-and the calendar ids are a person's data. Both judge the result by the shared
+is. Both read ONE JSON object -- from `--input PATH` where the turn staged it
+with its file tool, or from stdin -- and both write mode 600, because
+family.owner and the calendar ids are a person's data.
+
+Nothing the owner said ever reaches argv or a shell. Their name, their city and
+their calendars' display names are text a person wrote (and, for a calendar
+name, text a STRANGER wrote), so a heredoc composed around them is a command
+built out of someone else's input. The turn writes the JSON with its file tool
+and passes the path. Both judge the result by the shared
 gate -- ld_config_gate.gate() imported, not restated -- before writing, and
 differ only in what they excuse.
 
@@ -315,13 +321,24 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         "--draft", action="store_true",
         help="like --patch, but the config need not exist yet and the gate is "
              "reported rather than enforced (onboarding, answer by answer)")
+    parser.add_argument(
+        "--input", metavar="PATH",
+        help="read the partial config from PATH instead of stdin. The onboarding "
+             "turn stages it there with its FILE tool, because the values are the "
+             "owner's own words and a heredoc puts them in a shell")
     args = parser.parse_args(argv or [])
     if args.patch and args.draft:
         raise SystemExit("refusing to write: pass --patch or --draft, not both")
     env = os.environ if env is None else env
     try:
-        payload = json.load(sys.stdin if stdin is None else stdin,
-                            parse_constant=_reject_constant)
+        if args.input:
+            with open(args.input, encoding="utf-8") as staged:
+                payload = json.load(staged, parse_constant=_reject_constant)
+        else:
+            payload = json.load(sys.stdin if stdin is None else stdin,
+                                parse_constant=_reject_constant)
+    except OSError as exc:
+        raise SystemExit(f"refusing to write: could not read {args.input}: {exc}") from None
     except ValueError as exc:
         raise SystemExit(f"refusing to write: {exc}") from None
     if args.patch or args.draft:

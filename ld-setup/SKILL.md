@@ -231,101 +231,64 @@ leaves their name on file and the introduction never sent. Writing last
 satisfies the second and breaks the first. So neither — and the way out is not
 a schedule of turns but one rule about when a hold is safe, below.
 
-## The algorithm — every owner turn, the same five steps
+## The algorithm — four steps, and the decision is not yours
 
-There is no turn schedule and no table of shapes to match. Every turn of this
-conversation, first or fiftieth, resumed or fresh, runs THESE FIVE STEPS in
-this order. A turn that goes looking for its own special case finds none, which
-is the point: every enumerated list of turn shapes this sheet has carried grew
-a hole, and each hole reached an owner as `❓ placeholder` — a blocking menu —
-because a turn that cannot find its own shape improvises one.
+Every owner turn, first or fiftieth, resumed or fresh, runs these four steps.
+There is no table of turn shapes and no rule here to interpret: what this turn
+asks, what it writes and whether it introduces you are decided by a script.
 
-**1 · Read the config.** `/opt/data/ld/config.json`, once, at the top. It is
-the only record of how far this got; there is no marker and no second source.
-The four keys, in order: `family.owner.name`, `weather.location`,
-`sports.followed`, `calendar.sources`. Present-but-empty is answered.
+**1 · Stage what this message gave you**, with your FILE tool, at
+`/opt/data/ld/.turn.json` — never a heredoc, never argv:
 
-**2 · Run the Latch status probe.** `latch_status.py`, as described above.
-`unconfigured` means not connected: no tool lookup, nothing said about it, and
-the pitch and link still stand. `configured` means the listing call is
-available to step 5.
+    {"answers": {"name": "…", "city": "…, …", "teams": […], "calendars": […]},
+     "listing": false}
 
-**3 · Take what this message gave you.** Their name, their city, their teams,
-their calendar picks — whatever actually arrived, judged from what they typed
-and nothing else. A roster label is not a name. Nothing arrives on a first
-turn, so nothing is collected and nothing is written.
+Only what THIS message actually carried. Omit a key you were not given; a
+roster label is not a name. `listing` is true only when a calendar listing came
+back this turn.
 
-**4 · Write everything you hold that is not yet in the config — NOW, before
-the message.** One draft, carrying everything held, never just the newest.
+**2 · Ask what the turn is:**
 
-There is exactly ONE deferral, and it is not "whenever the turn ends on a
-question". It is the turn that has just learned their name **and** is sending
-the introduction: that turn holds the name back and the next turn writes it,
-because the introduction is one-time and a crash between the write and the
-message would skip it for good. Nothing else is ever held: the turn their city
-lands on writes the name **and** the city and asks about teams; the turn their
-teams land on writes the teams.
+    python3 /opt/data/skills/ld-setup/scripts/onboarding_state.py --input /opt/data/ld/.turn.json
 
-That one deferral lapses when the turn asks nothing, because nothing is coming
-back to carry it. Then the name is written now, in this turn, alongside the
-introduction and the close.
+It prints one object: `missing` (ordered), `ask` (`name` / `city` / `teams` /
+`calendars` / `null`), `write_now`, `defer`, `intro_due`, `latch`.
 
-**5 · Compose the one message**, in this shape:
+**3 · Do exactly what it said.** If `write_now` is non-empty, stage those
+answers as a partial config with your file tool at `/opt/data/ld/.draft.json`
+and draft it:
 
-- **acknowledge what just landed** — their city back to them, their teams in
-  their own words, their name if they have just given it;
-- **then the introduction, if their name was learned THIS turn** — the
-  introduction, the privacy line, the previews, and the pitch and link. A name
-  already in the config means it has been sent: nothing records whether it
-  actually was, deliberately, because a second record of progress is the bug
-  this file exists without. Re-introducing yourself to someone who has been
-  talking to you for a week is the worse of the two errors, and it is the one
-  an owner notices. Where the probe said `configured`, the pitch-and-link
-  paragraph is the only part dropped — the rest of the introduction stands;
-- **then ask the FIRST key still missing**, in order: name → city → teams →
-  calendars. Calendars only where the probe said `configured`: list them and
-  ask which to track, and write the picks, the account and the lookaheads on
-  the turn that answers. **If no key is missing, ask nothing** — say they are
-  set and offer the wall.
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
 
-Nothing to ask is never nothing to say. A turn that reaches step 5 with no
-question owed still owes a message, and the message is the close.
+Anything in `defer` is carried in the conversation and staged by a later turn.
+An empty `write_now` means no draft at all this turn.
 
-**Examples, not authorities** — every one of these is just the five steps run
-against a different config. Where an example and the algorithm disagree, the
-algorithm is right:
+**4 · Compose the one message**: acknowledge what just landed, then the
+introduction if `intro_due`, then the question `ask` names — or, when `ask` is
+`null`, the close and the wall offer. The sections below are the copy for each
+of those pieces.
 
-- nothing stored, first message → nothing collected, nothing written, ask the
-  name;
-- name just given, nothing stored → introduce yourself, ask the city, and hold
-  the name (the one deferral);
-- name just given, city and teams already stored, Latch unconfigured → nothing
-  left to ask, so the deferral lapses: write the name now, introduce yourself,
-  and close;
-- city just given → write the name and the city together, ask about teams;
-- teams just given, calendars still missing and Latch unconfigured → write the
-  teams, and close;
-- name already in the config, city missing → the introduction has been sent;
-  just ask the city.
+`ask: null` never means "say nothing". A turn that reaches step 4 with no
+question owed still owes a message, and the message is the close. Where the
+sheet left that void, an owner received `❓ dummy`.
 
-**What a crash between step 4 and step 5 costs.** A repeated question: the
-answer is on file and the message that would have asked for the next thing
-never went, so the next turn asks it again and the owner answers in four
-seconds. The exception is the terminal turn, where the deferral lapsed and the
-introduction can be skipped once — still the right trade, because the
-alternative there is not a window but a name that is never written at all.
+**Why a script.** The same decision written as prose grew a hole every time it
+was extended, and each hole reached an owner as a blocking `❓`. The rules it
+applies are in `onboarding_state.py`, with the reason each exists, and are not
+restated here to drift from.
 
-Never write ahead of the answer. A turn with nothing in hand writes nothing:
-a first turn has been told nothing yet, so it makes no draft and invents no
-name. Observed, from wording that only said "draft first": a fabricated name
-written to the config, then retracted to the owner across two messages.
+**Nothing the owner said ever reaches a shell** — their name, their city, and
+above all a calendar's display name, which is text a stranger wrote. Everything
+is staged as JSON by your file tool and passed by path.
 
 **Every answer reaches the config a step later at most**, one draft at a
 time, never as one blob at the end:
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
+Stage this with your file tool at `/opt/data/ld/.draft.json`:
+
     {"family": {"owner": {"name": "Mary"}}}
-    JSON
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
 
 `--draft`, not `--patch`. Stdin is a PARTIAL CONFIG in the shape of
 `/opt/data/skills/ld-shared/references/config.example.json`, deep-merged onto
@@ -500,10 +463,12 @@ Step 4's draft carries every answer still unwritten — the name, carried since
 the introduction, and the answer that just arrived. One tool call, then the
 message.
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
+Stage this with your file tool at `/opt/data/ld/.draft.json`:
+
     {"family": {"owner": {"name": "<from §2>"}, "timezone": "<$TZ>"},
-     "weather": {"location": "<their city>, <region>"}}
-    JSON
+    "weather": {"location": "<their city>, <region>"}}
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
 
 Coordinates are left out on purpose — the script geocodes `weather.location`
 for you, and a lat/lon supplied from memory is the one patch that fails
@@ -703,45 +668,58 @@ never a display name, never `primary`, never one you improved.
 **When the script decided the account** — it came back with an address rather
 than `null`:
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
+Stage this with your file tool at `/opt/data/ld/.draft.json`:
+
     {"calendar": {"account": "<account from the script>",
-                  "sources": [{"calendar_id": "<id from the script>"},
-                              {"calendar_id": "<id from the script>"}]},
-     "calendar_nudge": {"owner_identities": ["<account from the script>"],
-                        "lookahead_virtual_minutes": 30,
-                        "lookahead_in_person_minutes": 60}}
-    JSON
+    "sources": [{"calendar_id": "<id from the script>"},
+    {"calendar_id": "<id from the script>"}]},
+    "calendar_nudge": {"owner_identities": ["<account from the script>", "<every candidate>"],
+    "lookahead_virtual_minutes": 30,
+    "lookahead_in_person_minutes": 60}}
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
 
 **When it came back `null` and the owner answered** — the account is THEIRS,
 not the script's, and it is the only value in this whole conversation that
 comes from an owner's answer about a calendar. Both places take it:
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
+Stage this with your file tool at `/opt/data/ld/.draft.json`:
+
     {"calendar": {"account": "<the address the owner said is theirs>",
-                  "sources": [{"calendar_id": "<id from the script>"},
-                              {"calendar_id": "<id from the script>"}]},
-     "calendar_nudge": {"owner_identities": ["<the address the owner said is theirs>"],
-                        "lookahead_virtual_minutes": 30,
-                        "lookahead_in_person_minutes": 60}}
-    JSON
+    "sources": [{"calendar_id": "<id from the script>"},
+    {"calendar_id": "<id from the script>"}]},
+    "calendar_nudge": {"owner_identities": ["<the address the owner said is theirs>", "<every candidate>"],
+    "lookahead_virtual_minutes": 30,
+    "lookahead_in_person_minutes": 60}}
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
 
 Where they picked one of `candidates`, it is that string, unchanged. Where
 there were none to offer and they typed the address, it is what they typed —
 which is one of the two things an owner may ever say about a calendar here,
-and it is an account, never an id. `owner_identities` takes the same value as
-`account` in both templates: they are the same identity, and a config where
-they disagree nudges on nobody.
+and it is an account, never an id. `owner_identities` is not that single value
+but the union described below — the account together with every candidate the
+script returned.
 
 If an earlier answer is still unwritten when this draft goes — an owner who
 connected Latch before they gave their city — it rides along in the same
 object. Step 4 writes everything held, never just the newest.
 
-**Ids only — no `name` key, and no display string anywhere in that heredoc.**
+**Ids only — no `name` key, and no display string anywhere in that file.**
 A calendar's display name is written by whoever owns it, so it is text a
-stranger controls, and this heredoc is shell. A calendar called
+stranger controls. A calendar called
 `"; rm -rf ~; echo "` is a string to show the owner in one sentence and never
-to interpolate into a command or persist in their config. The producers read
+to persist in their config — and it is why nothing here is ever composed into a
+command. The producers read
 `calendar_id` and nothing else, and the gate accepts a source without a name.
+
+**`owner_identities` is the UNION**, deduplicated: every address in the
+script's `candidates` plus the account that was resolved or that the owner
+named. `calendar.account` stays one address — it is the identity gog
+authenticates as — but the nudge asks a different question, "was the owner in
+this meeting?", and an owner whose calendars carry two of their addresses is
+absent from every event read through the other one. That reads as a nudge that
+works and never fires, which is the failure nobody reports.
 
 The two `lookahead_` values are written here, with those exact numbers, and
 they are not a detail. They are the nudge's own defaults from
@@ -796,23 +774,26 @@ asked.
 ## Phase 2 — The wall's token
 
 Idempotent, so there is no dotenv to inspect by hand — always run it. Its
-answers ride stdin as ONE JSON object through a quoted heredoc, never argv
-and never interpolated into shell text — the same rule onboarding's own
-drafts follow, because
-an embedded quote in an owner's answer would otherwise execute before the
-script's validation (which holds `pi_address` and `pi_user` to the safe
-charset Phase 3's `ssh` argv depends on) could see it:
+answers are staged as ONE JSON object with your file tool and passed by path,
+never argv and never composed into shell text — the same rule onboarding's own
+drafts follow, because an embedded quote in an owner's answer would otherwise
+execute before the script's validation (which holds `pi_address` and `pi_user`
+to the safe charset Phase 3's `ssh` argv depends on) could see it.
 
-    /opt/data/skills/ld-setup/scripts/mint_wall_token.py <<'EOF'
+Stage this at `/opt/data/ld/.wall.json`:
+
     {"pi_address": "...", "pi_user": "...", "ical_url": "..."}
-    EOF
+
+then:
+
+    /opt/data/skills/ld-setup/scripts/mint_wall_token.py --input /opt/data/ld/.wall.json
 
 Leave the `ical_url` key out entirely when the owner gave no feed *this run*
 — an absent key keeps whatever feed `pi.env` already carries, and only a
 first run with no `pi.env` yet writes it blank (the viewer shows an empty
 calendar tile until a later re-run supplies one).
 
-Every key may be left out on a resume — `{}` is a valid stdin object: the
+Every key may be left out on a resume — `{}` is a valid staged object: the
 script recovers `pi_address` from the dotenv's `DASHBOARD_ENDPOINT_URL` and
 `pi_user` from `DASHBOARD_PI_USER` (which it persists there). When it
 refuses for a missing answer, that answer is one only the owner can supply —
@@ -1060,9 +1041,11 @@ change to refuse rather than record. Stdin is a PARTIAL CONFIG — the shape
 `/opt/data/skills/ld-shared/references/config.example.json` describes, carrying
 only what changes — never the answer set:
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --patch <<'JSON'
+Stage this with your file tool at `/opt/data/ld/.draft.json`:
+
     {"weather": {"location": "Denver"}}
-    JSON
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --patch --input /opt/data/ld/.draft.json
 
 It merges onto the live file key by key, re-runs the shared gate on the
 **merged** result, and writes mode 600. It does **not** touch the crons: Phase 4

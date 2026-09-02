@@ -93,53 +93,41 @@ def test_the_account_is_derived_or_left_for_the_owner(label, flagged, owned_by, 
     assert cl.derive_account(flagged, owned_by) == expected
 
 
-def test_a_shared_calendar_never_votes_for_the_account():
-    """A calendar shared into the account carries THEIR address in dataOwner.
-    Counting it would make a stranger a candidate for this owner's config."""
-    result = cl.normalize([
-        {"id": "mary@example.test", "summary": "Mine", "accessRole": "owner",
-         "dataOwner": "mary@example.test"},
-        {"id": "team@group.calendar.google.test", "summary": "Team",
-         "accessRole": "reader", "dataOwner": "someone@else.test"},
-    ])
-    assert result["account"] == "mary@example.test"
-
-
-def test_no_signal_at_all_leaves_the_account_null():
-    """The listing is still returned -- the owner can be asked which account is
-    theirs, which needs the calendars in hand."""
-    result = cl.normalize([{"id": "a@example.test", "summary": "A", "accessRole": "reader"},
-                           {"id": "b@example.test", "summary": "B", "accessRole": "reader"}])
-    assert result["account"] is None
-    assert [c["id"] for c in result["calendars"]] == ["a@example.test", "b@example.test"]
-    assert result["candidates"] == [], "no owner-role row voted, so there is nothing to offer"
-
-
-def test_a_null_account_hands_back_the_addresses_to_ask_about():
-    """"Ask the owner" is only answerable if the question has the candidates in
-    it. Deriving them a second time means the model re-parsing the raw listing,
-    which is the parse this script exists to replace -- so they come back with
-    the account that could not be decided, in a stable order.
-    """
-    result = cl.normalize([
-        {"id": "a@example.test", "summary": "Mine", "accessRole": "owner",
-         "dataOwner": "b@example.test"},
-        {"id": "c@example.test", "summary": "Also mine", "accessRole": "owner",
-         "dataOwner": "a@example.test"},
-        # A share does not vote here either: it is not an address of theirs.
-        {"id": "team@group.calendar.google.test", "summary": "Team",
-         "accessRole": "reader", "dataOwner": "someone@else.test"},
-    ])
-    assert result["account"] is None, "two owner-role addresses decide nothing"
-    assert result["candidates"] == ["a@example.test", "b@example.test"]
-
-
-def test_a_decided_account_is_still_one_of_the_candidates():
-    """The field is not a null-only branch: it is what the owner-role rows
-    said, whether or not that settled the account."""
-    result = cl.normalize(LISTING)
-    assert result["account"] == "mary@example.test"
-    assert result["candidates"] == ["mary@example.test"]
+@pytest.mark.parametrize("label,entries,account,candidates", [
+    # A calendar shared into the account carries THEIR address in dataOwner.
+    # Counting it would make a stranger a candidate for this owner's config.
+    ("a share never votes",
+     [{"id": "mary@example.test", "summary": "Mine", "accessRole": "owner",
+       "dataOwner": "mary@example.test"},
+      {"id": "team@group.calendar.google.test", "summary": "Team",
+       "accessRole": "reader", "dataOwner": "someone@else.test"}],
+     "mary@example.test", ["mary@example.test"]),
+    # Nothing decides it, and the listing still comes back so the owner can be
+    # asked -- with the addresses to choose between, not an open question.
+    ("no signal at all",
+     [{"id": "a@example.test", "summary": "A", "accessRole": "reader"},
+      {"id": "b@example.test", "summary": "B", "accessRole": "reader"}],
+     None, []),
+    ("two owner-role addresses decide nothing",
+     [{"id": "a@example.test", "summary": "Mine", "accessRole": "owner",
+       "dataOwner": "b@example.test"},
+      {"id": "c@example.test", "summary": "Also mine", "accessRole": "owner",
+       "dataOwner": "a@example.test"},
+      {"id": "team@group.calendar.google.test", "summary": "Team",
+       "accessRole": "reader", "dataOwner": "someone@else.test"}],
+     None, ["a@example.test", "b@example.test"]),
+    # The flag decides it, and candidates still report what the rows said.
+    ("a flagged primary", LISTING, "mary@example.test", ["mary@example.test"]),
+])
+def test_the_account_and_its_candidates(label, entries, account, candidates):
+    """An account guessed wrong is not a visible failure: it is written to
+    calendar.account, every producer authenticates as that identity, and the
+    reads come back thin for reasons nobody traces back here. So it is derived
+    or left null -- and either way the addresses that voted come back, because
+    "ask the owner" is only answerable with them in the question."""
+    result = cl.normalize(entries)
+    assert result["account"] == account
+    assert result["candidates"] == candidates
 
 
 @pytest.mark.parametrize("label,entries", [

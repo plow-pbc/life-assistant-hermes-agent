@@ -340,78 +340,185 @@ def test_the_wall_marker_stays_the_walls_own():
 
 
 # --------------------------------------------------------------------------
-# The algorithm: one procedure, stated once, that every turn runs
+# The state seam: the turn's shape, decided by a script rather than read
 # --------------------------------------------------------------------------
 
-ALGORITHM = ONBOARDING[ONBOARDING.index("## The algorithm"):ONBOARDING.index("### 1 ·")]
-STEPS = ["**1 · Read the config.**", "**2 · Run the Latch status probe.**",
-         "**3 · Take what this message gave you.**", "**4 · Write everything you hold",
-         "**5 · Compose the one message**"]
+state = load("onboarding_state", "ld-setup/scripts/onboarding_state.py")
+
+NAME = {"family": {"owner": {"name": "Mary"}}}
+CITY = {"weather": {"location": "Mountain View, California"}}
+TEAMS = {"sports": {"followed": []}}
+CALS = {"calendar": {"sources": [{"calendar_id": "a@b.test"}]}}
 
 
-def test_the_algorithm_states_its_five_steps_exactly_once():
-    """One procedure, in one place, or it is an enumeration again.
+def merged(*parts):
+    out = {}
+    for part in parts:
+        for key, value in part.items():
+            out.setdefault(key, {}).update(value)
+    return out
 
-    Every list of per-turn shapes this sheet has carried grew a hole -- a step
-    with no row, a resume between two rows, an exit the row did not describe --
-    and each hole reached an owner as a blocking `❓`. A second statement of a
-    step is the same failure in slow motion: two copies drift, and the turn
-    follows whichever it read first.
+
+@pytest.mark.parametrize(
+    "label,config,answers,latch,ask,write_now,defer,intro_due", [
+    # --- a first run, turn by turn -------------------------------------
+    ("nothing known, nothing said", {}, {}, "unconfigured",
+     "name", [], [], False),
+    ("the name lands: introduce, ask the city, hold the name",
+     {}, {"name": "Mary"}, "unconfigured",
+     "city", [], ["family.owner.name"], True),
+    # The name was learned LAST turn and deferred, so it is carried, not
+    # freshly learned: the introduction has gone and both answers are written.
+    ("the city lands, carrying the deferred name: write both, ask teams",
+     {}, {"city": "Mountain View, California"}, "unconfigured",
+     "teams", ["family.owner.name", "weather.location"], [], False),
+    # Both in one message ("I'm Mary, I'm in Mountain View"): the introduction
+    # is due THIS turn, so the name is still held behind it.
+    ("name and city in one message: introduce, write the city, hold the name",
+     {}, {"name": "Mary", "city": "Mountain View, California"}, "unconfigured",
+     "teams", ["weather.location"], ["family.owner.name"], True),
+    ("the teams land, no relay: write them and close",
+     merged(NAME, CITY), {"teams": []}, "unconfigured",
+     None, ["sports.followed"], [], False),
+
+    # --- resumes: the states an enumerated table kept missing -----------
+    ("resume with a city, no name: ask teams, hold the name",
+     CITY, {"name": "Mary"}, "unconfigured",
+     "teams", [], ["family.owner.name"], True),
+    ("resume with city AND teams, no relay: nothing to ask, so WRITE now",
+     merged(CITY, TEAMS), {"name": "Mary"}, "unconfigured",
+     None, ["family.owner.name"], [], True),
+    ("resume with a name already stored: the intro has been sent",
+     NAME, {}, "unconfigured",
+     "city", [], [], False),
+    ("everything but the calendars, relay unconfigured: nothing to ask",
+     merged(NAME, CITY, TEAMS), {}, "unconfigured",
+     None, [], [], False),
+
+    # --- the calendars, and the two turns they take --------------------
+    ("everything but the calendars, a listing came back: ask them",
+     merged(NAME, CITY, TEAMS), {}, "connected",
+     "calendars", [], [], False),
+    ("configured but silent is not connected: the calendars cannot be asked",
+     merged(NAME, CITY, TEAMS), {}, "configured",
+     None, [], [], False),
+    ("the picks land: write them",
+     merged(NAME, CITY, TEAMS), {"calendars": ["a@b.test"]}, "connected",
+     None, ["calendar.sources"], [], False),
+    ("a listing on the name turn: introduce, ask the calendars, hold the name",
+     merged(CITY, TEAMS), {"name": "Mary"}, "connected",
+     "calendars", [], ["family.owner.name"], True),
+
+    # --- present-but-empty is answered ---------------------------------
+    ("an empty followed list is an answer, not a gap",
+     merged(NAME, CITY, TEAMS), {}, "unconfigured", None, [], [], False),
+    ("everything answered", merged(NAME, CITY, TEAMS, CALS), {}, "connected",
+     None, [], [], False),
+])
+def test_the_turn_decides_the_same_way_from_every_partial_config(
+        label, config, answers, latch, ask, write_now, defer, intro_due):
+    """The whole conversation, as a table of states rather than of turn shapes.
+
+    A table of SHAPES grew a hole every time it was extended -- a step with no
+    row, a resume between two rows, an exit no row described -- and each hole
+    reached an owner as a blocking `❓`. A table of STATES cannot: every config
+    is in it by construction, and the ones that used to fall between rows are
+    the rows here.
     """
-    for step in STEPS:
-        assert ONBOARDING.count(step) == 1, f"{step} appears {ONBOARDING.count(step)} times"
-        assert step in ALGORITHM, f"{step} is stated outside the algorithm"
-    # In order, and all of them before the copy sections that reference them.
-    positions = [ALGORITHM.index(step) for step in STEPS]
-    assert positions == sorted(positions), "the steps are out of order"
+    # A name not in the config and not in this message is one an earlier turn
+    # deferred -- which is exactly the state `carried` exists to express.
+    carried = {}
+    if "family.owner.name" in write_now and "name" not in answers:
+        carried = {"name": "Mary"}
+    got = state.decide(config, answers, latch, carried)
+    assert got["ask"] == ask, label
+    assert got["write_now"] == write_now, label
+    assert got["defer"] == defer, label
+    assert got["intro_due"] == intro_due, label
+    assert got["latch"] == latch, label
 
 
-def test_no_table_of_turn_shapes_survives():
-    """The disease itself. A per-turn table cannot help contradicting the rule
-    it sits next to: rows said "draft the teams" where the rule said "write
-    everything held", and the §2 row's Latch-connected exit disagreed with the
-    state table sixty lines below it."""
+def test_nothing_is_ever_both_written_and_deferred():
+    """Over every state in the table above, and every combination of answers:
+    a key held back and written in the same turn would be a draft racing the
+    message it was deferred behind."""
+    keys = ["name", "city", "teams", "calendars"]
+    for bits in range(1 << len(keys)):
+        answers = {k: "x" for i, k in enumerate(keys) if bits >> i & 1}
+        for config in ({}, NAME, CITY, merged(NAME, CITY), merged(CITY, TEAMS),
+                       merged(NAME, CITY, TEAMS)):
+            for latch in ("unconfigured", "configured", "connected"):
+                got = state.decide(config, answers, latch)
+                assert not set(got["write_now"]) & set(got["defer"])
+                # And only the name is ever deferred: it is the one one-time
+                # message's answer.
+                assert set(got["defer"]) <= {"family.owner.name"}
+                # A turn that asks nothing defers nothing -- nothing is coming
+                # back to carry it, so deferring means never writing it.
+                if got["ask"] is None:
+                    assert got["defer"] == []
+
+
+def test_every_answer_held_reaches_the_config_within_one_turn():
+    """The loop C1 was about, as a property rather than a sentence: an answer
+    is written this turn or deferred onto a turn that is certain to come."""
+    for config in ({}, CITY, merged(CITY, TEAMS), NAME):
+        for answers in ({"name": "Mary"}, {"name": "Mary", "city": "X, Y"},
+                        {"city": "X, Y"}, {"teams": []}):
+            got = state.decide(config, answers, "unconfigured")
+            held = {dotted for key, dotted in state.ORDER if answers.get(key) is not None}
+            assert held == set(got["write_now"]) | set(got["defer"]), (config, answers)
+            if got["defer"]:
+                assert got["ask"] is not None, "deferred onto a turn that never comes"
+
+
+def test_present_but_empty_counts_as_answered():
+    """`sports.followed: []` is "none" -- a real answer. Re-asking it is the
+    failure the config-as-progress design exists to prevent."""
+    assert state.has_key({"sports": {"followed": []}}, "sports.followed")
+    assert not state.has_key({"sports": {}}, "sports.followed")
+    assert state.has_key({"family": {"owner": {"name": ""}}}, "family.owner.name")
+
+
+def test_the_ask_order_is_the_configs_own():
+    """"Ask the first missing key" is undecidable without a fixed order, and
+    when the order lived in prose a resume was asked for a city it had."""
+    assert [dotted for _, dotted in state.ORDER] == [
+        "family.owner.name", "weather.location", "sports.followed", "calendar.sources"]
+    for _, dotted in state.ORDER:
+        assert f"`{dotted}`" in TRIGGER, f"SOUL.md's trigger omits {dotted}"
+
+
+def test_the_sheet_presents_the_decision_and_does_not_restate_it():
+    """The seam only helps if the sheet stops carrying a second copy of the
+    rules: two statements drift, and the turn follows whichever it read first.
+    """
+    assert "onboarding_state.py" in ONBOARDING
+    assert ".turn.json" in ONBOARDING
+    # No table of turn shapes, and no second copy of the ordering rule.
     assert "| the turn | tool calls |" not in ONBOARDING
     assert "| what the config already holds |" not in ONBOARDING
-    # The examples that replace it are marked as examples, and say which wins.
-    assert "Examples, not authorities" in ALGORITHM, (
-        "the list that replaces the table must be marked as non-authoritative")
+    algorithm = ONBOARDING[ONBOARDING.index("## The algorithm"):ONBOARDING.index("### 1 ·")]
+    assert len(algorithm.split()) < 700, "the sheet is re-deriving the decision again"
 
 
-def test_the_keys_are_asked_in_one_order_everywhere():
-    """"Ask the first missing key" is only well defined if the order is fixed,
-    and the order is the config's own. Measured when it was not: a resume with
-    the city stored was asked for the city again, because the copy named it as
-    "the next question" and the rule sat below the copy."""
-    order = ["family.owner.name", "weather.location", "sports.followed", "calendar.sources"]
-    step1 = ALGORITHM[ALGORITHM.index(STEPS[0]):ALGORITHM.index(STEPS[1])]
-    positions = [step1.index(f"`{key}`") for key in order]
-    assert positions == sorted(positions), "step 1 lists the keys out of order"
-    step5 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[4]):].split())
-    assert "name → city → teams → calendars" in step5
-    # SOUL.md's trigger and the frontmatter must agree with that same set.
-    for key in order:
-        assert f"`{key}`" in TRIGGER
-
-
-def test_step_four_names_exactly_one_deferral():
-    """Structural, because the count is the contract.
-
-    "Defer whenever the turn ends on a question" was the over-broad version and
-    it made every turn's write conditional on wording. There is one exception --
-    the turn that learns the name and sends the one-time introduction -- and a
-    second one appearing here is the enumeration growing back.
+def test_no_owner_text_is_ever_composed_into_a_command():
+    """Their name, their city, and above all a calendar's display name -- text a
+    STRANGER wrote -- would otherwise be a command built out of someone else's
+    input. Every script that takes owner answers reads a file the turn staged.
     """
-    step4 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[3]):ALGORITHM.index(STEPS[4])].split())
-    assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
-    assert "exactly ONE deferral" in step4
-
-
-def test_step_five_has_a_branch_for_no_question_left():
-    """A turn that reaches step 5 with nothing to ask still owes a message.
-    Where it did not, the owner got `❓ dummy`."""
-    step5 = ALGORITHM[ALGORITHM.index(STEPS[4]):]
-    assert "If no key is missing" in step5
+    assert "<<'JSON'" not in SKILL and "<<'EOF'" not in SKILL
+    assert "<<" not in SKILL, "a heredoc is back in the sheet"
+    for script in ("write_config.py", "mint_wall_token.py", "onboarding_state.py"):
+        assert f"{script} --" in SKILL or f"{script}\n" in SKILL
+    # Every invocation that consumes owner answers names a staged path.
+    for line in SKILL.splitlines():
+        # Command examples only: the sheet's indented code lines, not prose or
+        # a table cell that merely names a script.
+        if not line.startswith("    ") or line.strip().startswith("|"):
+            continue
+        if "write_config.py" in line or "mint_wall_token.py" in line:
+            assert "--input" in line, f"not staged: {line.strip()}"
 
 
 def test_the_relay_tool_is_named_only_where_it_exists():
