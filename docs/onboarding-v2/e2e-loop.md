@@ -94,6 +94,31 @@ top of them, so the only thing an edit costs is a restart.
 | `render_transcript.py --run-id <id>` | the run as an HTML report you can send someone |
 | `sync-skills.sh` | staging only; `run-agent.sh` calls it |
 
+### Two cooks at once
+
+One container, one home volume and one `.env` meant whoever ran second took the
+first one's agent out from under them. `E2E_INSTANCE` separates them:
+
+```sh
+E2E_INSTANCE=alice scripts/e2e/activate.sh     # writes scripts/e2e/.env.alice
+E2E_INSTANCE=alice scripts/e2e/run-agent.sh    # container life-agent-e2e-alice
+```
+
+It suffixes the container, the home volume, the staging tree, the reply
+baseline, the stub's log and the env file. `default` suffixes **nothing** — the
+names it resolves to are the ones already running on people's machines, and
+renaming them would strand every container that exists today.
+
+An instance without its own `.env.<name>` falls back to the shared `.env`, so a
+second instance can share one activation or, after `activate.sh`, hold its own.
+
+`run-agent.sh` also takes a lock (`.lock<-instance>`) holding the invoking
+shell's pid. A second *shell* on the same instance is refused; re-running from
+the same one is not, and a lock whose pid is gone is taken over — nobody should
+have to know the file exists to recover from a closed terminal. The refusal
+happens **before** the teardown, so being refused never removes the container
+the other cook is using.
+
 ### The fake relay
 
 `ld-setup`'s calendar step runs one command on the owner's machine:

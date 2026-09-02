@@ -9,6 +9,24 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # Restart a --latch run as a plain one, have it fail on any of those, and the
 # relay you thought you had just turned off is still serving a real Mac. The
 # container has to be gone before this script can fail at all.
+# Before the teardown below, not after: a refusal must not remove the container
+# on its way out, and the container this would remove might be the other cook's.
+#
+# $PPID is the invoking shell, so re-running from the same terminal is fine and
+# a second terminal is not. A lock whose pid is gone is stale and taken over --
+# a cook who closed their terminal should not need to know this file exists.
+if [ -f "$LOCK_FILE" ]; then
+  holder="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+  if [ -n "$holder" ] && [ "$holder" != "$PPID" ] && kill -0 "$holder" 2>/dev/null; then
+    echo "instance '$E2E_INSTANCE' is in use by another shell (pid $holder)." >&2
+    echo "Starting here would take its container out from under it." >&2
+    echo "Use your own: E2E_INSTANCE=<name> scripts/e2e/run-agent.sh" >&2
+    echo "If that shell is gone, remove ${LOCK_FILE#"$E2E_DIR"/}." >&2
+    exit 1
+  fi
+fi
+echo "$PPID" > "$LOCK_FILE"
+
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
 load_env
@@ -37,8 +55,6 @@ if [ -n "$WITH_LATCH" ] && [ -n "$WITH_STUB" ]; then
   exit 1
 fi
 
-STUB_PID_FILE="$E2E_DIR/.latch-stub.pid"
-STUB_PORT_FILE="$E2E_DIR/.latch-stub.port"
 # Whatever ran before, whichever mode this run is: a stub left over from an
 # earlier run would keep answering on its port and a plain run would look
 # relayless while still being served.
@@ -61,7 +77,7 @@ if [ -n "$WITH_STUB" ]; then
   STUB_MODE="${STUB_MODE:-normal}" \
     "$E2E_DIR/latch_stub.py" --port 0 --port-file "$STUB_PORT_FILE" \
       --token "$LATCH_MCP_TOKEN" --verbose \
-      >> "$E2E_DIR/.latch-stub.log" 2>&1 &
+      >> "$STUB_LOG_FILE" 2>&1 &
   echo $! > "$STUB_PID_FILE"
   for _ in $(seq 1 50); do
     [ -s "$STUB_PORT_FILE" ] && break
@@ -101,6 +117,8 @@ if [ -n "$WITH_STUB" ]; then
 else
   echo "latch relay: ${WITH_LATCH:+wired (real Mac)}${WITH_LATCH:-not wired}"
 fi
+
+echo "instance: $E2E_INSTANCE (container $CONTAINER, env ${ENV_FILE#"$E2E_DIR"/})"
 
 "$E2E_DIR/sync-skills.sh"
 

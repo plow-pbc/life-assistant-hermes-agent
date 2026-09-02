@@ -4,12 +4,30 @@ set -euo pipefail
 E2E_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$E2E_DIR/../.." && pwd)"
 
+# Which loop this is. Two cooks in two worktrees were sharing one container,
+# one home volume and one .env, so whoever ran second silently took the first
+# one's agent out from under them. E2E_INSTANCE separates them.
+#
+# `default` deliberately suffixes NOTHING. The names below are the ones already
+# running on people's machines and written into their notes; renaming the
+# default instance would strand every container that exists right now -- the
+# scripts would stop finding it, `down.sh` would not remove it, and the next
+# run-agent.sh would leave it behind rather than replace it.
+E2E_INSTANCE="${E2E_INSTANCE:-default}"
+if [ "$E2E_INSTANCE" = "default" ]; then
+  INSTANCE_SUFFIX=""
+else
+  INSTANCE_SUFFIX="-$E2E_INSTANCE"
+fi
+
 # The agent's image, container and the staging tree its skills are mounted
-# from. One name each -- a second copy of any of them is how two loops end up
-# fighting over one container.
+# from. One name each PER INSTANCE -- a second copy of any of them is how two
+# loops end up fighting over one container.
 IMAGE=life-agent:e2e
-CONTAINER=life-agent-e2e
-STAGING="$E2E_DIR/staging"
+CONTAINER="life-agent-e2e$INSTANCE_SUFFIX"
+# Staging is per-instance too: run-agent.sh mounts it into the container, so a
+# shared tree means one cook's skill edit lands in the other's agent mid-run.
+STAGING="$E2E_DIR/staging$INSTANCE_SUFFIX"
 
 # A named volume over HERMES_HOME, so state outlives a restart -- which is what
 # makes resume testable: onboarding's record of progress is ld/config.json, and
@@ -19,7 +37,7 @@ STAGING="$E2E_DIR/staging"
 # survive being mounted over. A host bind would hide them and the gateway would
 # not boot. The cost is that the seeding happens once -- an image rebuild that
 # changes anything under the home needs `run-agent.sh --fresh`.
-HOME_VOLUME=life-agent-e2e-home
+HOME_VOLUME="life-agent-e2e-home$INSTANCE_SUFFIX"
 
 # The pinned base, by digest, exactly as the Dockerfile names it. Kept here so
 # up.sh can pull it before the build: ECR Public answers HEAD on a digest with
@@ -42,14 +60,21 @@ plow_repo() {
 }
 PLOW_REPO="$(plow_repo)"
 
+# This instance's credentials: .env.<instance> if it exists, else the shared
+# .env. The fallback is what keeps `default` working with the file everyone
+# already has, and what lets a second cook activate their own chat without
+# touching it.
+ENV_FILE="$E2E_DIR/.env.$E2E_INSTANCE"
+[ -f "$ENV_FILE" ] || ENV_FILE="$E2E_DIR/.env"
+
 load_env() {
-  if [ ! -f "$E2E_DIR/.env" ]; then
-    echo "scripts/e2e/.env is missing -- run scripts/e2e/activate.sh first" >&2
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "${ENV_FILE#$E2E_DIR/} is missing -- run scripts/e2e/activate.sh first" >&2
     exit 1
   fi
   set -a
   # shellcheck disable=SC1091
-  . "$E2E_DIR/.env"
+  . "$ENV_FILE"
   set +a
   # Re-resolved: PLOW_REPO was set when this file was sourced, before .env had
   # been read, so a PLOW_MAIN that lives in .env would otherwise be ignored.
@@ -59,7 +84,7 @@ load_env() {
 require() {
   for name in "$@"; do
     if [ -z "${!name:-}" ]; then
-      echo "$name is empty in scripts/e2e/.env -- re-run activate.sh" >&2
+      echo "$name is empty in ${ENV_FILE#$E2E_DIR/} -- re-run activate.sh" >&2
       exit 1
     fi
   done
@@ -121,4 +146,10 @@ outbound_count() {
 }
 
 # Where send.sh leaves the pre-send baseline for await-reply.sh to pick up.
-BASELINE_FILE="$E2E_DIR/.pending-reply"
+BASELINE_FILE="$E2E_DIR/.pending-reply$INSTANCE_SUFFIX"
+
+# The stub's runtime state and the lock, per instance for the same reason.
+STUB_PID_FILE="$E2E_DIR/.latch-stub$INSTANCE_SUFFIX.pid"
+STUB_PORT_FILE="$E2E_DIR/.latch-stub$INSTANCE_SUFFIX.port"
+STUB_LOG_FILE="$E2E_DIR/.latch-stub$INSTANCE_SUFFIX.log"
+LOCK_FILE="$E2E_DIR/.lock$INSTANCE_SUFFIX"

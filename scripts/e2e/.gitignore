@@ -1,8 +1,14 @@
 # Live credentials and generated state. Nothing here is committed.
+# The bare names are the `default` instance; the globs cover every other one.
 .env
+.env.*
 staging/
+staging-*/
 .pending-reply
+.pending-reply-*
 runs/
-.latch-stub.pid
-.latch-stub.port
-.latch-stub.log
+.latch-stub*.pid
+.latch-stub*.port
+.latch-stub*.log
+.lock
+.lock-*

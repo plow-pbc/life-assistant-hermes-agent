@@ -23,7 +23,13 @@ TWIN="${TWIN_HOST_BASE:-https://dtu-linq.plow.orb.local}"
 # known to work. Left off (the normal case) every attempt gets a fresh one.
 FIXED_MEMBER="${1:-}"
 
-python3 - "$API" "$TWIN" "$E2E_DIR/.env" "$FIXED_MEMBER" <<'PY'
+# The instance's own file when one is named, so a second cook activating does
+# not overwrite the credentials the first is mid-run on. ENV_FILE falls back to
+# the shared .env, which is what `default` keeps using.
+ACTIVATE_DEST="$E2E_DIR/.env.$E2E_INSTANCE"
+[ "$E2E_INSTANCE" = "default" ] && ACTIVATE_DEST="$E2E_DIR/.env"
+
+python3 - "$API" "$TWIN" "$ACTIVATE_DEST" "$FIXED_MEMBER" <<'PY'
 """Retry activation until a (line, handset) pair provisions cleanly.
 
 The line is NOT ours to choose. `POST /v1/auth/activate` picks it itself --
@@ -229,4 +235,4 @@ extra = sorted(k for k in (l.split("=", 1)[0].strip() for l in kept if "=" in l 
 if extra:
     print("kept, untouched: " + ", ".join(extra))
 PY
-chmod 600 "$E2E_DIR/.env"
+chmod 600 "$ACTIVATE_DEST"
