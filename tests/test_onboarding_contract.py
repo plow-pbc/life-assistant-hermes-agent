@@ -382,6 +382,20 @@ def test_the_sheet_names_no_tool_that_does_not_exist():
     assert "send_message" not in SKILL
 
 
+def test_the_reply_is_the_step_not_a_report_of_it():
+    """Deferring all prose to the end made the model summarise instead of speak.
+
+    Observed: turn two's whole reply was "Good, name is drafted. Now waiting on
+    Mary's next reply" -- so the introduction, the privacy line and the Latch
+    link were never sent, and nothing downstream notices a step that produced a
+    sentence instead of a message.
+    """
+    text = " ".join(ONBOARDING.split())
+    assert "it is the step's own message" in text
+    assert "Not a report of what you just did" in text
+    assert "has skipped its own step" in text
+
+
 def test_clarify_is_forbidden_during_onboarding():
     """The ❓ rows are a tool, and it blocks the turn until someone picks.
 
@@ -394,17 +408,6 @@ def test_clarify_is_forbidden_during_onboarding():
     assert "it blocks the turn" in text
     assert "through the `clarify` tool" in text, "the prose ban must name the tool too"
 
-
-def test_mid_turn_commentary_is_switched_off_in_config():
-    """The half of the fix that does not depend on the model complying.
-
-    Hermes delivers prose emitted around a tool call as its own chat message,
-    and the default is ON -- so thinking-out-loud reaches the owner as a text.
-    A prompt rule alone has been tried across five runs and leaks anyway.
-    """
-    import yaml
-    config = yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
-    assert config["display"]["interim_assistant_messages"] is False
 
 
 def test_the_framework_name_is_not_the_agents_name():

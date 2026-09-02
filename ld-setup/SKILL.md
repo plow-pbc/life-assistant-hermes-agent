@@ -161,14 +161,23 @@ None of those were meant for the owner. All three were thinking-out-loud
 around a `write_config.py` run or a config read-back, and the owner got them
 as texts.
 
-**Compose the reply last, and address it to them.** Take every tool call
-first — read the config, draft the answer, probe the relay, check what landed —
-and write nothing while you do it, not before the first call and not between
-any two. Only when the tools are done do you write, and what you write is a
-message to a person: second person, about them and their day. If a sentence's
-subject is a tool, an asset, a relay, a config file, or "onboarding" as a
-process, it is not part of the reply. It is a note to yourself, and notes to
-yourself are delivered.
+**Compose the reply last, and it is the step's own message.** Take every tool
+call first — read the config, draft the answer, probe the relay, check what
+landed — and write nothing while you do it, not before the first call and not
+between any two.
+
+Then write **the message this step of the conversation calls for**: the
+introduction, the city question, the close. Not a report of what you just did.
+A turn whose tools all succeeded and whose reply is "name is drafted, waiting
+for her next reply" has skipped its own step — the owner is still waiting for
+the introduction, and nothing later will notice it never arrived. Observed
+exactly that way: the entire introduction, the privacy line and the Latch link
+replaced by a sentence about a file.
+
+It is addressed to them: second person, about them and their day. If a
+sentence's subject is a tool, an asset, a relay, a config file, a marker, or
+"onboarding" as a process, it is not the reply — it is a note to yourself, and
+notes to yourself are delivered.
 
 **The test is subject, not placement.** Every leak so far has been a sentence
 *about the setup process* — what you just wrote, what you checked, what step
