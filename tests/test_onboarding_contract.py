@@ -33,6 +33,11 @@ TRIGGER = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].spli
 WALL_MARKER = "/opt/data/ld/setup-complete"
 # The one call Latch permits, byte for byte as the skill must emit it.
 DISCOVERY_ARGV = 'argv=["gog", "calendar", "calendars", "--json", "--results-only"]'
+# The tool as the image REGISTERS it. The prefix is the relay server's key in
+# config.yaml, so a sheet naming the bare suffix names a tool that is not there:
+# one calendar turn spent twenty-one API calls on tool_search and answered the
+# owner with nothing.
+RELAY_TOOL = "mcp__latch__plow_run_command"
 
 
 def load(name, rel):
@@ -558,6 +563,10 @@ def test_the_relay_tool_is_named_only_where_it_exists():
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
             "that has established it exists")
+        # And named as registered, prefix and all -- the bare suffix is a tool
+        # the build does not have, which sends the turn hunting.
+        assert ONBOARDING[hit.start() - len("mcp__latch__"):hit.start()] == "mcp__latch__", (
+            "a relay tool is named without its server prefix")
     # The unconfigured branch reaches no tool of any kind: structural, since
     # the branch's whole job is that nothing is called from it.
     unconfigured = ONBOARDING[ONBOARDING.index("**`unconfigured`"):configured]
