@@ -219,69 +219,91 @@ message that read correctly. Attachments are delivered after the whole text of
 their message, so a picture never precedes the words introducing it; keep the
 text above it short.
 
-**Which is why an answer is written on the turn AFTER the one that acts on
-it.** Two things have to be true at once and they pull opposite ways: a turn
-must not end on anything after its last tool call (whatever it ends on is
-delivered — every trailing note this conversation has leaked was a turn
-reaching for a way to finish), and progress must not be recorded before the
-owner has seen the one-time message that progress will make a later turn skip.
+**Which is why a write is sometimes held back one turn.** Two things have to
+be true at once and they pull opposite ways: a turn must not end on anything
+after its last tool call (whatever it ends on is delivered — every trailing
+note this conversation has leaked was a turn reaching for a way to finish), and
+progress must not be recorded before the owner has seen the one-time message
+that progress will make a later turn skip.
 
 Writing first satisfies the first and breaks the second: a crash in the gap
 leaves their name on file and the introduction never sent. Writing last
-satisfies the second and breaks the first. So neither — the write moves a step
-later, to a turn whose message is not one-time:
+satisfies the second and breaks the first. So neither — and the way out is not
+a schedule of turns but one rule about when a hold is safe, below.
 
-| the turn | tool calls | the message it ends on |
-|---|---|---|
-| §1 · the name is missing and they have not just given one — their first message, or any later turn that finds the config without a name | **none** — nothing they have said is waiting to be written | hello, what to call them, the GIF |
-| §2 · their name lands | the turn-top probe, read-only, and **no draft** — unless this turn ends on no question, and then ONE draft (everything held) before the message | **Latch not connected:** the introduction, the privacy line, the Latch link, and the next question the config is missing. **Latch connected:** the introduction and the privacy line, and — the probe being §5a's own listing — the calendar question in the link's place. **Neither left to ask:** the introduction and the privacy line, after the write |
-| §3 · their city lands | ONE draft, writing the name **and** the city | the city back to them, then the teams question |
-| §4 · their teams land | ONE draft, writing the teams | you're set, and the wall offer |
-| §5a · Latch answers | ONE listing call, and **no draft** | their calendars, and which of them to track |
-| §5b · their picks land | ONE draft, writing the picks, the account and the lookaheads | the calendars back in their own words |
+## The algorithm — every owner turn, the same five steps
 
-**Every turn of this conversation is in that table.** A step that is not there
-is a step with no defined shape, and a turn that cannot find its own row does
-not improvise — it reaches for a way to ask, which is how `❓ placeholder`
-became the first thing this agent ever said to someone. Twice: once from a
-tool named in the sheet that the build does not have, once from an opener with
-no row here.
+There is no turn schedule and no table of shapes to match. Every turn of this
+conversation, first or fiftieth, resumed or fresh, runs THESE FIVE STEPS in
+this order. A turn that goes looking for its own special case finds none, which
+is the point: every enumerated list of turn shapes this sheet has carried grew
+a hole, and each hole reached an owner as `❓ placeholder` — a blocking menu —
+because a turn that cannot find its own shape improvises one.
 
-**A turn defers a write only if it ends on a question whose answer the next
-turn will carry.** That is the whole licence for holding an answer back, and it
-is the only one: §2 ends on the city question, so §3 comes, so §3 can write the
-name. **A turn that asks nothing writes what it holds NOW**, before its message
-— there is no next turn to carry it, and an answer deferred onto a turn that
-never comes is an answer never written.
+**1 · Read the config.** `/opt/data/ld/config.json`, once, at the top. It is
+the only record of how far this got; there is no marker and no second source.
+The four keys, in order: `family.owner.name`, `weather.location`,
+`sports.followed`, `calendar.sources`. Present-but-empty is answered.
 
-**Every draft writes everything you have collected and not yet written**, not
-just the newest answer. §3 writes the name and the city, because the name has
-been in hand since §2. An owner whose city is already stored is asked their
-teams instead, and that turn's draft writes the name and the teams. A draft
-that carries only the newest answer strands the older one — with
-`weather.location` present and `family.owner.name` absent, from an off-script
-order or a half-finished earlier run, the city turn never comes, so nothing
-ever writes the name and every turn opens by asking it again. Whatever path
-the conversation took, the write that lands must leave the config holding
-every answer given so far.
+**2 · Run the Latch status probe.** `latch_status.py`, as described above.
+`unconfigured` means not connected: no tool lookup, nothing said about it, and
+the pitch and link still stand. `configured` means the listing call is
+available to step 5.
 
-**What each remaining window costs.** A crash between §3's write and its
-message repeats the teams question — a question, asked again, which the owner
-answers in four seconds. Between §4's write and its message, the close and the
-wall offer are skipped once; the wall is optional and re-offerable at any
-point ("if you ever want a screen in the kitchen…"), so it is not a one-time
-transition the way the introduction and the install link are. If the session is
-wiped between §2 and §3 the name was never written and is asked for again —
-also a repeated question, not a lost step. The write-now case above is the one
-that can cost more than a repeated question — a crash between that write and
-its message skips the introduction — and it is still the right trade, because
-the alternative is not a window but a loop with no way out of it.
+**3 · Take what this message gave you.** Their name, their city, their teams,
+their calendar picks — whatever actually arrived, judged from what they typed
+and nothing else. A roster label is not a name. Nothing arrives on a first
+turn, so nothing is collected and nothing is written.
 
-Never write ahead of the answer. A step with nothing in hand writes nothing:
-§1 has been told nothing yet, so it makes no draft and invents no name.
-Observed, on a first turn, from wording that only said "draft first": a
-fabricated name written to the config, then retracted to the owner across two
-messages.
+**4 · Write every answer you hold that is not yet in the config — NOW, before
+the message — unless this turn ends on a question whose answer the next turn
+will carry, in which case they all defer onto that turn.** One draft, carrying
+everything held, never just the newest. Deferring is safe only because that
+next turn is certain to come; a turn that asks nothing has no next turn, so it
+writes. An answer deferred onto a turn that never comes is an answer never
+written, and every later turn re-asks the question it answered.
+
+**5 · Compose the one message**, in this shape:
+
+- **acknowledge what just landed** — their city back to them, their teams in
+  their own words, their name if they have just given it;
+- **then the one-time content that is due**: the introduction, the privacy
+  line, the previews, and the pitch and link (or, where the probe said
+  `configured` and a listing came back, the calendars in the link's place).
+  Due the first time you know their name and have not yet introduced yourself
+  — which is exactly the turn where step 4 deferred rather than wrote, so a
+  crash cannot leave a config saying they were introduced when they were not;
+- **then ask the FIRST key still missing**, in order: name → city → teams →
+  calendars. Calendars only where the probe said `configured`: list them and
+  ask which to track, and write the picks, the account and the lookaheads on
+  the turn that answers. **If no key is missing, ask nothing** — say they are
+  set and offer the wall.
+
+Nothing to ask is never nothing to say. A turn that reaches step 5 with no
+question owed still owes a message, and the message is the close.
+
+**Examples, not authorities** — every one of these is just the five steps run
+against a different config. Where an example and the algorithm disagree, the
+algorithm is right:
+
+- nothing stored, first message → collect nothing, write nothing, ask the name;
+- name just given, nothing stored → defer it, introduce yourself, ask the city;
+- name just given, city and teams already stored, Latch unconfigured → nothing
+  left to ask, so write the name now, introduce yourself, and close;
+- city just given → write the name and the city together, ask the teams;
+- calendars listed and picked → write the picks, the account and the lookaheads.
+
+**What a crash between step 4 and step 5 costs.** A repeated question, in every
+case but one: the answer is on file and the message that would have asked for
+the next thing never went, so the next turn asks it again and the owner answers
+in four seconds. The exception is the turn that wrote instead of deferring —
+there the introduction can be skipped once — and it is still the right trade,
+because the alternative is not a window but a loop with no way out of it.
+
+Never write ahead of the answer. A turn with nothing in hand writes nothing:
+a first turn has been told nothing yet, so it makes no draft and invents no
+name. Observed, from wording that only said "draft first": a fabricated name
+written to the config, then retracted to the owner across two messages.
 
 **Every answer reaches the config a step later at most**, one draft at a
 time, never as one blob at the end:
@@ -311,16 +333,10 @@ that resolves it, in plain words.
 
 ### 1 · Opener
 
-**This is not only a first message.** It is every turn that reads the config,
-finds `family.owner.name` missing, and has no name in hand from what they just
-said — which includes a resumed conversation whose city and teams are already
-stored, and an owner who answered everything except this. What the config
-already holds changes nothing about what this message says: the name is the
-first key missing, so the name is what this turn asks for. Do not look for a
-different shape for the resumed case; there is not one, and a turn that goes
-looking finds `clarify` and blocks. Observed exactly there: a config holding
-the city and the teams, no name, Latch down — and the first thing the owner
-received was `❓ placeholder`.
+*The copy for step 5's name question, whenever `family.owner.name` is the first
+key missing — on a first message or on a resume whose other answers are long
+since stored. What the config already holds changes nothing about what this
+says.*
 
 One message, and it holds three things in this order: one warm line that they
 showed up — one line, not a greeting card — then `What should I call you?`,
@@ -363,43 +379,10 @@ the link. The whole of §1 is: hello, your name, a GIF, and what to call them.
 
 ### 2 · Their name, then who you are
 
-**Settle two things before you write a word of the introduction: what this turn
-ENDS on, and whether it writes.** They are the same decision, and the config
-answers it — read it at the top of this turn, as every turn does.
-
-**What it ends on is the first key still missing**, in this order:
-`family.owner.name` (just answered), `weather.location`, `sports.followed`,
-`calendar.sources`. Not "the city" — the city is only the first missing key on
-a first run. An owner resuming with a city already stored is asked their teams;
-one with both is asked neither. Asking again for something the config holds is
-the failure this file exists to prevent, and it does not stop being that
-because the question was a natural one.
-
-| what the config already holds | what this turn ends on | the name is written |
-|---|---|---|
-| neither city nor teams | the city question | by the turn that answers it |
-| the city, not the teams | the teams question | by the turn that answers it |
-| both, and Latch answered the probe | §5a's calendar question | by §5b, with the picks |
-| both, and Latch is not connected | no question — so **§4's close**: they are set, and once the Mac app connects you will sort the calendars out | **by this turn, before its message** |
-
-**The write follows from the same row.** Their name is normally carried, not
-drafted here — written by the turn that answers whatever this one asks — so a
-crash cannot leave a config saying they were introduced when they were not.
-**On the last row nothing later will**, so the name is written HERE, before the
-message.
-
-**That row still ends on a message.** Every row does. "Nothing to ask" is not
-"nothing to say", and a turn that reaches the end of its work with no message
-prepared is the turn that goes looking for a way to ask something — which is
-`❓`, delivered to the owner, blocking. Observed exactly there: config holding
-the city and the teams, Latch down, the owner saying "you already have all that
-— anything else you need?", and the reply was `❓ dummy`. There was nothing left
-to ask and the sheet had not said what to say instead. It does now: acknowledge
-what they already gave, tell them they are set, and say the calendars will sort
-themselves out when the Mac app connects. That is §4's close, arriving early
-because the conversation got there early.
-
-Probe Latch if you have not this turn, then introduce yourself:
+*The copy for step 5's one-time content: the introduction, the privacy line,
+the previews, and the pitch and link. Due the first time you know their name
+and have not yet introduced yourself. What this turn asks after it, and whether
+it writes, are step 4's and step 5's business, not this section's.*
 
 **One message, and short.** Three ideas, a few lines each, blank lines between
 them — the way a person texts, not three paragraphs of prose. It carries:
@@ -456,38 +439,15 @@ preview:
 
 Close that stretch by telling them to reach out any time if setup snags.
 
-**Then end on the row you settled at the top of this turn** — the first key the
-config is still missing, and nothing else. Asking it here is what makes the next
-turn happen, which is what lets that turn's draft carry the name they just gave.
+**If the probe returned a listing, none of the catch-and-link paragraph is
+sent** — not the flying-blind line, not the link, not the offer to help with
+the install. It is already done. Sending it anyway asks someone to install what
+they installed, which reads as an assistant that has not noticed them. End the
+introduction at the privacy line and the pictures; §5's calendar question is
+what step 5 asks in the link's place.
 
-**The last row, in full.** `calendar.sources` is still missing, so the
-conversation is not over — but nothing this turn says will come back as an
-answer, because the only thing left is a Latch that is not running. A link is
-not a question. Defer there and the name is never written at all: every later
-turn reads a config with no name in it and opens by asking for it again. So
-write what you hold, first, and then send the introduction and the close:
-
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
-    {"family": {"owner": {"name": "Mary"}}}
-    JSON
-
-The introduction and the close are the message the turn ends on. The cost of
-writing first is that a crash in the gap could skip the introduction once; the
-cost of not writing at all is that the name is never recorded and every turn
-from here opens by asking for it again. That is the trade the rule above
-settles.
-
-**If the probe returned a listing, none of that paragraph is sent** — not the
-flying-blind line, not the link, not the offer to help with the install. It is
-already done. Sending it anyway asks someone to install what they installed,
-which reads as an assistant that has not noticed them. End the introduction at
-the privacy line and the pictures, and go straight to §5 in this same turn: the
-calendars are right there, and the natural next thing to say is which of them
-you should watch.
-
-All of that is one message and it is the last thing the turn does — nothing
-after it, and nothing before it but the probe and, on the last row, the write.
-Otherwise hold their name for the turn that answers what you just asked.
+All of this is one message and it is the last thing the turn does — nothing
+after it, and nothing before it but steps 1 to 4.
 
 **The name comes from their reply and from nothing else.** Every turn arrives
 with a roster preamble naming the chat's participants — "You", a phone number,
@@ -512,18 +472,16 @@ time on the next message.
 
 ### 3 · While they install
 
-Do not wait for the install to finish; the questions the config is still
-missing are what the wait is for. Which of them this turn is holding depends on
-which one §2 asked — the city on a first run, the teams for an owner whose city
-was already stored. Take the answer that just arrived, and end on the next key
-still missing, the same way §2 did.
+*The copy for step 5's city and teams questions, and for how their answers are
+composed into step 4's draft. Do not wait for the install to finish; these are
+what the wait is for.*
 
 **Their city** (or zip), when that is the one they were asked. It gives you
 their timezone and puts a weather read in their mornings.
 
-This is a turn that writes, and it writes every answer still unwritten in one
-draft: the name they gave in §2, carried in the conversation until now, and the
-answer they just gave. One tool call, then the message.
+Step 4's draft carries every answer still unwritten — the name, carried since
+the introduction, and the answer that just arrived. One tool call, then the
+message.
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
     {"family": {"owner": {"name": "<from §2>"}, "timezone": "<$TZ>"},
@@ -588,8 +546,8 @@ Mountain View is the Sacramento Kings — and turn it into ESPN's own terms:
 
 Read the list back in their words, not the JSON. "None" is a real answer:
 `{"sports": {"followed": []}}` — the question was asked, and that is what
-onboarding needs. That draft is this turn's one tool call, and §4's close is
-the message it ends on.
+onboarding needs. With the teams answered, no key is missing, so step 5 asks
+nothing and §4's close is the message.
 
 Do not ask for their email, their calendars, or their Mac username. Those
 arrive through Latch's connectors. Do not ask what time they want their
@@ -598,13 +556,10 @@ nothing can store is a promise you would be breaking.
 
 ### 4 · Close
 
-This message is the LAST thing in its turn, after §3's teams draft and after
-nothing else. `sports.followed` present is what tells a resumed turn this
-section already happened — so if a crash lands between that write and this
-message, the close and the wall offer are skipped once. That is the one window
-left, and it is the cheapest of them: the wall is optional and can be offered
-again whenever they ask, unlike the introduction and the install link, which
-happen once or not at all.
+*The copy for step 5 when no key is still missing — however early in the
+conversation the config got there. Unlike the introduction and the install
+link, this is not one-time: the wall can be offered again whenever they ask, so
+a crash that skips it once costs nothing that cannot be said later.*
 
 Tell them they are set, and offer the wall as the optional extra it is: if they
 want a physical display in the kitchen, the build is at
@@ -638,12 +593,12 @@ code around it does the safe thing rather than assuming:
 So: do not build on any of these beyond what the script already does, and do
 not tell the owner about them.
 
-**This is two turns, not one** — §5a and §5b in the table above. The listing
-turn makes the one read-only call, shows what came back and asks which
-calendars to track; it writes NOTHING, because the answer it needs has not
-been given yet. The pick turn makes the one draft that writes their picks, the
-account and the lookaheads. A single turn that listed and drafted in one go
-would be writing calendars nobody chose.
+**This is two turns of the algorithm, not one.** The listing turn makes the one
+read-only call, shows what came back and asks which calendars to track — step 4
+writes nothing there, because the answer it needs has not been given yet. The
+next turn collects the picks and step 4 writes them, with the account and the
+lookaheads. A single turn that listed and drafted in one go would be writing
+calendars nobody chose.
 
 The owner never types a calendar id — but they may name which of the listed
 accounts is theirs, which is the one thing the listing cannot always decide.
@@ -761,9 +716,8 @@ and it is an account, never an id. `owner_identities` takes the same value as
 they disagree nudges on nobody.
 
 If an earlier answer is still unwritten when this draft goes — an owner who
-connected Latch before they gave their city, so §2 sent them here instead of
-asking — it rides along in the same object, per the rule above. Every draft
-writes everything collected and not yet written.
+connected Latch before they gave their city — it rides along in the same
+object. Step 4 writes everything held, never just the newest.
 
 **Ids only — no `name` key, and no display string anywhere in that heredoc.**
 A calendar's display name is written by whoever owns it, so it is text a
