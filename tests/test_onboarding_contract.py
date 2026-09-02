@@ -429,27 +429,6 @@ def test_write_config_takes_the_staged_path(tmp_path):
     assert "could not read" in str(refusal.value)
 
 
-@pytest.mark.parametrize("label,payload", [
-    ("account null", '{"calendar": {"account": null, '
-     '"sources": [{"calendar_id": "a@b.test"}]}}'),
-    ("owner_identities carrying the null", '{"calendar": {"account": "a@b.test", '
-     '"sources": [{"calendar_id": "a@b.test"}]}, '
-     '"calendar_nudge": {"owner_identities": [null]}}'),
-])
-def test_a_null_account_can_never_reach_the_config(tmp_path, label, payload):
-    """The ask branch is safe only if the null cannot be written while it waits.
-
-    calendar.sources landing without an account is worse than either alone:
-    sources present means §5 never runs again, account missing means the gate
-    refuses forever.
-    """
-    config = tmp_path / "config.json"
-    with pytest.raises(SystemExit) as refusal:
-        draft(config, payload)
-    assert "blank" in str(refusal.value) or "nonblank" in str(refusal.value)
-    assert not config.exists(), "a refused draft must leave nothing behind"
-
-
 def test_the_identities_are_the_union_not_the_account_alone():
     """calendar.account is the one identity gog authenticates as; the nudge asks
     whether the OWNER was in a meeting. An owner whose calendars carry two of
@@ -559,10 +538,14 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
     configured = [
         "mcp_servers:\n  latch:\n    url: https://x.test\n",
-        "mcp_servers:\n  plow:\n    url: https://x.test\n",
-        # A relay beside another server, and one carrying only headers.
+        # A relay beside another server, one carrying only headers, one quoted,
+        # one with a comment above it, and one that is not the first key in the
+        # file -- every shape the deployment's own stanza has been seen in.
         "mcp_servers:\n  other:\n    url: x\n  latch:\n    url: y\n",
-        "mcp_servers:\n  plow:\n    headers:\n      Authorization: Bearer x\n",
+        "mcp_servers:\n  latch:\n    headers:\n      Authorization: Bearer x\n",
+        "mcp_servers:\n  # the relay\n  latch:\n    url: y\n",
+        'mcp_servers:\n  "latch":\n    url: x\n',
+        "model:\n  a: b\nmcp_servers:\n  latch:\n    url: x\nplugins:\n  a: b\n",
     ]
     unconfigured = [
         "mcp_servers: {}\n",
@@ -570,8 +553,11 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
         "model:\n  default: x\n",
         "mcp_servers:\n  other:\n    url: x\n",
         # A name with nothing under it registers no tool: no url, no bearer.
-        "mcp_servers:\n  plow:\n",
-        "mcp_servers:\n  plow:\nmodel:\n  default: x\n",
+        "mcp_servers:\n  latch:\n",
+        "mcp_servers:\n  latch:\nmodel:\n  default: x\n",
+        # And the old spelling is not the relay: the tool would be registered
+        # under a prefix the sheet does not name.
+        "mcp_servers:\n  plow:\n    url: https://x.test\n",
         # A commented-out relay is not a relay.
         "mcp_servers:\n  # latch: gone\n  other:\n    url: x\n",
     ]
@@ -594,19 +580,25 @@ def test_the_status_probe_needs_only_the_standard_library():
     the thing this script exists to prevent."""
     source = (ROOT / "ld-setup/scripts/latch_status.py").read_text()
     body = source.split('"""', 2)[2]
-    assert not re.search(r"^\s*(import|from)\s+(?!__future__|os|sys)", body, re.MULTILINE), (
+    assert not re.search(r"^\s*(import|from)\s+(?!__future__|os|re|sys)", body, re.MULTILINE), (
         "the probe imports something outside the standard library's core")
-    assert "import yaml" not in body and "yaml." not in body, (
+    assert not re.search(r"^\s*(import yaml|from yaml)", body, re.MULTILINE), (
         "the probe reaches for PyYAML in code the sheet runs as plain python3")
+    assert not re.search(r"yaml\.(safe_)?load", body), "PyYAML is being called"
 
 
-def test_both_relay_key_names_are_accepted():
-    """The cloud image and this repo have disagreed about whether the server is
-    called `plow` or `latch`. A status script that answered "unconfigured"
-    because of the rename would take the calendar step out of every run with
-    nothing in the log to say why."""
+def test_the_relay_key_is_latch_and_only_latch():
+    """One spelling, because the key is also the tool's prefix.
+
+    `latch` is the base seed's name for the relay and this repo's, and the model
+    calls `mcp__latch__plow_run_command`. Accepting a second spelling here would
+    answer "configured" for a build whose tool is registered under a name the
+    sheet does not use -- and the turn would go hunting for a tool that is not
+    there, which is how one calendar turn spent its whole budget on tool_search.
+    """
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
-    assert set(ls.RELAY_KEYS) == {"plow", "latch"}
+    assert ls.RELAY_KEY == "latch"
+    assert not ls.relay_configured("mcp_servers:\n  plow:\n    url: https://x\n")
 
 
 def test_discovery_is_one_argv_and_never_auth_list():

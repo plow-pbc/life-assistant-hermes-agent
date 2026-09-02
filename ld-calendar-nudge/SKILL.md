@@ -28,7 +28,7 @@ caller-supplied duplicate, so carrying one makes every run fail before it
 starts.
 
 Read `calendar.account` and `calendar.sources` from `/opt/data/ld/config.json`,
-comma-join the sources' `calendar_id` values, then call `plow_run_command` with
+comma-join the sources' `calendar_id` values, then call `mcp__latch__plow_run_command` with
 EXACTLY this argv, substituting only those config-supplied values (which never
 vary between runs):
 

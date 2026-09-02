@@ -24,7 +24,7 @@ the Hermes data mount.)
 Once per morning:
 
 1. Gather read-only context: the next three days of calendar events, in one
-   `plow_run_command` call to the vendored `gog` CLI.
+   `mcp__latch__plow_run_command` call to the vendored `gog` CLI.
 2. Compose a short affirmation.
 3. Post it to the kiosk with `scripts/post_message.py`.
 
@@ -40,7 +40,7 @@ flags and REFUSES any caller-supplied duplicate, so carrying one makes
 every run fail before it starts.
 
 Read `calendar.account` and `calendar.sources` from `/opt/data/ld/config.json`,
-comma-join the sources' `calendar_id` values, then call `plow_run_command` with
+comma-join the sources' `calendar_id` values, then call `mcp__latch__plow_run_command` with
 EXACTLY this argv, substituting only those config-supplied values (which never
 vary between runs):
 

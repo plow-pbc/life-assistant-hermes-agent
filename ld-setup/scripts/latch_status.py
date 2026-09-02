@@ -20,10 +20,11 @@ to her. A terminal command, by contrast, always exists.
 So the sheet asks THIS first, and names the relay's tools only in the branch
 where they are registered.
 
-`plow` and `latch` are both accepted: the key is the server's name, the cloud
-image and this repo have disagreed about it before, and a status script that
-answers "unconfigured" because the key was renamed would take the whole
-calendar step out of the run with nothing in the log to say why.
+The key is `latch`, and only `latch`. It is the base seed's name for the relay
+(plow-hermes-agent #2) and this repo's, and it is also the prefix on the tool
+the model calls -- `mcp__latch__plow_run_command` -- so accepting a second
+spelling here would answer "configured" for a build whose tool is registered
+under a name the sheet does not use, and send the turn hunting for it.
 
 Standard library only, and that is not an aesthetic. The sheet tells a turn to
 run this with plain `python3`, and PyYAML lives in Hermes' own venv rather than
@@ -37,9 +38,10 @@ answered by reading the indentation, not by parsing YAML.
 from __future__ import annotations
 
 import os
+import re
 import sys
 
-RELAY_KEYS = ("plow", "latch")
+RELAY_KEY = "latch"
 
 
 def config_path(env=None):
@@ -49,52 +51,40 @@ def config_path(env=None):
 
 
 def relay_configured(text):
-    """True when config.yaml registers a relay to the owner's Mac.
+    """True when config.yaml registers the relay to the owner's Mac.
 
-    A deliberately small YAML reader for one question. `mcp_servers:` is a
-    top-level key, so it sits at column zero, and its servers are the keys
-    indented directly under it. A relay key with nothing under it (`plow:` on
-    its own, or `mcp_servers: {}`) registers no tool and is not a relay.
+    The stanza is written by the deployment, not by hand, and it always has the
+    same shape -- a top-level `mcp_servers:` mapping with `latch:` as one of its
+    keys and that server's settings under it:
 
-    Anything this cannot make sense of reads as no relay, which is the safe
-    answer: the pitch and the link still go out, and no tool is reached for.
+        mcp_servers:
+          latch:
+            url: https://…
+
+    So the question is exactly "does a two-space `latch:` key sit under
+    `mcp_servers:`, with something below it", and it is answered by looking for
+    that, not by parsing YAML. Standard library only: the sheet runs this as
+    plain `python3`, and PyYAML lives in Hermes' own venv rather than the system
+    interpreter in at least one build we ship -- an `import yaml` under
+    /usr/bin/python3 once took down every container start. A probe that raises
+    is worse than no probe, because the turn improvises.
+
+    A key with nothing under it registers no tool: the url and the bearer are
+    what make a server, so `latch:` alone is not a relay.
     """
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        if not line.startswith("mcp_servers:"):
-            continue
-        if line.split(":", 1)[1].strip() not in ("", "{}", "null", "~"):
-            return False          # an inline mapping we will not parse, or a scalar
-        child_indent = None
-        for follower in lines[index + 1:]:
-            if not follower.strip() or follower.lstrip().startswith("#"):
-                continue
-            indent = len(follower) - len(follower.lstrip())
-            if indent == 0:
-                break             # the next top-level key: the block is over
-            if child_indent is None:
-                child_indent = indent
-            if indent != child_indent:
-                continue          # deeper: a server's own settings, not its name
-            name = follower.strip().split(":", 1)[0].strip().strip("\"'")
-            if name in RELAY_KEYS and _has_body(lines, follower, child_indent):
-                return True
+    block = re.search(r"^mcp_servers:[ \t]*$\n((?:[ \t]+.*|[ \t]*)\n*)*",
+                      text, re.MULTILINE)
+    if not block:
         return False
-    return False
-
-
-def _has_body(lines, header, indent):
-    """True when the server named by `header` has settings under it.
-
-    `plow:` with nothing beneath it registers nothing -- the url and the bearer
-    are what make a server -- so it is not a relay, and reading it as one would
-    send the turn off to call a tool that is not there.
-    """
-    for follower in lines[lines.index(header) + 1:]:
-        if not follower.strip() or follower.lstrip().startswith("#"):
-            continue
-        return len(follower) - len(follower.lstrip()) > indent
-    return False
+    # The servers, and each one's settings beneath it. `latch:` with nothing
+    # under it registers no tool -- the url and the bearer are what make a
+    # server -- so the trailing group is required, not optional.
+    match = re.search(
+        r"^(?P<indent>[ \t]+)[\"']?latch[\"']?:[ \t]*$"
+        r"(?:\n[ \t]*(?:#.*)?)*"
+        r"\n(?P=indent)[ \t]+\S",
+        block.group(0), re.MULTILINE)
+    return match is not None
 
 
 def main(argv=None, env=None):
