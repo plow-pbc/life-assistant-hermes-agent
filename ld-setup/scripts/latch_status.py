@@ -38,7 +38,6 @@ answered by reading the indentation, not by parsing YAML.
 from __future__ import annotations
 
 import os
-import re
 import sys
 
 def config_path(env=None):
@@ -58,19 +57,20 @@ def relay_configured(text):
           latch:
             url: https://…
 
-    So that is what this looks for, line by line, and nothing else. Two earlier
-    versions were regexes: the first derived the servers' indent and matched at
-    it, which read a `latch:` nested in another server's settings as the relay
-    whenever a comment sat deeper than the keys; the second pinned the two-space
-    shape but nested a repetition inside a repetition, which CodeQL flagged as
-    exponential backtracking (py/redos) -- a config.yaml full of blank indented
-    lines would have hung the probe, and a probe that hangs is a turn that
-    improvises.
+    So the relay's line is compared with `  latch:` and nothing cleverer. Three
+    earlier versions tried to be: an indent walk that read a `latch:` nested in
+    another server's settings as the relay whenever a comment sat deeper than
+    the keys; a regex that nested a repetition inside a repetition, which CodeQL
+    flagged as exponential backtracking (py/redos), so a config.yaml full of
+    blank indented lines would have hung the probe -- and a probe that hangs is
+    a turn that improvises; and a key-parsing scan that accepted quoted spellings
+    the deployment does not write.
 
-    A scan has neither problem. It reads each line once, it cannot backtrack,
-    and what it accepts is legible without running it: anything it does not
-    recognise is "unconfigured", which costs a calendar step and never invents a
-    Mac that is not there.
+    Each of those was a YAML parser in miniature, judged against a file this
+    does not have to parse. One string comparison cannot backtrack, cannot
+    misread a nesting level, and is legible without running it. Anything it does
+    not recognise is "unconfigured", which costs a calendar step and never
+    invents a Mac that is not there.
 
     Standard library only -- the sheet runs this as plain `python3`, and PyYAML
     lives in Hermes' own venv rather than the system interpreter in at least one
@@ -87,7 +87,7 @@ def relay_configured(text):
             continue                      # blanks and comments, at any indent
         if not line.startswith(" "):
             return False                  # the next top-level key: block over
-        if _key_of(line) != "latch" or not _at_two_spaces(line):
+        if line.rstrip() != "  latch:":
             continue                      # some other server, or its settings
         # The relay, named at the servers' level. It counts only with settings
         # under it -- `latch:` alone registers nothing.
@@ -98,22 +98,6 @@ def relay_configured(text):
             return len(follower) - len(follower.lstrip()) > 2
         return False
     return False
-
-
-def _key_of(line):
-    """The key a `name:` line names, unquoted. Not a parser: one line, one key,
-    and anything else falls through as "some other server"."""
-    return line.strip().rstrip(":").strip().strip("\"'")
-
-
-def _at_two_spaces(line):
-    """The servers' own level, and only it.
-
-    A `latch:` deeper than this belongs to another server's settings and
-    registers no tool of ours; reading it as the relay would answer
-    "configured" for a build that cannot reach a Mac.
-    """
-    return line.startswith("  ") and not line[2:3].isspace()
 
 
 def main(env=None):

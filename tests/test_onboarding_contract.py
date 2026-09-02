@@ -588,7 +588,6 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
         # line, or a stray comment would set it too far in.
         "mcp_servers:\n      # indented however its author felt\n  latch:\n    url: y\n",
         "mcp_servers:\n\n  latch:\n    url: y\n",
-        'mcp_servers:\n  "latch":\n    url: x\n',
         "model:\n  a: b\nmcp_servers:\n  latch:\n    url: x\nplugins:\n  a: b\n",
     ]
     unconfigured = [
@@ -641,7 +640,8 @@ def test_the_status_probe_cannot_be_made_to_hang(tmp_path):
     started = time.monotonic()
     assert ls.relay_configured(hostile) is False
     assert time.monotonic() - started < 2, "the probe backtracks"
-    assert "re.search" not in (ROOT / "ld-setup/scripts/latch_status.py").read_text(), (
+    source = (ROOT / "ld-setup/scripts/latch_status.py").read_text()
+    assert "re.search" not in source and "import re" not in source, (
         "the scan is back to being a regex")
 
 
