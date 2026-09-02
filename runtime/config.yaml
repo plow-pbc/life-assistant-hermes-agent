@@ -34,6 +34,26 @@ model:
 # mem_config.get("memory_char_limit", 2200).
 memory:
   memory_char_limit: 6000
+# On a full-budget timeout the aux client skips the same-provider retry for
+# compression and falls back -- but by default there is nowhere to land, so an
+# oversized session freezes and every turn re-stalls (~30h, 2026-08-31).
+# A second model on the instance's own codex auth closes it, no new credential.
+#
+# The model is pinned, not free-form: a ChatGPT-account codex serves ONLY
+# gpt-5.6-sol and gpt-5.5; every other id 400s. Verify a swap by the fallback
+# log lines, never the return value -- the implicit main-model fallback reports
+# success for a model the account actually rejected.
+#
+# Primary gives up first (180s) because reaching the fallback fast is the point;
+# the chain entry keeps 300s since by then it is the only hope left.
+auxiliary:
+  compression:
+    timeout: 180
+    fallback_chain:
+    - provider: openai-codex
+      model: gpt-5.5
+      timeout: 300
+
 mcp_servers:
   # Plow Latch, reached over the Plow relay: the browser and the filesystem this
   # agent drives are THE INSTANCE OWNER's Mac, not this container. The relay authorises the

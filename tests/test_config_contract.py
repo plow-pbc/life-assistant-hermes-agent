@@ -127,6 +127,28 @@ def test_outcome_memories_get_a_raised_char_limit():
     assert config()["memory"]["memory_char_limit"] == 6000
 
 
+def test_compression_has_somewhere_to_fall_back_to():
+    """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
+    a cheaper-sounding id installs a fallback that can never fire -- and a naive
+    probe misses it, because the implicit main-model fallback reports success on
+    the caller's behalf. The ordering matters as much as the model: the primary
+    must give up sooner than the fallback runs, or widening its budget silently
+    delays the only thing that can still succeed."""
+    compression = config()["auxiliary"]["compression"]
+    chain = compression["fallback_chain"]
+
+    assert [e["model"] for e in chain] == ["gpt-5.5"]
+    assert chain[0]["provider"] == "openai-codex", (
+        "the fallback rides this instance's own codex auth -- a provider "
+        "needing a new credential would not resolve here at all"
+    )
+    assert compression["timeout"] < chain[0]["timeout"], (
+        "the primary attempt must give up SOONER than the fallback runs: the "
+        "stall is what the user feels, and a long primary budget just delays "
+        "reaching the only thing that can still succeed"
+    )
+
+
 def test_latch_is_the_only_mcp_server():
     assert list(config()["mcp_servers"]) == ["latch"]
 
