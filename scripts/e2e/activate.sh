@@ -92,9 +92,26 @@ def post(url, payload):
         return json.load(resp)
 
 
+# The managed pool the twin answers on, as bare 7-digit suffixes. A handset
+# drawn onto one of these is not a handset at all.
+MANAGED = {"%07d" % n for n in range(1, 7)}   # +15550000001 .. +15550000006
+
+
 def handset():
-    """A member phone in the range the loop uses, outside the managed pool."""
-    return fixed_member or "+1555765%04d" % random.randrange(10000)
+    """A member phone outside the managed pool.
+
+    +1555 and seven digits: ten million, against the ten thousand the old
+    +1555765xxxx gave. That range is shared by every run this stack has ever
+    seen, and a redraw of a number already paired to a line is a real
+    cross-owner collision -- which now costs a twin restart, so the odds of one
+    are worth more than four digits.
+    """
+    if fixed_member:
+        return fixed_member
+    while True:
+        suffix = "%07d" % random.randrange(10_000_000)
+        if suffix not in MANAGED:
+            return "+1555" + suffix
 
 
 def attempt(n):
