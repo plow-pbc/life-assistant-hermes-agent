@@ -535,6 +535,27 @@ def test_the_relay_tool_is_named_only_where_it_exists():
     assert "argv=" not in unconfigured
 
 
+def test_the_scripts_print_relay_tools_qualified_too():
+    """A script's OUTPUT is agent-facing when the model is told to read it.
+
+    post_to_kiosk's Latch block and mint_wall_token's ship-them line are
+    instructions the turn acts on, so a bare tool name there is the same defect
+    as a bare one in a sheet: a name the build does not register, and a turn
+    that goes hunting through tool_search instead of calling it.
+
+    The relay's own wire protocol still uses the unprefixed name -- that is what
+    the MCP server exposes -- so this covers printed instructions only.
+    """
+    for rel in ("ld-shared/scripts/post_to_kiosk.py",
+                "ld-setup/scripts/mint_wall_token.py"):
+        source = (ROOT / rel).read_text()
+        printed = re.findall(r'"[^"\n]*\bplow_[a-z_]+[^"\n]*"', source)
+        for literal in printed:
+            for hit in re.finditer(r"(?<!mcp__latch__)\bplow_[a-z_]+\b", literal):
+                raise AssertionError(
+                    f"{rel} prints an unqualified relay tool: {literal.strip()!r}")
+
+
 def test_the_status_probe_answers_without_a_relay(tmp_path):
     """The script is what makes the branch decidable, so it has to answer on a
     box with no relay at all rather than raising -- that is the whole case."""
@@ -547,6 +568,11 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
         "mcp_servers:\n  other:\n    url: x\n  latch:\n    url: y\n",
         "mcp_servers:\n  latch:\n    headers:\n      Authorization: Bearer x\n",
         "mcp_servers:\n  # the relay\n  latch:\n    url: y\n",
+        # A comment indented deeper than the servers, and a blank line before
+        # them: the level comes from the first real KEY, not the first indented
+        # line, or a stray comment would set it too far in.
+        "mcp_servers:\n      # indented however its author felt\n  latch:\n    url: y\n",
+        "mcp_servers:\n\n  latch:\n    url: y\n",
         'mcp_servers:\n  "latch":\n    url: x\n',
         "model:\n  a: b\nmcp_servers:\n  latch:\n    url: x\nplugins:\n  a: b\n",
     ]
@@ -561,6 +587,10 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
         # that is not there.
         "mcp_servers:\n  other:\n    latch:\n      url: https://x.test\n",
         "mcp_servers:\n  other:\n    headers:\n      latch:\n        url: x\n",
+        # Both together: a deeper comment AND a nested latch. Deriving the level
+        # from the comment would put it at the nested key and answer
+        # "configured" for a build with no relay of ours at all.
+        "mcp_servers:\n    # deeper than the servers\n  other:\n    latch:\n      url: x\n",
         # A name with nothing under it registers no tool: no url, no bearer.
         "mcp_servers:\n  latch:\n",
         "mcp_servers:\n  latch:\nmodel:\n  default: x\n",

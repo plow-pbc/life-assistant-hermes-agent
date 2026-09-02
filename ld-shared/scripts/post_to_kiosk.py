@@ -129,10 +129,14 @@ DOTENV_ENDPOINT_RE = re.compile(r"http://[A-Za-z0-9.-]+:5174/api/message")
 # in ~/Plow/ld/dashboard.hdr, written once by ld-setup.
 DELIVERY_KEY = "DASHBOARD_DELIVERY"
 OUTBOX_DIR = "/opt/data/ld/outbox"
+# The tool names are qualified because this block is read BY THE MODEL: an MCP
+# tool carries its server's key as a prefix, and a bare name is one the build
+# does not register -- which sends the turn hunting through tool_search instead
+# of calling it. Measured elsewhere at twenty-one API calls and no reply.
 LATCH_BLOCK = (
     "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
-    "1. plow_write_file  path=~/Plow/ld/card-{card}.json  content=<the JSON below>\n"
-    "2. plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+    "1. mcp__latch__plow_write_file  path=~/Plow/ld/card-{card}.json  content=<the JSON below>\n"
+    "2. mcp__latch__plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
     "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-{card}.json "
     "{url}\"] network=true\n"
     "{json}"

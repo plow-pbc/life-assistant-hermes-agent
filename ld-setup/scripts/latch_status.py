@@ -86,10 +86,23 @@ def relay_configured(text):
 
     # The servers sit at the first indent inside the mapping; whatever that
     # indent is, it is the ONLY level the relay may be named at.
-    child = re.search(r"^([ \t]+)\S", body[body.index("\n") + 1:], re.MULTILINE)
-    if not child:
+    #
+    # Derived from the first real KEY, not the first indented line: a comment is
+    # indented however its author felt, and one sitting deeper than the servers
+    # would set the level too far in -- which would read a `latch:` nested in
+    # another server's settings as the relay, the false positive this check
+    # exists to refuse.
+    indent = None
+    for line in body[body.index("\n") + 1:].splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        leading = line[:len(line) - len(line.lstrip())]
+        if not leading:
+            break
+        indent = re.escape(leading)
+        break
+    if indent is None:
         return False
-    indent = re.escape(child.group(1))
 
     # And a key with nothing under it registers no tool -- the url and the
     # bearer are what make a server -- so the settings beneath it are required.
