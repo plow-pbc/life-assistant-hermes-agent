@@ -184,9 +184,7 @@ def test_compression_has_somewhere_to_fall_back_to():
     """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
     a cheaper-sounding id installs a fallback that can never fire -- and a naive
     probe misses it, because the implicit main-model fallback reports success on
-    the caller's behalf. The ordering matters as much as the model: the primary
-    must give up sooner than the fallback runs, or widening its budget silently
-    delays the only thing that can still succeed."""
+    the caller's behalf."""
     compression = config()["auxiliary"]["compression"]
     chain = compression["fallback_chain"]
 
@@ -195,10 +193,14 @@ def test_compression_has_somewhere_to_fall_back_to():
         "the fallback rides this instance's own codex auth -- a provider "
         "needing a new credential would not resolve here at all"
     )
-    assert compression["timeout"] < chain[0]["timeout"], (
-        "the primary attempt must give up SOONER than the fallback runs: the "
-        "stall is what the user feels, and a long primary budget just delays "
-        "reaching the only thing that can still succeed"
+    assert "timeout" not in compression, (
+        "a task-level compression timeout is floored to 300s by the image, so "
+        "one below it is inert and one above it only lengthens the stall"
+    )
+    assert chain[0]["timeout"] >= 300, (
+        "the chain entry gets no floor of its own -- the image's applies to the "
+        "task-level key this test just required to be absent -- so without an "
+        "explicit budget it inherits the 30s auxiliary default"
     )
 
 
