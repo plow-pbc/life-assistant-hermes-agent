@@ -129,7 +129,7 @@ mcp_servers:
   #
   # This is the ONLY mcp_server here. Hostex and Seam stay absent: no PMS
   # access, no lock control. The device this reaches is that owner's own.
-  latch:
+  plow:
     url: https://api.plow.co/v1/relay/devices/${DOMO_DEVICE_UID}/mcp
     headers:
       Authorization: Bearer ${DOMO_MCP_TOKEN}

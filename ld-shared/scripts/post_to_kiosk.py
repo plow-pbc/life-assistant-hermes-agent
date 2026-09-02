@@ -135,8 +135,8 @@ OUTBOX_DIR = "/opt/data/ld/outbox"
 # of calling it. Measured elsewhere at twenty-one API calls and no reply.
 LATCH_BLOCK = (
     "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
-    "1. mcp__latch__plow_write_file  path=~/Plow/ld/card-{card}.json  content=<the JSON below>\n"
-    "2. mcp__latch__plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+    "1. mcp__plow__plow_write_file  path=~/Plow/ld/card-{card}.json  content=<the JSON below>\n"
+    "2. mcp__plow__plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
     "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-{card}.json "
     "{url}\"] network=true\n"
     "{json}"

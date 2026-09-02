@@ -424,7 +424,7 @@ the documented escape hatch, rather than a compose file this repo no longer owns
 
 ## Latch — whose Mac an instance reaches
 
-`mcp_servers.latch` points at the Plow relay, which forwards to Plow Latch on
+`mcp_servers.plow` points at the Plow relay, which forwards to Plow Latch on
 the owner's Mac: `plow_read_file`, `plow_write_file`, `plow_run_command`,
 `plow_browser_*`, `plow_vault` and friends. The relay authorises the connection
 and tells the Mac who is asking; the Mac authorises each action, so the approval

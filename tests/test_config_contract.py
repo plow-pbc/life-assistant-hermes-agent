@@ -204,16 +204,28 @@ def test_compression_has_somewhere_to_fall_back_to():
     )
 
 
-def test_latch_is_the_only_mcp_server():
-    assert list(config()["mcp_servers"]) == ["latch"]
+def test_the_relay_is_the_only_mcp_server():
+    assert list(config()["mcp_servers"]) == ["plow"]
 
 
-def test_latch_is_configured_from_the_environment_not_from_git():
+def test_the_relay_key_matches_the_tool_prefix_the_skills_call():
+    """The stanza's key IS the tool prefix. A model calls
+    `mcp__<key>__plow_run_command`, so a config.yaml naming one thing while the
+    sheets name another registers a tool nothing asks for -- and the status
+    probe answers "configured" for it."""
+    key, = config()["mcp_servers"]
+    for skill in sorted(ROOT.glob("ld-*/SKILL.md")):
+        for line in skill.read_text().splitlines():
+            if "mcp__" in line and "_run_command" in line:
+                assert f"mcp__{key}__" in line, f"{skill.name}: {line.strip()}"
+
+
+def test_the_relay_is_configured_from_the_environment_not_from_git():
     """DOMO_DEVICE_UID decides which Mac an instance can drive -- its owner's, not
     the operator's. It never appears in this repo."""
-    latch = config()["mcp_servers"]["latch"]
-    assert "${DOMO_DEVICE_UID}" in latch["url"]
-    assert "${DOMO_MCP_TOKEN}" in latch["headers"]["Authorization"]
+    relay = config()["mcp_servers"]["plow"]
+    assert "${DOMO_DEVICE_UID}" in relay["url"]
+    assert "${DOMO_MCP_TOKEN}" in relay["headers"]["Authorization"]
 
 
 def test_every_pinned_skill_is_a_sha_not_a_branch():

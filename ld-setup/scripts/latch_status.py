@@ -20,11 +20,18 @@ to her. A terminal command, by contrast, always exists.
 So the sheet asks THIS first, and names the relay's tools only in the branch
 where they are registered.
 
-The key is `latch`, and only `latch`. It is the base seed's name for the relay
-(plow-hermes-agent #2) and this repo's, and it is also the prefix on the tool
-the model calls -- `mcp__latch__plow_run_command` -- so accepting a second
-spelling here would answer "configured" for a build whose tool is registered
-under a name the sheet does not use, and send the turn hunting for it.
+The key is `plow`, and only `plow`. It is this repo's name for the relay and
+the prefix on the tool the model calls -- `mcp__plow__plow_run_command` -- so
+accepting a second spelling here would answer "configured" for a build whose
+tool is registered under a name the sheet does not use, and send the turn
+hunting for it.
+
+That makes the key a contract with whatever seeds config.yaml, not a local
+choice. The base image keys the relay `plow` (plow-hermes-agent #15) and this
+repo matches it; it did not always, and the gap did not announce itself -- a
+sheet compiled against `latch` names a tool a `plow`-keyed build never
+registers, so on a cloud tenant the calendar step simply never ran. The two
+names move together or the probe is lying.
 
 Standard library only, and that is not an aesthetic. The sheet tells a turn to
 run this with plain `python3`, and PyYAML lives in Hermes' own venv rather than
@@ -54,11 +61,11 @@ def relay_configured(text):
     its settings deeper still:
 
         mcp_servers:
-          latch:
+          plow:
             url: https://…
 
-    So the relay's line is compared with `  latch:` and nothing cleverer. Three
-    earlier versions tried to be: an indent walk that read a `latch:` nested in
+    So the relay's line is compared with `  plow:` and nothing cleverer. Three
+    earlier versions tried to be: an indent walk that read a `plow:` nested in
     another server's settings as the relay whenever a comment sat deeper than
     the keys; a regex that nested a repetition inside a repetition, which CodeQL
     flagged as exponential backtracking (py/redos), so a config.yaml full of
@@ -70,7 +77,7 @@ def relay_configured(text):
     does not have to parse. One string comparison cannot backtrack, cannot
     misread a nesting level, and is legible without running it.
 
-    The comparison is against the RAW line, trailing spaces and all. `  latch: `
+    The comparison is against the RAW line, trailing spaces and all. `  plow: `
     is valid YAML meaning the same thing, and this reports it as unconfigured --
     deliberately, because the deployment writes this file with yaml.safe_dump
     and never emits a trailing space, so a line that has one was edited by hand
@@ -81,7 +88,7 @@ def relay_configured(text):
 
     Standard library only -- the sheet runs this as plain `python3`, and PyYAML
     lives in Hermes' own venv rather than the system interpreter in at least one
-    build we ship. A `latch:` with nothing under it registers no tool: the url
+    build we ship. A `plow:` with nothing under it registers no tool: the url
     and the bearer are what make a server.
     """
     lines = text.splitlines()
@@ -94,10 +101,10 @@ def relay_configured(text):
             continue                      # blanks and comments, at any indent
         if not line.startswith(" "):
             return False                  # the next top-level key: block over
-        if line != "  latch:":
+        if line != "  plow:":
             continue                      # some other server, or its settings
         # The relay, named at the servers' level. It counts only with settings
-        # under it -- `latch:` alone registers nothing.
+        # under it -- `plow:` alone registers nothing.
         for follower in lines[index + 1:]:
             if not follower.strip() or follower.lstrip().startswith("#"):
                 continue
