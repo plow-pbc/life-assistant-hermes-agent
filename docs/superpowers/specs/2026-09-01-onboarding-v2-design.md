@@ -43,9 +43,11 @@ Email, calendars, Mac username are **not asked**; they arrive via Latch connecto
 
 ## 3. Trigger, resume, config mapping
 
-- **Trigger** (`runtime/SOUL.md`): today the agent runs `ld-setup` only when the owner asks. v2: on any inbound
-  message, if onboarding is not complete, drive the conversation above (still answering whatever they actually
-  said). The chat plugin's one-time `👋` is unchanged (lives in another repo).
+- **Trigger** (`runtime/SOUL.md`): today the agent runs `ld-setup` only when the owner asks. v2: on an inbound
+  message **from the owner in the owner's solo 1:1 DM** (plugin facts: sender role `owner`, chat type `dm`), if
+  onboarding is not complete, drive the conversation above (still answering whatever they actually said). In a
+  group chat or for any non-owner sender: answer normally, never ask onboarding questions, never write onboarding
+  config or the marker. The wall's no-Mac token hand-off is likewise DM-only. The chat plugin's one-time `👋` is unchanged (lives in another repo).
 - **Completion marker:** a file distinct from the wall's `setup-complete`, written once name and city are stored
   and teams has been asked (an answer of "none" counts). The wall's `setup-complete` keeps its
   current meaning.
