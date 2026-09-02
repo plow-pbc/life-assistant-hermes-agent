@@ -538,9 +538,16 @@ can forge a value Compose never carries.
 `AGENT_ID` needs no setting — `agent-mgr` supplies it from the registry name,
 so two instances of this repo report as two agents rather than one.
 
-Then authorise it **once**, per instance. The token is written to the
-instance's own home (`/opt/data/.agent-index/token`, mode 0600), so it is not
-in the image and survives a rebuild:
+Then authorise it **once**, per instance. Login does the GitHub device flow and
+immediately exchanges that bearer for an **Index-scoped, revocable key**
+(`aik_…`); the GitHub token is never written to disk. Only the scoped key is
+stored, in the instance's own home (`/opt/data/.agent-index/token`, mode 0600),
+so it is not in the image and survives a rebuild.
+
+That key can report usage and post stories — both reversible. It **cannot**
+register an agent: `POST /v1/agents` refuses it with 401, which matters because
+the runtime that can read this file is the same Unix user as the agent, and
+claiming an id is the one action an owner cannot undo themselves.
 
 ```sh
 docker exec -it <container> /command/s6-setuidgid hermes \
@@ -550,6 +557,11 @@ docker exec -it <container> /command/s6-setuidgid hermes \
 
 It prints a GitHub device URL and code. Until that is done the reporter runs
 and reports nothing.
+
+An instance authorised before the scoped-key change still holds a `gho_`
+GitHub bearer on disk: only `--login` performs the exchange, and the hourly
+supervisor runs ordinary reporting. Re-run the command above once on any such
+instance.
 
 After that it reports hourly on its own. A run that collects nothing says so
 rather than publishing a zero it never measured, so an agent reading as idle
