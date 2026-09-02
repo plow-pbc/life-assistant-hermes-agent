@@ -1,0 +1,14 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+# When the reporter is switched off, run exits 0 and we return 125 —
+# s6-supervise's "permanent failure, do not restart" marker — so the slot
+# reports down instead of spinning.
+#
+# When it IS switched on we deliberately do NOT return 125: a reporter that
+# died should come back. The dashboard service returns 125 unconditionally,
+# which is right for a UI you can see is missing and wrong for a background
+# job whose absence is silent.
+case "${AGENT_INDEX:-}" in
+    1|true|TRUE|True|yes|YES|Yes) exit 0 ;;
+    *) exit 125 ;;
+esac

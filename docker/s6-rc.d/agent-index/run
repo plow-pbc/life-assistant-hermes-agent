@@ -1,0 +1,32 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+# Usage reporter: pushes this agent's token usage to the agent index.
+#
+# Same conditional-slot idiom as the dashboard service: if the reporter is
+# not switched on, exit 0 and let the finish script return 125 so s6 marks
+# the slot down rather than restarting it forever.
+
+case "${AGENT_INDEX:-}" in
+    1|true|TRUE|True|yes|YES|Yes) ;;
+    *) exit 0 ;;
+esac
+
+[ -n "${AGENT_ID:-}" ] || { echo "agent-index: AGENT_ID unset, not reporting"; exit 0; }
+
+# HOME is set explicitly, NOT inherited. s6-setuidgid changes uid/gid but
+# leaves HOME pointing at root's, and the client resolves its token path with
+# expanduser(), which reads $HOME before falling back to /etc/passwd. Without
+# this the login dies on PermissionError writing /root/.agent-index, and the
+# token never reaches the bind-mounted home it is supposed to persist in.
+# That failure is silent in the reporting path: an agent with no usage prints
+# "nothing to report" and exits 0 before it ever needs the token.
+#
+# One-shot client on a timer: it has no scheduler of its own by design, and a
+# second scheduler inside a supervised container is a 2am bug. s6 owns the
+# lifecycle, this loop owns only the interval.
+exec s6-setuidgid hermes env HOME=/opt/data sh -c '
+  while :; do
+    /opt/hermes/.venv/bin/python3 /usr/local/bin/agent-index-client --agent "$AGENT_ID" || true
+    sleep "${AGENT_INDEX_INTERVAL:-3600}"
+  done
+'

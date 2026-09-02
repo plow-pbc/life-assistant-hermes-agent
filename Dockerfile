@@ -60,3 +60,19 @@ RUN systemctl enable life-calendar-feed.timer
 # before first boot, so the image creates it empty: an unset-up agent is routed
 # to ld-setup by SOUL.md, exactly as on the fleet.
 RUN install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld
+
+# The usage reporter: this agent's own token usage, pushed to the agent index.
+#
+# Vendored rather than fetched — plow-pbc/agent-index-client is private, so a
+# build-time curl 404s. vendor/agent_index_client.py carries the upstream sha
+# in its header; eng-550 owns the client, this repo only ships it.
+#
+# Code only. The OAuth token is NOT in the image: the client writes it under
+# the hermes user's home, which is /opt/data — the bind-mounted agent home —
+# so it persists per-agent across rebuilds and never lands in a layer.
+COPY vendor/agent_index_client.py /usr/local/bin/agent-index-client
+RUN chmod 0755 /usr/local/bin/agent-index-client
+
+# Merges into the base's s6 tree: adds the agent-index slot and registers it
+# in the existing user bundle without disturbing dashboard or main-hermes.
+COPY docker/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
