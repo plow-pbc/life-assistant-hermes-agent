@@ -123,12 +123,146 @@ def test_calendar_discovery_is_one_argv_and_never_auth_list():
     accounts dead-ends on a Mac that is working correctly, and the failure
     reads as "no calendars" rather than "wrong command".
     """
-    assert DISCOVERY_ARGV in ONBOARDING
-    assert ONBOARDING.count(DISCOVERY_ARGV) == 1, "one call, not a loop of them"
+    # Twice, and byte-identical both times: once as the turn-top probe that
+    # decides whether Latch is up, once in the section that reads the answer.
+    # They are the same call on purpose -- the probe IS the listing, so a turn
+    # that finds Latch connected already holds what it needs and does not go
+    # back for it. Two spellings would be two calls, and the second would be
+    # the one nobody checked against a real relay.
+    assert ONBOARDING.count(DISCOVERY_ARGV) == 2, (
+        "the probe and the discovery call must be the same argv, written once each")
     # No `auth` subcommand reaches an argv anywhere in this sheet. The section
     # names it in prose, deliberately, to say why it is not used -- so the
     # check is on the argv shape, not on the word.
     assert not re.search(r'argv=\[[^]]*"auth"', SKILL)
+
+
+MECHANICS = SKILL[SKILL.index("## How a turn actually sends things"):SKILL.index("### 1 · Opener")]
+
+
+def test_the_sheet_explains_how_a_turn_emits_more_than_one_message():
+    """"Two messages" is not an instruction a model can act on.
+
+    A turn delivers exactly one message -- the text it ends with. Everything
+    before it is a send_message call. Told only to "send two messages", the
+    model wrote two paragraphs into one reply and the owner got one message
+    with the GIF trailing it. Twice.
+    """
+    text = " ".join(MECHANICS.split())
+    assert "A turn ends with exactly one message" in text
+    assert 'send_message(target="plow_chat"' in MECHANICS
+    assert "Writing both into one final reply gives the owner one message" in text
+
+
+def test_media_tags_are_required_flush_left_and_never_fenced():
+    """The gateway blanks fenced code blocks before scanning for MEDIA tags.
+
+    Always, regardless of whether the path is real -- so a tag inside triple
+    backticks is dropped with no attachment and no error, while the sentence
+    introducing it still arrives. That is exactly how four screenshots went
+    missing from a message that read correctly.
+    """
+    text = " ".join(MECHANICS.split())
+    assert "plain text on its own line" in text
+    assert "blanks out fenced code blocks first" in text
+    assert "silently dropped" in text
+    # And the sheet warns that its OWN examples are indented for the document.
+    assert "indented HERE because this sheet is a document" in text
+
+
+def test_the_photo_stack_is_one_call_with_four_tags():
+    """Four attachments on one message, not four messages.
+
+    Several MEDIA tags in one message deliver as several attachments in the
+    order written, so the stack is one send_message call -- which is also what
+    keeps them arriving together rather than trickling in.
+    """
+    intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    call = [line for line in intro.splitlines() if "work-1-vault-login.png" in line]
+    assert len(call) == 1, "the stack should be a single send_message line"
+    for name in ("work-2-instacart-grocery.png", "work-3-amazon-shopping.png",
+                 "work-4-medical-discovery.png"):
+        assert name in call[0], f"{name} is not in the same call as work-1"
+    assert "one call carrying four attachments, not four calls, and not a code block" in \
+        " ".join(intro.split())
+
+
+def test_bookkeeping_never_becomes_the_final_message():
+    """Observed, delivered to the owner: "Written. Now waiting for Mary's
+    reply before continuing to city/teams." The last thing written in a turn is
+    the message, so a note-to-self left there is sent."""
+    text = " ".join(MECHANICS.split())
+    assert "That final text IS the message the owner receives" in text
+    assert "Bookkeeping belongs in your reasoning, never in the last thing you write" in text
+
+
+def test_latch_state_is_probed_every_turn_not_asked():
+    """"Have you installed it yet?" is a question with an answer already on file.
+
+    Asking it puts the owner in the position of reporting on homework, and
+    worse, it is the ONLY thing standing between them and the calendar pick --
+    so an owner who installs Latch and says nothing waits forever for an
+    assistant that could have looked.
+    """
+    text = " ".join(ONBOARDING.split())
+    assert "you find out where Latch stands by looking, not by asking" in text
+    assert 'Never ask "have you installed it yet?"' in text
+    # The probe is the same call the discovery section makes.
+    assert DISCOVERY_ARGV in ONBOARDING[:ONBOARDING.index("### 1 · Opener")]
+
+
+@pytest.mark.parametrize("outcome", [
+    "no such tool",       # no plow server at all
+    "a relay error",      # Latch not running
+    "a calendar listing",  # up
+])
+def test_every_probe_outcome_has_a_stated_behaviour(outcome):
+    """Three outcomes, three behaviours, none of them left to inference.
+
+    The absent-tool case is the one that gets forgotten, and it is the one that
+    matters most: a deployment with no Mac at all must look exactly like a Mac
+    that has not been set up yet, or every owner without one gets an error
+    report about a feature they were never offered.
+    """
+    table = " ".join(ONBOARDING[:ONBOARDING.index("### 1 · Opener")].split())
+    assert outcome in table
+
+
+def test_a_failed_probe_never_reaches_the_owner():
+    """A 503 and a stack trace are the same sentence to a person who did not
+    ask for either, and the sentence is not about them."""
+    text = " ".join(ONBOARDING.split())
+    assert "never say a word about it" in text
+    assert "never put the failure itself in front of them" in text.replace("Nor do you ever put", "never put")
+
+
+def test_the_link_is_nudged_at_most_once_more():
+    """Between silence and a reminder every turn, the failure mode is the
+    reminder: the owner has the link, and repeating it is the assistant
+    nagging about the one thing it cannot do itself."""
+    text = " ".join(ONBOARDING.split())
+    assert "mention it again at most once more" in text
+    assert "Never every turn" in text
+    assert "If you cannot tell whether you have already nudged, you have" in text
+
+
+def test_a_connected_latch_suppresses_the_download_paragraph():
+    """Sending an install link to someone who has installed it reads as an
+    assistant that has not noticed them -- and it is the first impression."""
+    intro = " ".join(ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")].split())
+    assert "only if the probe said Latch is not up" in intro
+    assert "If the probe returned a listing, none of that paragraph is sent" in intro
+    assert "not the link" in intro
+    assert "go straight to §5 in this same turn" in intro
+
+
+def test_the_calendar_pick_no_longer_waits_to_be_told():
+    """The probe is the trigger, so an owner who installs Latch and says
+    nothing still gets asked which calendars to track."""
+    text = " ".join(ONBOARDING.split())
+    assert "the trigger already fired" in text
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "you do not wait to be told, and you do not ask" in section
 
 
 def test_the_account_is_taken_from_primary_not_dataowner():
