@@ -241,11 +241,18 @@ asks, what it writes and whether it introduces you are decided by a script.
 `/opt/data/ld/.turn.json` — never a heredoc, never argv:
 
     {"answers": {"name": "…", "city": "…, …", "teams": […], "calendars": […]},
+     "carried": {"name": "…"},
      "listing": false}
 
-Only what THIS message actually carried. Omit a key you were not given; a
-roster label is not a name. `listing` is true only when a calendar listing came
-back this turn.
+`answers` is only what THIS message carried. Omit a key you were not given; a
+roster label is not a name.
+
+`carried` is an answer an EARLIER turn gave you and told you to hold — in
+practice the one deferred name. It goes here, never in `answers`: the split is
+how the script knows the introduction has already gone out, and a carried name
+filed as a fresh one reads as a first meeting every turn.
+
+`listing` is true only when a calendar listing came back this turn.
 
 **2 · Ask what the turn is:**
 
@@ -260,7 +267,8 @@ and draft it:
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
 
-Anything in `defer` is carried in the conversation and staged by a later turn.
+Anything in `defer` is held in the conversation and staged by the next turn —
+under `carried`, not `answers`.
 An empty `write_now` means no draft at all this turn.
 
 **4 · Compose the one message**: acknowledge what just landed, then the

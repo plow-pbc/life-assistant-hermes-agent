@@ -495,6 +495,10 @@ def test_the_sheet_presents_the_decision_and_does_not_restate_it():
     """
     assert "onboarding_state.py" in ONBOARDING
     assert ".turn.json" in ONBOARDING
+    # Both buckets, or a deferred name comes back as a freshly learned one and
+    # the introduction goes out a second time. Observed on a live run before
+    # the sheet named `carried` at all.
+    assert "`carried`" in ONBOARDING and "never in `answers`" in ONBOARDING
     # No table of turn shapes, and no second copy of the ordering rule.
     assert "| the turn | tool calls |" not in ONBOARDING
     assert "| what the config already holds |" not in ONBOARDING
