@@ -10,7 +10,7 @@
 # tag would substitute code underneath them.
 FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-23e56996dffa13eee5c9088bde3e5b5a6c30e07a@sha256:fe4533fd9793c20a93bf6f306d02935e1fdcdd9532a3b884b5ba68c8e48a69b8
 
-# Flat, the same layout compose.override.yml produces at /opt/data/skills: every
+# Flat, all as siblings directly under the skills root: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
 # off its own realpath, so the three have to land as siblings.
 #
@@ -35,7 +35,6 @@ COPY ld-setup/            /var/lib/hermes/skills/ld-setup/
 COPY ld-shared/           /var/lib/hermes/skills/ld-shared/
 COPY ld-wall-setup/       /var/lib/hermes/skills/ld-wall-setup/
 COPY ld-sports/           /var/lib/hermes/skills/ld-sports/
-COPY ld-viewer-dev/       /var/lib/hermes/skills/ld-viewer-dev/
 COPY ld-weather/          /var/lib/hermes/skills/ld-weather/
 COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
 
