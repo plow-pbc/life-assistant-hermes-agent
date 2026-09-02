@@ -9,7 +9,7 @@ This script is the whole producer — gather, filter, normalize, POST.
 
 Everything it reads is fixed; nothing arrives on argv:
 
-  - `/opt/data/ld/config.json` for the account, the calendar ids and the
+  - `/var/lib/hermes/ld/config.json` for the account, the calendar ids and the
     household zone — the same `calendar.account` + `calendar.sources` shape
     every other calendar producer here reads;
   - the Plow relay credential (`DOMO_DEVICE_UID`, `DOMO_MCP_TOKEN`) from the
@@ -76,7 +76,7 @@ from bearer_http import open_no_redirect  # noqa: E402
 from external_content import strip_markers  # noqa: E402
 from runtime_env import AGENT_DOTENV, agent_values  # noqa: E402
 
-CONFIG_FILE = "/opt/data/ld/config.json"
+CONFIG_FILE = "/var/lib/hermes/ld/config.json"
 # Fixed, never from the dotenv. runtime/config.yaml and the justfile's
 # check-latch both name this origin outright; taking it from the
 # agent-writable dotenv instead would hand an injected turn the relay bearer.

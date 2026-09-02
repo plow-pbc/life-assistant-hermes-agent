@@ -70,7 +70,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
 
     The check is only worth anything because the mapping is earned:
     test_the_hermes_volumes_are_exactly_these pins
-    ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
+    ${AGENT_DIR}/<name> -> /var/lib/hermes/skills/<name>, so resolving these against
     ROOT really does mean the agent can open them.
 
     It checks that the absolute paths RESOLVE; it does not check that a new
@@ -78,12 +78,12 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     three hand-authored files it cost more than the drift it fenced, and the
     eight paths it found are fixed regardless. The convention is visible in the
     files themselves -- every path in all three is absolute."""
-    prefix = "/opt/data/skills/"
+    prefix = "/var/lib/hermes/skills/"
     leaves = set(SKILL_DIRS)
     seen = 0
     for skill_md in [*sorted(ROOT.glob("ld-*/SKILL.md")), ROOT / "runtime" / "SOUL.md"]:
         text = skill_md.read_text()
-        for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
+        for ref in re.findall(r"/var/lib/hermes/skills/([\w./-]+)", text):
             ref = ref.rstrip(".").rstrip("/")
             head, _, rest = ref.partition("/")
             assert head in leaves, (
@@ -97,14 +97,14 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
             seen += 1
 
     assert seen, (
-        "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
+        "no /var/lib/hermes/skills/ paths found in any SKILL.md -- has the reference "
         "style changed?"
     )
 
 
 # Hermes confines its file-writing tool to this root; a handoff outside it is
 # denied at 06:00, in front of nobody. The image sets it, not this repo.
-WRITE_SAFE_ROOT = "/opt/data"
+WRITE_SAFE_ROOT = "/var/lib/hermes"
 
 # Listed, not globbed: discovery needed a floor (an empty glob SKIPS a
 # parametrized test), a helper exclusion and a sheet-presence rule -- three
@@ -178,12 +178,12 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
 
     Each sheet names the handoff twice -- to write, then to read back -- so a
     half-applied change leaves one stale and the agent reads two files. Both
-    scans are whole-token: /mnt/opt/data/ld/weather-text and
-    /opt/data/ld/weather-text.tmp otherwise read as agreement. The stale scan
+    scans are whole-token: /mnt/var/lib/hermes/ld/weather-text and
+    /var/lib/hermes/ld/weather-text.tmp otherwise read as agreement. The stale scan
     wants a PATH ending in -text, never a bare token, because "plain-text
     cards" is the wording cards 1/2/4 use -- exactly the blocked producers;
     anchoring to the handoff's directory instead fails a correct sheet, since
-    /opt/data/ld/config.json lives there too."""
+    /var/lib/hermes/ld/config.json lives there too."""
     path = _handoff(skill, wrapper)
     sheet = (ROOT / skill / "SKILL.md").read_text()
 
@@ -227,7 +227,7 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"
 
 
-SETUP_COMPLETE_MARKER = "/opt/data/ld/setup-complete"
+SETUP_COMPLETE_MARKER = "/var/lib/hermes/ld/setup-complete"
 
 
 def test_every_calendar_gather_names_the_configured_gog_account():
@@ -280,7 +280,7 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     # skill's own: onboarding is the one thing that may fire on any inbound, so
     # its routing clause names the config's keys and nothing about a Pi.
     description = setup.split("---", 2)[1]
-    assert "while /opt/data/ld/config.json is missing any of" in description
+    assert "while /var/lib/hermes/ld/config.json is missing any of" in description
     assert "re-set-up their wall" not in description, (
         "ld-setup still claims the wall's trigger")
     wall = (ROOT / "ld-wall-setup" / "SKILL.md").read_text().split("---", 2)[1]
@@ -457,7 +457,7 @@ def test_the_agents_own_file_lives_in_a_directory_it_owns():
     comes from the writer's fchmod, on create and on rewrite -- ld/.env does not
     exist at build time."""
     runtime_env = (ROOT / "ld-shared/scripts/runtime_env.py").read_text()
-    assert 'AGENT_DOTENV = "/opt/data/ld/.env"' in runtime_env
+    assert 'AGENT_DOTENV = "/var/lib/hermes/ld/.env"' in runtime_env
     assert "install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld" in (ROOT / "Dockerfile").read_text()
     mint = (ROOT / "ld-wall-setup/scripts/mint_wall_token.py").read_text()
     assert "dotenv_path=AGENT_DOTENV" in mint, "the writer's default target is the agent's file"

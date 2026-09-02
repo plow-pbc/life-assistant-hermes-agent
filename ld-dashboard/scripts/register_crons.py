@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Register the life-dashboard producer crons, idempotently, from a versioned spec.
 
-Why this exists at all. `hermes cron` persists jobs to /opt/data/cron/jobs.json,
+Why this exists at all. `hermes cron` persists jobs to /var/lib/hermes/cron/jobs.json,
 which `agent-mgr deploy` does NOT replay -- so a rebuilt instance comes up with
 a wall screen that never updates and nothing to diff against. Keeping the six
 definitions here means "set up the life dashboard crons" replays a reviewed spec
@@ -45,10 +45,10 @@ from runtime_env import DOTENV, dotenv_values  # noqa: E402
 HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
 # reason this skill exists, because `agent-mgr deploy` does not replay it.
-JOBS_FILE = "/opt/data/cron/jobs.json"
+JOBS_FILE = "/var/lib/hermes/cron/jobs.json"
 # The producers' own config. Read here for one reason: every schedule below is a
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
-LD_CONFIG = "/opt/data/ld/config.json"
+LD_CONFIG = "/var/lib/hermes/ld/config.json"
 
 # The spec. One row per producer — all six are live; the blocked/LIVE
 # partition machinery left with the last blocked row (git history keeps the

@@ -70,20 +70,8 @@ RUN chown -R root:root /opt/plow \
  && find /opt/plow -type d -exec chmod 0755 {} + \
  && find /opt/plow -type f -exec chmod 0644 {} +
 
-# The one rewrite. Every path in this repo's content is written against the
-# fleet's HERMES_HOME (/opt/data); this runtime's is /var/lib/hermes. It is a
-# pure prefix substitution — /opt/data/skills, /opt/data/ld, /opt/data/.env and
-# /opt/data/cron all keep their own names — done to the image's copy so the
-# tracked files stay the fleet's. Hermes' own scanner refuses an unexpanded
-# variable in a skill, which is why this is a literal and not ${HERMES_HOME}.
-# /opt/plow is walked too: the scheduled copy names the same paths.
-RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills /opt/plow -type f \
-      \( -name '*.md' -o -name '*.py' -o -name '*.json' \) \
-      -exec sed -i 's|/opt/data|/var/lib/hermes|g' {} +
-
 # The calendar strip's schedule, as a supervised service beside the gateway.
-# It names /var/lib/hermes outright — the run script lands in /etc/s6-overlay,
-# which the rewrite above does not walk.
+# The run script lands in /etc/s6-overlay, outside the skills tree.
 COPY image/s6-overlay/ /etc/s6-overlay/
 
 # The process timezone, resolved from this household's config before any

@@ -133,7 +133,7 @@ def test_a_second_run_appends_nothing_re_ships_the_same_token_and_still_never_pr
     run(home, capsys)
     after_first = dotenv.read_text()
     tok = token_in(dotenv)
-    (ld / "dashboard.hdr").unlink()  # a lost /opt/data/ld/ still has something to ship after a re-run
+    (ld / "dashboard.hdr").unlink()  # a lost /var/lib/hermes/ld/ still has something to ship after a re-run
     rc, out = run(home, capsys)
     assert rc == 0
     assert dotenv.read_text() == after_first

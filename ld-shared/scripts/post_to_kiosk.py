@@ -18,8 +18,8 @@ via argv:
   message text
     - MESSAGE_FILE set (containers whose file tool CAN write a handoff, e.g.
       Hermes): read that fixed path. Hermes confines its file tool to
-      HERMES_WRITE_SAFE_ROOT (/opt/data), so the path a wrapper picks has to
-      sit under it -- see the wrappers' /opt/data/ld/<bundle>-text. That path
+      HERMES_WRITE_SAFE_ROOT (/var/lib/hermes), so the path a wrapper picks has to
+      sit under it -- see the wrappers' /var/lib/hermes/ld/<bundle>-text. That path
       is on the agent's home bind rather than the container-ephemeral /tmp it
       replaced, so a leftover now outlives a restart, and its body sits durably
       in the operator's host home. Trivially fine for weather and sports, which
@@ -41,7 +41,7 @@ via argv:
     - /config/secrets/dashboard-{endpoint-url,token} files when present (Plow
       lands these mode-600 on a read-only secrets mount), else
     - DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN in the process env (Hermes has no
-      per-agent secrets mount; the gateway loads /opt/data/.env once at start
+      per-agent secrets mount; the gateway loads /var/lib/hermes/.env once at start
       and the container env is that load), else
     - the same two names read out of the agent's own file (runtime_env.AGENT_DOTENV).
       This third source is what makes ld-setup work on a live instance:
@@ -71,7 +71,7 @@ kiosk slot (latest post per card wins). The eyebrow defaults to `type`; set the
 optional module var TITLE to "" to hide it or to a string to override it:
 
     import post_to_kiosk
-    post_to_kiosk.MESSAGE_FILE = "/opt/data/ld/<bundle>-text"  # Hermes only; Plow leaves None
+    post_to_kiosk.MESSAGE_FILE = "/var/lib/hermes/ld/<bundle>-text"  # Hermes only; Plow leaves None
     post_to_kiosk.CARD = "1" | "2" | "3" | "4" | "5"
     post_to_kiosk.BODY_TYPE = "alert" | "affirmation" | "weather" | "digest" | "sports"
     post_to_kiosk.main()   # message text on stdin when MESSAGE_FILE is None
@@ -128,7 +128,7 @@ DOTENV_ENDPOINT_RE = re.compile(r"http://[A-Za-z0-9.-]+:5174/api/message")
 # latch-delivery.md). The token is never read in that mode: the Mac holds it
 # in ~/Plow/ld/dashboard.hdr, written once by ld-setup.
 DELIVERY_KEY = "DASHBOARD_DELIVERY"
-OUTBOX_DIR = "/opt/data/ld/outbox"
+OUTBOX_DIR = "/var/lib/hermes/ld/outbox"
 # The tool names are qualified because this block is read BY THE MODEL: an MCP
 # tool carries its server's key as a prefix, and a bare name is one the build
 # does not register -- which sends the turn hunting through tool_search instead
@@ -163,14 +163,14 @@ def read_secret(file_path, env_name, label):
     """Read a required secret: file, then env, then the dotenv (module docstring).
 
     All three sources are fixed and non-argv. The file is tried first (Plow's
-    read-only /config/secrets mount); then the process env; then /opt/data/.env
+    read-only /config/secrets mount); then the process env; then /var/lib/hermes/.env
     itself, which is the only source that sees a line ld-setup appended after
     the gateway started. Fails loud when all three are empty, so a
     misconfigured install never half-posts to an unknown endpoint.
 
     Returns (value, source) — source is "file", "env" or "dotenv". The caller
     uses the source to decide whether extra validation applies: unlike the
-    read-only secrets mount or the gateway's startup env, /opt/data/.env is
+    read-only secrets mount or the gateway's startup env, /var/lib/hermes/.env is
     agent-writable at runtime (see _validate_dotenv_endpoint).
     """
     if Path(file_path).exists():
@@ -189,7 +189,7 @@ def read_secret(file_path, env_name, label):
 
 def _validate_dotenv_endpoint(url):
     """A dotenv-sourced endpoint URL must be exactly the Pi's message API.
-    /opt/data/.env is agent-writable at runtime, so an injected turn
+    /var/lib/hermes/.env is agent-writable at runtime, so an injected turn
     appending a second DASHBOARD_ENDPOINT_URL= line (last duplicate wins in
     dotenv_values) must not be able to steer the bearer to an attacker host.
     The secrets file and the startup env are trusted as today — this only

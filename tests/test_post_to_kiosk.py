@@ -60,10 +60,10 @@ def reset_module():
     post_to_kiosk.MESSAGE_FILE = None
     post_to_kiosk.ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
     post_to_kiosk.TOKEN_FILE = "/config/secrets/dashboard-token"
-    # Not the real /opt/data/.env: a machine that happens to have one would
+    # Not the real /var/lib/hermes/.env: a machine that happens to have one would
     # otherwise satisfy the third source and silence the both-absent refusals.
     post_to_kiosk.AGENT_DOTENV = "/nonexistent/dotenv-for-tests/.env"
-    post_to_kiosk.OUTBOX_DIR = "/opt/data/ld/outbox"
+    post_to_kiosk.OUTBOX_DIR = "/var/lib/hermes/ld/outbox"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
     os.environ.pop(post_to_kiosk.TOKEN_ENV, None)
 
@@ -90,7 +90,7 @@ def use_dotenv_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1
     """Dotenv transport: no secret file, no env var — both keys in DOTENV alone.
 
     The live case ld-setup creates: mint_wall_token.py appends its lines after
-    the gateway loaded /opt/data/.env, so a cron-spawned producer sees them
+    the gateway loaded /var/lib/hermes/.env, so a cron-spawned producer sees them
     only by reading the file itself.
     """
     reset_module()
@@ -242,7 +242,7 @@ def test_dotenv_secrets_are_the_third_source():
 
 
 def test_dotenv_endpoint_that_is_not_the_pi_is_refused():
-    """/opt/data/.env is agent-writable at runtime; an injected endpoint line
+    """/var/lib/hermes/.env is agent-writable at runtime; an injected endpoint line
     there must not steer the bearer anywhere but http://<host>:5174/api/message.
     A live loopback server on another port proves nothing was sent."""
     server, base = _start_server()

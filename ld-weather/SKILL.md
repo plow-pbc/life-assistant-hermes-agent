@@ -15,13 +15,13 @@ tomorrow's daytime high, which is the useful number to glance at then.)
 
 Once per run:
 
-1. Read `weather.{location,lat,lon}` from `/opt/data/ld/config.json`.
+1. Read `weather.{location,lat,lon}` from `/var/lib/hermes/ld/config.json`.
 2. Fetch the NWS forecast (a pure HTTPS fetch — `api.weather.gov`, no key):
    resolve the gridpoint from `lat`/`lon`, then read the hourly + daily
    forecast. NWS reports °F for US points (Fahrenheit-only by contract).
 3. Compose the **self-contained** weather tile HTML. The canonical markup +
    `<style>` (the `.weather-*` rules, which reference the viewer's shared theme
-   tokens) is defined in `/opt/data/skills/ld-shared/references/kiosk-protocol.md`
+   tokens) is defined in `/var/lib/hermes/skills/ld-shared/references/kiosk-protocol.md`
    § "Weather tile (card 3)" — the ONE source both agent seeds share. Read it
    and reproduce that tile exactly, filling in the current temp (big), the
    condition, and the location + H/L. It ships its own `<style>`, so the viewer
@@ -42,27 +42,27 @@ every feed- or config-derived string (condition, location, temps) — `&`→`&am
 ## Post
 
 Write the composed tile HTML to the fixed handoff file —
-`/opt/data/ld/weather-text` — with your file-writing tool, then run the helper
+`/var/lib/hermes/ld/weather-text` — with your file-writing tool, then run the helper
 by absolute path (the cron's working directory is not the skill directory):
 
-    /opt/data/skills/ld-weather/scripts/post_weather.py
+    /var/lib/hermes/skills/ld-weather/scripts/post_weather.py
 
-It reads the tile from `/opt/data/ld/weather-text`, the endpoint from the
+It reads the tile from `/var/lib/hermes/ld/weather-text`, the endpoint from the
 `DASHBOARD_ENDPOINT_URL` env var, and the token from the `DASHBOARD_TOKEN`
 env var (both from `data/.env`, mode 600) — no value reaches argv. It posts
 as card 3 with `type: "weather"`, http(s)-allowed, no redirects, and fails
 loudly on any non-200 response.
 
 If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
-follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+follow `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md` — the run
 is not done until the Latch `curl` returned 2xx.
 
 Preview without sending: `… post_weather.py --dry-run`.
 
 ## Config
 
-`weather` in `/opt/data/ld/config.json` (template:
-`/opt/data/skills/ld-shared/references/config.example.json`):
+`weather` in `/var/lib/hermes/ld/config.json` (template:
+`/var/lib/hermes/skills/ld-shared/references/config.example.json`):
 
     "weather": { "location": "Mountain View", "lat": 37.386, "lon": -122.083 }
 
@@ -77,7 +77,7 @@ self-registers.
 
 The container's zone IS `family.timezone` — `hermes cron create` takes no
 per-job timezone, so jobs fire in whatever `AGENT_TZ` agent-mgr created the
-container with. `/opt/data/skills/ld-dashboard/scripts/register_crons.py` is what proves the two
+container with. `/var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py` is what proves the two
 agree: it refuses to register any schedule when the container's `TZ` and
 `family.timezone` differ. (The ld-config gate does not — it only checks the zone
 is non-blank.)

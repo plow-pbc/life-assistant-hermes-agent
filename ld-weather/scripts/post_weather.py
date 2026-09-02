@@ -16,7 +16,7 @@ sys.path.insert(
 )
 import post_to_kiosk  # noqa: E402
 
-post_to_kiosk.MESSAGE_FILE = "/opt/data/ld/weather-text"
+post_to_kiosk.MESSAGE_FILE = "/var/lib/hermes/ld/weather-text"
 post_to_kiosk.CARD = "3"
 post_to_kiosk.BODY_TYPE = "weather"
 post_to_kiosk.TITLE = ""  # hide the eyebrow — the self-contained tile owns the card

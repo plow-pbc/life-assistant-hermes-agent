@@ -4,14 +4,14 @@
 The Pi keeps today's server: /api/message behind DASHBOARD_TOKEN, on the
 household LAN. This agent runs in the cloud and cannot reach it; the owner's
 Mac, running Plow Latch, can. So the token minted here goes to exactly two
-places, both files under /opt/data/ld that the agent ships whole with
+places, both files under /var/lib/hermes/ld that the agent ships whole with
 Latch's file tool -- never through chat, never on argv (argv is shown on the
 owner's approval card and kept in the audit record):
 
-  /opt/data/ld/pi.env         ICAL_URL + DASHBOARD_TOKEN   -> the Pi's ~/ld-data/.env
-  /opt/data/ld/dashboard.hdr  Authorization: Bearer <t>    -> ~/Plow/ld/dashboard.hdr on the Mac
+  /var/lib/hermes/ld/pi.env         ICAL_URL + DASHBOARD_TOKEN   -> the Pi's ~/ld-data/.env
+  /var/lib/hermes/ld/dashboard.hdr  Authorization: Bearer <t>    -> ~/Plow/ld/dashboard.hdr on the Mac
 
-and three lines are appended to /opt/data/.env for the producers:
+and three lines are appended to /var/lib/hermes/.env for the producers:
 DASHBOARD_ENDPOINT_URL (the Pi's message API), DASHBOARD_TOKEN, and
 DASHBOARD_DELIVERY=latch, which is what turns post_to_kiosk.py's POST into a
 Latch hand-off. The append lands AFTER the gateway loaded the dotenv, which
@@ -23,7 +23,7 @@ the producers out of the wall. The ADDRESS is not sticky the same way: a
 re-run with a different pi_address re-points DASHBOARD_ENDPOINT_URL in place
 (token unchanged), so cards follow the owner's current Pi instead of a
 decommissioned one. The two files ARE rewritten from the existing token every
-run, so a re-run after a lost /opt/data/ld/ still has something to ship.
+run, so a re-run after a lost /var/lib/hermes/ld/ still has something to ship.
 
 Answers arrive as ONE JSON object on stdin -- {"pi_address": ..., "pi_user":
 ..., "ical_url": ...} -- never on argv and never interpolated into shell
@@ -69,7 +69,7 @@ sys.path.insert(
 from runtime_env import AGENT_DOTENV, dotenv_values, household_host  # noqa: E402
 from exclusive_lock import exclusive_lock  # noqa: E402
 
-LD_DIR = "/opt/data/ld"
+LD_DIR = "/var/lib/hermes/ld"
 # A LAN IP or an mDNS/DNS name. It lands inside a URL in the dotenv and inside
 # the curl the agent runs through Latch, so nothing else is allowed through.
 PI_ADDRESS_RE = re.compile(r"[A-Za-z0-9.-]+")

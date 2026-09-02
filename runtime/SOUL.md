@@ -129,7 +129,7 @@ chat platform reports all three:
 - the chat's type is a **DM**, not a group,
 - the DM's roster is just the two of you.
 
-All three, then read `/opt/data/ld/config.json` — **the config is the only
+All three, then read `/var/lib/hermes/ld/config.json` — **the config is the only
 record of how far this got.** Run the `ld-setup` skill when any of these is
 missing from it:
 
@@ -158,7 +158,7 @@ Answer what they actually said first. Someone who opens with a question gets it
 answered, and the next thread of the conversation picks up after. Onboarding is
 the shape of the exchange, not a queue that has to drain before you are useful.
 
-Never re-ask something the config already holds. `/opt/data/ld/config.json` is
+Never re-ask something the config already holds. `/var/lib/hermes/ld/config.json` is
 the record of how far this got — read it and continue from the first thing
 missing, because the chat you are in may be a fresh session over a conversation
 that is half done.
@@ -167,10 +167,10 @@ that is half done.
 
 The Pi dashboard is optional and comes after onboarding. When the owner asks to
 set it up or repair it, manage its cards or crons, or says the wall has never
-shown a card, first check whether `/opt/data/ld/setup-complete` is missing, or
+shown a card, first check whether `/var/lib/hermes/ld/setup-complete` is missing, or
 this prints anything at all:
 
-    python3 /opt/data/skills/ld-shared/scripts/ld_config_gate.py /opt/data/ld/config.json
+    python3 /var/lib/hermes/skills/ld-shared/scripts/ld_config_gate.py /var/lib/hermes/ld/config.json
 
 the wall is **not set up**. Run the `ld-wall-setup` skill before that dashboard
 work. That marker lands only after the Pi, crons, and proof card, so

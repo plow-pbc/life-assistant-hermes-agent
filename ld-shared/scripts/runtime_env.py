@@ -4,7 +4,7 @@ Two consumers, one parser: ld-dashboard's register_crons.py (expanding the
 digest's delivery target) and ld-calendar-nudge's post_nudge.py (finding
 its Plow Chat credentials). Both learned the same lesson in #24: a
 `docker exec` session's env never carries the per-instance PLOW_CHAT_*
-values — they live in /opt/data/.env, the file activation writes and the
+values — they live in /var/lib/hermes/.env, the file activation writes and the
 gateway itself loads (measured: the first live registration refused on an
 unset uid that sat one file-read away).
 """
@@ -20,7 +20,7 @@ import pathlib
 # environment, which first boot fills from the credential the host dropped in
 # and which the agent cannot write -- that, not this file's mode, is what stops
 # a turn re-pointing the API base and sending its own bearer somewhere else.
-DOTENV = "/opt/data/.env"
+DOTENV = "/var/lib/hermes/.env"
 
 # The agent's own file, in the instance directory it already owns. Everything
 # the agent itself records after setup lives here -- the wall's endpoint and
@@ -31,7 +31,7 @@ DOTENV = "/opt/data/.env"
 # running as root reads this file, and what it holds stays UNTRUSTED. An
 # endpoint read from here is still held to the household-network gate before
 # anything hands it a bearer.
-AGENT_DOTENV = "/opt/data/ld/.env"
+AGENT_DOTENV = "/var/lib/hermes/ld/.env"
 
 
 def dotenv_values(path=DOTENV):

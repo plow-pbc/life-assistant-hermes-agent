@@ -17,9 +17,9 @@ and stop.
 with an offer — a screen in the kitchen, the build at
 `https://github.com/plow-pbc/life-dashboard` — and an owner who never takes it
 is fully set up without any of this. Onboarding is finished when
-`/opt/data/ld/config.json` holds their answers; the wall is finished at
-`/opt/data/ld/setup-complete`, and neither implies the other.
-`/opt/data/SOUL.md` checks each for its own half.
+`/var/lib/hermes/ld/config.json` holds their answers; the wall is finished at
+`/var/lib/hermes/ld/setup-complete`, and neither implies the other.
+`/var/lib/hermes/SOUL.md` checks each for its own half.
 
 Everything under **How this reaches the Pi**, and the two rules after it, is
 the wall's; onboarding needs none of it — read on when the owner takes the wall
@@ -45,7 +45,7 @@ Cards refresh only while that Mac is awake with Latch running — an accepted
 cost. If a Latch call here fails because the Mac is unreachable, say "Mac
 unreachable" in chat, stop, and resume when the owner says the Mac is back.
 For the *scheduled* card runs after setup, the rule is the producers' own:
-`/opt/data/skills/ld-shared/references/latch-delivery.md` § When the Mac is
+`/var/lib/hermes/skills/ld-shared/references/latch-delivery.md` § When the Mac is
 asleep or Latch is not running.
 
 **Every script's and every Latch call's output is pasted verbatim with its
@@ -54,8 +54,8 @@ every refusal through their output and a non-zero exit, and a chat turn does
 not propagate an exit code. Do not paraphrase, and do not call a phase done
 on a non-zero exit.
 
-**Never `cat`, `echo`, or otherwise paste `/opt/data/.env`, `/opt/data/ld/pi.env`,
-`/opt/data/ld/dashboard.hdr`, or any line containing `TOKEN` into chat.** The
+**Never `cat`, `echo`, or otherwise paste `/var/lib/hermes/.env`, `/var/lib/hermes/ld/pi.env`,
+`/var/lib/hermes/ld/dashboard.hdr`, or any line containing `TOKEN` into chat.** The
 dotenv carries this agent's own Plow bearer and the wall's token; the scripts
 read it for you. The two `ld/` files are read with your file tool for one
 purpose only — to become the `content` of a `mcp__plow__plow_write_file` call — and
@@ -71,16 +71,16 @@ landed is skipped and the run resumes where it stopped.
 
 | phase | what it produces | the artifact that skips it |
 |---|---|---|
-| 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/opt/data/ld/pi.env`, `/opt/data/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…` |
-| 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/opt/data/ld/pi-brought-up` exists |
-| 4 · crons + proof | the six schedules and one real card | `/opt/data/ld/setup-complete` exists |
+| 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/var/lib/hermes/ld/pi.env`, `/var/lib/hermes/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…` |
+| 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/var/lib/hermes/ld/pi-brought-up` exists |
+| 4 · crons + proof | the six schedules and one real card | `/var/lib/hermes/ld/setup-complete` exists |
 
 The wall needs a config the shared gate accepts, and onboarding alone cannot
 produce one — `calendar.account`, its sources and
 `calendar_nudge.owner_identities` come from the owner's calendar, which arrives
 through Latch. Check before starting:
 
-    python3 /opt/data/skills/ld-shared/scripts/ld_config_gate.py /opt/data/ld/config.json
+    python3 /var/lib/hermes/skills/ld-shared/scripts/ld_config_gate.py /var/lib/hermes/ld/config.json
 
 No output is a pass; any text is the list of what is still missing (its exit
 code is always 0 and means nothing — read the output). If it names calendar
@@ -118,13 +118,13 @@ outside, and this name ends up on a command line. Written out in full in
 `ld-setup`'s `<turn>` note, which governs the drafts this file's staging
 follows.
 
-Stage this at `/opt/data/ld/.wall-<turn>.json`:
+Stage this at `/var/lib/hermes/ld/.wall-<turn>.json`:
 
     {"pi_address": "...", "pi_user": "...", "ical_url": "..."}
 
 then:
 
-    /opt/data/skills/ld-wall-setup/scripts/mint_wall_token.py --input /opt/data/ld/.wall-<turn>.json
+    /var/lib/hermes/skills/ld-wall-setup/scripts/mint_wall_token.py --input /var/lib/hermes/ld/.wall-<turn>.json
 
 Leave the `ical_url` key out entirely when the owner gave no feed *this run*
 — an absent key keeps whatever feed `pi.env` already carries, and only a
@@ -152,12 +152,12 @@ instead — the endpoint line converges to the new Pi, the token stays, and
 Phase 3 ships `pi.env` to that Pi. Either way it (re)writes two files, mode 600, and prints two
 bare lines, `pi_line_1=…` and `pi_line_2=…`, for Phase 3:
 
-- `/opt/data/ld/pi.env` — the Pi's `~/ld-data/.env` (`ICAL_URL=` and
+- `/var/lib/hermes/ld/pi.env` — the Pi's `~/ld-data/.env` (`ICAL_URL=` and
   `DASHBOARD_TOKEN=`). Shipped in Phase 3.
-- `/opt/data/ld/dashboard.hdr` — `Authorization: Bearer …`, the header every
+- `/var/lib/hermes/ld/dashboard.hdr` — `Authorization: Bearer …`, the header every
   `curl` from the Mac reads. Ship it now, when the owner has a Mac:
 
-      mcp__plow__plow_write_file(path="~/Plow/ld/dashboard.hdr", content=<the content of /opt/data/ld/dashboard.hdr, read with your file tool>)
+      mcp__plow__plow_write_file(path="~/Plow/ld/dashboard.hdr", content=<the content of /var/lib/hermes/ld/dashboard.hdr, read with your file tool>)
 
   That call is the one time you handle the token, and its content goes into
   that call and nowhere else — not into chat, not into argv. Paste the
@@ -228,13 +228,13 @@ assumption was wrong for this Pi — do not try to smuggle one through. Text
 `pi_line_1` to the owner and ask them to run it on the Pi themselves, then
 continue with `pi_line_2` over Latch as above.
 
-Then ship the Pi's env file — read `/opt/data/ld/pi.env` with your file tool
+Then ship the Pi's env file — read `/var/lib/hermes/ld/pi.env` with your file tool
 and make it the `content` (nowhere else), then copy it across and restart
 the viewer. The shell text here is static: the owner's two values ride the
 trailing argv positions (`$1`/`$2`), so nothing they answered is ever parsed
 as shell:
 
-    mcp__plow__plow_write_file(path="~/Plow/ld/pi.env", content=<the content of /opt/data/ld/pi.env>)
+    mcp__plow__plow_write_file(path="~/Plow/ld/pi.env", content=<the content of /var/lib/hermes/ld/pi.env>)
     mcp__plow__plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env $1@$2:ld-data/.env && ssh -o BatchMode=yes $1@$2 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'","sh","<pi_user>","<pi_address>"], network=true, timeout=30000)
 
 Finish with the skip check at the top of this phase: JSON with a `sha` means
@@ -244,7 +244,7 @@ restart the viewer), connection refused (the viewer is not up yet; wait a
 minute and retry, at most a few times), unreachable device (the Mac) — is
 reported verbatim, and this phase is not done.
 
-**No Mac (or no Latch):** skip this path when `/opt/data/ld/pi-brought-up`
+**No Mac (or no Latch):** skip this path when `/var/lib/hermes/ld/pi-brought-up`
 exists — the file written below on the owner's confirmation. Two exceptions:
 if Phase 2 printed `re-pointed:`, this is a *different Pi* — ignore the
 marker and run the full fallback below, because the new device has neither
@@ -265,7 +265,7 @@ anywhere but that thread, say the lines have to go to the owner directly, stop,
 and continue when they message you alone.
 
 There, text the owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
-`/opt/data/ld/pi.env` (read with your file tool; this is the one place its
+`/var/lib/hermes/ld/pi.env` (read with your file tool; this is the one place its
 content may be pasted), and say: run the first two on the Pi over ssh or at
 its keyboard, then put those two lines in `~/ld-data/.env` on the Pi,
 `chmod 600 ~/ld-data/.env`, and run
@@ -275,18 +275,18 @@ the owner's word that the screen is up is this phase's proof — when they say
 it is, write the artifact that keeps a resumed run (or a deleted
 setup-complete marker) from texting the token across chat a second time:
 
-    date -u +%FT%TZ > /opt/data/ld/pi-brought-up
+    date -u +%FT%TZ > /var/lib/hermes/ld/pi-brought-up
 
 ## Phase 4 — Crons, and one card
 
 Create-if-missing and safe to re-run, so there is no skip condition of its own
 — always run it (Phase 4's artifact is the marker at the end):
 
-    /opt/data/skills/ld-dashboard/scripts/register_crons.py
+    /var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py
 
 Paste its output and its exit status; `refusing to register`, `WARNING` or
 `PAUSED` means this phase did not finish (see
-`/opt/data/skills/ld-dashboard/SKILL.md`).
+`/var/lib/hermes/skills/ld-dashboard/SKILL.md`).
 
 **Without a Mac, registration is the whole phase** — everything from here to
 the owner question is Latch work a no-Mac install cannot do: every pushed
@@ -298,14 +298,14 @@ Phase 3 wrote `pi-brought-up`, so go straight to the marker at the end.
 
 **With a Mac, force the weather card.**
 `hermes cron run` takes a job **id**, not a name, and ids are opaque hex, so
-look the id up from `/opt/data/cron/jobs.json` (the same file
+look the id up from `/var/lib/hermes/cron/jobs.json` (the same file
 `register_crons.py` itself trusts, not `hermes cron list`'s human rendering)
 first:
 
     ID=$(python3 -c 'import json,sys
-    j=json.load(open("/opt/data/cron/jobs.json"))["jobs"]
+    j=json.load(open("/var/lib/hermes/cron/jobs.json"))["jobs"]
     i=next((x["id"] for x in j if x["name"]=="ld-weather"),None)
-    sys.exit("refusing: no ld-weather job in /opt/data/cron/jobs.json -- re-run register_crons.py") if i is None else print(i)') && /opt/hermes/bin/hermes cron run "$ID"
+    sys.exit("refusing: no ld-weather job in /var/lib/hermes/cron/jobs.json -- re-run register_crons.py") if i is None else print(i)') && /opt/hermes/bin/hermes cron run "$ID"
 
 The refusal is the whole point of the lookup: no `ld-weather` row means the
 registration above did not land, and forcing nothing would look like success.
@@ -314,7 +314,7 @@ That run is its own turn: the weather producer composes the tile, and
 because the dotenv says `DASHBOARD_DELIVERY=latch` its helper prints
 `NOT DELIVERED — ship it through Latch, then paste both outputs:` followed by
 the two calls to make. That turn makes exactly those two calls, in that
-order, per `/opt/data/skills/ld-shared/references/latch-delivery.md`. Wait
+order, per `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`. Wait
 until `/opt/hermes/bin/hermes cron runs` lists that run as finished, then
 read the card back the same way the producers write it:
 
@@ -337,7 +337,7 @@ producer once as the gateway user:
 
     s6-svstat /run/service/life-calendar-feed
 
-    /opt/hermes/.venv/bin/python3 /opt/data/skills/ld-shared/scripts/calendar_feed.py
+    /opt/hermes/.venv/bin/python3 /var/lib/hermes/skills/ld-shared/scripts/calendar_feed.py
 
 Approve the calls it makes; the argv it sends is the argv every later tick
 sends, so approving the real run is what makes the unattended ones silent.
@@ -356,5 +356,5 @@ only thing that writes this file, and nothing before this line should. It says
 nothing about onboarding, which may have finished long before the owner ever
 wanted a screen:
 
-    date -u +%FT%TZ > /opt/data/ld/setup-complete
+    date -u +%FT%TZ > /var/lib/hermes/ld/setup-complete
 

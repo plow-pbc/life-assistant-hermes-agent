@@ -51,7 +51,7 @@ is a deliberate edit to `DESCRIPTOR_KEYS`, not something a comment can justify.
 
 It runs the upstream `nousresearch/hermes-agent` image directly, pinned by
 digest, with no derived layer. State lives in the instance's own home on the
-host, mounted at `/opt/data`; the image is stateless.
+host, mounted at `/var/lib/hermes`; the image is stateless.
 
 ## Run locally
 
@@ -216,7 +216,7 @@ agent-mgr activate <agent>           # prints a code — its owner texts it from
 
 # BEFORE `up`, and not optional. Both directories have to be owned by the
 # instance owner, for different reasons. `skills/`: compose.override.yml mounts
-# each skill UNDER /opt/data, which is already the home bind, so the runtime
+# each skill UNDER /var/lib/hermes, which is already the home bind, so the runtime
 # creates the missing mountpoint inside that bind's source on the host -- as
 # root, and no later `deploy` can install into it. plow-pbc/agent-mgr#44 is the
 # fleet-level fix; until it lands this line stands in for it. `ld/`: the agent
@@ -266,7 +266,7 @@ take the exit code directly and pin the uid yourself:
 
 ```sh
 agent-mgr compose <agent> exec -T --user "$(id -u):$(id -g)" hermes \
-  /opt/data/skills/ld-dashboard/scripts/register_crons.py
+  /var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py
 ```
 
 `$(id -u)` is right **only when the same host user who brought the instance up
@@ -383,7 +383,7 @@ timer ticks with nobody there to answer an approval card. `ld-wall-setup`
 Phase 4
 approves it by running the strip once with the owner present, but only on an
 image that has the timer, and only on a run that reaches Phase 4. An instance
-already carrying `/opt/data/ld/setup-complete` skips that phase, so a standalone
+already carrying `/var/lib/hermes/ld/setup-complete` skips that phase, so a standalone
 instance set up before this landed needs the step once, by hand — on that
 instance, with its owner present at their Mac to approve the calls:
 

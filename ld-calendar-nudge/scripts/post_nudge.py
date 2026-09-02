@@ -5,7 +5,7 @@ The sheet runs only this. One handoff, written by nudge_candidates.py (never
 by the model): every qualifying reminder, earliest first. Order is the
 data-integrity contract:
 
-1. Resolve + validate the Plow Chat config FIRST — env, then /opt/data/.env
+1. Resolve + validate the Plow Chat config FIRST — env, then /var/lib/hermes/.env
    (the #24 lesson) — refusing by name before ANYTHING posts, so a blank
    chat config can never leave a qualifying run half-delivered (kiosk up,
    owner never messaged).
@@ -39,7 +39,7 @@ post_to_kiosk.BODY_TYPE = "alert"
 post_to_kiosk.TITLE = ""  # hide the eyebrow — the reminder gets the full card height
 
 # The one handoff, written by nudge_candidates.py and consumed here.
-HANDOFF = "/opt/data/ld/calendar-nudge-text"
+HANDOFF = "/var/lib/hermes/ld/calendar-nudge-text"
 
 
 def require(name, dotenv):

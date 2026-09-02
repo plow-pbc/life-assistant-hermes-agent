@@ -15,7 +15,7 @@ now they are code with a test per rule.
 The gather path is the one model-supplied argument, so it is validated
 BEFORE any open/unlink: only a runtime-persisted result (under
 /tmp/hermes-results/) or the fixed inline handoff
-(/opt/data/ld/calendar-nudge-gather) is accepted — anything else exits 2
+(/var/lib/hermes/ld/calendar-nudge-gather) is accepted — anything else exits 2
 without touching the file, so an injected turn cannot aim the
 consume-on-read unlink at the config or the dotenv.
 
@@ -57,13 +57,13 @@ LIMIT = 115
 # writes an inline result to. Trailing slash on the root is load-bearing —
 # it is a prefix check, and "/tmp/hermes-results-evil" must not pass.
 PERSISTED_ROOT = "/tmp/hermes-results/"
-GATHER_FILE = "/opt/data/ld/calendar-nudge-gather"
+GATHER_FILE = "/var/lib/hermes/ld/calendar-nudge-gather"
 # The one fixed handoff this helper writes and post_nudge.py consumes.
-HANDOFF = "/opt/data/ld/calendar-nudge-text"
+HANDOFF = "/var/lib/hermes/ld/calendar-nudge-text"
 # The shared ld-config, fixed here rather than taken as a flag: the model
 # builds the argv, and a steerable --config could point at a model-written
 # JSON whose identities/lookaheads make a non-qualifying event publish.
-CONFIG_FILE = "/opt/data/ld/config.json"
+CONFIG_FILE = "/var/lib/hermes/ld/config.json"
 # Two patterns for two opposite risk profiles.
 #
 # REDACTION (title stripping) uses the broad one: any URI, not just http(s)

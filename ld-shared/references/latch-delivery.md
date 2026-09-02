@@ -3,8 +3,8 @@
 The Pi keeps its own server (`POST /api/message` behind `DASHBOARD_TOKEN`,
 port 5174, latest post per card) on the household LAN, and this agent cannot
 reach that LAN. The owner's Mac can, and it runs Plow Latch — so when
-`/opt/data/.env` says `DASHBOARD_DELIVERY=latch`, `post_to_kiosk.py` does not
-POST. It writes the exact wire body to `/opt/data/ld/outbox/card-<n>.json`
+`/var/lib/hermes/.env` says `DASHBOARD_DELIVERY=latch`, `post_to_kiosk.py` does not
+POST. It writes the exact wire body to `/var/lib/hermes/ld/outbox/card-<n>.json`
 (mode 600) and prints this block, with `<n>`, `<pi>` and the JSON filled in:
 
     NOT DELIVERED — ship it through Latch, then paste both outputs:

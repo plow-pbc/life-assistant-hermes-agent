@@ -4,8 +4,7 @@
 .env.example
 # `**/` is load-bearing: a bare `__pycache__` matches only the context root,
 # and the ones that matter are under every skill's scripts/ directory. A stray
-# .pyc also carries the pre-rewrite /opt/data paths past the sed pass, which
-# only touches .md/.py/.json.
+# a .pyc can also carry a stale path compiled before an edit.
 **/__pycache__
 **/*.py[co]
 **/.pytest_cache

@@ -6,7 +6,7 @@ handoff (every qualifying reminder, earliest first) and the
 {"qualifying": N} count on stdout — the only thing the model routes on.
 The module is imported and its path constants rebound to a scratch
 directory — a seam reachable only by an importer, never by the CLI the
-sheet invokes — because the real handoff lives under /opt/data.
+sheet invokes — because the real handoff lives under /var/lib/hermes.
 
 Field spellings are pinned against a REAL gather captured through the live
 Latch door (probe on the hermes-life container, 2026-08-28): camelCase
@@ -384,11 +384,11 @@ def test_an_empty_owner_identity_set_refuses_rather_than_never_nudging(rig):
 
 
 @pytest.mark.parametrize("path", [
-    "/opt/data/ld/config.json",
-    "/opt/data/.env",
+    "/var/lib/hermes/ld/config.json",
+    "/var/lib/hermes/.env",
     "/tmp/hermes-results",                      # the bare directory
     "/tmp/hermes-results-evil/call_x.txt",      # prefix trick
-    "/tmp/hermes-results/../../opt/data/.env",  # traversal
+    "/tmp/hermes-results/../../var/lib/hermes/.env",  # traversal
     "relative/call_x.txt",
 ], ids=["config", "dotenv", "bare-dir", "prefix-trick", "traversal",
         "relative"])
@@ -410,6 +410,6 @@ def test_the_allowed_gather_locations_are_the_documented_ones():
     """Accept side of the pin, against the real constants: a persisted
     result and the fixed inline handoff — nothing else."""
     assert nc.PERSISTED_ROOT == "/tmp/hermes-results/"
-    assert nc.GATHER_FILE == "/opt/data/ld/calendar-nudge-gather"
+    assert nc.GATHER_FILE == "/var/lib/hermes/ld/calendar-nudge-gather"
     assert nc.gather_path_allowed("/tmp/hermes-results/call_abc.txt")
-    assert nc.gather_path_allowed("/opt/data/ld/calendar-nudge-gather")
+    assert nc.gather_path_allowed("/var/lib/hermes/ld/calendar-nudge-gather")
