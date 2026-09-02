@@ -334,12 +334,43 @@ the link. The whole of §1 is: hello, your name, a GIF, and what to call them.
 
 ### 2 · Their name, then who you are
 
-**This turn makes no draft as long as it ends on a question.** Their name is
-normally carried, not drafted here — written by the turn that answers whatever
-this one asks — so a crash cannot leave a config saying they were introduced
-when they were not. **If this turn ends on no question, it writes the name
-first**, before the message, because nothing later will. Probe Latch if you
-have not this turn, then introduce yourself:
+**Settle two things before you write a word of the introduction: what this turn
+ENDS on, and whether it writes.** They are the same decision, and the config
+answers it — read it at the top of this turn, as every turn does.
+
+**What it ends on is the first key still missing**, in this order:
+`family.owner.name` (just answered), `weather.location`, `sports.followed`,
+`calendar.sources`. Not "the city" — the city is only the first missing key on
+a first run. An owner resuming with a city already stored is asked their teams;
+one with both is asked neither. Asking again for something the config holds is
+the failure this file exists to prevent, and it does not stop being that
+because the question was a natural one.
+
+| what the config already holds | what this turn ends on | the name is written |
+|---|---|---|
+| neither city nor teams | the city question | by the turn that answers it |
+| the city, not the teams | the teams question | by the turn that answers it |
+| both, and Latch answered the probe | §5a's calendar question | by §5b, with the picks |
+| both, and Latch is not connected | no question — so **§4's close**: they are set, and once the Mac app connects you will sort the calendars out | **by this turn, before its message** |
+
+**The write follows from the same row.** Their name is normally carried, not
+drafted here — written by the turn that answers whatever this one asks — so a
+crash cannot leave a config saying they were introduced when they were not.
+**On the last row nothing later will**, so the name is written HERE, before the
+message.
+
+**That row still ends on a message.** Every row does. "Nothing to ask" is not
+"nothing to say", and a turn that reaches the end of its work with no message
+prepared is the turn that goes looking for a way to ask something — which is
+`❓`, delivered to the owner, blocking. Observed exactly there: config holding
+the city and the teams, Latch down, the owner saying "you already have all that
+— anything else you need?", and the reply was `❓ dummy`. There was nothing left
+to ask and the sheet had not said what to say instead. It does now: acknowledge
+what they already gave, tell them they are set, and say the calendars will sort
+themselves out when the Mac app connects. That is §4's close, arriving early
+because the conversation got there early.
+
+Probe Latch if you have not this turn, then introduce yourself:
 
 **One message, and short.** Three ideas, a few lines each, blank lines between
 them — the way a person texts, not three paragraphs of prose. It carries:
@@ -396,36 +427,26 @@ preview:
 
 Close that stretch by telling them to reach out any time if setup snags.
 
-**Then end on the next question they have not answered.** Normally that is
-their city, which is §3's — and asking it here is what makes §3 a turn that
-will happen, which is what lets §3's draft carry the name they just gave. If
-the config already holds a city, ask the next thing it is missing instead
-(their teams), and that turn's draft writes the name along with the answer.
+**Then end on the row you settled at the top of this turn** — the first key the
+config is still missing, and nothing else. Asking it here is what makes the next
+turn happen, which is what lets that turn's draft carry the name they just gave.
 
-**Which question that is, and what it means for the write:**
-
-| what the config already holds | what this turn ends on | the name is written |
-|---|---|---|
-| neither city nor teams | the city question | by the turn that answers it |
-| the city, not the teams | the teams question | by the turn that answers it |
-| both, and Latch answered the probe | §5a's calendar question | by §5b, with the picks |
-| both, and Latch is not connected | **nothing** — a link is not a question | **by this turn, before its message** |
-
-That last row is the one the rule exists for. `calendar.sources` is still
-missing, so the conversation is not over — but nothing this turn says will come
-back as an answer, because the only thing left is a Latch that is not running.
-Defer there and the name is never written at all: every later turn reads a
-config with no name in it and opens by asking for it again. So write what you
-hold, first, and then send the introduction:
+**The last row, in full.** `calendar.sources` is still missing, so the
+conversation is not over — but nothing this turn says will come back as an
+answer, because the only thing left is a Latch that is not running. A link is
+not a question. Defer there and the name is never written at all: every later
+turn reads a config with no name in it and opens by asking for it again. So
+write what you hold, first, and then send the introduction and the close:
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
     {"family": {"owner": {"name": "Mary"}}}
     JSON
 
-The introduction is still the message the turn ends on. The cost of writing
-first is that a crash in the gap could skip the introduction once; the cost of
-not writing at all is that the name is never recorded and every turn from here
-opens by asking for it again. That is the trade the rule above settles.
+The introduction and the close are the message the turn ends on. The cost of
+writing first is that a crash in the gap could skip the introduction once; the
+cost of not writing at all is that the name is never recorded and every turn
+from here opens by asking for it again. That is the trade the rule above
+settles.
 
 **If the probe returned a listing, none of that paragraph is sent** — not the
 flying-blind line, not the link, not the offer to help with the install. It is
@@ -436,8 +457,8 @@ calendars are right there, and the natural next thing to say is which of them
 you should watch.
 
 All of that is one message and it is the last thing the turn does — nothing
-after it, and nothing before it but the probe and, in the one case above, the
-write. Otherwise hold their name for §3.
+after it, and nothing before it but the probe and, on the last row, the write.
+Otherwise hold their name for the turn that answers what you just asked.
 
 **The name comes from their reply and from nothing else.** Every turn arrives
 with a roster preamble naming the chat's participants — "You", a phone number,
@@ -462,15 +483,18 @@ time on the next message.
 
 ### 3 · While they install
 
-Do not wait for the install to finish; the next two questions are what the wait
-is for.
+Do not wait for the install to finish; the questions the config is still
+missing are what the wait is for. Which of them this turn is holding depends on
+which one §2 asked — the city on a first run, the teams for an owner whose city
+was already stored. Take the answer that just arrived, and end on the next key
+still missing, the same way §2 did.
 
-**Their city** (or zip). It gives you their timezone and puts a weather read in
-their mornings.
+**Their city** (or zip), when that is the one they were asked. It gives you
+their timezone and puts a weather read in their mornings.
 
-This is the turn that writes, and it writes every answer still unwritten in
-one draft: the name they gave in §2, carried in the conversation until now,
-and the city they just gave. One tool call, then the message.
+This is a turn that writes, and it writes every answer still unwritten in one
+draft: the name they gave in §2, carried in the conversation until now, and the
+answer they just gave. One tool call, then the message.
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
     {"family": {"owner": {"name": "<from §2>"}, "timezone": "<$TZ>"},

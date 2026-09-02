@@ -501,12 +501,34 @@ def test_the_row_for_the_name_turn_carries_its_condition():
         "the row must carry the condition, and carry it as the rule states it")
     assert "ONE draft" in calls
 
-    opening = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
-    opening = " ".join(opening.split())
-    assert "This turn makes no draft as long as it ends on a question" in opening
-    assert "If this turn ends on no question, it writes the name first" in opening
+    section = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    opening = " ".join(section.split())
+    assert "The write follows from the same row" in opening
+    assert "the name is written HERE, before the message" in opening
     assert "This turn writes nothing." not in opening, (
         "the unconditional claim is what the rule has to overrule")
+    # The table decides both what to ask and whether to write, so it has to be
+    # read BEFORE the copy it governs. Below the introduction it is a
+    # correction to text the model has already acted on -- which is how §2
+    # went on asking for a city the config already held.
+    assert section.index("| what the config already holds |") < section.index("**One message, and short.**")
+
+
+def test_the_next_question_is_the_first_missing_key_not_the_city():
+    """Measured, twice, at 306e7ad: §2 ended on "what city are you in?" with
+    weather.location already in the config -- once with the teams missing and
+    once with nothing left to ask at all. The rule was in the sheet; it sat
+    below the copy that names the city, and the copy is what got acted on."""
+    section = " ".join(
+        ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")].split())
+    assert "What it ends on is the first key still missing" in section
+    assert 'Not "the city"' in section
+    # §3 must not re-fix the city as "the next step" either: which question it
+    # holds depends on which one §2 asked.
+    third = " ".join(
+        ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
+    assert "the questions the config is still missing are what the wait is for" in third
+    assert "the next two questions are what the wait is for" not in third
 
 
 def test_the_name_turn_has_both_its_exits_in_the_table():
@@ -571,7 +593,11 @@ def test_the_turn_with_no_question_writes_in_that_turn():
     """
     rows = deferral_table()
     ends_on, written = rows["both, and Latch is not connected"]
-    assert "nothing" in ends_on.lower(), "a link is not a question"
+    assert "no question" in ends_on.lower(), "a link is not a question"
+    # ... but the row still names a MESSAGE. "Nothing to ask" is not "nothing
+    # to say": a turn that reaches its end with no message prepared goes
+    # looking for a way to ask something, and that is the ❓ the owner gets.
+    assert "§4's close" in ends_on
     assert "by this turn" in written and "before its message" in written
 
     # The three states that DO end on a question all defer, or the rule is a
