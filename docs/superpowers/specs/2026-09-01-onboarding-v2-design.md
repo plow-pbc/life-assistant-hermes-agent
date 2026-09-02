@@ -7,7 +7,7 @@ Date: 2026-09-01 · Branch: `onboarding-v2` · Product stage: **user-facing** (p
 Replace the current passive, form-like first-run interview with an agent-driven conversation that
 mirrors the Figma sample (`docs/onboarding-v2/figma-sample-flow.md`): greet, learn the owner's name,
 introduce itself, send them to install Plow Latch (`https://plow.co/latch` — that is how connectors get
-wired), and use the install wait to collect city, rundown time and teams. The wall (Pi dashboard) becomes an
+wired), and use the install wait to collect city and teams. The wall (Pi dashboard) becomes an
 optional tail. **No downstream functionality changes**: producers, crons, the wall path and `--patch` all
 behave exactly as today. Only the conversation and how `config.json` gets seeded change.
 
@@ -26,9 +26,12 @@ Agent = grey, owner = blue. The agent already knows its own name (existing ident
    machine, logins in a vault it can use but never see, they set the boundaries). Then the **photo-stack slot**
    (see §5), then "only catch — I'm not on your Mac yet … let's fix that", then the bare URL
    `https://plow.co/latch` (iMessage renders the preview), then "reach out anytime if setup snags".
-3. **While they install:** city or zip (→ geocode → timezone + weather coords, patch), rundown time = hour the
-   morning digest goes out ("most folks say 7", patch), teams (patch). Each answer is interpreted by the model
-   with context — "Kings" + Mountain View ⇒ Sacramento Kings, "7" ⇒ 07:00 local. Nothing hardcoded.
+3. **While they install:** city or zip (→ `weather.location`, geocoded to `weather.lat/lon`; `family.timezone`
+   derived and confirmed against the container `$TZ` as today), then teams (→ `sports.followed[]` as ESPN
+   abbr/sport/league). Each answer is interpreted by the model with context — "Kings" + Mountain View ⇒
+   Sacramento Kings ⇒ `{abbr: sac, sport: basketball, league: nba}`. Nothing hardcoded.
+   The Figma's "when do you want your rundown?" question is **dropped**: no existing config field holds a digest
+   hour (all six crons are fixed literals in `register_crons.py`) and v2 adds no new config fields.
 4. **Close:** "you're set" + the optional wall offer: if they want a wall display, set up
    https://github.com/plow-pbc/life-dashboard and send back the link; then the existing Phase 2–4 wall path
    runs unchanged. Otherwise mark onboarding complete.
@@ -43,20 +46,21 @@ Email, calendars, Mac username are **not asked**; they arrive via Latch connecto
 - **Trigger** (`runtime/SOUL.md`): today the agent runs `ld-setup` only when the owner asks. v2: on any inbound
   message, if onboarding is not complete, drive the conversation above (still answering whatever they actually
   said). The chat plugin's one-time `👋` is unchanged (lives in another repo).
-- **Completion marker:** a file distinct from the wall's `setup-complete`, written once name, city and rundown
-  time are stored and teams has been asked (an answer of "none" counts). The wall's `setup-complete` keeps its
+- **Completion marker:** a file distinct from the wall's `setup-complete`, written once name and city are stored
+  and teams has been asked (an answer of "none" counts). The wall's `setup-complete` keeps its
   current meaning.
 - **Resume:** the record of progress is `config.json` itself — the agent reads it at the start of a turn and
   continues from the first missing field. No separate state file (revisit only if e2e shows fumbling).
 - **Writes:** every answer is written as it lands via `write_config.py --patch` (deep-merge, re-gated, geocoding
-  on `weather.location`), not one blob at the end. If the current config schema has no field for rundown time,
-  add one (`digest.hour` or the closest existing convention); nothing consumes it yet, by design.
+  on `weather.location`), not one blob at the end. **No new config fields**: `config.example.json` is the schema
+  and stays as is. Existing optional fields not in the Figma (`family.people`, `weekly_digest.length`,
+  `family.owner.imessage`) are not asked in v2; they remain patchable on demand.
 - **Assets:** `quick-q.gif` is baked into the image at a fixed path under the skill; sent with the existing
   image hook (`send_image_file` → plugin attachment contract).
 
 ## 4. Testing
 
-- Inner loop: `just test` (~20s) — extend `tests/` for any schema/gate change (new field, completion marker).
+- Inner loop: `just test` (~20s) — extend `tests/` for the completion marker.
 - E2E: the local loop in `docs/onboarding-v2/e2e-loop.md` (local Plow API + DTU twin + this repo's container,
   LLM on Plow inference). Done-when evidence for the conversation is a twin transcript
   (`GET $TWIN/ui/chats/{chat_N}`) showing the opener with the GIF attachment, the Latch URL, and the three
@@ -73,6 +77,7 @@ marked slot after the intro; when files arrive they are baked next to the GIF an
 - Product stage: user-facing private preview. Reviewers judge copy quality and robustness of the conversation,
   not enterprise hardening.
 - No functional changes outside onboarding: producers, crons, wall path, `--patch` semantics untouched.
+- No new config fields. `config.example.json` is unchanged.
 - LLM stays on Plow inference. Test via the Plow chat API + DTU twin, never a text-only shortcut, for anything
   involving the conversation. Head chef runs the Plow stack; cooks only run the hermes container.
 - Keep secrets out of chat and out of the repo. `docs/onboarding-v2/` and `scripts/e2e/` may not contain tokens.
@@ -85,10 +90,10 @@ Done when: a twin transcript shows a text reply and a GIF attachment (bytes fetc
 
 ### Chunk 2: Conversation + trigger + config plumbing
 Implements: §2, §3, §5
-Interfaces: consumes Chunk 1 harness and `write_config.py --patch` · produces the rewritten `ld-setup/SKILL.md` Phase 1, the `runtime/SOUL.md` trigger, the completion marker, the baked GIF, any new config field + gate/test updates
-Done when: `just test` green; an e2e transcript from a fresh container shows the full flow — opener with GIF, name → intro → Latch URL, city/time/teams each landing in `config.json` (shown via `cat` inside the container), completion marker written, wall offered and declined; a second transcript shows resume: kill the container mid-flow, restart, next inbound continues from the first missing field without re-asking.
+Interfaces: consumes Chunk 1 harness and `write_config.py --patch` · produces the rewritten `ld-setup/SKILL.md` Phase 1, the `runtime/SOUL.md` trigger, the completion marker, the baked GIF, tests for the marker
+Done when: `just test` green; an e2e transcript from a fresh container shows the full flow — opener with GIF, name → intro → Latch URL, city and teams each landing in `config.json` (shown via `cat` inside the container), completion marker written, wall offered and declined; a second transcript shows resume: kill the container mid-flow, restart, next inbound continues from the first missing field without re-asking.
 
 ### Chunk 3: Doc fix
 Implements: housekeeping found during recon
 Interfaces: none
-Done when: `write_config.py` module docstring no longer claims a patch re-registers crons (matches code and SKILL.md); `just test` green.
+Done when: it is settled by reading `main()` whether `--patch` re-registers crons (recon says no, probe says yes); docstring, `ld-setup/SKILL.md` and code agree; `just test` green.
