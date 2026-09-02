@@ -404,15 +404,26 @@ def test_the_turn_makes_as_few_tool_calls_as_it_can():
     assert "Do not read the config back to check" in city
 
 
-def test_the_draft_reports_what_it_geocoded(tmp_path, capsys):
-    """The output that makes the read-back unnecessary."""
+def test_the_draft_reports_the_place_it_matched_never_the_coordinates(tmp_path, capsys):
+    """The output that makes the read-back unnecessary -- and CodeQL's point.
+
+    The region is what distinguishes the Mountain View in California from the
+    one in Arkansas, which is the only question a caller has. A lat/lon would
+    answer it by writing the owner's home to five decimal places into a log
+    that outlives the turn (py/clear-text-logging-sensitive-data, high).
+    """
     config = tmp_path / "config.json"
     draft(config, '{"family": {"owner": {"name": "M"}}}')
     capsys.readouterr()
     wc.main(["--draft"], env=ENV, config_path=str(config),
             stdin=io.StringIO('{"weather": {"location": "Chicago"}}'))
     out = capsys.readouterr().out
-    assert "geocoded: 'Chicago' -> lat=" in out and "lon=" in out
+    assert "geocoded: matched Chicago" in out
+    assert "Illinois" in out, "the region is the whole point of the line"
+    for leaked in ("lat=", "lon=", "41.8", "-87.6"):
+        assert leaked not in out, f"the write logged {leaked!r}"
+    # The coordinates are still WRITTEN, just not printed.
+    assert json.loads(config.read_text())["weather"]["lat"]
 
 
 def test_a_draft_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):

@@ -399,14 +399,16 @@ at all, so keep the comma:
 
     {"weather": {"location": "Mountain View, California"}}
 
-**Do not read the config back to check.** The draft already tells you what it
-resolved, in its own output:
+**Do not read the config back to check.** The draft already tells you which
+place it landed on, in its own output:
 
-    geocoded: 'Mountain View, California' -> lat=37.38605, lon=-122.08385
+    geocoded: matched Mountain View, California, United States
 
-If those coordinates are not where that place is, the geocoder took a different
-city of the same name: draft the location again, more specifically. One tool
-call, one answer, no second look — and nothing to say out loud in between.
+If that is not the place they meant, the geocoder took a different city of the
+same name: draft the location again, more specifically. One tool call, one
+answer, no second look — and nothing to say out loud in between. (It reports
+the place, not the coordinates, on purpose: a lat/lon is someone's home to
+five decimal places and this line lands in a log.)
 
 **The first thing you say about their city is the city and the timezone**, with
 nothing before it: they said "Mountain View", so *"Mountain View — Pacific

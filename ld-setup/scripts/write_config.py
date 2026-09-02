@@ -109,7 +109,14 @@ def _reject_constant(token):
 
 
 def geocode(city):
-    """city -> (lat, lon), or a refusal the agent can relay."""
+    """city -> (lat, lon), or a refusal the agent can relay.
+
+    `matched` also records WHICH place the lookup landed on -- name, region,
+    country -- for the caller to report. Bare city names collide ("Mountain
+    View" resolves to Arkansas), and the region is what tells the two apart.
+    It is deliberately the region and not the coordinates: a lat/lon is the
+    owner's home to five decimal places, and this line ends up in a log.
+    """
     try:
         with urllib.request.urlopen(GEOCODE_URL + urllib.parse.quote(city), timeout=30) as resp:
             results = json.load(resp).get("results") or []
@@ -117,7 +124,14 @@ def geocode(city):
         raise SystemExit(f"refusing to write: could not look up {city!r}: {exc}") from None
     if not results:
         raise SystemExit(f"refusing to write: no place matches {city!r} -- ask the owner for a nearby city")
-    return results[0]["latitude"], results[0]["longitude"]
+    top = results[0]
+    geocode.matched = ", ".join(str(part) for part in
+                                (top.get("name"), top.get("admin1"), top.get("country"))
+                                if part)
+    return top["latitude"], top["longitude"]
+
+
+geocode.matched = None
 
 
 
@@ -373,16 +387,18 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     print(f"wrote {config_path} (mode 600); gate: {verdict or 'PASS'}")
     # The geocoder's verdict, in the SAME tool result as the write.
     #
-    # A caller that wants to check the coordinates otherwise has to read the
-    # file back -- a second tool call, and every gap between two tool calls is
-    # somewhere a model narrates into. "Coordinates check out fine (37.38,
-    # -122.08) — that's correct Mountain View, CA" reached a real owner from
-    # exactly that gap. Printing it here removes the gap rather than the
-    # sentence: there is no second call to narrate around.
-    weather = config.get("weather") or {}
-    if geocoded and isinstance(weather, dict):
-        print(f"geocoded: {weather.get('location')!r} -> "
-              f"lat={weather.get('lat')}, lon={weather.get('lon')}")
+    # A caller that wants to know which place it landed on otherwise has to
+    # read the file back -- a second tool call, and every gap between two tool
+    # calls is somewhere a model narrates into. "Coordinates check out fine
+    # (37.38, -122.08) — that's correct Mountain View, CA" reached a real owner
+    # from exactly that gap. This removes the gap rather than the sentence.
+    #
+    # The matched PLACE, never the coordinates. It answers the only question a
+    # caller has -- which "Mountain View" is this, the California one or the
+    # Arkansas one -- and a lat/lon would answer it by writing the owner's home
+    # to five decimal places into a log that outlives the turn.
+    if geocoded and geocode.matched:
+        print(f"geocoded: matched {geocode.matched}")
     return 0
 
 
