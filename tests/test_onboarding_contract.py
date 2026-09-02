@@ -555,9 +555,25 @@ def test_the_opener_is_a_hello_a_gif_and_a_name():
     Both are pinned here because both read as a form, which is the one thing
     this rewrite exists to stop being.
     """
-    opener = SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")]
-    assert "Two messages" in opener
+    opener = " ".join(SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")].split())
     assert "`/help`" in opener and "no capability blurb" in opener.lower()
+    # Two SENDS. "Two messages" alone was not enough: the model read it as one
+    # message with two paragraphs and attached the GIF, which delivers the
+    # picture after the question. Observed in the twin transcript, chat_11.
+    assert "two sends, not one message with two paragraphs" in opener
+    assert '"What should I call you?" must not appear anywhere in message one' in opener
+
+
+def test_the_latch_url_is_sent_bare_on_its_own_line():
+    """The phone renders a preview for a bare URL and not for a linked one.
+
+    It is also the single action the whole introduction exists to produce, so
+    an intro that describes the install without carrying the link leaves the
+    owner with nothing to do.
+    """
+    intro = " ".join(ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")].split())
+    assert "https://plow.co/latch" in intro
+    assert "**bare, on its own line**" in intro
 
 
 def test_no_mode_of_write_config_touches_the_crons():
