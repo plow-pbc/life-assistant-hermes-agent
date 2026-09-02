@@ -11,8 +11,6 @@ case "${AGENT_INDEX:-}" in
     *) exit 0 ;;
 esac
 
-[ -n "${AGENT_ID:-}" ] || { echo "agent-index: AGENT_ID unset, not reporting"; exit 0; }
-
 # HOME is set explicitly, NOT inherited. s6-setuidgid changes uid/gid but
 # leaves HOME pointing at root's, and the client resolves its token path with
 # expanduser(), which reads $HOME before falling back to /etc/passwd. Without
@@ -37,9 +35,18 @@ esac
 # One-shot client on a timer: it has no scheduler of its own by design, and a
 # second scheduler inside a supervised container is a 2am bug. s6 owns the
 # lifecycle, this loop owns only the interval.
+#
+# The client reads AGENT_ID from the environment itself, so it is neither
+# rechecked nor forwarded here: two validation paths for one variable is one
+# more than the failure deserves. agent-mgr requires AGENT_ID, and an agent
+# that cannot say who it is should not report anonymously.
+#
+# The interval is fixed. It was configurable while the cadence was being
+# validated; nothing in production sets it, and the file is a mount now, so
+# a shorter cadence for testing is an edit rather than a rebuild.
 exec s6-setuidgid hermes env HOME=/opt/data HERMES_HOME=/opt/data sh -c '
   while :; do
-    /opt/hermes/.venv/bin/python3 /usr/local/bin/agent-index-client --agent "$AGENT_ID" || true
-    sleep "${AGENT_INDEX_INTERVAL:-3600}"
+    /opt/hermes/.venv/bin/python3 /usr/local/bin/agent-index-client || true
+    sleep 3600
   done
 '

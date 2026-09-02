@@ -79,6 +79,22 @@
 services:
   hermes:
     volumes:
+      # The usage reporter, mounted rather than baked. agent-mgr runs the
+      # image runtime/stack.json pins and never builds this repo's Dockerfile,
+      # so a COPY there reaches the standalone cloud image and no fleet agent.
+      # The skills above already solve this problem; this follows them.
+      #
+      # NOT nested binds: these land in /usr/local/bin and /etc/s6-overlay,
+      # outside the /opt/data home bind, so the root-owned-mountpoint hazard
+      # described above does not apply to them.
+      #
+      # s6-overlay compiles /etc/s6-overlay/s6-rc.d at boot, so a service
+      # mounted in before start is indistinguishable from one baked in. The
+      # marker file is what puts it in the user bundle; without it the
+      # directory is present and never started.
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/vendor/agent_index_client.py:/usr/local/bin/agent-index-client:ro
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/docker/s6-rc.d/agent-index:/etc/s6-overlay/s6-rc.d/agent-index:ro
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/docker/s6-rc.d/user/contents.d/agent-index:/etc/s6-overlay/s6-rc.d/user/contents.d/agent-index:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-morning-triage:/opt/data/skills/ld-morning-triage:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-calendar-nudge:/opt/data/skills/ld-calendar-nudge:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-morning-updates:/opt/data/skills/ld-morning-updates:ro
