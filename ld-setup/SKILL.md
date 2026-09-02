@@ -718,11 +718,19 @@ two ways and both end at the same file:
   byte, to `/opt/data/ld/calendar-listing.json` **with your file tool**, and
   pass that path.
 
-The file tool, and never a heredoc, for the inline case. That text contains
-calendar names a stranger wrote; a heredoc puts them in a shell, which is the
-whole hazard this section exists to avoid. Copy the tool's output into the
-file's content and change nothing about it — not the preamble, not the
-formatting. The script expects gog's output exactly as gog produced it.
+The file tool, and ONLY the file tool, for the inline case — not a heredoc, not
+`execute_code`, not a script that decodes or copies it, not any other way of
+getting bytes onto disk. Paste the output into the file tool's content and
+change nothing about it: not the preamble, not the formatting, no encoding step
+on the way. The script expects gog's output exactly as gog produced it.
+
+Two reasons, and the second is the one that reaches the owner. The text holds
+calendar names a stranger wrote, so a heredoc puts someone else's words in a
+shell. And anything that runs code to place the file needs approval it will not
+get silently: a turn that base64'd the listing through `execute_code` had a
+`⚠️ Dangerous command requires approval:` card delivered into the owner's chat,
+script body and all, in the middle of connecting their calendar. The file tool
+takes the content directly and asks nobody.
 
 **That file is written HERE and nowhere else, and only ever with the listing
 call's own output.** Not on the introduction turn, not as an empty file, not as

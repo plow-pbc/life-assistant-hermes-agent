@@ -509,6 +509,18 @@ def test_step_four_names_exactly_one_deferral():
     assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
 
 
+def test_the_listing_reaches_disk_through_the_file_tool_alone():
+    """Anything that runs code to place the file needs approval, and the
+    approval card is delivered into the owner's chat -- script body, reason and
+    all. Measured: a turn base64'd the listing through `execute_code` and the
+    owner got `⚠️ Dangerous command requires approval:` while connecting their
+    calendar. The file tool takes the content directly and asks nobody.
+    """
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "ONLY the file tool" in section
+    assert "execute_code" in section, "the alternative the turn actually reached for"
+
+
 def test_the_relay_tool_is_named_only_where_it_exists():
     """The sheet must not name a tool the build may not have.
 
