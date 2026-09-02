@@ -174,6 +174,7 @@ docker run -d --name "$CONTAINER" --platform linux/amd64 \
   -e TWIN_UPLOAD_PORT="$TWIN_UPLOAD_PORT" \
   -e LATCH_MCP_URL="${WITH_LATCH:+${LATCH_MCP_URL:-}}" \
   -e LATCH_MCP_TOKEN="${WITH_LATCH:+${LATCH_MCP_TOKEN:-}}" \
+  -e E2E_RELAY_KEY="${E2E_RELAY_KEY:-}" \
   "${mounts[@]}" \
   --entrypoint /usr/local/bin/e2e-entrypoint \
   "$IMAGE" >/dev/null

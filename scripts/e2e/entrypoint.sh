@@ -45,13 +45,21 @@ chmod 3770 /var/lib/hermes
 # on the other end is a person's actual Mac. Absent credentials must therefore
 # mean "take it out", never "leave whatever is already there".
 #
-# The server key is `latch`, and the TOOL it exposes is `plow_run_command` --
-# the two are not the same string and an earlier version of this comment had
-# them confused. The skills spell the pair out: ld-setup/SKILL.md calls
-# mcp__latch__plow_run_command. So the key here has to match what the base seed
-# and runtime/config.yaml register (`latch`), while the tool name stays
-# `plow_run_command`; a stale key means the skill names a tool the build never
-# registered and the turn goes hunting for it.
+# The server key is NOT the harness's to choose. It is also the prefix on the
+# tool a model calls -- key `latch` means `mcp__latch__plow_run_command` -- so
+# the key belongs to whoever writes the sheets and the seed, and a loop that
+# hardcodes it silently tests a spelling nobody shipped. This block reads the
+# key the seeded config.yaml already carries, and fills in nothing but url,
+# headers and enabled under it.
+#
+# Order: the seeded key if there is exactly one, else $E2E_RELAY_KEY, else the
+# base seed's own name. The env var is the escape hatch for a volume whose
+# relay was removed by a previous no-credentials run, which leaves no key to
+# read; it is not a way to rename the relay, and the check below is what stops
+# it becoming one.
+#
+# The tool name stays `plow_run_command` under every key -- the two are not the
+# same string and an earlier version of this comment had them confused.
 #
 # The URL and the bearer come from the environment so the credential is never
 # written into a repo file.
@@ -65,11 +73,18 @@ chmod 3770 /var/lib/hermes
 # took down plain no-Latch runs too, before the gateway ever started.
 /opt/hermes/.venv/bin/python3 - <<'LATCH_PY'
 import os
+import re
+
 import yaml
 
 path = "/var/lib/hermes/config.yaml"
+skills_dir = "/var/lib/hermes/skills"
 url = (os.environ.get("LATCH_MCP_URL") or "").strip()
 token = (os.environ.get("LATCH_MCP_TOKEN") or "").strip()
+
+# What the base seed writes today. Only reached when the config carries no
+# relay at all and nobody named one.
+SEED_RELAY_KEY = "latch"
 
 # No existence check: `chown hermes:hermes /var/lib/hermes/config.yaml` above
 # runs under `set -e`, so a container missing this file has already exited
@@ -86,25 +101,56 @@ config.setdefault("display", {})["file_mutation_verifier"] = False
 
 servers = config.setdefault("mcp_servers", {})
 
+# The seed's key, read rather than assumed. Exactly one server is the shape
+# this repo ships (test_config_contract asserts it), so one key is the relay's;
+# with none or several, nothing here can tell which, and the fallbacks decide.
+seeded = list(servers)
+if len(seeded) == 1:
+    relay_key, key_source = seeded[0], "the seeded config.yaml"
+elif (os.environ.get("E2E_RELAY_KEY") or "").strip():
+    relay_key, key_source = os.environ["E2E_RELAY_KEY"].strip(), "$E2E_RELAY_KEY"
+else:
+    relay_key, key_source = SEED_RELAY_KEY, "the base seed's default"
+
+# The prefix the SHEETS call, which is the half of the pair the harness cannot
+# see and used to contradict in silence. A disagreement here is not cosmetic:
+# the build registers mcp__<relay_key>__plow_run_command and the turn goes
+# hunting for a tool under a name that was never registered -- twenty-one
+# tool_search calls and an answer of nothing, on the run that found it.
+prefixes = set()
+for root, _dirs, files in os.walk(skills_dir):
+    for name in files:
+        if not name.endswith((".md", ".py")):
+            continue
+        with open(os.path.join(root, name), errors="replace") as handle:
+            prefixes.update(re.findall(r"mcp__([A-Za-z0-9_]+?)__", handle.read()))
+
+print(f"e2e-entrypoint: relay key {relay_key!r} (from {key_source}); "
+      f"skills call {sorted(prefixes) or ['no mcp__ tools']}")
+if prefixes and prefixes != {relay_key}:
+    raise SystemExit(
+        f"e2e-entrypoint: relay key {relay_key!r} does not match the tool "
+        f"prefix the staged skills call ({', '.join(sorted(prefixes))}). "
+        "The key IS the prefix, so this build would register a tool no sheet "
+        "names. Fix the sheets or the seed -- or set $E2E_RELAY_KEY if the "
+        "volume simply has no relay to read.")
+
 if url and token:
-    servers["latch"] = {
+    # Only url/headers/enabled. The key came from the seed; this fills it in.
+    servers[relay_key] = {
         "url": url,
         "headers": {"Authorization": "Bearer " + token},
         "enabled": True,
     }
-    # `latch`, not `plow`: the base seed standardised on it (plow-hermes-agent
-    # #2) and runtime/config.yaml matches. The key is also the tool's prefix --
-    # mcp__latch__plow_run_command -- so a stale key here means the sheet names
-    # a tool the build does not register, and the turn goes hunting.
-    servers.pop("plow", None)
-    print("e2e-entrypoint: wired the latch relay MCP server into config.yaml")
+    print(f"e2e-entrypoint: wired the {relay_key} relay MCP server into config.yaml")
 else:
-    # Both keys, and popped unconditionally. `pop(a) is not None or pop(b) is
-    # not None` short-circuits: with a volume carrying BOTH -- which is every
-    # volume seeded before the rename and latched once since -- the `plow` pop
-    # never runs and a relay pointing at a real Mac stays in the config on a
-    # run that asked for no relay at all.
-    removed = [key for key in ("latch", "plow") if servers.pop(key, None) is not None]
+    # Every known spelling, popped unconditionally. `pop(a) is not None or
+    # pop(b) is not None` short-circuits: with a volume carrying BOTH the
+    # second pop never runs and a relay pointing at a real Mac stays in the
+    # config on a run that asked for no relay at all.
+    stale = [relay_key, SEED_RELAY_KEY, "plow"]
+    removed = [key for key in dict.fromkeys(stale)
+               if servers.pop(key, None) is not None]
     if removed:
         print("e2e-entrypoint: no Latch credentials -- removed the relay MCP "
               f"server ({', '.join(removed)}) an earlier --latch run left behind")
