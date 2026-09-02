@@ -7,7 +7,7 @@ Reads the gather file written by
 
 and prints ONE object on stdout:
 
-    {"account": "<the primary entry's id>",
+    {"account": "<the owner's address, or null when it cannot be derived>",
      "calendars": [{"id": ..., "display": ..., "accessRole": ...}, ...]}
 
 Everything here exists because the alternative was a model parsing this by
@@ -20,10 +20,16 @@ eye, and each step of that parse has a way to go quietly wrong:
   * A large result comes back as a persisted envelope naming a file instead of
     the text. read_gather() (ld-shared) already unwraps that shape and refuses
     a nonzero exit_code, so it is reused rather than re-implemented.
-  * The account is the `primary` entry's id, NOT `dataOwner`. Calendars shared
-    into an account keep their own owner -- a real listing had three distinct
-    dataOwner values across nine calendars -- so deriving the account from it
-    picks whichever calendar happened to be read last.
+  * The account is derived, not assumed. `primary: true` is the clearest
+    signal and is used when it is there -- but it was seen on ONE Mac and
+    nothing documents that gog always emits it, so its absence is a case and
+    not an error. Falling back on `dataOwner` needs care: calendars shared
+    into an account keep their own owner (one real listing carried three
+    distinct values across nine calendars), so only the owner-role calendars
+    are considered, and only when they agree. When nothing decides it the
+    account is `null` and the caller asks the owner, which is the honest
+    answer -- guessing here writes a shared calendar's address into
+    `calendar.account` and every producer authenticates as somebody else.
 
 `display` is a display string and nothing else. It comes off calendars other
 people own, so it is attacker-controlled text: it may be shown to the owner in
@@ -62,7 +68,7 @@ def normalize(entries):
     """{account, calendars} from gog's calendar list."""
     if not isinstance(entries, list):
         raise GatherError("calendar listing is not a list")
-    calendars, account = [], None
+    calendars, flagged, owned_by = [], [], set()
     for entry in entries:
         if not isinstance(entry, dict):
             raise GatherError("calendar listing holds a non-object entry")
@@ -73,22 +79,44 @@ def normalize(entries):
         # it is what they see in Google Calendar, so it is what they will
         # recognise being read back to them.
         display = entry.get("summaryOverride") or entry.get("summary") or cid
-        calendars.append({"id": cid,
-                          "display": str(display),
-                          "accessRole": str(entry.get("accessRole") or "")})
+        role = str(entry.get("accessRole") or "")
+        calendars.append({"id": cid, "display": str(display), "accessRole": role})
         if entry.get("primary") is True:
-            if account is not None and account != cid:
-                raise GatherError("two calendars claim to be primary")
-            account = cid
+            flagged.append(cid)
+        # Only owner-role rows vote: a calendar someone shared in carries THEIR
+        # address in dataOwner, and counting it would make a stranger's account
+        # a candidate for this owner's config.
+        if role == "owner":
+            owner_of = entry.get("dataOwner")
+            if isinstance(owner_of, str) and owner_of.strip():
+                owned_by.add(owner_of)
     if not calendars:
         raise GatherError("no calendars in the listing")
-    if account is None:
-        # Without a primary there is no account to write, and guessing one
-        # from the first row would put a shared calendar's address into
-        # calendar.account, where every producer would then authenticate as
-        # somebody else.
-        raise GatherError("no calendar is flagged primary, so the account is unknown")
-    return {"account": account, "calendars": calendars}
+    return {"account": derive_account(flagged, owned_by), "calendars": calendars}
+
+
+def derive_account(flagged, owned_by):
+    """The authenticated account, or None when nothing decides it.
+
+    Three branches, in order of how much they assume:
+
+    1. exactly one calendar flagged `primary` -- the clearest signal, and the
+       only one seen live;
+    2. no flag, but the owner-role calendars all name one `dataOwner` -- that
+       address owns everything this account can write to, so it is the account;
+    3. anything else -- two primaries, or owner-role calendars disagreeing, or
+       no signal at all. None, and the caller asks.
+
+    Returning None rather than picking is the point. An account guessed wrong
+    is not a visible failure: it is written to `calendar.account`, every
+    producer authenticates as that identity, and the reads come back thin or
+    empty for reasons no one traces back to here.
+    """
+    if len(set(flagged)) == 1:
+        return flagged[0]
+    if not flagged and len(owned_by) == 1:
+        return next(iter(owned_by))
+    return None
 
 
 def main(argv=None):

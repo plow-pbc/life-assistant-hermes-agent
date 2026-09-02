@@ -66,28 +66,55 @@ def test_a_nonzero_exit_refuses(tmp_path):
         cl.read_gather(gather(tmp_path, envelope))
 
 
-def test_the_account_is_primary_and_the_display_is_the_owners_rename():
-    """Two properties of the same normalise, and both are about not guessing.
-
-    summaryOverride is what they see in Google Calendar, so it is what they
-    will recognise read back. And shares keep their own owner -- a real listing
-    had three distinct dataOwner values across nine calendars -- so deriving
-    the account from dataOwner picks whichever calendar was read last.
-    """
+def test_the_display_is_the_owners_rename():
+    """summaryOverride is what they see in Google Calendar, so it is what they
+    will recognise read back."""
     result = cl.normalize(LISTING)
-    assert result["account"] == "mary@example.test"
     assert [c["display"] for c in result["calendars"]] == ["mary@example.test", "Ours"]
-    assert "dataOwner" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("label,flagged,owned_by,expected", [
+    # 1. The clearest signal, and the only one seen live.
+    ("one flagged primary", ["mary@example.test"], {"mary@example.test"}, "mary@example.test"),
+    ("flag wins over a disagreeing owner set",
+     ["mary@example.test"], {"mary@example.test", "other@example.test"}, "mary@example.test"),
+    # 2. No flag, but every owner-role calendar names the same owner.
+    ("no flag, one owner", [], {"mary@example.test"}, "mary@example.test"),
+    # 3. Nothing decides it -- ask, never guess.
+    ("no flag, several owners", [], {"a@example.test", "b@example.test"}, None),
+    ("no flag, no owner rows", [], set(), None),
+    ("two different primaries", ["a@example.test", "b@example.test"], {"a@example.test"}, None),
+])
+def test_the_account_is_derived_or_left_for_the_owner(label, flagged, owned_by, expected):
+    """An account guessed wrong is not a visible failure: it is written to
+    calendar.account, every producer authenticates as that identity, and the
+    reads come back thin for reasons nobody traces back here. `primary: true`
+    was seen on ONE Mac, so its absence is a case, not an error."""
+    assert cl.derive_account(flagged, owned_by) == expected
+
+
+def test_a_shared_calendar_never_votes_for_the_account():
+    """A calendar shared into the account carries THEIR address in dataOwner.
+    Counting it would make a stranger a candidate for this owner's config."""
+    result = cl.normalize([
+        {"id": "mary@example.test", "summary": "Mine", "accessRole": "owner",
+         "dataOwner": "mary@example.test"},
+        {"id": "team@group.calendar.google.test", "summary": "Team",
+         "accessRole": "reader", "dataOwner": "someone@else.test"},
+    ])
+    assert result["account"] == "mary@example.test"
+
+
+def test_no_signal_at_all_leaves_the_account_null():
+    """The listing is still returned -- the owner can be asked which account is
+    theirs, which needs the calendars in hand."""
+    result = cl.normalize([{"id": "a@example.test", "summary": "A", "accessRole": "reader"},
+                           {"id": "b@example.test", "summary": "B", "accessRole": "reader"}])
+    assert result["account"] is None
+    assert [c["id"] for c in result["calendars"]] == ["a@example.test", "b@example.test"]
 
 
 @pytest.mark.parametrize("label,entries", [
-    # Guessing a primary would put a SHARED calendar's address into
-    # calendar.account, and every producer would authenticate as someone else.
-    ("no primary", [{"id": "shared@example.test", "summary": "Shared"}]),
-    # Not a shape gog should produce; if it does, one is wrong and picking
-    # either silently is worse than saying so.
-    ("two primaries", [{"id": "a@b.test", "primary": True},
-                       {"id": "c@d.test", "primary": True}]),
     ("nothing to choose from", []),
     ("a calendar with no id", [{"summary": "No id"}]),
     ("a blank id", [{"id": "   ", "primary": True}]),

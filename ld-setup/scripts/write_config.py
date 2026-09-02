@@ -109,10 +109,10 @@ def _reject_constant(token):
 
 
 def geocode(city):
-    """city -> (lat, lon), or a refusal the agent can relay.
+    """city -> (lat, lon, matched), or a refusal the agent can relay.
 
-    `matched` also records WHICH place the lookup landed on -- name, region,
-    country -- for the caller to report. Bare city names collide ("Mountain
+    `matched` is WHICH place the lookup landed on -- name, region, country --
+    returned for the caller to report. Bare city names collide ("Mountain
     View" resolves to Arkansas), and the region is what tells the two apart.
     It is deliberately the region and not the coordinates: a lat/lon is the
     owner's home to five decimal places, and this line ends up in a log.
@@ -125,13 +125,9 @@ def geocode(city):
     if not results:
         raise SystemExit(f"refusing to write: no place matches {city!r} -- ask the owner for a nearby city")
     top = results[0]
-    geocode.matched = ", ".join(str(part) for part in
-                                (top.get("name"), top.get("admin1"), top.get("country"))
-                                if part)
-    return top["latitude"], top["longitude"]
-
-
-geocode.matched = None
+    matched = ", ".join(str(part) for part in
+                        (top.get("name"), top.get("admin1"), top.get("country")) if part)
+    return top["latitude"], top["longitude"], matched
 
 
 
@@ -188,7 +184,7 @@ def deep_merge(current, patch):
     return merged
 
 
-def check_keys(patch, reference, path="", verb="patch"):
+def check_keys(patch, reference, path="", *, verb):
     """Refuse any key the template does not have, at any depth.
 
     Objects inside a list are checked against the template's first object entry
@@ -203,17 +199,17 @@ def check_keys(patch, reference, path="", verb="patch"):
                 "no such key in ld-shared/references/config.example.json")
         expected = reference[key]
         if isinstance(value, dict) and isinstance(expected, dict):
-            check_keys(value, expected, f"{path}{key}.")
+            check_keys(value, expected, f"{path}{key}.", verb=verb)
         elif isinstance(value, list) and isinstance(expected, list):
             shape = next((e for e in expected if isinstance(e, dict)), None)
             if shape is not None:
                 for index, entry in enumerate(value):
                     if isinstance(entry, dict):
-                        check_keys(entry, shape, f"{path}{key}[{index}].", verb)
+                        check_keys(entry, shape, f"{path}{key}[{index}].", verb=verb)
 
 
 def apply_patch(patch, current, env, geocoder=None, gated=True):
-    """(merged config, did_geocode), or SystemExit naming the refusal.
+    """(merged config, matched place or None), or SystemExit naming the refusal.
 
     `gated=False` is --draft: the same merge and the same key check, onto a
     config that may not exist yet. Only the gate is relaxed; see the module
@@ -262,11 +258,11 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
     # one's. Geocode it here rather than asking a model for a lat/lon.
     weather = patch.get("weather") or {}
     if "location" in weather and not {"lat", "lon"} <= set(weather):
-        lat, lon = (geocoder or geocode)(merged["weather"]["location"])
+        lat, lon, matched = (geocoder or geocode)(merged["weather"]["location"])
         merged["weather"]["lat"], merged["weather"]["lon"] = lat, lon
-        return merged, True
+        return merged, matched
 
-    return merged, False
+    return merged, None
 
 
 def atomic_write(config_path, text):
@@ -347,7 +343,7 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         except (OSError, ValueError) as exc:
             raise SystemExit(
                 f"refusing to {verb}: could not read {config_path}: {exc}") from None
-        config, geocoded = apply_patch(payload, current, env, gated=not args.draft)
+        config, matched = apply_patch(payload, current, env, gated=not args.draft)
     else:
         raise SystemExit(
             "refusing to write: pass --draft (onboarding, answer by answer) or "
@@ -397,8 +393,8 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     # caller has -- which "Mountain View" is this, the California one or the
     # Arkansas one -- and a lat/lon would answer it by writing the owner's home
     # to five decimal places into a log that outlives the turn.
-    if geocoded and geocode.matched:
-        print(f"geocoded: matched {geocode.matched}")
+    if matched:
+        print(f"geocoded: matched {matched}")
     return 0
 
 

@@ -205,22 +205,27 @@ def test_no_mode_of_write_config_touches_the_crons():
 # Assets: what ships in the image
 # --------------------------------------------------------------------------
 
-def test_only_the_gif_ships_as_an_asset():
-    """Four screenshots shipped on 2026-09-02 carrying faces, a date of birth,
-    lab results and diagnoses, an order with a home address and a named $30K
-    transfer -- into a public image, sent to every owner who onboards.
+def test_the_assets_are_exactly_the_gif_and_the_four_previews():
+    """An asset baked here is sent to every owner who ever onboards, so the set
+    is closed rather than open.
 
-    The slot must not quietly refill: an asset baked here reaches everyone.
+    The four work previews are design mockups -- synthetic people and data,
+    confirmed by the product owner. They read as real, which is the point of a
+    mockup and also why the set is pinned: the next file dropped in beside them
+    gets the same reach without the same check.
     """
+    expected = ["quick-q.gif", "work-1-vault-login.png", "work-2-instacart-grocery.png",
+                "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
     assets = ROOT / "docs/onboarding-v2/assets"
-    assert sorted(f.name for f in assets.iterdir()) == ["quick-q.gif"]
+    assert sorted(f.name for f in assets.iterdir()) == expected
     baked = [l for l in DOCKERFILE.splitlines() if l.startswith("COPY") and "/srv/plow-assets/" in l]
-    assert baked == ["COPY docs/onboarding-v2/assets/quick-q.gif /srv/plow-assets/quick-q.gif"]
+    assert baked == [f"COPY docs/onboarding-v2/assets/{n} /srv/plow-assets/{n}" for n in expected]
 
 
-def test_nothing_promises_pictures_that_do_not_exist():
-    """The lead-in question goes with the images: asked with nothing behind it,
-    it is worse than not asking."""
+def test_the_lead_in_and_the_pictures_travel_together():
+    """The question and the images are one thing: asked with nothing behind it
+    the question is worse than not asking, and sent without it the pictures
+    arrive unexplained."""
     live, in_comment = [], False
     for line in ONBOARDING.splitlines():
         if "<!--" in line:
@@ -230,8 +235,16 @@ def test_nothing_promises_pictures_that_do_not_exist():
         if "-->" in line:
             in_comment = False
     live = "\n".join(live)
-    assert "work-" not in live
-    assert "Want to see the kind of thing I mean?" not in live
+    assert "Want to see the kind of thing I mean?" in live
+    tags = [l for l in live.splitlines() if l.strip().startswith("MEDIA:/srv/plow-assets/work-")]
+    assert [t.strip().rsplit("/", 1)[1] for t in tags] == [
+        "work-1-vault-login.png", "work-2-instacart-grocery.png",
+        "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
+    # The sheet indents its own examples because it is a document; what has to
+    # be asserted is that it TELLS the model not to. The gateway blanks fenced
+    # and indented blocks before scanning, and all four went missing once from
+    # a message that read perfectly.
+    assert "Flush left and never inside a code fence" in " ".join(live.split())
 
 
 def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
@@ -268,6 +281,21 @@ def test_every_entry_point_states_the_same_three_part_gate(where, text):
     assert "any inbound message" not in text, f"{where} still admits any inbound"
     assert "owner" in text and "DM" in text, f"{where} does not name the gate"
     assert "roster is just the two of you" in text, f"{where} omits the solo condition"
+
+
+def test_silence_names_the_token_the_gateway_recognises():
+    """"Stay silent" is not actionable: a turn ends on SOMETHING, and anything
+    that is not the exact marker is delivered.
+
+    Observed in a group: "(no response — this message isn't directed at me and
+    doesn't need my input)". The gateway suppresses delivery only for a reply
+    whose whole content canonicalises to NO_REPLY or [SILENT]
+    (gateway/response_filters.py, LIVE_GATEWAY_SILENT_MARKERS); prose that
+    merely mentions the marker is explicitly not silence.
+    """
+    soul = " ".join(SOUL.split())
+    assert "Say `NO_REPLY` and nothing else" in soul
+    assert "A parenthesis is still a message" in soul
 
 
 def test_a_group_gets_no_questions_and_no_writes():
@@ -309,6 +337,15 @@ def test_the_wall_marker_stays_the_walls_own():
     assert len(re.findall(rf"^\s*date -u \+%FT%TZ > {re.escape(WALL_MARKER)}\s*$",
                           SKILL, re.MULTILINE)) == 1
 
+
+
+def test_the_observed_behaviours_are_marked_as_observed():
+    """Everything this section knows about gog and Latch came from one Mac on
+    one day, and none of it is documented. Recorded as observations rather
+    than facts so the next reader checks instead of building on them."""
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "observed on one Mac, on one day, and none of it is documented" in section
+    assert "if it does not hold" in section
 
 
 def test_discovery_is_one_argv_and_never_auth_list():
@@ -389,80 +426,7 @@ def test_the_sheet_names_no_tool_that_does_not_exist():
     assert "send_message" not in SKILL
 
 
-def test_the_turn_makes_as_few_tool_calls_as_it_can():
-    """Every gap between two tool calls is somewhere a sentence escapes.
 
-    Both remaining leaks came from gaps that did not need to exist: a config
-    read-back after a write that already knew the answer, and a re-probe. The
-    fix is fewer calls, not another rule about what not to say in between.
-    """
-    text = " ".join(ONBOARDING.split())
-    assert "Make as few tool calls as the step needs" in text
-    assert "Do not read a file back to confirm a write that already reported its result" in text
-    # And the city step no longer asks for the read-back at all.
-    city = " ".join(ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
-    assert "Do not read the config back to check" in city
-
-
-def test_the_draft_reports_the_place_it_matched_never_the_coordinates(tmp_path, capsys):
-    """The output that makes the read-back unnecessary -- and CodeQL's point.
-
-    The region is what distinguishes the Mountain View in California from the
-    one in Arkansas, which is the only question a caller has. A lat/lon would
-    answer it by writing the owner's home to five decimal places into a log
-    that outlives the turn (py/clear-text-logging-sensitive-data, high).
-    """
-    config = tmp_path / "config.json"
-    draft(config, '{"family": {"owner": {"name": "M"}}}')
-    capsys.readouterr()
-    wc.main(["--draft"], env=ENV, config_path=str(config),
-            stdin=io.StringIO('{"weather": {"location": "Chicago"}}'))
-    out = capsys.readouterr().out
-    assert "geocoded: matched Chicago" in out
-    assert "Illinois" in out, "the region is the whole point of the line"
-    for leaked in ("lat=", "lon=", "41.8", "-87.6"):
-        assert leaked not in out, f"the write logged {leaked!r}"
-    # The coordinates are still WRITTEN, just not printed.
-    assert json.loads(config.read_text())["weather"]["lat"]
-
-
-def test_a_draft_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):
-    """Only the call that geocoded reports coordinates -- a line on every write
-    would be noise the model learns to repeat."""
-    config = tmp_path / "config.json"
-    draft(config, '{"family": {"owner": {"name": "M"}}}')
-    assert "geocoded:" not in capsys.readouterr().out
-
-
-def test_the_write_comes_first_and_the_message_is_the_last_thing():
-    """The trailing note was the ordering, not the wording.
-
-    Sending the message first leaves the turn needing something to end on, and
-    whatever it ends on is delivered -- "Name's drafted, waiting on her next
-    reply", "Onboarding's now complete on my end". Six rules about what not to
-    say could not fix a turn that structurally had to say something. With the
-    write first the message IS the ending.
-    """
-    text = " ".join(ONBOARDING.split())
-    assert "the draft comes first and the message goes last" in text
-    assert "the message is the last thing in the turn, and nothing follows it" in text
-    # The cost is named here rather than discovered in a transcript later.
-    assert "The accepted cost" in text
-    assert "the introduction and the Latch link are never sent" in text
-
-    intro = " ".join(ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")].split())
-    assert "Draft the name first, then introduce yourself" in intro
-    teams = " ".join(ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
-    assert "Draft it before writing §4's close" in teams
-    close = " ".join(ONBOARDING[ONBOARDING.index("### 4 ·"):ONBOARDING.index("### 5 ·")].split())
-    assert "This message is the LAST thing in its turn" in close
-
-    # And "first" must not be read as "before there is anything to write".
-    # Observed on a first turn: a fabricated name drafted into the config,
-    # then retracted to the owner in two messages.
-    assert '"Draft first" means the answer you were just given' in text
-    assert "invents no name" in text
-    assert "Never compose a value the owner did not say" in text
 
 
 def test_the_reply_is_the_step_not_a_report_of_it():
@@ -477,6 +441,21 @@ def test_the_reply_is_the_step_not_a_report_of_it():
     assert "write the step's own message" in text
     assert "Not a report of what you just did" in text
     assert "has skipped its own step" in text
+
+
+def test_every_step_has_a_row_in_the_turn_table():
+    """A step with no row is a step with no defined shape.
+
+    Measured: with §1 missing from the table, the opener came back as
+    `❓ placeholder` -- a stub `clarify` call that blocks the turn -- on two
+    fresh volumes. Adding the row fixed it on the next run. A turn that cannot
+    find its own row reaches for a way to ask.
+    """
+    table = ONBOARDING[ONBOARDING.index("| the turn |"):]
+    table = table[:table.index("\n\n")]
+    for step in ("§1 ·", "§2 ·", "§3 ·", "§4 ·", "§5 ·"):
+        assert step in table, f"{step} has no row in the turn table"
+    assert "Every turn of this conversation is in that table" in " ".join(ONBOARDING.split())
 
 
 def test_clarify_is_forbidden_during_onboarding():

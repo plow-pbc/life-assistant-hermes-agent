@@ -45,8 +45,10 @@ MINIMAL = {"owner_name": "Rowan", "owner_email": "rowan@example.test",
 
 
 def fake_geocode(city):
+    """Open-Meteo, stubbed. No test in this suite touches the network: a live
+    lookup makes the suite fail on a train, and it made this one flaky."""
     assert city == "Chicago"
-    return 41.85, -87.65
+    return 41.85, -87.65, "Chicago, Illinois, United States"
 
 
 
@@ -75,6 +77,43 @@ def live_config():
     }
 
 
+def test_a_write_reports_the_place_it_matched_never_the_coordinates(tmp_path, monkeypatch, capsys):
+    """The output that lets a caller check the geocode without reading the
+    config back -- a second tool call, and the gap between two of them is where
+    "Coordinates check out fine (37.38, -122.08)" reached a real owner.
+
+    The region is what separates the Mountain View in California from the one
+    in Arkansas, which is the only question a caller has. A lat/lon answers it
+    by writing the owner's home to five decimal places into a log that outlives
+    the turn (CodeQL py/clear-text-logging-sensitive-data, high).
+    """
+    monkeypatch.setattr(wc, "geocode", fake_geocode)
+    target = tmp_path / "ld" / "config.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(live_config()))
+    capsys.readouterr()
+    wc.main(["--patch"], stdin=io.StringIO('{"weather": {"location": "Chicago"}}'),
+            env=ENV, config_path=str(target))
+    out = capsys.readouterr().out
+    assert "geocoded: matched Chicago, Illinois, United States" in out
+    for leaked in ("lat=", "lon=", "41.85", "-87.65"):
+        assert leaked not in out, f"the write logged {leaked!r}"
+    # Written to the config, where the producers need them; just not printed.
+    assert json.loads(target.read_text())["weather"]["lat"] == 41.85
+
+
+def test_a_write_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):
+    """Only the call that geocoded reports a place -- a line on every write
+    would be noise the model learns to repeat back to the owner."""
+    target = tmp_path / "ld" / "config.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(live_config()))
+    capsys.readouterr()
+    wc.main(["--patch"], stdin=io.StringIO('{"family": {"owner": {"name": "Ro"}}}'),
+            env=ENV, config_path=str(target))
+    assert "geocoded:" not in capsys.readouterr().out
+
+
 def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
     current = live_config()
     merged = wc.apply_patch({"family": {"owner": {"name": "Ro"}}}, current, ENV)[0]
@@ -100,7 +139,7 @@ def test_a_new_city_takes_its_coordinates_with_it():
     """The one patch that fails silently: the card's title becomes the new city
     and the forecast stays the old one's."""
     merged = wc.apply_patch({"weather": {"location": "Denver"}}, live_config(), ENV,
-                            geocoder=lambda city: (39.74, -104.99))[0]
+                            geocoder=lambda city: (39.74, -104.99, "Denver, Colorado, United States"))[0]
     assert merged["weather"] == {"location": "Denver", "lat": 39.74, "lon": -104.99}
 
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical ld-config template for the life-dashboard producers. The live file is assembled from this shape at install time; every [UPPER_SNAKE] placeholder must be filled or the shared gate (ld_config_gate.py) refuses the config. morning_triage.chat_db_path is the absolute path to the owner Mac's Messages DB, e.g. /Users/<mac-username>/Library/Messages/chat.db, and morning_triage.exclude.imessage_handles is the exclusion list the iMessage triage reads. calendar.account is the ONE account Latch's gog uses for every merged calendar read; calendar_id is a calendar's whole address and must be a globally-unique id visible to that account. 'primary' names only that account's own calendar, so at most one source may use it — the gate refuses blank or duplicate ids. Owner participation is separate: calendar_nudge.owner_identities is the owner's identity set used by the nudge filter.",
+  "_comment": "Canonical ld-config template for the life-dashboard producers. The live file is assembled from this shape at install time; every [UPPER_SNAKE] placeholder must be filled or the shared gate (ld_config_gate.py) refuses the config. morning_triage.chat_db_path is the absolute path to the owner Mac's Messages DB, e.g. /Users/<mac-username>/Library/Messages/chat.db, and morning_triage.exclude.imessage_handles is the exclusion list the iMessage triage reads. calendar.account is the ONE account Latch's gog uses for every merged calendar read; calendar_id is a calendar's whole address and must be a globally-unique id visible to that account — the account's own calendar is named by its address, like every other, and the gate refuses blank or duplicate ids. Owner participation is separate: calendar_nudge.owner_identities is the owner's identity set used by the nudge filter.",
   "family": {
     "owner": { "name": "[OWNER_NAME]", "imessage": "[OWNER_IMESSAGE]" },
     "partner": { "name": "[PARTNER_NAME]", "imessage": "[PARTNER_IMESSAGE]" },
@@ -9,7 +9,7 @@
   "calendar": {
     "account": "[OWNER_CALENDAR_EMAIL]",
     "sources": [
-      { "calendar_id": "primary", "name": "Personal" },
+      { "calendar_id": "[OWNER_CALENDAR_EMAIL]", "name": "Personal" },
       { "calendar_id": "[FAMILY_CALENDAR_ID]", "name": "Family shared" },
       { "calendar_id": "[WORK_CALENDAR_ID]", "name": "Work" },
       { "calendar_id": "[PARTNER_CALENDAR_ID]", "name": "Partner" }
