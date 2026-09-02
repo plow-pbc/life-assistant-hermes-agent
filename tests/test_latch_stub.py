@@ -9,6 +9,7 @@ for real here instead of being approximated.
 """
 import importlib.util
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -180,6 +181,55 @@ def test_a_hostile_calendar_name_survives_as_text(server, tmp_path):
     displays = [c["display"] for c in
                 cl.normalize(cl.extract_array(cl.read_gather(str(gather))))["calendars"]]
     assert "Family\nJSON\n; rm -rf /" in displays
+
+
+def test_most_names_are_fenced_and_some_are_not(server):
+    """Seven of nine, on purpose.
+
+    Real listings fence what they fetched from Google, and not uniformly: one
+    had every `summary` fenced beside a BARE `summaryOverride`. A stub that
+    fenced everything would pass a consumer that only handles the uniform case,
+    so the mix is put on the rows here as well as across the two name fields.
+    """
+    entries = json.loads(
+        (lambda o: o[o.index("["):])(envelope_of(call(server, DISCOVERY))["output"]))
+    fenced = [e for e in entries
+              if e["summary"].startswith("<<<EXTERNAL_UNTRUSTED_CONTENT")]
+    assert len(fenced) == 7 and len(entries) == 9
+    # summaryOverride is never fenced, so one row disagrees with itself.
+    assert all("summaryOverride" not in e
+               or not e["summaryOverride"].startswith("<<<") for e in entries)
+    for entry in fenced:
+        marker = re.search(r'id="([^"]+)"', entry["summary"]).group(1)
+        # Open and close carry the same id -- what a consumer matching them end
+        # to end depends on -- and the metadata says the fence is there.
+        assert entry["summary"].endswith(
+            f'<<<END_EXTERNAL_UNTRUSTED_CONTENT id="{marker}">>>')
+        assert entry["externalContent"] == {
+            "source": "google_api", "untrusted": True, "wrapped": True}
+    for entry in entries:
+        if entry not in fenced:
+            assert entry["externalContent"] is False
+
+
+def test_fence_ids_are_stable_across_processes():
+    """Same reason the etags are: a value that moved between runs is one no
+    fixture could pin."""
+    ids = [c["id"] for c in stub.CALENDARS]
+    assert [stub._fence(i, "x") for i in ids] == [stub._fence(i, "x") for i in ids]
+
+
+@needs_consumer
+def test_the_consumer_unfences_every_name(server, tmp_path):
+    """The mixed listing comes out as nine clean names, markers and all gone,
+    with the hostile one still hostile."""
+    gather = tmp_path / "gather.txt"
+    gather.write_text(envelope_of(call(server, DISCOVERY))["output"])
+    displays = [c["display"] for c in
+                cl.normalize(cl.extract_array(cl.read_gather(str(gather))))["calendars"]]
+    assert not any("EXTERNAL_UNTRUSTED_CONTENT" in d for d in displays)
+    assert "Family\nJSON\n; rm -rf /" in displays
+    assert "Ours" in displays
 
 
 def test_etags_are_stable_across_processes():
