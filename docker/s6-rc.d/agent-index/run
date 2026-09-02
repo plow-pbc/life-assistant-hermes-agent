@@ -33,6 +33,22 @@ AGENT_INDEX=$(/opt/hermes/.venv/bin/python3 \
 
 [ "${AGENT_INDEX:-}" = 1 ] || exit 0
 
+# The client is fetched into the checkout by `just client`, not committed, and
+# bind-mounted from there. A bind whose SOURCE does not exist does NOT fail:
+# the runtime creates a DIRECTORY at the target, so the agent gets a directory
+# where its client should be. python would then fail once an hour with an
+# IsADirectoryError nobody reads, and the agent would report nothing while
+# looking healthy.
+#
+# Say it once, plainly, and stay down. Naming the fix matters more than the
+# error: whoever sees this did not run the fetch.
+if [ ! -f /usr/local/bin/agent-index-client ]; then
+    echo "agent-index: /usr/local/bin/agent-index-client is not a file --" \
+         "run \`just client\` in the agent repo and restart; the mount has" \
+         "no source, so the runtime created a directory in its place"
+    exit 0
+fi
+
 # HOME is set explicitly, NOT inherited. s6-setuidgid changes uid/gid but
 # leaves HOME pointing at root's, and the client resolves its token path with
 # expanduser(), which reads $HOME before falling back to /etc/passwd. Without

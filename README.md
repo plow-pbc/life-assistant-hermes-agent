@@ -209,7 +209,8 @@ agent-mgr up <agent>                 # must precede sign-in: that runs inside th
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 
 # Only for an instance that reports usage (AGENT_INDEX=1 in its own
-# ~/.hermes-<agent>/.env — see Usage reporting). One-time, per instance: the
+# ~/.hermes-<agent>/.env — see Usage reporting; `just client` must have run).
+# One-time, per instance: the
 # token lands in that instance's own home, so a rebuild does not repeat it.
 docker exec -it hermes-<agent> /command/s6-setuidgid hermes \
   env HOME=/opt/data /opt/hermes/.venv/bin/python3 \
@@ -503,9 +504,16 @@ its s6 service the same way the skills arrive. s6-overlay compiles
 `/etc/s6-overlay/s6-rc.d` at boot, so a mounted service is indistinguishable
 from a baked one.
 
-The client is `vendor/agent_index_client.py`, vendored from
-`plow-pbc/agent-index-client` at the sha in its header. That repo is private,
-so it is copied rather than fetched at build time.
+The client is `vendor/agent_index_client.py`, **fetched rather than
+committed**: `plow-pbc/agent-index-client` owns it and is public, so
+`vendor/client.pin` names a commit and a checksum and `just client` fetches
+exactly that. A sha, never `main` — the reason the Dockerfile pins its base by
+digest is the reason this pins too.
+
+Run `just client` before `agent-mgr up`. The mount has no source until you do,
+and a bind with a missing source does not fail: the runtime creates a
+*directory* at the target. The service refuses that case and names the fix, but
+it costs a restart.
 
 To turn it on, opt that instance in from its **own** dotenv:
 

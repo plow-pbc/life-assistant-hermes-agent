@@ -84,3 +84,35 @@ check-latch agent:
       cat /tmp/latch-body 2>/dev/null || true
       rm -f /tmp/latch-body' > "$raw"
     {{justfile_directory()}}/scripts/latch-verdict.py "$raw"
+
+# The usage client is fetched, not carried. plow-pbc/agent-index-client owns
+# that file; this repo names a revision of it in vendor/client.pin.
+#
+# Run before `agent-mgr up`. compose.override.yml bind-mounts the fetched path
+# into the container, and a bind whose SOURCE is missing does not fail -- the
+# runtime creates a DIRECTORY there, on the host, and the agent then has a
+# directory where its client should be. The service refuses that case loudly,
+# but the cheaper fix is fetching first.
+#
+# Verified by checksum, not just by sha in the URL: this file is executed
+# inside an agent holding a live credential, so a wrong body is worth catching
+# even when the path looks right. A mismatch leaves no file behind.
+[doc("Fetch the pinned agent-index usage client into vendor/.")]
+client:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    sha=$(sed -n 's/^sha=//p' vendor/client.pin)
+    want=$(sed -n 's/^sha256=//p' vendor/client.pin)
+    path=$(sed -n 's/^path=//p' vendor/client.pin)
+    url="https://raw.githubusercontent.com/plow-pbc/agent-index-client/${sha}/${path}"
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    curl -fsS --max-time 30 -o "$tmp" "$url"
+    got=$(sha256sum "$tmp" | cut -d' ' -f1)
+    if [ "$got" != "$want" ]; then
+        echo "refusing: $url is $got, vendor/client.pin says $want" >&2
+        exit 1
+    fi
+    install -m 0644 "$tmp" vendor/agent_index_client.py
+    echo "vendor/agent_index_client.py <- ${sha:0:12} (verified)"

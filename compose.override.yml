@@ -84,6 +84,12 @@ services:
       # so a COPY there reaches the standalone cloud image and no fleet agent.
       # The skills above already solve this problem; this follows them.
       #
+      # The client itself is NOT tracked -- `just client` fetches the revision
+      # vendor/client.pin names. Fetch before `up`: a bind whose source is
+      # missing creates a DIRECTORY at the target rather than failing, and the
+      # agent then has a directory where its client should be. The service
+      # checks for that and says so, because nothing else would.
+      #
       # NOT nested binds: these land in /usr/local/bin and /etc/s6-overlay,
       # outside the /opt/data home bind, so the root-owned-mountpoint hazard
       # described above does not apply to them.

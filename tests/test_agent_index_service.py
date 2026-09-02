@@ -100,3 +100,51 @@ def test_a_disabled_slot_stays_down_and_a_died_one_comes_back():
     finish = SVC.joinpath("finish").read_text()
     assert "125" in finish and "$1" in finish
     assert "AGENT_INDEX" not in finish, "the switch is not in this script's environment to read"
+
+
+def test_the_client_is_pinned_to_a_revision_and_a_checksum():
+    """Fetched, not carried -- and not from a moving reference.
+
+    plow-pbc/agent-index-client owns that file and is public, so this repo
+    names a revision instead of holding a copy that drifts. A sha rather than
+    `main` for the reason the Dockerfile pins its base by digest: a moving
+    reference substitutes unreviewed code under an agent holding a live
+    credential.
+
+    The checksum is the second half. A sha in a URL is only as good as the host
+    serving it, and this file is executed inside the agent.
+    """
+    pin = dict(
+        line.split("=", 1)
+        for line in (ROOT / "vendor" / "client.pin").read_text().splitlines()
+        if "=" in line and not line.startswith("#")
+    )
+    assert re.fullmatch(r"[0-9a-f]{40}", pin["sha"]), "pin a full commit sha, never a branch"
+    assert re.fullmatch(r"[0-9a-f]{64}", pin["sha256"])
+    assert pin["path"] == "standalone/agent_index_client.py", \
+        "the repo root is a different reporter; the stdlib client lives under standalone/"
+
+
+def test_the_fetched_client_is_not_committed():
+    """A committed copy is the drift this replaced; keeping both brings it back."""
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "vendor/agent_index_client.py"],
+        cwd=ROOT, capture_output=True, text=True,
+    ).stdout.strip()
+    assert tracked == "", "the client is fetched by `just client`, not tracked"
+
+
+def test_the_service_refuses_a_client_that_is_not_a_file():
+    """The bind-mount hazard, which fails in the least visible way available.
+
+    A bind whose SOURCE is missing does not error: the runtime creates a
+    DIRECTORY at the target. Measured -- a container started without the fetch
+    has a directory at /usr/local/bin/agent-index-client. Without this check
+    python raises IsADirectoryError once an hour into a log nobody reads, and
+    the agent reports nothing while every slot looks healthy.
+    """
+    run = SVC.joinpath("run").read_text()
+    assert "-f /usr/local/bin/agent-index-client" in run
+    assert "just client" in run, "the message has to name the fix, not just the symptom"

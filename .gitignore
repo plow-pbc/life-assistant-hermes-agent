@@ -5,3 +5,7 @@ docs/superpowers/plans/
 
 # knightwatch materializes declared review siblings here during a review.
 .siblings/
+
+# Fetched by `just client`, pinned in vendor/client.pin. Not committed:
+# plow-pbc/agent-index-client owns it, and a copy here drifts from it.
+vendor/agent_index_client.py
