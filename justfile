@@ -114,5 +114,12 @@ client:
         echo "refusing: $url is $got, vendor/client.pin says $want" >&2
         exit 1
     fi
+    # Not a stray rm. Starting before this recipe runs leaves a DIRECTORY at
+    # that path, created on the host by the bind mount whose source was
+    # missing -- and `install` treats an existing directory as a destination
+    # DIRECTORY, writing the client inside it. Without this line the recovery
+    # the service prescribes cannot work: the fetch reports success and the
+    # file the mount needs still does not exist.
+    rm -rf vendor/agent_index_client.py
     install -m 0644 "$tmp" vendor/agent_index_client.py
     echo "vendor/agent_index_client.py <- ${sha:0:12} (verified)"

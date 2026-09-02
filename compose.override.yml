@@ -79,25 +79,11 @@
 services:
   hermes:
     volumes:
-      # The usage reporter, mounted rather than baked. agent-mgr runs the
-      # image runtime/stack.json pins and never builds this repo's Dockerfile,
-      # so a COPY there reaches the standalone cloud image and no fleet agent.
-      # The skills above already solve this problem; this follows them.
-      #
-      # The client itself is NOT tracked -- `just client` fetches the revision
-      # vendor/client.pin names. Fetch before `up`: a bind whose source is
-      # missing creates a DIRECTORY at the target rather than failing, and the
-      # agent then has a directory where its client should be. The service
-      # checks for that and says so, because nothing else would.
-      #
-      # NOT nested binds: these land in /usr/local/bin and /etc/s6-overlay,
-      # outside the /opt/data home bind, so the root-owned-mountpoint hazard
-      # described above does not apply to them.
-      #
-      # s6-overlay compiles /etc/s6-overlay/s6-rc.d at boot, so a service
-      # mounted in before start is indistinguishable from one baked in. The
-      # marker file is what puts it in the user bundle; without it the
-      # directory is present and never started.
+      # The usage reporter. Mounted, not baked: agent-mgr runs the image
+      # runtime/stack.json pins and never builds this repo's Dockerfile, so a
+      # COPY there would reach no fleet agent. The client itself is fetched by
+      # `just client` and is NOT tracked -- fetch before `up`, or the bind
+      # creates a directory here. README, "Usage reporting", has the rest.
       - ${AGENT_DIR:?set by agent-mgr from the registry}/vendor/agent_index_client.py:/usr/local/bin/agent-index-client:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/docker/s6-rc.d/agent-index:/etc/s6-overlay/s6-rc.d/agent-index:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/docker/s6-rc.d/user/contents.d/agent-index:/etc/s6-overlay/s6-rc.d/user/contents.d/agent-index:ro

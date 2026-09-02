@@ -510,20 +510,10 @@ def test_the_hermes_volumes_are_exactly_these():
         "${AGENT_DIR:?set by agent-mgr from the registry}"
         "/runtime/SOUL.md:/opt/data/SOUL.md:ro"
     } | {
-        # The usage reporter, and the only binds here that land OUTSIDE
-        # /opt/data. They exist because agent-mgr runs the pinned upstream
-        # image and never builds this repo's Dockerfile, so a COPY there
-        # reaches the standalone image and no fleet agent; mounting is how the
-        # skills already solve the same problem.
-        #
-        # Being outside the home bind is what makes them safe to nest: the
-        # root-owned-mountpoint hazard compose.override.yml describes applies
-        # to children of /opt/data, and these are not.
-        #
-        # All three or none. The client alone is a file nothing runs; the
-        # service directory without the bundle marker is a service s6 never
-        # starts -- and both failures are silent, which is why the exact set
-        # is the right guard for them.
+        # The usage reporter: the only binds landing OUTSIDE /opt/data, which
+        # is what makes them safe to nest. All three or none -- the client
+        # alone is a file nothing runs, and the service directory without the
+        # bundle marker is a service s6 never starts.
         "${AGENT_DIR:?set by agent-mgr from the registry}"
         "/vendor/agent_index_client.py:/usr/local/bin/agent-index-client:ro",
         "${AGENT_DIR:?set by agent-mgr from the registry}"

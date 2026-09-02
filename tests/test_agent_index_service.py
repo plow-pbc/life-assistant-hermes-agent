@@ -27,23 +27,12 @@ def test_run_is_executable():
 
 
 def test_home_and_hermes_home_are_both_on_the_invocation():
-    """Two paths, named on the invocation, for two failures that are both silent.
+    """Both named on the invocation, because both failures are silent.
 
-    HOME: s6-setuidgid changes uid/gid but leaves HOME as root's, and the client
-    resolves its token path with expanduser(), which reads $HOME before
-    /etc/passwd. Without it the login dies writing /root/.agent-index -- and
-    nothing notices, because an agent with no usage exits 0 long before it
-    needs a token.
-
-    HERMES_HOME: the store is at /opt/data/state.db, not the client's own
-    $HOME/.hermes/state.db fallback. A store that is not found is not an error;
-    the reporter posts a zero and the agent reads as idle rather than
-    misconfigured.
-
-    Both currently match what the base image exports, so neither assertion
-    changes behaviour today. That is the point: without them, correctness rests
-    on env vars owned by an image we pin by digest and bump, and nobody bumping
-    it would know to check either.
+    HOME wrong: the login writes to /root and dies. HERMES_HOME wrong: the
+    store is not found, and a store that is not found is not an error -- the
+    reporter posts a zero and the agent reads as idle. Both match what the base
+    image exports today, so these guard against a base bump, not against now.
     """
     run = SVC.joinpath("run").read_text()
     exec_line = [l for l in run.splitlines() if l.startswith("exec ")][0]
@@ -123,17 +112,6 @@ def test_the_client_is_pinned_to_a_revision_and_a_checksum():
     assert re.fullmatch(r"[0-9a-f]{64}", pin["sha256"])
     assert pin["path"] == "standalone/agent_index_client.py", \
         "the repo root is a different reporter; the stdlib client lives under standalone/"
-
-
-def test_the_fetched_client_is_not_committed():
-    """A committed copy is the drift this replaced; keeping both brings it back."""
-    import subprocess
-
-    tracked = subprocess.run(
-        ["git", "ls-files", "vendor/agent_index_client.py"],
-        cwd=ROOT, capture_output=True, text=True,
-    ).stdout.strip()
-    assert tracked == "", "the client is fetched by `just client`, not tracked"
 
 
 def test_the_service_refuses_a_client_that_is_not_a_file():

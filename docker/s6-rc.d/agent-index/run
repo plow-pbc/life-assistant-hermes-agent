@@ -6,42 +6,21 @@
 # not switched on, exit 0 and let the finish script return 125 so s6 marks
 # the slot down rather than restarting it forever.
 
-# The opt-in is read from the agent's OWN dotenv, not from the environment.
-# /opt/data is this instance's home, so this file belongs to one person.
-#
-# It is deliberately not a compose variable. compose.override.yml merges after
-# agent-mgr's template and can replace anything the template set -- measured:
-# an override naming AGENT_INDEX wins -- and that override is shared by every
-# instance registered against the checkout. A switch there opts in siblings who
-# never asked. Read here, the answer comes from the one file that is already
-# per-person, and nothing in Compose can forge it.
-#
-# Read through ld-shared's runtime_env, the repo's one dotenv parser, rather
-# than a pipeline of this script's own. A second spelling of the same file is
-# a second thing that can drift: the shared one takes the LAST duplicate and
-# the value literally, while a grep/cut/tr version took the first and stripped
-# quotes -- two readers disagreeing about one line.
-#
-# It parses rather than sources, which is the part that matters here: this
-# file holds the agent's credentials, and sourcing it would put every one of
-# them into the reporter's environment.
-#
-# A failed lookup yields empty and the slot stays down. Off is the safe
-# direction for a switch nobody has set.
+# Read from the agent's OWN dotenv, never the environment: a compose override
+# is shared by every instance on the checkout and would opt in siblings.
+# Through ld-shared's runtime_env, the repo's one parser, so two readers cannot
+# disagree about a line -- and it parses rather than sources, because that file
+# holds credentials. Empty lookup means the slot stays down. README, "Usage
+# reporting", has the rest.
 AGENT_INDEX=$(/opt/hermes/.venv/bin/python3 \
   /opt/data/skills/ld-shared/scripts/runtime_env.py AGENT_INDEX 2>/dev/null)
 
 [ "${AGENT_INDEX:-}" = 1 ] || exit 0
 
-# The client is fetched into the checkout by `just client`, not committed, and
-# bind-mounted from there. A bind whose SOURCE does not exist does NOT fail:
-# the runtime creates a DIRECTORY at the target, so the agent gets a directory
-# where its client should be. python would then fail once an hour with an
-# IsADirectoryError nobody reads, and the agent would report nothing while
-# looking healthy.
-#
-# Say it once, plainly, and stay down. Naming the fix matters more than the
-# error: whoever sees this did not run the fetch.
+# The client is fetched, not committed, and bind-mounted from the checkout. A
+# bind with no source does not fail -- the runtime creates a DIRECTORY at the
+# target -- so check for a regular file and name the fix, because nothing else
+# would say why an otherwise healthy agent reports nothing.
 if [ ! -f /usr/local/bin/agent-index-client ]; then
     echo "agent-index: /usr/local/bin/agent-index-client is not a file --" \
          "run \`just client\` in the agent repo and restart; the mount has" \
