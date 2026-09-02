@@ -41,9 +41,6 @@ import os
 import re
 import sys
 
-RELAY_KEY = "latch"
-
-
 def config_path(env=None):
     env = os.environ if env is None else env
     home = env.get("HERMES_HOME") or "/var/lib/hermes"

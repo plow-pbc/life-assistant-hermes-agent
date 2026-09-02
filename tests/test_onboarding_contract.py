@@ -636,8 +636,10 @@ def test_the_relay_key_is_latch_and_only_latch():
     there, which is how one calendar turn spent its whole budget on tool_search.
     """
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
-    assert ls.RELAY_KEY == "latch"
+    # Behaviour, not a constant: what matters is that the old spelling does not
+    # answer "configured", whatever the code calls the name it looks for.
     assert not ls.relay_configured("mcp_servers:\n  plow:\n    url: https://x\n")
+    assert ls.relay_configured("mcp_servers:\n  latch:\n    url: https://x\n")
 
 
 def test_discovery_is_one_argv_and_never_auth_list():

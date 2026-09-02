@@ -73,7 +73,9 @@ cron state it has no business judging.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
+import fcntl
 import json
 import os
 import sys
@@ -271,6 +273,46 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
     return merged, None
 
 
+@contextlib.contextmanager
+def config_lock(config_path):
+    """Hold `<config>.lock` across the whole read-merge-gate-write.
+
+    Two turns can run at once -- an owner texting while a cron producer patches,
+    or two answers arriving back to back -- and both modes here are
+    read-modify-write. Without a lock the second read happens before the first
+    write lands, and the second `os.replace` publishes a merge that never saw
+    the first answer: not a corrupt file, a clean file missing a reply the owner
+    already gave, which is the kind of loss nobody traces back.
+
+    A separate lock file, not the config itself: `atomic_write` replaces the
+    config by rename, so a descriptor held on it would be a lock on a path that
+    no longer exists the moment the first writer finishes. Advisory `flock` is
+    enough because every writer of this file comes through here.
+
+    If the lock cannot be opened at all, the work still runs. The only reason it
+    cannot is a directory that is missing or unwritable, and every path inside
+    already refuses that by name -- "could not read", "no space left on device"
+    -- which is a better sentence than anything this could add. Swallowing the
+    real refusal to report a lock problem is how a mistyped path started looking
+    like a concurrency bug.
+    """
+    handle = None
+    try:
+        handle = open(config_path + ".lock", "a+")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        if handle is not None:
+            handle.close()
+        handle = None
+    try:
+        yield
+    finally:
+        if handle is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+
+
 def atomic_write(config_path, text):
     """Replace the config in one step, or leave the old one untouched.
 
@@ -341,62 +383,66 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         raise SystemExit(f"refusing to write: could not read {args.input}: {exc}") from None
     except ValueError as exc:
         raise SystemExit(f"refusing to write: {exc}") from None
-    if args.patch or args.draft:
-        verb = "draft" if args.draft else "patch"
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                current = json.load(f, parse_constant=_reject_constant)
-        except FileNotFoundError:
-            # Only a draft may start from nothing -- it is how the config comes
-            # into existence, one answer at a time. For --patch a missing file
-            # stays the refusal it has always been: that is how a mistyped path
-            # or a lost config announces itself instead of quietly becoming a
-            # new one.
-            if not args.draft:
+    # Everything from the read to the rename happens under one lock: both modes
+    # merge onto what is already there, so a concurrent writer between our read
+    # and our write would have its answer replaced by a merge that never saw it.
+    with config_lock(config_path):
+        if args.patch or args.draft:
+            verb = "draft" if args.draft else "patch"
+            try:
+                with open(config_path, encoding="utf-8") as f:
+                    current = json.load(f, parse_constant=_reject_constant)
+            except FileNotFoundError:
+                # Only a draft may start from nothing -- it is how the config comes
+                # into existence, one answer at a time. For --patch a missing file
+                # stays the refusal it has always been: that is how a mistyped path
+                # or a lost config announces itself instead of quietly becoming a
+                # new one.
+                if not args.draft:
+                    raise SystemExit(
+                        f"refusing to patch: could not read {config_path}: "
+                        "no such file") from None
+                current = None
+            except (OSError, ValueError) as exc:
                 raise SystemExit(
-                    f"refusing to patch: could not read {config_path}: "
-                    "no such file") from None
-            current = None
-        except (OSError, ValueError) as exc:
+                    f"refusing to {verb}: could not read {config_path}: {exc}") from None
+            config, matched = apply_patch(payload, current, env, gated=not args.draft)
+        else:
             raise SystemExit(
-                f"refusing to {verb}: could not read {config_path}: {exc}") from None
-        config, matched = apply_patch(payload, current, env, gated=not args.draft)
-    else:
-        raise SystemExit(
-            "refusing to write: pass --draft (onboarding, answer by answer) or "
-            "--patch (a later change). There is no whole-config mode: it built "
-            "the file from a full answer set, which is a form, and rebuilding "
-            "from one silently dropped every preference nobody restated.")
-    try:
-        verdict = gate(config)
-    except GateError as exc:
-        verdict = f"not valid JSON ({exc})"
-    if args.draft:
-        # A draft is excused only for questions not yet asked. Gate the config
-        # again with those stood in for: whatever still fails came from a value
-        # the owner actually supplied, and that is refused exactly as --patch
-        # would refuse it.
+                "refusing to write: pass --draft (onboarding, answer by answer) or "
+                "--patch (a later change). There is no whole-config mode: it built "
+                "the file from a full answer set, which is a form, and rebuilding "
+                "from one silently dropped every preference nobody restated.")
         try:
-            supplied = gate(fill_unasked(config))
+            verdict = gate(config)
         except GateError as exc:
-            supplied = f"not valid JSON ({exc})"
-        if supplied:
-            raise SystemExit(f"refusing to draft: the gate says: {supplied}")
-    elif verdict:
-        raise SystemExit(f"refusing to write: the gate says: {verdict}")
-    # allow_nan=False, the writer's half of the rule the two reads enforce:
-    # Python emits NaN/Infinity back out as bare tokens, and a config carrying
-    # one is refused by ld_config_gate.py's own strict reader -- which stands
-    # every producer down at once, silently. Nothing reaches here carrying one
-    # today; this keeps that true if a future path forgets.
-    try:
-        text = json.dumps(config, indent=2, allow_nan=False) + "\n"
-    except ValueError as exc:
-        raise SystemExit(f"refusing to write: {exc}") from None
-    atomic_write(config_path, text)
-    # A draft reports the gate instead of obeying it. The line is not decoration:
-    # it is how a turn learns the config is still short of "installed", and the
-    # names in it are exactly what the wall path will need later.
+            verdict = f"not valid JSON ({exc})"
+        if args.draft:
+            # A draft is excused only for questions not yet asked. Gate the config
+            # again with those stood in for: whatever still fails came from a value
+            # the owner actually supplied, and that is refused exactly as --patch
+            # would refuse it.
+            try:
+                supplied = gate(fill_unasked(config))
+            except GateError as exc:
+                supplied = f"not valid JSON ({exc})"
+            if supplied:
+                raise SystemExit(f"refusing to draft: the gate says: {supplied}")
+        elif verdict:
+            raise SystemExit(f"refusing to write: the gate says: {verdict}")
+        # allow_nan=False, the writer's half of the rule the two reads enforce:
+        # Python emits NaN/Infinity back out as bare tokens, and a config carrying
+        # one is refused by ld_config_gate.py's own strict reader -- which stands
+        # every producer down at once, silently. Nothing reaches here carrying one
+        # today; this keeps that true if a future path forgets.
+        try:
+            text = json.dumps(config, indent=2, allow_nan=False) + "\n"
+        except ValueError as exc:
+            raise SystemExit(f"refusing to write: {exc}") from None
+        atomic_write(config_path, text)
+        # A draft reports the gate instead of obeying it. The line is not decoration:
+        # it is how a turn learns the config is still short of "installed", and the
+        # names in it are exactly what the wall path will need later.
     print(f"wrote {config_path} (mode 600); gate: {verdict or 'PASS'}")
     # The geocoder's verdict, in the SAME tool result as the write.
     #

@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -219,7 +220,10 @@ def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypa
 
     assert target.read_bytes() == before
     # And nothing half-written left beside it for the next run to trip over.
-    assert [p.name for p in target.parent.iterdir()] == ["config.json"]
+    # The lock file is a permanent sibling, not debris: it is what every writer
+    # takes before its read so two turns cannot merge over each other.
+    assert sorted(p.name for p in target.parent.iterdir()) == [
+        "config.json", "config.json.lock"]
 
 
 @pytest.mark.parametrize("token", ["Infinity", "-Infinity", "NaN"], ids=["inf", "-inf", "nan"])
@@ -243,3 +247,50 @@ def test_a_patch_carrying_a_non_standard_json_constant_is_refused(
     assert token in str(e.value)
     assert target.read_bytes() == before
 
+
+
+def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch):
+    """The loss a lock exists to prevent, and the reason it is not theoretical.
+
+    Both modes here are read-modify-write: read the live config, merge the
+    partial onto it, gate, replace. Two turns can run at once -- an owner
+    answering while a cron producer patches, or two answers arriving back to
+    back -- and unlocked, the second read happens before the first rename lands,
+    so the second write publishes a merge that never saw the first answer.
+
+    Not a corrupt file. A clean, valid config missing a reply the owner already
+    gave, which nothing downstream can notice and nobody traces back.
+    """
+    monkeypatch.setattr(wc, "geocode", fake_geocode)
+    target = tmp_path / "ld" / "config.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(live_config()))
+
+    start = threading.Barrier(2)
+    errors = []
+
+    def patch(payload):
+        def run():
+            try:
+                start.wait(timeout=5)
+                wc.main(["--patch"], stdin=io.StringIO(json.dumps(payload)),
+                        env=ENV, config_path=str(target))
+            except BaseException as exc:            # noqa: BLE001 - reported below
+                errors.append(exc)
+        return threading.Thread(target=run)
+
+    threads = [patch({"family": {"owner": {"name": "Ro"}}}),
+               patch({"weekly_digest": {"length": "long"}})]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive(), "a writer never finished -- the lock deadlocked"
+    assert not errors, errors
+
+    written = json.loads(target.read_text())
+    assert written["family"]["owner"]["name"] == "Ro", "the name write was lost"
+    assert written["weekly_digest"]["length"] == "long", "the digest write was lost"
+    # And the rest of the config is intact, so neither writer replaced the file
+    # with its own partial view of it.
+    assert written["calendar"] == live_config()["calendar"]

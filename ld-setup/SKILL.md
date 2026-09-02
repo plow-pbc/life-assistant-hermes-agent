@@ -352,14 +352,22 @@ this sheet for a reason: a heredoc composed around someone's words is a command
 built out of their input, and a calendar called `"; rm -rf ~; echo "` is a
 string to show the owner, not a command to run.
 
+**`<turn>` is any string unique to this turn** — the turn or session id you were
+given, or the time to the second. One fixed staging name would be one file two
+turns write at once: an owner texting while a cron producer runs, or two answers
+landing back to back, and the second stage overwrites the first before the first
+is read. The config itself is safe either way (`write_config.py` takes a lock
+across its whole read-merge-write), but a staged file that changed under a
+reader is a wrong answer written confidently, which is worse than a refusal.
+
 **Every answer reaches the config a step later at most**, one draft at a
 time, never as one blob at the end:
 
-Stage this with your file tool at `/opt/data/ld/.draft.json`:
+Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
 
     {"family": {"owner": {"name": "Mary"}}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
 
 `--draft`, not `--patch`. Stdin is a PARTIAL CONFIG in the shape of
 `/opt/data/skills/ld-shared/references/config.example.json`, deep-merged onto
@@ -541,12 +549,12 @@ Step 4's draft carries every answer still unwritten — the name, carried since
 the introduction, and the answer that just arrived. One tool call, then the
 message.
 
-Stage this with your file tool at `/opt/data/ld/.draft.json`:
+Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
 
     {"family": {"owner": {"name": "<from §2>"}, "timezone": "<$TZ>"},
     "weather": {"location": "<their city>, <region>"}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
 
 Coordinates are left out on purpose — the script geocodes `weather.location`
 for you, and a lat/lon supplied from memory is the one patch that fails
@@ -789,7 +797,7 @@ never a display name, never `primary`, never one you improved.
 **When the script decided the account** — it came back with an address rather
 than `null`:
 
-Stage this with your file tool at `/opt/data/ld/.draft.json`:
+Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
 
     {"calendar": {"account": "<account from the script>",
     "sources": [{"calendar_id": "<id from the script>"},
@@ -798,13 +806,13 @@ Stage this with your file tool at `/opt/data/ld/.draft.json`:
     "lookahead_virtual_minutes": 30,
     "lookahead_in_person_minutes": 60}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
 
 **When it came back `null` and the owner answered** — the account is THEIRS,
 not the script's, and it is the only value in this whole conversation that
 comes from an owner's answer about a calendar. Both places take it:
 
-Stage this with your file tool at `/opt/data/ld/.draft.json`:
+Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
 
     {"calendar": {"account": "<the address the owner said is theirs>",
     "sources": [{"calendar_id": "<id from the script>"},
@@ -813,7 +821,7 @@ Stage this with your file tool at `/opt/data/ld/.draft.json`:
     "lookahead_virtual_minutes": 30,
     "lookahead_in_person_minutes": 60}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
 
 Where they picked one of `candidates`, it is that string, unchanged. Where
 there were none to offer and they typed the address, it is what they typed —
@@ -902,13 +910,13 @@ drafts follow, because an embedded quote in an owner's answer would otherwise
 execute before the script's validation (which holds `pi_address` and `pi_user`
 to the safe charset Phase 3's `ssh` argv depends on) could see it.
 
-Stage this at `/opt/data/ld/.wall.json`:
+Stage this at `/opt/data/ld/.wall-<turn>.json`:
 
     {"pi_address": "...", "pi_user": "...", "ical_url": "..."}
 
 then:
 
-    /opt/data/skills/ld-setup/scripts/mint_wall_token.py --input /opt/data/ld/.wall.json
+    /opt/data/skills/ld-setup/scripts/mint_wall_token.py --input /opt/data/ld/.wall-<turn>.json
 
 Leave the `ical_url` key out entirely when the owner gave no feed *this run*
 — an absent key keeps whatever feed `pi.env` already carries, and only a
@@ -1163,11 +1171,11 @@ change to refuse rather than record. Stdin is a PARTIAL CONFIG — the shape
 `/opt/data/skills/ld-shared/references/config.example.json` describes, carrying
 only what changes — never the answer set:
 
-Stage this with your file tool at `/opt/data/ld/.draft.json`:
+Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
 
     {"weather": {"location": "Denver"}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --patch --input /opt/data/ld/.draft.json
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --patch --input /opt/data/ld/.draft-<turn>.json
 
 It merges onto the live file key by key, re-runs the shared gate on the
 **merged** result, and writes mode 600. It does **not** touch the crons: Phase 4
