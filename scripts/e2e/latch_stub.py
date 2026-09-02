@@ -54,9 +54,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PROTOCOL_VERSION = "2025-06-18"
 # The server KEY. The tool it exposes is `plow_run_command` -- a different
 # string, and the pair is what the skills spell out as
-# mcp__latch__plow_run_command. Must match what the base seed and
-# runtime/config.yaml register, or the skills name a tool nothing serves.
-SERVER_NAME = "latch"
+# mcp__plow__plow_run_command.
+#
+# Not a constant of the stub's own choosing. The key is the tool's prefix, so
+# a stub that picks its own name serves a tool under a prefix no sheet calls
+# and the turn goes hunting -- the same failure the entrypoint's check exists
+# to catch, arriving from the fake relay instead of the real one. Same
+# resolution the entrypoint uses: $E2E_RELAY_KEY, else the name the base image
+# registers (plow-hermes-agent #15).
+SERVER_NAME = (os.environ.get("E2E_RELAY_KEY") or "").strip() or "plow"
 
 # gog prints this before the array on a working call. Kept because it is the
 # reason calendar_list.py cannot simply json.loads() the output -- a stub that
