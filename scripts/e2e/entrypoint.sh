@@ -9,7 +9,7 @@
 # unit's ConditionPathExists is the dotenv.
 set -eu
 
-: "${PLOW_API_BASE:?}" "${PLOW_AGENT_TOKEN:?}" "${PLOW_HOME_CHANNEL:?}"
+: "${PLOW_API_BASE:?}" "${PLOW_AGENT_TOKEN:?}" "${PLOW_HOME_CHANNEL:?}" "${TWIN_UPLOAD_PORT:?}"
 
 cat > /var/lib/hermes/.env <<ENV
 PLOW_API_BASE=${PLOW_API_BASE}
@@ -71,18 +71,9 @@ path = "/var/lib/hermes/config.yaml"
 url = (os.environ.get("LATCH_MCP_URL") or "").strip()
 token = (os.environ.get("LATCH_MCP_TOKEN") or "").strip()
 
-# The image bakes this file, so it is here on every ordinary start. Guarded all
-# the same: this block now runs unconditionally under `set -e`, and a missing
-# config must not turn a plain no-Latch run into a container that will not boot.
-# There is nothing to remove from a file that does not exist -- but a run that
-# ASKED for the relay and cannot write it has to say so rather than come up
-# quietly without it.
-if not os.path.exists(path):
-    if url and token:
-        raise SystemExit(f"e2e-entrypoint: --latch was given but {path} is missing")
-    print(f"e2e-entrypoint: no Latch relay ({path} does not exist yet)")
-    raise SystemExit(0)
-
+# No existence check: `chown hermes:hermes /var/lib/hermes/config.yaml` above
+# runs under `set -e`, so a container missing this file has already exited
+# before anything here runs.
 with open(path) as f:
     config = yaml.safe_load(f) or {}
 servers = config.setdefault("mcp_servers", {})
@@ -107,9 +98,13 @@ LATCH_PY
 # The twin's upload origin, forwarded before the gateway starts so the first
 # attachment does not race it. Root here, and it stays root: it binds a port
 # and touches nothing else.
-if [ -n "${TWIN_UPLOAD_PORT:-}" ]; then
-  /usr/bin/python3 /usr/local/bin/e2e-upload-shim &
-fi
+#
+# Unconditional. run-agent.sh always sets TWIN_UPLOAD_PORT and exits if it
+# cannot derive it, so the old `if` never once decided anything -- it only meant
+# that a container started without the port would come up looking healthy and
+# fail on the first attachment, with nothing said at boot. TWIN_UPLOAD_PORT is
+# a precondition now, checked with the others at the top.
+/usr/bin/python3 /usr/local/bin/e2e-upload-shim &
 
 cd /opt/hermes
 

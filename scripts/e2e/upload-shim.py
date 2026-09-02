@@ -17,7 +17,10 @@ import os
 import sys
 
 PORT = int(os.environ["TWIN_UPLOAD_PORT"])
-TARGET_HOST = os.environ.get("TWIN_UPLOAD_TARGET", "host.docker.internal")
+# host.docker.internal, not configurable: it is how a container reaches the Mac
+# under both OrbStack and Docker Desktop, which is every runtime this loop
+# supports. The override that used to be here was never set by anything.
+TARGET_HOST = "host.docker.internal"
 
 
 async def pipe(reader, writer):
