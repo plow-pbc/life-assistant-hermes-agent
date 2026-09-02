@@ -73,8 +73,8 @@ def test_unbacked_tools_are_taken_away_not_merely_forbidden(toolset):
     still sees the tools picks them over Latch's plow_browser tools and tells
     the owner the browser is down.
     """
-    disabled = (config().get("agent") or {}).get("disabled_toolsets")
-    assert disabled and toolset in disabled, (
+    disabled = config()["agent"]["disabled_toolsets"]
+    assert toolset in disabled, (
         f"a deployed agent can reach the unbacked {toolset} tools")
 
 
