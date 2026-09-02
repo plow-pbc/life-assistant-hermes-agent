@@ -9,8 +9,8 @@ The six producer schedules, versioned. All six are registered.
 
 ## Why a skill and not a note
 
-`hermes cron` persists jobs to `/var/lib/hermes/cron/jobs.json`, and `agent-mgr
-deploy` does **not** replay it. A rebuilt instance therefore comes up with a
+`hermes cron` persists jobs to `/var/lib/hermes/cron/jobs.json`, and nothing
+replays it on a rebuild. A rebuilt instance therefore comes up with a
 wall screen that never updates and nothing to diff against — the schedules are
 the one part of this agent's behaviour that a deploy silently drops. Keeping
 them here means "set up the life dashboard crons" replays a reviewed spec rather
@@ -18,7 +18,7 @@ than improvising six schedules from a sentence.
 
 ## Registering
 
-**This is a bring-up step, not a repair step.** `agent-mgr deploy` does not
+**This is a bring-up step, not a repair step.** A rebuild does not
 replay `jobs.json`, so an instance that has been brought up without it has a wall
 screen that never updates — and nothing to diff against, because the failure
 looks identical to a producer that is running and finding nothing. Run it after
@@ -41,9 +41,9 @@ describing a run that failed, and the operator has no way to tell. Do not
 paraphrase, and do not call it done on a non-zero exit.
 
 (The uid matters to whoever invokes this from the *host* — a bare
-`agent-mgr compose … exec` lands as root and would create the schedule
+A `docker exec` lands as root and would create the schedule
 root-owned. That is the README's problem, and the reason bring-up goes through
-`agent-mgr agent` rather than an exec. Nothing for you to do about it here.)
+a chat turn rather than an exec. Nothing for you to do about it here.)
 
 Create-if-missing, so it is safe to re-run: it reads what is already scheduled
 and creates only what is absent.
@@ -105,7 +105,7 @@ git history keeps the pattern if one ever loses its data source again.
 ## Two values that are never literals
 
 **The timezone.** `hermes cron create` takes no per-job zone — every job fires in
-the container's zone, which is `agent-mgr`'s `AGENT_TZ`. `0 6 * * *` therefore
+the container's zone, which is `TZ`. `0 6 * * *` therefore
 means 06:00 wherever the container thinks it is, and
 `register_crons.py` is what proves that zone equals `family.timezone` in
 `/var/lib/hermes/ld/config.json` — it reads the container's `TZ` and **refuses to
@@ -147,7 +147,7 @@ Verify rather than trust that paragraph. From inside the container:
 From the host, where the bring-up reader is standing — a turn, for the same
 reason bring-up is one (no uid to get wrong):
 
-    agent-mgr agent <agent> 'list the dashboard crons, force one run, report what happened'
+    text the agent: 'list the dashboard crons, force one run, report what happened'
 
 **What that proves, and what it does not.** A forced run exercises the producer,
 the mount, `/var/lib/hermes/ld/config.json` and the kiosk POST — the whole path a

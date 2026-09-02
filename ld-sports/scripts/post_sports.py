@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """post_sports.py — post ld-sports' kiosk tile.
 
-Thin wrapper over `team-skills/ld-shared/scripts/post_to_kiosk.py`: sets
+Thin wrapper over `ld-shared/scripts/post_to_kiosk.py`: sets
 the bundle-specific MESSAGE_FILE + CARD + BODY_TYPE, then dispatches.
 
 Posts as card 5 / type "sports" — a self-contained HTML tile the viewer

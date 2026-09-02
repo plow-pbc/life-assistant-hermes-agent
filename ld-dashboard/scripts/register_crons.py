@@ -2,7 +2,7 @@
 """Register the life-dashboard producer crons, idempotently, from a versioned spec.
 
 Why this exists at all. `hermes cron` persists jobs to /var/lib/hermes/cron/jobs.json,
-which `agent-mgr deploy` does NOT replay -- so a rebuilt instance comes up with
+which no rebuild replays -- so a rebuilt agent comes up with
 a wall screen that never updates and nothing to diff against. Keeping the six
 definitions here means "set up the life dashboard crons" replays a reviewed spec
 instead of improvising six schedules from a sentence.
@@ -44,7 +44,7 @@ from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
-# reason this skill exists, because `agent-mgr deploy` does not replay it.
+# reason this skill exists: nothing replays it on a rebuild.
 JOBS_FILE = "/var/lib/hermes/cron/jobs.json"
 # The producers' own config. Read here for one reason: every schedule below is a
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
@@ -167,8 +167,8 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
     """Refuse to register if the config's zone is not the container's.
 
     Every schedule here is a bare cron expression and `hermes cron create` takes
-    no per-job timezone, so jobs fire in the CONTAINER's zone -- agent-mgr's
-    TZ -- while all three SKILL.md files promise 06:00 in
+    no per-job timezone, so jobs fire in the CONTAINER's zone -- the TZ this
+    image set at boot -- while all three SKILL.md files promise 06:00 in
     `family.timezone`. Nothing else compares them: ld_config_gate.py checks only
     that the zone is non-blank, which a valid America/Chicago config satisfies
     while its cards land at 08:00 family time. Silent, and wrong in exactly the

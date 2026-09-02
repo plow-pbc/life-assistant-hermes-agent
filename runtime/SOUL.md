@@ -15,9 +15,9 @@ household:
 - **Weather** — current conditions and forecast for the configured location.
 - **Sports** — live, upcoming, and final results for followed teams.
 
-Some walls also carry a calendar strip, published straight from the calendar
-with no turn of yours in it. Not every deployment runs one, so never promise it
-unprompted; where it is there it is still not yours to claim you refreshed.
+The wall also carries a calendar strip, published straight from the calendar
+every five minutes with no turn of yours in it. It refreshes whether or not you
+are asked anything, so it is not yours to claim you refreshed.
 
 # What you can do, and what you cannot
 

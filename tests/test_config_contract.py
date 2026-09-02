@@ -1,12 +1,12 @@
 """What makes this agent THIS agent -- on someone else's account.
 
-The fleet-wide invariants moved to plow-pbc/agent-mgr with the deployment: the
-home mount, the uid/gid contract, no credential through compose, no recipe
-starting a second gateway, activation refusing a home it does not own. They are
-asserted there once for every agent rather than restated in each repo.
+The boot layer, the hardened home, the plugin pin and the gateway's own config
+are the base image's, and plow-pbc/plow-hermes-agent asserts them once for every
+agent built on it rather than restating them here.
 
-What is left is the instance layer, plus the one thing this repo owns outright:
-scripts/latch-verdict.py, which is why `check-latch` survived the migration.
+What is left is this agent's own layer -- the skills it ships, where their
+paths resolve, and which dotenv each name is read from.
+
 Every assertion here exists because getting it wrong is quiet rather than loud,
 and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
@@ -28,7 +28,7 @@ def test_no_credential_file_is_tracked():
     """Credentials live in this agent's home dotenv, which is outside the repo.
 
     Two named exemptions, and everything else keeps the broad shape rule. An
-    earlier pass swapped the suffix rule for exact basenames to stop `agent.env`
+    earlier pass swapped the suffix rule for exact basenames to stop a tracked file
     tripping it -- and quietly stopped catching `prod.env`, `secrets.env`,
     `auth.json.bak` and `latch-auth.json` along the way. A false positive on one
     known filename is an allowlist problem, not a reason to narrow the rule.
@@ -42,12 +42,9 @@ def test_no_credential_file_is_tracked():
                          capture_output=True, text=True, check=True)
     for name in out.stdout.split("\0")[:-1]:
         base = name.rsplit("/", 1)[-1]
-        # Anchored to the full path git prints, not the basename. The two
-        # exemptions are excused because two other tests cover those exact
-        # files -- and those tests read ROOT/agent.env and ROOT/.env.example, so
-        # a `secrets/agent.env` or `runtime/.env.example` matched by basename
-        # would be excused by a promise nothing checks. Same reasoning as -z
-        # above, one level up: the allowlist must not be the weakest link.
+        # No exemptions. There used to be two, each excused by another test
+        # promising to cover that file; both files are gone, and a rule with
+        # nothing carved out of it is one less thing to keep true.
         assert not base.endswith(".env"), f"{name} is tracked"
         assert not base.startswith(".env."), f"{name} is tracked"
         assert "auth.json" not in base and "auth.lock" not in base, f"{name} is tracked"
@@ -70,7 +67,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
 
     The check is only worth anything because the mapping is earned:
     test_the_hermes_volumes_are_exactly_these pins
-    ${AGENT_DIR}/<name> -> /var/lib/hermes/skills/<name>, so resolving these against
+    <name>/ -> /var/lib/hermes/skills/<name>, so resolving these against
     ROOT really does mean the agent can open them.
 
     It checks that the absolute paths RESOLVE; it does not check that a new
@@ -335,9 +332,10 @@ CONTRACTS = [
     # wall -- so a blanket kid-safe promise covers the one producer that cannot
     # keep it.
     (SOUL, "do not extend that promise to the morning alert"),
-    # The strip is a seventh producer with no model in it, on a systemd timer
-    # the fleet does not run -- so it may be neither claimed nor promised.
-    (SOUL, "Not every deployment runs one, so never promise it unprompted"),
+    # The strip is a seventh producer with no model in it, published by a
+    # supervised service on its own five-minute tick -- so a turn may not
+    # claim it as work it did.
+    (SOUL, "It refreshes whether or not you"),
     (SOUL, "not yours to claim you refreshed"),
     # No connector skill is installed: an offer to check someone's mail
     # cannot be kept.

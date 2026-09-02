@@ -381,7 +381,7 @@ def test_the_deliver_target_expands_from_every_source(
     monkeypatch.delenv("PLOW_HOME_CHANNEL", raising=False)
     if process is not None:
         monkeypatch.setenv("PLOW_HOME_CHANNEL", process)
-    dotenv = tmp_path / "agent.env"
+    dotenv = tmp_path / "instance.env"
     dotenv.write_text(f"PLOW_HOME_CHANNEL={dotenv_value}\n" if dotenv_value else "")
     digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     assert mod.create_argv(digest, env, dotenv_path=dotenv)[-2:] == ["--deliver", f"plow_chat:{expected}"]

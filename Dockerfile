@@ -1,7 +1,7 @@
 # The Plow cloud image: this repo's agent, built for an exe.dev VM.
 #
 # No agent content of its own — the persona and skills copied below are the
-# tracked files agent-mgr bind-mounts into the fleet container. Context is the
+# tracked files this repo owns. Context is the
 # repo root, so those copies are the product content: `docker build .`
 #
 # The tag is an immutable `base-<sha>` naming one commit of the base's source
@@ -94,5 +94,5 @@ RUN chmod 0755 /srv/plow-assets && chmod 0644 /srv/plow-assets/*
 
 # The instance directory the producers read and ld-setup writes. Nothing exists
 # before first boot, so the image creates it empty: an unset-up agent is routed
-# to ld-setup by SOUL.md, exactly as on the fleet.
+# to ld-setup by SOUL.md.
 RUN install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld

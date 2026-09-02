@@ -86,7 +86,7 @@ single versioned spec for every producer's schedule; this skill never
 self-registers.
 
 The container's zone IS `family.timezone` — `hermes cron create` takes no
-per-job timezone, so jobs fire in whatever `AGENT_TZ` agent-mgr created the
+per-job timezone, so jobs fire in whatever `TZ` created the
 container with. `/var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py` is what proves the two
 agree: it refuses to register any schedule when the container's `TZ` and
 `family.timezone` differ. (The ld-config gate does not — it only checks the zone

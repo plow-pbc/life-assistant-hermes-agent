@@ -5,7 +5,7 @@ read the ONE handoff, kiosk leg (first line, over the stdin transport), chat
 leg (whole body), consume once. These tests import the module and fake the
 two shared post_to_kiosk seams (main / post_bearer_json) — a seam reachable
 only by an importer, never by the CLI the sheet invokes. The wire behavior
-of those seams is owned by the vendored test_post_to_kiosk.py suite
+of those seams is owned by tests/test_post_to_kiosk.py
 (redirect refusal included, through the shared post_bearer_json); what THIS
 suite pins is the coordinator's ordering and consume contract.
 """
@@ -75,11 +75,10 @@ def test_env_wins_over_dotenv(rig):
 def test_the_retired_names_are_not_read(rig):
     """These are the names the pre-unification adapter used. Nothing reads
     them any more: a dotenv carrying only those refuses, loudly, rather than
-    half-delivering. An instance still on them runs `agent-mgr
-    migrate-plugin-env` or re-activates."""
-    rig.dotenv.write_text("PLOW_CHAT_BASE_URL=https://fleet.test\n"
-                          "PLOW_CHAT_CHAT_UID=cht_fleet\n"
-                          "PLOW_CHAT_TOKEN=tok_fleet\n")
+    half-delivering. An agent still on them re-activates."""
+    rig.dotenv.write_text("PLOW_CHAT_BASE_URL=https://retired.test\n"
+                          "PLOW_CHAT_CHAT_UID=cht_retired\n"
+                          "PLOW_CHAT_TOKEN=tok_retired\n")
     with pytest.raises(SystemExit) as excinfo:
         pn.main()
     assert "PLOW_API_BASE" in str(excinfo.value)
