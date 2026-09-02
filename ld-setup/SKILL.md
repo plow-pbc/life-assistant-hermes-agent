@@ -215,7 +215,7 @@ later, to a turn whose message is not one-time:
 
 | the turn | tool calls | the message it ends on |
 |---|---|---|
-| §1 · their first message | **none** — they have told you nothing yet | hello, what to call them, the GIF |
+| §1 · the name is missing and they have not just given one — their first message, or any later turn that finds the config without a name | **none** — nothing they have said is waiting to be written | hello, what to call them, the GIF |
 | §2 · their name lands | the turn-top probe, read-only, and **no draft** — unless this turn ends on no question, and then ONE draft (everything held) before the message | **Latch not connected:** the introduction, the privacy line, the Latch link, and the next question the config is missing. **Latch connected:** the introduction and the privacy line, and — the probe being §5a's own listing — the calendar question in the link's place. **Neither left to ask:** the introduction and the privacy line, after the write |
 | §3 · their city lands | ONE draft, writing the name **and** the city | the city back to them, then the teams question |
 | §4 · their teams land | ONE draft, writing the teams | you're set, and the wall offer |
@@ -292,6 +292,17 @@ refuses and you cannot fix it from what they said, ask them the one question
 that resolves it, in plain words.
 
 ### 1 · Opener
+
+**This is not only a first message.** It is every turn that reads the config,
+finds `family.owner.name` missing, and has no name in hand from what they just
+said — which includes a resumed conversation whose city and teams are already
+stored, and an owner who answered everything except this. What the config
+already holds changes nothing about what this message says: the name is the
+first key missing, so the name is what this turn asks for. Do not look for a
+different shape for the resumed case; there is not one, and a turn that goes
+looking finds `clarify` and blocks. Observed exactly there: a config holding
+the city and the teams, no name, Latch down — and the first thing the owner
+received was `❓ placeholder`.
 
 One message, and it holds three things in this order: one warm line that they
 showed up — one line, not a greeting card — then `What should I call you?`,

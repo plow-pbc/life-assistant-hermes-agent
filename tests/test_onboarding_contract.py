@@ -475,6 +475,12 @@ def test_the_table_says_what_each_turn_calls_and_what_it_ends_on():
     rows = turn_table()
     # §1 has been told nothing, so it has nothing to write.
     assert "none" in rows["§1"][0].lower(), "§1 must make no draft"
+    # And it is not only the first message: a resume that finds no name in the
+    # config lands here too. Measured at 28836da with the city and teams
+    # already stored and Latch down, the opener came back as `❓ placeholder`.
+    table = ONBOARDING[ONBOARDING.index("| the turn |"):]
+    assert "any later turn that finds the config without a name" in \
+        table[:table.index("\n\n")]
     assert "no draft" in rows["§5a"][0].lower(), "the listing turn writes nothing"
     # The turns that write: exactly one draft each, never a second.
     for step in ("§3", "§4", "§5b"):
@@ -512,6 +518,24 @@ def test_the_row_for_the_name_turn_carries_its_condition():
     # correction to text the model has already acted on -- which is how §2
     # went on asking for a city the config already held.
     assert section.index("| what the config already holds |") < section.index("**One message, and short.**")
+
+
+def test_the_opener_covers_a_resume_that_has_no_name():
+    """A turn that cannot find its own row reaches for a way to ask.
+
+    §1's row said "their first message" and "they have told you nothing yet".
+    A resume whose config already holds the city and the teams but no name is
+    neither that nor §2 (no name has landed), so it fell between the rows --
+    and the owner's first message was `❓ placeholder`. Measured at 28836da.
+    """
+    table = ONBOARDING[ONBOARDING.index("| the turn |"):]
+    row = " ".join(table[:table.index("\n\n")].split())
+    opener = " ".join(
+        ONBOARDING[ONBOARDING.index("### 1 ·"):ONBOARDING.index("### 2 ·")].split())
+    assert "This is not only a first message" in opener
+    assert "a resumed conversation whose city and teams are already stored" in opener
+    assert "they have told you nothing yet" not in row, (
+        "false on a resume, and it is the row a resumed turn has to recognise")
 
 
 def test_the_next_question_is_the_first_missing_key_not_the_city():
