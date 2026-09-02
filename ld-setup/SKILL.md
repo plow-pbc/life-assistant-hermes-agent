@@ -216,7 +216,7 @@ later, to a turn whose message is not one-time:
 | the turn | tool calls | the message it ends on |
 |---|---|---|
 | §1 · their first message | **none** — they have told you nothing yet | hello, what to call them, the GIF |
-| §2 · their name lands | **none** — probe Latch, read-only, and nothing else | the introduction, the privacy line, the Latch link, and the next question — their city |
+| §2 · their name lands | the turn-top probe, read-only, and **no draft** — unless this turn ends on no question, and then ONE draft (everything held) before the message | **Latch not connected:** the introduction, the privacy line, the Latch link, and the next question the config is missing. **Latch connected:** the introduction and the privacy line, and — the probe being §5a's own listing — the calendar question in the link's place. **Neither left to ask:** the introduction and the privacy line, after the write |
 | §3 · their city lands | ONE draft, writing the name **and** the city | the city back to them, then the teams question |
 | §4 · their teams land | ONE draft, writing the teams | you're set, and the wall offer |
 | §5a · Latch answers | ONE listing call, and **no draft** | their calendars, and which of them to track |
@@ -229,13 +229,12 @@ became the first thing this agent ever said to someone. Twice: once from a
 tool named in the sheet that the build does not have, once from an opener with
 no row here.
 
-**A write is deferred only onto a turn that is certain to come**, and the turn
-that is certain to come is the one that answers the question this turn ends
-on. That is the whole licence for holding an answer back: §2 ends on the city
-question, so §3 happens, so §3 can carry the name. **If this turn asks nothing
-further** — because the config already holds everything else it would have
-asked for — no later turn is owed, and the answer in hand is written HERE,
-before the message, and never carried.
+**A turn defers a write only if it ends on a question whose answer the next
+turn will carry.** That is the whole licence for holding an answer back, and it
+is the only one: §2 ends on the city question, so §3 comes, so §3 can write the
+name. **A turn that asks nothing writes what it holds NOW**, before its message
+— there is no next turn to carry it, and an answer deferred onto a turn that
+never comes is an answer never written.
 
 **Every draft writes everything you have collected and not yet written**, not
 just the newest answer. §3 writes the name and the city, because the name has
@@ -335,9 +334,11 @@ the link. The whole of §1 is: hello, your name, a GIF, and what to call them.
 
 ### 2 · Their name, then who you are
 
-**This turn writes nothing.** Their name is not drafted here — it is carried in
-the conversation and written by §3, per the rule above, so a crash cannot leave
-a config saying they were introduced when they were not. Probe Latch if you
+**This turn makes no draft as long as it ends on a question.** Their name is
+normally carried, not drafted here — written by the turn that answers whatever
+this one asks — so a crash cannot leave a config saying they were introduced
+when they were not. **If this turn ends on no question, it writes the name
+first**, before the message, because nothing later will. Probe Latch if you
 have not this turn, then introduce yourself:
 
 **One message, and short.** Three ideas, a few lines each, blank lines between
@@ -401,9 +402,21 @@ will happen, which is what lets §3's draft carry the name they just gave. If
 the config already holds a city, ask the next thing it is missing instead
 (their teams), and that turn's draft writes the name along with the answer.
 
-**If there is nothing left to ask** — their name is the only field the config
-is missing — then no later turn is owed, so write the name in THIS turn,
-before the message, and hold nothing:
+**Which question that is, and what it means for the write:**
+
+| what the config already holds | what this turn ends on | the name is written |
+|---|---|---|
+| neither city nor teams | the city question | by the turn that answers it |
+| the city, not the teams | the teams question | by the turn that answers it |
+| both, and Latch answered the probe | §5a's calendar question | by §5b, with the picks |
+| both, and Latch is not connected | **nothing** — a link is not a question | **by this turn, before its message** |
+
+That last row is the one the rule exists for. `calendar.sources` is still
+missing, so the conversation is not over — but nothing this turn says will come
+back as an answer, because the only thing left is a Latch that is not running.
+Defer there and the name is never written at all: every later turn reads a
+config with no name in it and opens by asking for it again. So write what you
+hold, first, and then send the introduction:
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
     {"family": {"owner": {"name": "Mary"}}}
@@ -579,11 +592,12 @@ been given yet. The pick turn makes the one draft that writes their picks, the
 account and the lookaheads. A single turn that listed and drafted in one go
 would be writing calendars nobody chose.
 
-The owner never types a calendar address. Their calendars are discovered from
-the Mac, and this runs the moment Latch can answer — which may be mid-
-onboarding, right after they say they installed it, or a week later when they
-mention it. An owner whose other answers are long since stored and who has just
-connected Latch gets this too.
+The owner never types a calendar id — but they may name which of the listed
+accounts is theirs, which is the one thing the listing cannot always decide.
+Their calendars are discovered from the Mac, and this runs the moment Latch
+can answer — which may be mid-onboarding, right after they say they installed
+it, or a week later when they mention it. An owner whose other answers are
+long since stored and who has just connected Latch gets this too.
 
 The cue is the turn-top probe coming back with a listing **and
 `calendar.sources` being absent from the config** — you do not wait to be told,
@@ -659,7 +673,10 @@ looks set up and whose wall can never start.
 Write the picks with `--draft` while onboarding is still open, `--patch` once
 it is complete. `calendar.sources` REPLACES the whole list, so send every
 calendar they want, and map each pick to the exact `id` the script returned —
-never a display name, never `primary`, never one you improved:
+never a display name, never `primary`, never one you improved.
+
+**When the script decided the account** — it came back with an address rather
+than `null`:
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
     {"calendar": {"account": "<account from the script>",
@@ -669,6 +686,26 @@ never a display name, never `primary`, never one you improved:
                         "lookahead_virtual_minutes": 30,
                         "lookahead_in_person_minutes": 60}}
     JSON
+
+**When it came back `null` and the owner answered** — the account is THEIRS,
+not the script's, and it is the only value in this whole conversation that
+comes from an owner's answer about a calendar. Both places take it:
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
+    {"calendar": {"account": "<the address the owner said is theirs>",
+                  "sources": [{"calendar_id": "<id from the script>"},
+                              {"calendar_id": "<id from the script>"}]},
+     "calendar_nudge": {"owner_identities": ["<the address the owner said is theirs>"],
+                        "lookahead_virtual_minutes": 30,
+                        "lookahead_in_person_minutes": 60}}
+    JSON
+
+Where they picked one of `candidates`, it is that string, unchanged. Where
+there were none to offer and they typed the address, it is what they typed —
+which is one of the two things an owner may ever say about a calendar here,
+and it is an account, never an id. `owner_identities` takes the same value as
+`account` in both templates: they are the same identity, and a config where
+they disagree nudges on nobody.
 
 If an earlier answer is still unwritten when this draft goes — an owner who
 connected Latch before they gave their city, so §2 sent them here instead of

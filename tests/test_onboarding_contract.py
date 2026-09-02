@@ -473,19 +473,56 @@ def test_the_table_says_what_each_turn_calls_and_what_it_ends_on():
     below it described two.
     """
     rows = turn_table()
-    # The turns that only talk: a draft here would record progress the owner
-    # has not been told about yet.
-    for step in ("§1", "§2"):
-        assert "none" in rows[step][0].lower(), f"{step} must make no draft"
+    # §1 has been told nothing, so it has nothing to write.
+    assert "none" in rows["§1"][0].lower(), "§1 must make no draft"
     assert "no draft" in rows["§5a"][0].lower(), "the listing turn writes nothing"
     # The turns that write: exactly one draft each, never a second.
     for step in ("§3", "§4", "§5b"):
         assert rows[step][0].count("ONE draft") == 1, f"{step} makes one draft"
     # And each ends on a message, not on the write.
-    assert "city" in rows["§2"][1], "§2 must end on the question §3 answers"
     assert "teams question" in rows["§3"][1]
     assert "wall offer" in rows["§4"][1]
     assert "which of them to track" in rows["§5a"][1]
+
+
+def test_the_row_for_the_name_turn_carries_its_condition():
+    """"§2 makes no draft" is true of the ordinary path and false of the one
+    that loops.
+
+    The row is the definition of the turn -- a model reading "none" there, and
+    the section opening with "this turn writes nothing", has been told twice not
+    to write the name in the one state where nothing else ever will. Both have
+    to carry the condition, or the rule further down is a paragraph they
+    contradict.
+    """
+    calls, ends_on = turn_table()["§2"]
+    assert "no draft" in calls.lower()
+    assert "unless this turn ends on no question" in calls, (
+        "the row must carry the condition, and carry it as the rule states it")
+    assert "ONE draft" in calls
+
+    opening = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    opening = " ".join(opening.split())
+    assert "This turn makes no draft as long as it ends on a question" in opening
+    assert "If this turn ends on no question, it writes the name first" in opening
+    assert "This turn writes nothing." not in opening, (
+        "the unconditional claim is what the rule has to overrule")
+
+
+def test_the_name_turn_has_both_its_exits_in_the_table():
+    """§2 ends on one of two questions and the table has to hold both.
+
+    Which one depends on the probe: an owner with Latch already running is not
+    sent the install link, and the natural next thing to say is the calendar
+    question -- so that turn ends somewhere the row did not describe, and a turn
+    that cannot find its own shape improvises one.
+    """
+    ends_on = turn_table()["§2"][1]
+    assert "Latch not connected:" in ends_on and "Latch connected:" in ends_on
+    assert "the next question the config is missing" in ends_on
+    assert "the calendar question" in ends_on
+    # And the third exit, which is not a question at all.
+    assert "Neither left to ask:" in ends_on
 
 
 def test_a_deferred_write_needs_a_turn_that_is_certain_to_come():
@@ -495,14 +532,55 @@ def test_a_deferred_write_needs_a_turn_that_is_certain_to_come():
     weather.location already present -- an off-script order, or a half-finished
     earlier run -- it never does: nothing writes the name, every turn reads the
     config and opens by asking for it again, and the owner cannot get past it.
+
+    The rule is stated over what the turn ENDS ON, not over which field is
+    missing: "the last missing field" was the first attempt and it is a
+    different, narrower claim, false in exactly the state below.
     """
     text = " ".join(ONBOARDING.split())
-    assert "A write is deferred only onto a turn that is certain to come" in text
-    assert "If this turn asks nothing further" in text
-    assert "the answer in hand is written HERE" in text
+    assert ("A turn defers a write only if it ends on a question whose answer "
+            "the next turn will carry") in text
+    assert "A turn that asks nothing writes what it holds NOW" in text
     assert "Every draft writes everything you have collected and not yet written" in text
     # The failing state is named, so a reader can recognise it in a transcript.
     assert "`weather.location` present and `family.owner.name` absent" in text
+    assert "last field the config is missing" not in text, (
+        "the narrow phrasing is false when sources is missing too")
+
+
+def deferral_table():
+    """§2's state table as {what the config holds: (ends on, written by)}."""
+    section = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    table = section[section.index("| what the config already holds |"):]
+    rows = {}
+    for line in table[:table.index("\n\n")].splitlines()[2:]:
+        holds, ends_on, written = [c.strip() for c in line.strip("|").split("|")]
+        rows[holds] = (ends_on, written)
+    return rows
+
+
+def test_the_turn_with_no_question_writes_in_that_turn():
+    """The state the narrow rule got wrong.
+
+    family.owner.name absent, weather.location and sports.followed present,
+    calendar.sources absent, and Latch not answering. Onboarding is NOT
+    finished -- sources is missing -- so "the name is the last missing field"
+    is false and a turn reading that defers. But the only thing left to say is
+    an install link, and a link is not a question: no turn comes back, so
+    nothing ever writes the name and every later turn re-asks it.
+    """
+    rows = deferral_table()
+    ends_on, written = rows["both, and Latch is not connected"]
+    assert "nothing" in ends_on.lower(), "a link is not a question"
+    assert "by this turn" in written and "before its message" in written
+
+    # The three states that DO end on a question all defer, or the rule is a
+    # licence to write ahead of the message everywhere.
+    for holds in ("neither city nor teams", "the city, not the teams",
+                  "both, and Latch answered the probe"):
+        ends_on, written = rows[holds]
+        assert "question" in ends_on
+        assert "by this turn" not in written, f"{holds!r} has a turn to defer onto"
 
 
 def test_the_null_account_is_asked_about_and_never_stood_in_for():
@@ -517,6 +595,33 @@ def test_the_null_account_is_asked_about_and_never_stood_in_for():
     assert "`candidates` holds those owner-role addresses" in section
     assert "Nothing is written until that answer lands" in section
     assert "account and sources go in the SAME draft" in section
+
+
+def test_the_answered_account_has_a_template_of_its_own():
+    """One template with `<account from the script>` in it is the wrong
+    instruction for the branch that has just been told to ask: the script's
+    answer there is null, and a model filling that placeholder from the only
+    source it names writes a null, a calendar id, or a guess -- which is the
+    failure the ask exists to prevent. The owner's answer needs its own shape.
+    """
+    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert '"account": "<the address the owner said is theirs>"' in section
+    assert '"owner_identities": ["<the address the owner said is theirs>"]' in section
+    # And the derived branch keeps its own, so the two cannot be confused.
+    assert '"account": "<account from the script>"' in section
+    flat = " ".join(section.split())
+    assert "When the script decided the account" in flat
+    assert "When it came back `null` and the owner answered" in flat
+
+
+def test_what_the_owner_may_say_about_a_calendar_is_stated_once():
+    """"The owner never types a calendar address" and "ask which of these is
+    your own address" cannot both be the rule. The id is never theirs to type;
+    the account, in the branch nothing decided, is the one thing that is."""
+    flat = " ".join(ONBOARDING.split())
+    assert "The owner never types a calendar id" in flat
+    assert "they may name which of the listed accounts is theirs" in flat
+    assert "The owner never types a calendar address" not in flat
 
 
 def test_clarify_is_forbidden_during_onboarding():
