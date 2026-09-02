@@ -211,13 +211,10 @@ mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 
-# Only for an instance that reports usage (AGENT_INDEX=1 in its own
-# ~/.hermes-<agent>/.env — see Usage reporting; `just client` must have run).
-# One-time, per instance: the
-# token lands in that instance's own home, so a rebuild does not repeat it.
-docker exec -it hermes-<agent> /command/s6-setuidgid hermes \
-  env HOME=/opt/data /opt/hermes/.venv/bin/python3 \
-  /usr/local/bin/agent-index-client --login
+# Usage reporting needs no step here. It is off unless AGENT_INDEX=1 is in
+# that instance's own ~/.hermes-<agent>/.env (see Usage reporting), and when
+# it is on the container reports as its own PLOW_AGENT_TOKEN -- no sign-in,
+# no second account, nothing for the owner to complete.
 just check-latch <agent>             # can this container reach that owner's Mac?
 
 # Then the owner texts the agent from their phone. That message IS the rest of
@@ -549,31 +546,21 @@ can forge a value Compose never carries.
 `AGENT_ID` needs no setting — `agent-mgr` supplies it from the registry name,
 so two instances of this repo report as two agents rather than one.
 
-Then authorise it **once**, per instance. Login does the GitHub device flow and
-immediately exchanges that bearer for an **Index-scoped, revocable key**
-(`aik_…`); the GitHub token is never written to disk. Only the scoped key is
-stored, in the instance's own home (`/opt/data/.agent-index/token`, mode 0600),
-so it is not in the image and survives a rebuild.
+There is nothing to authorise. The container already carries
+`PLOW_AGENT_TOKEN` -- the credential Plow mints for it -- and the index asks
+Plow who owns that token, so the agent reports as its owner without a sign-in,
+a device code, or an account anywhere else. Turning `AGENT_INDEX=1` on is the
+whole setup.
 
-That key can report usage and post stories — both reversible. It **cannot**
-register an agent: `POST /v1/agents` refuses it with 401, which matters because
-the runtime that can read this file is the same Unix user as the agent, and
+That token can report usage and post stories -- both reversible. It **cannot**
+register an agent: `POST /v1/agents` refuses it, which matters because the
+runtime that can read this file is the same Unix user as the agent, and
 claiming an id is the one action an owner cannot undo themselves.
 
-```sh
-docker exec -it <container> /command/s6-setuidgid hermes \
-  env HOME=/opt/data /opt/hermes/.venv/bin/python3 \
-  /usr/local/bin/agent-index-client --login
-```
-
-It prints a GitHub device URL and code. Until that is done the reporter runs
-and reports nothing.
-
-An instance authorised before the scoped-key change is upgraded on its own:
-any run that finds a `gho_`/`ghu_`/`ghp_` credential exchanges it for a scoped
-key and rewrites the file. Nobody has to be present, and no re-login is
-needed. A failed exchange keeps the existing credential and reports normally
-rather than failing the run.
+An instance authorised before this change carried a GitHub bearer at
+`/opt/data/.agent-index/token`. The client deletes it on its next start rather
+than sending it: nothing can exchange it any more, and it is a live GitHub
+credential sitting in a file whose whole purpose was to stop holding one.
 
 After that it reports hourly on its own. A run that collects nothing says so
 rather than publishing a zero it never measured, so an agent reading as idle
