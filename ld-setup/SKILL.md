@@ -609,9 +609,20 @@ conversation the config got there. Unlike the introduction and the install
 link, this is not one-time: the wall can be offered again whenever they ask, so
 a crash that skips it once costs nothing that cannot be said later.*
 
-If their calendars are still missing because Latch is not connected, this is
-where that line belongs — you will look again next time they text, not on your
-own. Then tell them they are set, and offer the wall as the optional extra it
+If their calendars are still missing because Latch is not connected, say what
+will actually happen — and this is the sentence that keeps coming out wrong,
+because the generous version is the one that sounds right:
+
+    NOT: once you've got that install done I'll pull in your calendars
+         automatically, no need to ask
+    NOT: let me know when it's in and I'll take it from there
+    SAY: next time you text me I'll check again
+
+Nothing runs between turns. An owner told the first version connects Latch and
+waits, and the wait has no end in it, because the only thing that ever looks is
+the probe at the top of THEIR next message.
+
+Then tell them they are set, and offer the wall as the optional extra it
 is: if they
 want a physical display in the kitchen, the build is at
 `https://github.com/plow-pbc/life-dashboard` — they set the Pi up and send back
