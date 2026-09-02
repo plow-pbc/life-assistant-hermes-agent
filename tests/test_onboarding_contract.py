@@ -429,6 +429,95 @@ def test_a_message_the_owner_must_see_is_sent_before_its_answer_is_written():
     assert close.index("Tell them they are set") < close.index("> /opt/data/ld/onboarding-complete")
 
 
+PRIVACY_LINE = ("The app on your Mac is where your accounts live: your logins stay in a\n"
+                "      vault there that I can use but never see, and you set the boundaries I\n"
+                "      work inside.")
+
+
+def test_onboarding_is_gated_to_a_solo_dm_with_the_owner():
+    """Both dimensions, because either alone leaves the hole open.
+
+    Owner-only without solo-DM still runs the interview in a group the owner is
+    in -- their name, their city and their teams collected in front of an
+    audience. Solo-DM without owner-only still lets a member DM the agent and
+    have their answers written into the owner's config. And "every inbound
+    message", which is what this said before, is both at once.
+    """
+    # Whitespace-normalised: this is prose wrapped at 79 columns, so every
+    # phrase worth pinning is one reflow away from spanning a line break.
+    trigger = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].split())
+    assert "every inbound message is part of that first conversation" not in trigger, \
+        "the trigger is unconditional again"
+    assert "solo one-to-one DM with the owner" in trigger
+    # The three facts the platform reports, each named.
+    assert "role is **owner**" in trigger
+    assert "type is a **DM**" in trigger
+    assert "roster is just the two of you" in trigger
+    # And the negative case says what NOT to do, including the writes.
+    assert "onboarding does not exist" in trigger
+    assert "no `--draft`, no config, no marker" in trigger
+
+
+def test_the_wall_token_handoff_is_dm_only():
+    """The one place a bearer token is allowed to cross chat.
+
+    In a group every participant keeps it in their own history forever, and
+    there is nothing to rotate short of re-minting and re-shipping the Pi.
+    """
+    wall = SKILL[SKILL.index("**No Mac (or no Latch):**"):]
+    handoff = " ".join(wall[:wall.index("date -u +%FT%TZ > /opt/data/ld/pi-brought-up")].split())
+    assert "Only in a solo DM with the owner, and never in a group" in handoff
+    assert handoff.index("Only in a solo DM") < handoff.index("text the owner, verbatim"), \
+        "the gate has to come before the instruction it gates"
+
+
+def test_the_privacy_line_is_verbatim_and_does_not_claim_local_execution():
+    """The one sentence in this conversation the model may not rephrase.
+
+    The agent runs in a cloud VM; Latch is what is on the Mac, and the vault is
+    Latch's. The earlier wording invited "I run on your machine, not someone
+    else's server", and that is what came out in testing -- a false claim about
+    where someone's credentials live, made at the moment they are deciding
+    whether to trust it.
+    """
+    intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    assert PRIVACY_LINE in intro
+    assert "not** in your own words" in intro
+    # The counter-example is quoted in the sheet on purpose, on its own line
+    # behind a NOT: marker, so the scan can tell "never say this" from "say
+    # this" without matching the warning that exists to prevent it.
+    said = "\n".join(line for line in intro.splitlines() if "NOT:" not in line)
+    for false_claim in ("run on your own machine", "run on their machine",
+                        "nothing ever leaves", "not someone else's server"):
+        assert false_claim not in said, f"the intro still invites {false_claim!r}"
+    assert "NOT: I run on your own machine" in intro, "the counter-example is what makes it stick"
+
+
+def test_the_photo_stack_is_baked_and_sent_in_order():
+    """Four screenshots, in the order that makes the argument.
+
+    Vault login first because it is the privacy line made concrete, then the
+    ordinary errands, then the medical one -- small trust to larger. A stack
+    that ships in a different order than it is baked in is a silent 404 or a
+    picture in the wrong place, neither of which raises anything.
+    """
+    intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    assert "Want to see the kind of thing I mean?" in intro
+    names = ["work-1-vault-login.png", "work-2-instacart-grocery.png",
+             "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
+    positions = []
+    for name in names:
+        assert f"MEDIA:/srv/plow-assets/{name}" in intro, f"{name} is not sent"
+        assert f"COPY docs/onboarding-v2/assets/{name} /srv/plow-assets/{name}" in DOCKERFILE
+        assert (ROOT / "docs/onboarding-v2/assets" / name).is_file()
+        positions.append(intro.index(name))
+    assert positions == sorted(positions), "the stack is sent out of order"
+    # After the privacy line, before the Latch link -- the slot the spec names.
+    assert intro.index(PRIVACY_LINE) < positions[0] < intro.index("https://plow.co/latch")
+    # And it does not become a checkpoint the conversation waits on.
+    assert "a question you do not wait for an answer to" in intro
+
+
 def test_a_nameless_agent_still_opens_the_conversation():
     """Observed: with no name configured, the agent asked the OWNER to name it
     -- as a numbered menu, as the first thing it ever said -- and then took
