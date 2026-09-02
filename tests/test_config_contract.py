@@ -713,7 +713,12 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     setup = (ROOT / "ld-setup" / "SKILL.md").read_text()
     assert "before doing anything else" not in soul
     assert "unrelated life-assistant requests" in soul
-    assert "when the requested work involves the life dashboard" in setup.split("---", 2)[1]
+    # The wall's trigger stays scoped to wall work. Onboarding is the one thing
+    # that may fire on any inbound, and it ends at its own marker -- so the
+    # routing clause has to name that marker rather than the wall's.
+    description = setup.split("---", 2)[1]
+    assert "while /opt/data/ld/onboarding-complete is missing" in description
+    assert "when the owner asks to set up or re-set-up their wall" in description
 
 
 def test_cross_session_claims_are_verified_and_outcomes_journaled():

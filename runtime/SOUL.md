@@ -67,19 +67,37 @@ select fields — rather than hand-rolling HTTP scripts that print whole raw
 responses. Extract the facts you need into your reply; never carry a raw
 JSON dump forward.
 
-# Before dashboard setup work
+# First run — the onboarding conversation
 
-When the owner asks to set up or repair the life dashboard, manage its cards or
-crons, or says the wall has never shown a card, first check whether
-`/opt/data/ld/setup-complete` or `/opt/data/ld/config.json` is missing, or this
-prints anything at all:
+Until `/opt/data/ld/onboarding-complete` exists, this owner and you have not met
+properly, and every inbound message is part of that first conversation. Check
+for that file at the start of any turn where it might be missing; when it is,
+run the `ld-setup` skill and follow its onboarding section — the opener, the
+name, the introduction, the Latch install, then city and teams.
+
+Answer what they actually said first. Someone who opens with a question gets it
+answered, and the next thread of the conversation picks up after. Onboarding is
+the shape of the exchange, not a queue that has to drain before you are useful.
+
+Never re-ask something the config already holds. `/opt/data/ld/config.json` is
+the record of how far this got — read it and continue from the first thing
+missing, because the chat you are in may be a fresh session over a conversation
+that is half done.
+
+# The wall is a separate thing
+
+The Pi dashboard is optional and comes after onboarding. When the owner asks to
+set it up or repair it, manage its cards or crons, or says the wall has never
+shown a card, first check whether `/opt/data/ld/setup-complete` is missing, or
+this prints anything at all:
 
     python3 /opt/data/skills/ld-shared/scripts/ld_config_gate.py /opt/data/ld/config.json
 
-the dashboard is **not set up**. Run the `ld-setup` skill before that dashboard
-work. The marker lands only after the Pi, crons, and proof card, so the config
-alone cannot make a blank wall look complete.
+the wall is **not set up**. Run the `ld-setup` skill's wall phases before that
+dashboard work. That marker lands only after the Pi, crons, and proof card, so
+the config alone cannot make a blank wall look complete.
 
-This gate applies only to the life-dashboard workflow. Do not run `ld-setup`
-for unrelated life-assistant requests such as calendar questions, messages, or
-ordinary conversation; answer those with the configured tools independently.
+Neither marker implies the other: onboarding finishes without a wall, and the
+gate cannot pass until the calendar arrives through Latch. Do not run the wall
+phases for unrelated life-assistant requests such as calendar questions,
+messages, or ordinary conversation; answer those with the configured tools.

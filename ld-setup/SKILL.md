@@ -1,27 +1,25 @@
 ---
 name: ld-setup
-description: First-run setup for the life dashboard — interview the owner over chat, write /opt/data/ld/config.json, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when the requested work involves the life dashboard and /opt/data/ld/setup-complete is missing, when its config is missing or refused, when the owner asks to set up or re-set-up their dashboard, when the wall has never shown a card, or when the owner asks to change one setting on a dashboard that is already set up (a new city, different teams, another calendar, a name) — see "Changing one setting later". Do not use for unrelated calendar or life-assistant questions.
+description: First-run onboarding over chat, and the optional wall that can follow it — meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /opt/data/ld/config.json as each answer lands, and mark /opt/data/ld/onboarding-complete. Then, only if they want a Pi dashboard, mint the wall's token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use on any inbound message while /opt/data/ld/onboarding-complete is missing, when the owner asks to set up or re-set-up their wall, when its config is missing or refused, when the wall has never shown a card, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name) — see "Changing one setting later". Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
-# Life Dashboard — Setup
+# Onboarding, and the wall that may follow
 
-Four phases. Each is gated on the durable artifact it produces, so a phase
-that has already landed is skipped and the run resumes where it stopped — a
-reset, a rebuilt home or an interrupted chat all pick up from here.
+Two halves, and the second is optional. **Onboarding** is a conversation with
+a new owner, and it ends at `/opt/data/ld/onboarding-complete`. **The wall** is
+the Pi dashboard — three phases, run only if the owner wants one, ending at
+`/opt/data/ld/setup-complete`.
 
-| phase | what it produces | the artifact that skips it |
-|---|---|---|
-| 1 · interview | `/opt/data/ld/config.json` | the file exists **and** the gate prints nothing |
-| 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/opt/data/ld/pi.env`, `/opt/data/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…`, confirming it already ran (the script is idempotent; run it every time) |
-| 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/opt/data/ld/pi-brought-up` exists |
-| 4 · crons + proof | the six schedules and one real card | `/opt/data/ld/setup-complete` exists |
+The markers are separate and neither implies the other. An owner who never
+wants a screen in their kitchen has the first and never the second, and that is
+a finished install; `/opt/data/SOUL.md` checks each for its own half. Every
+step is gated on the durable artifact it produces, so a step that has already
+landed is skipped and an interrupted chat picks up where it stopped. Deleting a
+marker re-runs its half from whichever artifact is missing.
 
-`/opt/data/ld/setup-complete` is the one thing that marks the whole run done
-— nothing else writes it, and it lands only at the end of Phase 4, after the
-card-3 proof. `/opt/data/SOUL.md` checks it (alongside the config gate) before
-skipping this skill, so an interruption after Phase 1 still resumes here
-rather than stopping at a blank wall. Deleting the marker re-runs setup from
-whichever phase's own artifact is missing.
+Everything under **How this reaches the Pi**, and the two rules after it, is
+the wall's; onboarding needs none of it — read on when the owner takes the wall
+offer.
 
 **How this reaches the Pi.** The Pi keeps its own dashboard server —
 `/api/message` behind a bearer, port 5174 — on the owner's home network,
@@ -61,71 +59,192 @@ their content goes nowhere else: not into a chat message, not into argv. The
 single exception is the no-Mac fallback in Phase 3, which says exactly what
 may cross chat and once.
 
-## Phase 1 — Interview, then the config
+## Onboarding — the first conversation
 
-Skip when `/opt/data/ld/config.json` exists **and** this prints nothing:
+This is a conversation, not a form. It runs on the first inbound message from
+an owner who has no `/opt/data/ld/onboarding-complete`, and it is done when
+that file exists. Everything below is what to cover and in what order; the
+words are yours, in your own voice, and you already know your own name — use
+it.
+
+Three rules hold across the whole thing. **One or two questions per message, no
+bullet lists** — this lands on a phone, as a text. **Answer what they actually
+said first**: someone who opens with a question gets it answered, then the
+conversation carries on where it was. And **never narrate the mechanics**: no
+"let me start onboarding", no "opener with GIF, then ask their name", no
+announcing a step before taking it. The owner is meeting you, not watching you
+work through a checklist — send the message the step calls for and nothing
+else.
+
+**The config is the memory of how far this got.** Read
+`/opt/data/ld/config.json` at the start of every onboarding turn and continue
+from the first thing missing. Never re-ask something it already holds — a
+resumed session that asks for the owner's name a second time is the failure
+this file exists to prevent. There is no separate progress file; missing config
+IS the unanswered question.
+
+**Every answer is written the moment it lands**, one at a time, never as one
+blob at the end:
+
+    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft <<'JSON'
+    {"family": {"owner": {"name": "Mary"}}}
+    JSON
+
+`--draft`, not `--patch`. Stdin is a PARTIAL CONFIG in the shape of
+`/opt/data/skills/ld-shared/references/config.example.json`, deep-merged onto
+whatever is there — and unlike `--patch` it works before the file exists and
+reports the shared gate instead of enforcing it. It has to: the gate wants a
+calendar account and its sources, and onboarding never asks for those, because
+the calendar arrives through Latch's connectors later. So a long `gate:` line
+listing the calendar keys is the EXPECTED output here, not a failure. What is
+a failure is `refusing to draft:` — fix what it names and run it again. Paste
+its output verbatim with its exit status, as everywhere else in this sheet.
+
+### 1 · Opener
+
+One warm line that they showed up — not a greeting card, one line. Then the
+GIF, sent as an attachment:
+
+    MEDIA:/srv/plow-assets/quick-q.gif
+
+Then, on its own: what should I call you?
+
+### 2 · Their name, then who you are
+
+Draft the name the moment they give it (`family.owner.name`), then introduce
+yourself across two or three short messages:
+
+- what you actually **do** — book the dentist, reorder the dog food before it
+  runs out, chase the refund that has been "pending" for a month. Concrete
+  errands, not capabilities.
+- that the doing happens through **an app on their Mac**, which is what lets
+  you act on their real accounts instead of talking about them.
+- one line on **privacy**, in your own words: you run on their machine rather
+  than someone's server, their logins sit in a vault you can use but never see,
+  and they set the boundaries you work inside.
+
+<!-- PHOTO STACK SLOT: four screenshots of the agent at work, from design.
+     When those files are baked next to the GIF under /srv/plow-assets/, send
+     them here as attachments, after the privacy line and before the Latch
+     link, introduced with something like "want to see the kind of thing I
+     mean?". Until then, say nothing in their place -- an apology for a missing
+     picture is worse than no picture. -->
+
+Then the catch: you are not on their Mac yet, so right now you are flying blind
+— no calendar, no inbox. Then the URL, **bare, on its own line** so the phone
+renders its preview:
+
+    https://plow.co/latch
+
+Close that stretch by telling them to reach out any time if setup snags.
+
+### 3 · While they install
+
+Do not wait for the install to finish; the next two questions are what the wait
+is for.
+
+**Their city** (or zip). It gives you their timezone and puts a weather read in
+their mornings. Draft it with the coordinates left out — the script geocodes
+`weather.location` for you, and a lat/lon you supplied from memory is the one
+patch that fails silently.
+
+Write the location the way a geocoder can only read one way: the city **plus
+its state, region or country**, comma-separated, even when the owner gave only
+the city. The lookup takes the first match for whatever string you write, and
+bare city names collide — "Mountain View" alone resolves to Arkansas, so the
+forecast would be a thousand miles from the person reading it while the card
+title still said the right city. A trailing region with no comma finds nothing
+at all, so keep the comma:
+
+    {"weather": {"location": "Mountain View, California"}}
+
+Then read `/opt/data/ld/config.json` back and look at the `lat`/`lon` that
+landed. If they are not where that place is, the geocoder took a different city
+of the same name: draft the location again, more specifically. Say the city
+back to the owner in their own words either way — they said "Mountain View",
+not "Mountain View, California".
+
+The timezone rides along with the city, but it is **not yours to choose**: it
+must equal the container's `$TZ`. Run `echo $TZ`, tell them that zone in plain
+words ("Pacific time — got it"), and draft `family.timezone` as that exact
+value. If they say they are somewhere else, the script refuses and says why:
+the zone is `AGENT_TZ` in the instance dotenv on the host, which only their
+operator can change. Tell them that and stop drafting the zone; do not write
+one that disagrees with the container, because every card would land at the
+wrong hour.
+
+**Their teams**, if any. You fold scores and game times into their mornings.
+Interpret what they say with everything you know — "Kings" from someone in
+Mountain View is the Sacramento Kings — and turn it into ESPN's own terms:
+
+    {"sports": {"followed": [{"abbr": "sac", "sport": "basketball", "league": "nba"},
+                             {"abbr": "sf", "sport": "football", "league": "nfl"}]}}
+
+Read the list back in their words, not the JSON. "None" is a real answer:
+draft `{"sports": {"followed": []}}` and move on — the question was asked, and
+that is what onboarding needs.
+
+Do not ask for their email, their calendars, or their Mac username. Those
+arrive through Latch's connectors. Do not ask what time they want their
+morning rundown either — the schedules are fixed, and a question whose answer
+nothing can store is a promise you would be breaking.
+
+### 4 · Close
+
+Tell them they are set, and offer the wall as the optional extra it is: if they
+want a physical display in the kitchen, the build is at
+`https://github.com/plow-pbc/life-dashboard` — they set the Pi up and send back
+the link, and you take it from there. That is what the wall phases below are
+for; run them only if the owner takes the offer.
+
+Then mark onboarding done — name and city stored, teams asked, however they
+answered:
+
+    date -u +%FT%TZ > /opt/data/ld/onboarding-complete
+
+Nothing else writes that file, and nothing before this line should. It is
+separate from `/opt/data/ld/setup-complete`, which belongs to the wall and
+lands only after Phase 4's proof card. An owner with no wall has the first and
+never the second, and that is a finished install.
+
+## The wall (optional) — Phases 2 to 4
+
+Everything from here down runs **only** if the owner asked for the wall. Each
+phase is gated on the durable artifact it produces, so a phase that has already
+landed is skipped and the run resumes where it stopped.
+
+| phase | what it produces | the artifact that skips it |
+|---|---|---|
+| 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/opt/data/ld/pi.env`, `/opt/data/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…` |
+| 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/opt/data/ld/pi-brought-up` exists |
+| 4 · crons + proof | the six schedules and one real card | `/opt/data/ld/setup-complete` exists |
+
+The wall needs a config the shared gate accepts, and onboarding alone cannot
+produce one — `calendar.account`, its sources and
+`calendar_nudge.owner_identities` come from the owner's calendar, which arrives
+through Latch. Check before starting:
 
     python3 /opt/data/skills/ld-shared/scripts/ld_config_gate.py /opt/data/ld/config.json
 
-(No output is a pass; any text is the list of what is wrong. Its exit code is
-always 0 and means nothing — read the output, not the status.) Even when
-skipping, you still need `has_mac` (and the optional `ical_url`) for Phases 2
-and 3 — ask for those alone if you do not have them from this conversation.
-Do NOT re-ask for `pi_address` or `pi_user` here: Phase 2's script recovers
-both from the dotenv and refuses by name for whichever it cannot — that
-refusal, not this note, is what decides when the owner gets asked.
+No output is a pass; any text is the list of what is still missing (its exit
+code is always 0 and means nothing — read the output). If it names calendar
+keys, the owner's calendar has not been connected yet: say so, and stop rather
+than asking them to type an email that Latch is about to supply. Fill what it
+names with `--patch` once the connector is in place, then continue.
 
-Otherwise ask, one or two questions per message, in the owner's words:
+You also need `has_mac` (and the optional `ical_url`) for Phases 2 and 3 — ask
+for those alone. Do NOT ask for `pi_address` or `pi_user` here: Phase 2's
+script recovers both from the dotenv and refuses by name for whichever it
+cannot, and that refusal, not this note, is what decides when the owner gets
+asked.
 
-| answer | ask | goes to |
-|---|---|---|
-| `owner_name` | what should I call you? | `family.owner.name` |
-| `owner_email` | the Google account whose calendar you live by (the email) | `calendar.account`, `calendar.sources[0].calendar_id`, and `calendar_nudge.owner_identities[0]` |
-| `extra_calendar_ids` | any shared calendars? — the full id, `…@group.calendar.google.com` | more `calendar.sources[]` |
-| `city` | which city is home? | `weather.location`, geocoded to `lat`/`lon` |
-| `timezone` | run `echo $TZ`, tell the owner that zone, ask them to confirm it is theirs | `family.timezone` |
-| `has_mac` | do you have a Mac with Plow Latch running? (without one, only the calendar tile updates — the weather, sports and message cards need the Mac to ship them — and the Pi has to be set up by hand) | gates `mac_username`; decides the Phase 3 path |
-| `mac_username` | your Mac login name (only with a Mac) | `morning_triage.chat_db_path` |
-| `pi_address` | the Pi's address on your home network — the IP, or `raspberrypi.local` | Phase 2 (`mint_wall_token.py`) and the Phase 3 `ssh` target; not in the config — after Phase 2 it lives in the dotenv's `DASHBOARD_ENDPOINT_URL`, so a resume never re-asks |
-| `pi_user` | the Pi's login user (whatever you set in Raspberry Pi Imager) | the Phase 3 `ssh` target; not in the config — after Phase 2 it lives in the dotenv's `DASHBOARD_PI_USER`, so a resume never re-asks. Letters, digits, `.`, `_`, `-` only — refuse anything else: it lands in `ssh` argv |
-| `ical_url` | optional: the wall's own calendar tile reads a feed directly. In Google Calendar → Settings → the calendar → "Secret address in iCal format", copy that URL. Blank is fine — the tile stays empty until you give me one. | Phase 2 (the `ical_url` key of `mint_wall_token.py`'s stdin JSON); not in the config |
-| `owner_imessage`, `people`, `digest_length` | optional: your number, household names, how long the Sunday digest should be | `family`, `weekly_digest.length` |
-| `teams` | optional: teams to follow, each as ESPN abbreviation + sport + league, e.g. `[{"abbr":"chc","sport":"baseball","league":"mlb"}]` | `sports.followed` |
-
-`ical_url` is a private feed URL — anyone holding it reads that calendar. It
-arrives in the owner's own message, which you cannot undo; from there it goes
-into exactly one place, the `ical_url` key of Phase 2's stdin JSON. Never repeat it
-back in chat and never put it in any other call.
-
-**The timezone is not negotiable here.** If the owner's zone is not `$TZ`,
-the script below refuses and says why: the container's zone is `AGENT_TZ`
-in the instance dotenv on the host, which only the operator can change.
-Tell the owner to ask their operator to set `AGENT_TZ` to their zone and run
-`agent-mgr up` again, then come back to you. Do not write a config that
-agrees with the container instead — the cards would land at the wrong hour.
-
-Compose ONE JSON object from the answers (keys exactly as the table's first
-column; `has_mac` a real boolean, not `"yes"` or `1`; list keys as lists,
-`teams` a list of objects shaped as above; `pi_address` and `pi_user` may be
-included — the script ignores them. Leave `ical_url` out of the JSON entirely
-— its only destination is Phase 2's own stdin JSON) and feed it on
-stdin — never on argv — to:
-
-    /opt/data/skills/ld-setup/scripts/write_config.py <<'EOF'
-    { ...the answers... }
-    EOF
-
-It geocodes the city, judges the result with the shared gate, and writes
-`/opt/data/ld/config.json` mode 600. `refusing to write:` means fix what it
-names and run it again; `wrote /opt/data/ld/config.json (mode 600); gate: PASS`
-means Phase 1 is done. The full shape it writes is
-`/opt/data/skills/ld-shared/references/config.example.json`.
 
 ## Phase 2 — The wall's token
 
 Idempotent, so there is no dotenv to inspect by hand — always run it. Its
 answers ride stdin as ONE JSON object through a quoted heredoc, never argv
-and never interpolated into shell text — the same rule as Phase 1, because
+and never interpolated into shell text — the same rule onboarding's own
+drafts follow, because
 an embedded quote in an owner's answer would otherwise execute before the
 script's validation (which holds `pi_address` and `pi_user` to the safe
 charset Phase 3's `ssh` argv depends on) could see it:
@@ -355,20 +474,26 @@ showing; is it?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.
 
 Only now — after the owner's confirmation, this phase's for a Mac install,
-Phase 3's `pi-brought-up` for a no-Mac one — mark the whole run done; this is
-the only thing that writes this file, and nothing before this line should:
+Phase 3's `pi-brought-up` for a no-Mac one — mark the wall done; this is the
+only thing that writes this file, and nothing before this line should. It says
+nothing about onboarding, which has its own marker and may have finished long
+before the owner ever wanted a screen:
 
     date -u +%FT%TZ > /opt/data/ld/setup-complete
 
 ## Changing one setting later
 
-Once `/opt/data/ld/setup-complete` exists, a change is **not** a re-run of the
-phases above. Phase 1 builds the whole config from the answer set, so running
-it again resets every answer the owner is not restating — their teams, their
-extra calendars, their triage exclusions — silently, because a config missing
-those still passes the gate.
+Once onboarding is complete, a change is **not** a re-run of the conversation
+above. Re-running it would walk an owner who already answered back through the
+whole introduction, and the interview mode this script still carries (no flag
+at all) builds the config from a full answer set, so it resets every answer
+nobody is currently restating — their teams, their extra calendars, their
+triage exclusions — silently, because a config missing those still passes the
+gate.
 
-Use the patch mode instead. Stdin is a PARTIAL CONFIG — the shape
+Use the patch mode instead. It is `--patch`, not the `--draft` onboarding uses:
+by now the config should be gate-valid, and a change that would break it is a
+change to refuse rather than record. Stdin is a PARTIAL CONFIG — the shape
 `/opt/data/skills/ld-shared/references/config.example.json` describes, carrying
 only what changes — never the answer set:
 

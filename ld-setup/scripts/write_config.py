@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """write_config.py -- the ld-setup interview's answers, written as /opt/data/ld/config.json.
 
-TWO modes, one file, because they must not disagree about what a valid config
-is. Both read ONE JSON object on stdin (the agent composes it from the owner's
-replies; nothing reaches argv), both judge the result by the shared gate --
-ld_config_gate.gate() imported, not restated -- BEFORE it is written, and both
-write mode 600 because family.owner and the calendar ids are a person's data.
+THREE modes, one file, because they must not disagree about what a valid config
+is. Each reads ONE JSON object on stdin (the agent composes it from the owner's
+replies; nothing reaches argv) and each writes mode 600, because family.owner
+and the calendar ids are a person's data. Two of them judge the result by the
+shared gate -- ld_config_gate.gate() imported, not restated -- before writing.
 
   (default)  the first-run interview. Stdin is the ANSWER set (owner_name,
              owner_email, city, ...) and the whole config is built from it.
@@ -16,6 +16,25 @@ write mode 600 because family.owner and the calendar ids are a person's data.
              moved to Denver" or "add my partner's calendar" one turn instead
              of a re-run of the whole interview that silently resets every
              answer the owner is not restating.
+
+  --draft    onboarding, one answer at a time. Stdin is a PARTIAL CONFIG like
+             --patch's, merged the same way onto the live file -- but the file
+             need not exist yet, and the shared gate is REPORTED rather than
+             enforced.
+
+             That exemption is the whole reason this mode exists, and it is
+             narrow. The gate demands calendar.account, a non-blank unique
+             calendar_id per source, and a non-empty
+             calendar_nudge.owner_identities. Onboarding never asks for any of
+             them -- the calendar arrives later, through Latch's connectors --
+             so a config carrying only the name, the city and the teams can
+             never pass, and --patch would refuse every single answer as it
+             landed. Refusing to record what the owner just said, because of
+             something they have not been asked yet, is the failure this
+             avoids. Nothing downstream is loosened: the producers still read
+             the gate's verdict, a draft config still stands them down, and the
+             wall path (SKILL.md Phases 2-4) still runs --patch under the full
+             gate.
 
              Lists REPLACE rather than append: sports.followed and
              calendar.sources are sets the owner states in full ("follow the
@@ -143,7 +162,7 @@ def deep_merge(current, patch):
     return merged
 
 
-def check_keys(patch, reference, path=""):
+def check_keys(patch, reference, path="", verb="patch"):
     """Refuse any key the template does not have, at any depth.
 
     Objects inside a list are checked against the template's first object entry
@@ -154,7 +173,7 @@ def check_keys(patch, reference, path=""):
     for key, value in patch.items():
         if key not in reference:
             raise SystemExit(
-                f"refusing to patch: unknown config key {path + str(key)!r} -- "
+                f"refusing to {verb}: unknown config key {path + str(key)!r} -- "
                 "no such key in ld-shared/references/config.example.json")
         expected = reference[key]
         if isinstance(value, dict) and isinstance(expected, dict):
@@ -164,24 +183,34 @@ def check_keys(patch, reference, path=""):
             if shape is not None:
                 for index, entry in enumerate(value):
                     if isinstance(entry, dict):
-                        check_keys(entry, shape, f"{path}{key}[{index}].")
+                        check_keys(entry, shape, f"{path}{key}[{index}].", verb)
 
 
-def apply_patch(patch, current, env, geocoder=None):
-    """The live config with `patch` merged in, or SystemExit naming the refusal."""
+def apply_patch(patch, current, env, geocoder=None, gated=True):
+    """The live config with `patch` merged in, or SystemExit naming the refusal.
+
+    `gated=False` is --draft: the same merge and the same key check, onto a
+    config that may not exist yet. Only the gate is relaxed; see the module
+    docstring for why, and main() still prints its verdict.
+    """
+    verb = "patch" if gated else "draft"
     if not isinstance(patch, dict):
-        raise SystemExit("refusing to patch: the patch is not a JSON object")
+        raise SystemExit(f"refusing to {verb}: the patch is not a JSON object")
     try:
         with open(EXAMPLE, encoding="utf-8") as f:
             reference = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(
-            f"refusing to patch: could not read {EXAMPLE}: {exc}") from None
-    check_keys(patch, reference)
+            f"refusing to {verb}: could not read {EXAMPLE}: {exc}") from None
+    check_keys(patch, reference, verb=verb)
     if not isinstance(current, dict):
-        raise SystemExit(
-            "refusing to patch: there is no config to patch yet -- run the "
-            "interview (this script with no --patch) first")
+        if gated:
+            raise SystemExit(
+                "refusing to patch: there is no config to patch yet -- run the "
+                "interview (this script with no --patch) first")
+        # A draft is how the config comes into existence during onboarding, so
+        # "no config yet" is the first answer, not an error.
+        current = {}
 
     merged = deep_merge(current, patch)
 
@@ -190,11 +219,17 @@ def apply_patch(patch, current, env, geocoder=None):
     # every card at the wrong local hour without failing anything.
     container = (env.get("TZ") or "").strip()
     zone = merged.get("family", {}).get("timezone")
-    if zone != container:
-        raise SystemExit(
-            f"refusing to patch: the config would say {zone!r} but this container "
-            f"runs in {container!r}. The zone is AGENT_TZ in the instance dotenv on "
-            "the host -- tell the owner to ask the operator to change it.")
+    # A draft is written before every answer is in, so an absent zone is a
+    # question not yet asked rather than a disagreement. One that IS present
+    # gets the same refusal as a patch: a wrong zone is not more acceptable
+    # for being early, and catching it here is what keeps the owner from
+    # answering four more questions against a config that cannot be finished.
+    if zone is not None or gated:
+        if zone != container:
+            raise SystemExit(
+                f"refusing to {verb}: the config would say {zone!r} but this container "
+                f"runs in {container!r}. The zone is AGENT_TZ in the instance dotenv on "
+                "the host -- tell the owner to ask the operator to change it.")
 
     # A location without its coordinates is the one patch that fails silently:
     # the card's title changes to the new city and the forecast stays the old
@@ -253,28 +288,46 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     parser.add_argument(
         "--patch", action="store_true",
         help="stdin is a partial config to merge onto the live one, not the answer set")
+    parser.add_argument(
+        "--draft", action="store_true",
+        help="like --patch, but the config need not exist yet and the gate is "
+             "reported rather than enforced (onboarding, answer by answer)")
     args = parser.parse_args(argv or [])
+    if args.patch and args.draft:
+        raise SystemExit("refusing to write: pass --patch or --draft, not both")
     env = os.environ if env is None else env
     try:
         payload = json.load(sys.stdin if stdin is None else stdin,
                             parse_constant=_reject_constant)
     except ValueError as exc:
         raise SystemExit(f"refusing to write: {exc}") from None
-    if args.patch:
+    if args.patch or args.draft:
+        verb = "draft" if args.draft else "patch"
         try:
             with open(config_path, encoding="utf-8") as f:
                 current = json.load(f, parse_constant=_reject_constant)
+        except FileNotFoundError:
+            # Only a draft may start from nothing -- it is how the config comes
+            # into existence, one answer at a time. For --patch a missing file
+            # stays the refusal it has always been: that is how a mistyped path
+            # or a lost config announces itself instead of quietly becoming a
+            # new one.
+            if not args.draft:
+                raise SystemExit(
+                    f"refusing to patch: could not read {config_path}: "
+                    "no such file") from None
+            current = None
         except (OSError, ValueError) as exc:
             raise SystemExit(
-                f"refusing to patch: could not read {config_path}: {exc}") from None
-        config = apply_patch(payload, current, env)
+                f"refusing to {verb}: could not read {config_path}: {exc}") from None
+        config = apply_patch(payload, current, env, gated=not args.draft)
     else:
         config = build(payload, env)
     try:
         verdict = gate(config)
     except GateError as exc:
         verdict = f"not valid JSON ({exc})"
-    if verdict:
+    if verdict and not args.draft:
         raise SystemExit(f"refusing to write: the gate says: {verdict}")
     # allow_nan=False, the writer's half of the rule the two reads enforce:
     # Python emits NaN/Infinity back out as bare tokens, and a config carrying
@@ -286,7 +339,10 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     except ValueError as exc:
         raise SystemExit(f"refusing to write: {exc}") from None
     atomic_write(config_path, text)
-    print(f"wrote {config_path} (mode 600); gate: PASS")
+    # A draft reports the gate instead of obeying it. The line is not decoration:
+    # it is how a turn learns the config is still short of "installed", and the
+    # names in it are exactly what the wall path will need later.
+    print(f"wrote {config_path} (mode 600); gate: {verdict or 'PASS'}")
     return 0
 
 
