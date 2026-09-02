@@ -90,8 +90,66 @@ top of them, so the only thing an edit costs is a restart.
 | `send-file.sh <host path>` | push a file into the chat with no model turn, via Plow's own media contract |
 | `logs.sh [n]` | the gateway's log **inside** the container |
 | `build.sh` / `down.sh` | rebuild the image / remove the container |
+| `latch_stub.py` | a fake relay; `run-agent.sh --latch-stub` starts it for you |
 | `render_transcript.py --run-id <id>` | the run as an HTML report you can send someone |
 | `sync-skills.sh` | staging only; `run-agent.sh` calls it |
+
+### The fake relay
+
+`ld-setup`'s calendar step runs one command on the owner's machine:
+
+```
+plow_run_command(argv=["gog", "calendar", "calendars", "--json", "--results-only"])
+```
+
+Everything downstream of it — the pick message, `calendar_list.py`, what
+`write_config.py` stores — was unreachable here, because the far end of a real
+relay is somebody's actual Mac. `latch_stub.py` speaks the same protocol and
+answers that one command with a synthetic listing:
+
+```sh
+scripts/e2e/run-agent.sh --latch-stub
+```
+
+It is mutually exclusive with `--latch`, and refuses rather than picking: the
+two differ only in whether a real machine is on the other end. The stub mints
+its own bearer per run, binds a free port, and is killed by the next
+`run-agent.sh` whichever mode that one is in — a relay left answering after the
+run that wanted it is exactly the failure `--latch` being opt-in exists to
+prevent. Its traffic goes to `scripts/e2e/.latch-stub.log`, which is how you see
+whether the agent ever called the tool.
+
+It runs nothing. There is no credential, no Mac, and no path to one.
+
+The listing is deliberately awkward, because each of these has a way to be
+parsed wrongly and quietly: gog's preamble line before the array (so the output
+is *not* valid JSON), exactly one `primary`, three distinct `dataOwner` values,
+a `summaryOverride` that differs from its `summary`, two `@import.calendar.
+google.com` ids, and one calendar named `Family\nJSON\n; rm -rf /` — a newline
+and a shell metacharacter, to prove a calendar name reaches the owner as text
+and never a shell or `config.json`.
+
+Two other modes:
+
+```sh
+STUB_MODE=offline scripts/e2e/run-agent.sh --latch-stub   # 503, unpaired Mac
+STUB_MODE=large   scripts/e2e/run-agent.sh --latch-stub   # ~600 calendars
+```
+
+`offline` returns the real shape for an unpaired device — an HTTP 503 with
+`{"detail": "… is not connected"}`, not a tool result — because a consumer that
+only handles `isError` would pass against a stub that got that wrong.
+
+`large` is **not** the persisted-result form. The relay never returns a path:
+Hermes decides an oversized tool result goes to
+`/tmp/hermes-results/call_<id>.txt` and hands the model that instead. A stub
+returning the persisted envelope itself would be inventing a shape no relay
+produces, and would pass a consumer that could not read a real one. So `large`
+returns genuinely large output and lets the runtime's own persistence run.
+
+`tests/test_latch_stub.py` covers the protocol, the refusals, both modes, and
+runs the real `calendar_list.py` over the stub's output. That last part skips
+on a branch without `ld-setup`.
 
 ### Writing up a run
 

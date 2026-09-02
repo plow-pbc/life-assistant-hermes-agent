@@ -21,16 +21,65 @@ require PLOW_API_BASE PLOW_AGENT_TOKEN PLOW_HOME_CHANNEL
 # deliberately opt-in -- the device on the other end is a person's actual Mac,
 # and a run that does not need it should not be able to touch it.
 WITH_LATCH=""
+WITH_STUB=""
 for arg in "$@"; do
   [ "$arg" = "--latch" ] && WITH_LATCH=1
+  [ "$arg" = "--latch-stub" ] && WITH_STUB=1
 done
+
+# --latch-stub: a fake relay on this Mac instead of a real one, so the calendar
+# step can be exercised with nothing at risk. Mutually exclusive with --latch,
+# and loudly so: the two differ only in whether the far end is somebody's actual
+# machine, which is not a thing to resolve by precedence.
+if [ -n "$WITH_LATCH" ] && [ -n "$WITH_STUB" ]; then
+  echo "--latch and --latch-stub are mutually exclusive: one is a real Mac," >&2
+  echo "the other is a stub. Say which you meant." >&2
+  exit 1
+fi
+
+STUB_PID_FILE="$E2E_DIR/.latch-stub.pid"
+STUB_PORT_FILE="$E2E_DIR/.latch-stub.port"
+# Whatever ran before, whichever mode this run is: a stub left over from an
+# earlier run would keep answering on its port and a plain run would look
+# relayless while still being served.
+if [ -f "$STUB_PID_FILE" ]; then
+  kill "$(cat "$STUB_PID_FILE")" 2>/dev/null || true
+  rm -f "$STUB_PID_FILE" "$STUB_PORT_FILE"
+fi
+
+if [ -n "$WITH_STUB" ]; then
+  # A fresh bearer per run, so the port is not an open endpoint for as long as
+  # it is bound -- the stub binds 0.0.0.0 because host.docker.internal is how
+  # the container reaches it, and a loopback bind is not reachable that way.
+  LATCH_MCP_TOKEN="stub-$(head -c 18 /dev/urandom | base64 | tr -d '/+=')"
+  rm -f "$STUB_PORT_FILE"
+  # Its output goes to a file, not to ours. A background process holding this
+  # script's stdout open means anything reading that output -- a pipe, a tee, a
+  # CI step -- blocks until the stub dies, which is for as long as the container
+  # runs. The log is also where you look to see whether the agent called the
+  # tool at all.
+  STUB_MODE="${STUB_MODE:-normal}" \
+    "$E2E_DIR/latch_stub.py" --port 0 --port-file "$STUB_PORT_FILE" \
+      --token "$LATCH_MCP_TOKEN" --verbose \
+      >> "$E2E_DIR/.latch-stub.log" 2>&1 &
+  echo $! > "$STUB_PID_FILE"
+  for _ in $(seq 1 50); do
+    [ -s "$STUB_PORT_FILE" ] && break
+    sleep 0.1
+  done
+  [ -s "$STUB_PORT_FILE" ] || { echo "latch stub did not come up" >&2; exit 1; }
+  LATCH_MCP_URL="http://host.docker.internal:$(cat "$STUB_PORT_FILE")/mcp"
+  export LATCH_MCP_URL LATCH_MCP_TOKEN
+  WITH_LATCH=1   # from here the wiring is identical; only the far end differs
+  echo "latch stub: $LATCH_MCP_URL (mode ${STUB_MODE:-normal})"
+fi
 
 # Asked for and not available is an error, not a warning. Passing the flag with
 # nothing behind it used to print "wired (real Mac)" and start a container with
 # empty LATCH_* -- the entrypoint would then take the relay OUT, and the run
 # would look armed while ld-setup's every Latch call failed for want of a
 # server. A flag that says it did something has to have done it.
-if [ -n "$WITH_LATCH" ]; then
+if [ -n "$WITH_LATCH" ] && [ -z "$WITH_STUB" ]; then
   for name in LATCH_MCP_URL LATCH_MCP_TOKEN; do
     if [ -z "${!name:-}" ]; then
       echo "--latch needs $name in scripts/e2e/.env, and it is empty." >&2
@@ -47,7 +96,11 @@ if [ "${1:-}" = "--fresh" ] || [ "${2:-}" = "--fresh" ]; then
   docker volume rm "$HOME_VOLUME" >/dev/null 2>&1 || true
   echo "removed $HOME_VOLUME -- this run starts from a brand new home"
 fi
-echo "latch relay: ${WITH_LATCH:+wired (real Mac)}${WITH_LATCH:-not wired}"
+if [ -n "$WITH_STUB" ]; then
+  echo "latch relay: wired (STUB -- no real Mac)"
+else
+  echo "latch relay: ${WITH_LATCH:+wired (real Mac)}${WITH_LATCH:-not wired}"
+fi
 
 "$E2E_DIR/sync-skills.sh"
 

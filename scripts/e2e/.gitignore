@@ -3,3 +3,6 @@
 staging/
 .pending-reply
 runs/
+.latch-stub.pid
+.latch-stub.port
+.latch-stub.log
