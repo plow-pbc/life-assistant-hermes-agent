@@ -58,3 +58,31 @@ def test_finish_does_not_permanently_stop_an_enabled_reporter():
     assert "exit 0" in finish and "exit 125" in finish
     assert finish.index("exit 0") < finish.index("exit 125"), \
         "the enabled branch must come first and must not return 125"
+
+
+def test_hermes_store_path_is_named_not_defaulted():
+    """The gap eng-550 caught in review.
+
+    This image keeps the store at /opt/data/state.db, and the base image
+    exports HERMES_HOME=/opt/data today -- so the client finds it either way
+    and this assertion guards nothing at the moment.
+
+    It is here because the client's own fallback is $HOME/.hermes/state.db,
+    which is wrong for this image. Without the explicit setting, correctness
+    rests on an env var owned by a base image we pin by digest and bump.
+
+    A missing store is not an error -- from_hermes returns {} and the run
+    reports a cheerful zero, so a busy agent lands on the index looking idle.
+    Nothing fails, nothing logs, the number is just wrong forever.
+    """
+    run = SVC.joinpath("run").read_text()
+    assert "HERMES_HOME=/opt/data" in run
+    assert "HERMES_HOME=/opt/data/.hermes" not in run, \
+        "the store is at /opt/data/state.db, not under a .hermes subdirectory"
+
+
+def test_home_and_hermes_home_are_both_on_the_invocation():
+    run = SVC.joinpath("run").read_text()
+    exec_line = [l for l in run.splitlines() if l.startswith("exec ")][0]
+    assert "HOME=/opt/data" in exec_line and "HERMES_HOME=/opt/data" in exec_line, \
+        "both must be on the exec line, not merely mentioned in a comment"

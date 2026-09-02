@@ -1,4 +1,4 @@
-# VENDORED from plow-pbc/agent-index-client @ 13ebcce0054841c1d1052e90a8651552ffa2bc63
+# VENDORED from plow-pbc/agent-index-client @ c8243915d49b0fbb20665f160abf7b7019187406
 #   path: standalone/agent_index_client.py   owner: eng-550
 # Copied, not fetched: that repo is PRIVATE, so a build-time curl 404s.
 # To update: copy the file again from that repo and bump the sha above.
@@ -117,6 +117,10 @@ def from_hermes(days, home=None):
     home = home or os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
     db = os.path.join(home, "state.db")
     if not os.path.exists(db):
+        # Say so. A wrong HERMES_HOME otherwise reports zero tokens, which
+        # reads as an idle agent rather than a misconfiguration — and inside a
+        # container nobody is watching the path resolve.
+        print(f"  no Hermes store at {db} (set HERMES_HOME if that is wrong)")
         return {}
     # started_at is a unix epoch float, not a string — date() on it alone
     # returns NULL and every row silently vanishes.
@@ -203,6 +207,8 @@ def main(argv):
     payload = {"days": merge(from_agentsview(days), from_hermes(days))}
     total = sum(m[k] for d in payload["days"] for m in d["models"] for k in KEYS)
     print(f"  agent={agent} days={len(payload['days'])} tokens={total:,}")
+    if not payload["days"]:
+        print("  nothing collected — check HERMES_HOME and that agentsview is installed")
     if "--dry-run" in argv:
         return print(json.dumps(payload, indent=1)[:2000])
     if not payload["days"]:

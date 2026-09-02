@@ -21,10 +21,23 @@ esac
 # That failure is silent in the reporting path: an agent with no usage prints
 # "nothing to report" and exits 0 before it ever needs the token.
 #
+# HERMES_HOME is named rather than left to resolve, and it is NOT the same
+# path as HOME would imply. The base image happens to export
+# HERMES_HOME=/opt/data today, so the client already finds the store at
+# /opt/data/state.db -- this line changes nothing right now. It is here
+# because the client's OWN fallback is $HOME/.hermes/state.db, which is wrong
+# for this image, so the correct path currently depends on an env var owned by
+# a base image we pin by digest and periodically bump.
+#
+# The reason that dependency is worth removing: a store that is not found is
+# not an error. from_hermes returns {} and the reporter posts a cheerful zero,
+# so the agent lands on the index looking like one nobody uses. There is no
+# crash and no red check -- just a wrong number, indefinitely.
+#
 # One-shot client on a timer: it has no scheduler of its own by design, and a
 # second scheduler inside a supervised container is a 2am bug. s6 owns the
 # lifecycle, this loop owns only the interval.
-exec s6-setuidgid hermes env HOME=/opt/data sh -c '
+exec s6-setuidgid hermes env HOME=/opt/data HERMES_HOME=/opt/data sh -c '
   while :; do
     /opt/hermes/.venv/bin/python3 /usr/local/bin/agent-index-client --agent "$AGENT_ID" || true
     sleep "${AGENT_INDEX_INTERVAL:-3600}"
