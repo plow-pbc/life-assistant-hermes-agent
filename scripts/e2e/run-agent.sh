@@ -2,6 +2,15 @@
 # (Re)start the agent container on the staged skills. This is the whole
 # per-iteration step: edit a skill, run this, text the agent.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+# FIRST, before anything that can fail. Everything below here exits on bad input
+# -- a missing .env, an empty credential, a plow checkout that is not where
+# PLOW_MAIN says -- and until this ran, that exit left the PREVIOUS container up.
+# Restart a --latch run as a plain one, have it fail on any of those, and the
+# relay you thought you had just turned off is still serving a real Mac. The
+# container has to be gone before this script can fail at all.
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+
 load_env
 require PLOW_API_BASE PLOW_AGENT_TOKEN PLOW_HOME_CHANNEL
 
@@ -33,7 +42,8 @@ if [ -n "$WITH_LATCH" ]; then
 fi
 
 if [ "${1:-}" = "--fresh" ] || [ "${2:-}" = "--fresh" ]; then
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  # No `docker rm` here: the container went away above, which is also what frees
+  # the volume for this to succeed.
   docker volume rm "$HOME_VOLUME" >/dev/null 2>&1 || true
   echo "removed $HOME_VOLUME -- this run starts from a brand new home"
 fi
@@ -46,8 +56,6 @@ echo "latch relay: ${WITH_LATCH:+wired (real Mac)}${WITH_LATCH:-not wired}"
 # `just api chat` uses. Only read -- the stack is not this loop's to change.
 TWIN_UPLOAD_PORT="$("$PLOW_REPO/scripts/plow-dev-env" print "$PLOW_REPO/.plow-dev-env" PLOW_DTU_LINQ_PORT)"
 [ -n "$TWIN_UPLOAD_PORT" ] || { echo "could not read PLOW_DTU_LINQ_PORT from $PLOW_REPO/.plow-dev-env" >&2; exit 1; }
-
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
 # --platform: the published base is linux/amd64 and this is an arm64 Mac, so
 # the run is emulated. Naming it here keeps docker from picking a manifest that
