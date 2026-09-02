@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-12e59682323f3067581b0640c8e3dafb6888265e@sha256:b0adfb3ee7180f64795475f05c82a27f28f877e063a43ba0848afa5795f5d39b
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-87d5e28408b39230f2c0f98328ec75b1d8ce01c8@sha256:35cc518ffe6340c30bebb34d43edc0475acbbb8338c8882a49e132b28392844b
 
 # Flat, the same layout compose.override.yml produces at /opt/data/skills: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
@@ -22,6 +22,7 @@ COPY ld-morning-triage/   /var/lib/hermes/skills/ld-morning-triage/
 COPY ld-morning-updates/  /var/lib/hermes/skills/ld-morning-updates/
 COPY ld-setup/            /var/lib/hermes/skills/ld-setup/
 COPY ld-shared/           /var/lib/hermes/skills/ld-shared/
+COPY ld-wall-setup/       /var/lib/hermes/skills/ld-wall-setup/
 COPY ld-sports/           /var/lib/hermes/skills/ld-sports/
 COPY ld-viewer-dev/       /var/lib/hermes/skills/ld-viewer-dev/
 COPY ld-weather/          /var/lib/hermes/skills/ld-weather/
@@ -55,6 +56,19 @@ RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills -type f \
 # outright — they land in /etc/systemd, which the rewrite above does not walk.
 COPY runtime/life-calendar-feed.service runtime/life-calendar-feed.timer /etc/systemd/system/
 RUN systemctl enable life-calendar-feed.timer
+
+# Onboarding's own assets, and NOT under the home. Hermes refuses to deliver a
+# model-emitted MEDIA: path whose prefix is on its media denylist -- /etc /proc
+# /sys /dev /root /boot /var/log /var/lib /var/run -- and this runtime's whole
+# HERMES_HOME is /var/lib/hermes, so a GIF parked beside the skills is dropped
+# with "Skipping unsafe MEDIA directive path" and the opener arrives as text
+# with no picture and no error anywhere the owner or the agent can see.
+# /srv is outside that list, which is the whole reason for the path.
+#
+# Root-owned and world-readable like the skills: a turn sends this file, it
+# does not get to replace it.
+COPY docs/onboarding-v2/assets/ /srv/plow-assets/
+RUN chmod 0755 /srv/plow-assets && chmod 0644 /srv/plow-assets/*
 
 # The instance directory the producers read and ld-setup writes. Nothing exists
 # before first boot, so the image creates it empty: an unset-up agent is routed

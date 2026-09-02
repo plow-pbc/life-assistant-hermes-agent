@@ -55,6 +55,48 @@ def config():
 DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
 
 
+def test_the_clarify_tool_is_taken_away_not_merely_forbidden():
+    """`clarify` renders a blocking ❓ menu and stops the turn until the owner
+    picks something. It has never been reached deliberately here -- it is what a
+    turn grabs when it cannot find the mechanism it wants -- and it arrived three
+    times as the entire first thing this agent said to a new owner. The prompt
+    has forbidden it throughout, and the ban held right up until a turn was
+    confused, which is exactly when it does not.
+
+    It is the only tool in its toolset, so disabling the toolset removes that one
+    and nothing else.
+    """
+    disabled = (config().get("agent") or {}).get("disabled_toolsets")
+    assert disabled and "clarify" in disabled, (
+        "a deployed agent can reach the tool behind the ❓ rows")
+
+
+def test_the_file_mutation_verifier_footer_is_off():
+    """The footer appends to the assistant's FINAL RESPONSE whenever a
+    write_file failed in the turn -- in a terminal that is a safety net against a
+    model claiming edits landed. Here the final response is a text message to a
+    person, and one arrived inside an owner's introduction: a `⚠️ File-mutation
+    verifier:` block naming container paths and a JSONDecodeError, mid-sentence.
+
+    The failures still reach the log, where whoever needs them is looking.
+    """
+    display = config().get("display") or {}
+    assert display.get("file_mutation_verifier") is False, (
+        "a failed write can append container paths to a message to the owner")
+
+
+def test_the_display_key_that_deletes_the_message_stays_absent():
+    """The neighbouring key, and the reason this one is safe.
+
+    `display.interim_assistant_messages: false` was tried to stop the same class
+    of leak and DELETED the real message: the model writes its reply mid-turn and
+    a note afterwards, so switching interim delivery off keeps only the note.
+    A leaked note is cosmetic; a missing introduction is the product.
+    """
+    display = config().get("display") or {}
+    assert "interim_assistant_messages" not in display
+
+
 def test_the_descriptor_carries_nothing_but_the_shared_config_path():
     """Closed set, deliberately: every instance reads this one file, so a key
     added here is given to ALL of them.
@@ -142,9 +184,7 @@ def test_compression_has_somewhere_to_fall_back_to():
     """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
     a cheaper-sounding id installs a fallback that can never fire -- and a naive
     probe misses it, because the implicit main-model fallback reports success on
-    the caller's behalf. The ordering matters as much as the model: the primary
-    must give up sooner than the fallback runs, or widening its budget silently
-    delays the only thing that can still succeed."""
+    the caller's behalf."""
     compression = config()["auxiliary"]["compression"]
     chain = compression["fallback_chain"]
 
@@ -153,23 +193,39 @@ def test_compression_has_somewhere_to_fall_back_to():
         "the fallback rides this instance's own codex auth -- a provider "
         "needing a new credential would not resolve here at all"
     )
-    assert compression["timeout"] < chain[0]["timeout"], (
-        "the primary attempt must give up SOONER than the fallback runs: the "
-        "stall is what the user feels, and a long primary budget just delays "
-        "reaching the only thing that can still succeed"
+    assert "timeout" not in compression, (
+        "a task-level compression timeout is floored to 300s by the image, so "
+        "one below it is inert and one above it only lengthens the stall"
+    )
+    assert chain[0]["timeout"] >= 300, (
+        "the chain entry gets no floor of its own -- the image's applies to the "
+        "task-level key this test just required to be absent -- so without an "
+        "explicit budget it inherits the 30s auxiliary default"
     )
 
 
-def test_latch_is_the_only_mcp_server():
-    assert list(config()["mcp_servers"]) == ["latch"]
+def test_the_relay_is_the_only_mcp_server():
+    assert list(config()["mcp_servers"]) == ["plow"]
 
 
-def test_latch_is_configured_from_the_environment_not_from_git():
+def test_the_relay_key_matches_the_tool_prefix_the_skills_call():
+    """The stanza's key IS the tool prefix. A model calls
+    `mcp__<key>__plow_run_command`, so a config.yaml naming one thing while the
+    sheets name another registers a tool nothing asks for -- and the status
+    probe answers "configured" for it."""
+    key, = config()["mcp_servers"]
+    for skill in sorted(ROOT.glob("ld-*/SKILL.md")):
+        for line in skill.read_text().splitlines():
+            if "mcp__" in line and "_run_command" in line:
+                assert f"mcp__{key}__" in line, f"{skill.name}: {line.strip()}"
+
+
+def test_the_relay_is_configured_from_the_environment_not_from_git():
     """DOMO_DEVICE_UID decides which Mac an instance can drive -- its owner's, not
     the operator's. It never appears in this repo."""
-    latch = config()["mcp_servers"]["latch"]
-    assert "${DOMO_DEVICE_UID}" in latch["url"]
-    assert "${DOMO_MCP_TOKEN}" in latch["headers"]["Authorization"]
+    relay = config()["mcp_servers"]["plow"]
+    assert "${DOMO_DEVICE_UID}" in relay["url"]
+    assert "${DOMO_MCP_TOKEN}" in relay["headers"]["Authorization"]
 
 
 def test_every_pinned_skill_is_a_sha_not_a_branch():
@@ -508,12 +564,19 @@ def test_the_hermes_volumes_are_exactly_these():
         # Same exact-string discipline: drop :ro, reroot the source, or mount
         # a directory and this fails with both sets printed.
         "${AGENT_DIR:?set by agent-mgr from the registry}"
-        "/runtime/SOUL.md:/opt/data/SOUL.md:ro"
+        "/runtime/SOUL.md:/opt/data/SOUL.md:ro",
+        # Onboarding's GIF, at the path ld-setup names. The Dockerfile bakes it
+        # for the cloud image; the fleet has only these mounts, so without this
+        # the opener's MEDIA: tag points at nothing on every agent-mgr instance
+        # and the attachment is dropped with no error. Outside /opt/data
+        # because Hermes' media denylist covers the home.
+        "${AGENT_DIR:?set by agent-mgr from the registry}"
+        "/docs/onboarding-v2/assets:/srv/plow-assets:ro",
     } | {
-        # The usage reporter: the only binds landing OUTSIDE /opt/data, which
-        # is what makes them safe to nest. All three or none -- the client
-        # alone is a file nothing runs, and the service directory without the
-        # bundle marker is a service s6 never starts.
+        # The usage reporter: like the asset mount above, these land OUTSIDE
+        # /opt/data, which is what makes them safe to nest. All three or none
+        # -- the client alone is a file nothing runs, and the service directory
+        # without the bundle marker is a service s6 never starts.
         "${AGENT_DIR:?set by agent-mgr from the registry}"
         "/vendor/agent_index_client.py:/usr/local/bin/agent-index-client:ro",
         "${AGENT_DIR:?set by agent-mgr from the registry}"
@@ -743,7 +806,15 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     setup = (ROOT / "ld-setup" / "SKILL.md").read_text()
     assert "before doing anything else" not in soul
     assert "unrelated life-assistant requests" in soul
-    assert "when the requested work involves the life dashboard" in setup.split("---", 2)[1]
+    # The wall's trigger stays scoped to wall work, and it is now the wall
+    # skill's own: onboarding is the one thing that may fire on any inbound, so
+    # its routing clause names the config's keys and nothing about a Pi.
+    description = setup.split("---", 2)[1]
+    assert "while /opt/data/ld/config.json is missing any of" in description
+    assert "re-set-up their wall" not in description, (
+        "ld-setup still claims the wall's trigger")
+    wall = (ROOT / "ld-wall-setup" / "SKILL.md").read_text().split("---", 2)[1]
+    assert "when the owner asks to set up or re-set-up their wall" in wall
 
 
 def test_cross_session_claims_are_verified_and_outcomes_journaled():
@@ -775,6 +846,7 @@ def prose(*parts):
 # other signal. One row per sentence that has to survive an edit.
 SOUL = ("runtime", "SOUL.md")
 SETUP = ("ld-setup", "SKILL.md")
+WALL = ("ld-wall-setup", "SKILL.md")
 
 CONTRACTS = [
     # A first message answered "What can I help with?" by an assistant that
@@ -812,7 +884,7 @@ CONTRACTS = [
     (SOUL, "**and only in the owner's own one-to-one thread**"),
     (SOUL, "Never offer or run setup in a group, trusted or not"),
     (SETUP, "**Run this only in the owner's own one-to-one thread.**"),
-    (SETUP, "in the owner's own one-to-one thread and nowhere else*"),
+    (WALL, "in the owner's own one-to-one thread and nowhere else*"),
     # Unqualified, the silence default reached the owner's own DM, where it
     # reads as a broken assistant rather than as tact.
     (SOUL, "In a group, if none of that is true, stay silent"),

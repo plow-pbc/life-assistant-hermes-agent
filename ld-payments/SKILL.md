@@ -39,8 +39,8 @@ For every payment, before anything else:
    owner a private approval link in their thread and also accepts a 👍 on that
    system message.
 3. **Proceed only after the owner approves through that flow.** The payment is
-   carried out by the vaulted Latch browser tools (`plow_browser_*` with
-   `plow_vault`) — the vault fills the banking credentials into the site; they
+   carried out by the vaulted Latch browser tools (`mcp__plow__plow_browser_*`
+   with `mcp__plow__plow_vault`) — the vault fills the banking credentials into the site; they
    are never shown to you and you never type, read, or echo them. For a
    recognized financial destination, the gate permits one credential release
    bound to the requesting session and destination domain after approval. The

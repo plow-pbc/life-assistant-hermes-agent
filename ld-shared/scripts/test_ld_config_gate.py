@@ -57,7 +57,7 @@ JQ_FILTER = r"""
 VALID = {
     "family": {"owner": {"name": "Sam"}, "timezone": "America/Los_Angeles"},
     "calendar": {"account": "owner@example.test",
-                 "sources": [{"calendar_id": "primary", "name": "Personal"}]},
+                 "sources": [{"calendar_id": "owner@example.test", "name": "Personal"}]},
     "calendar_nudge": {"owner_identities": ["owner@example.test"],
                        "lookahead_virtual_minutes": 30,
                        "lookahead_in_person_minutes": 60},
@@ -85,7 +85,7 @@ CASES = [
                  "calendar_nudge": VALID["calendar_nudge"]}),
      "calendar.sources is not a non-empty array", True),
     ("(c'') sources non-array",
-     json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": "primary"}}),
+     json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": "not-a-list"}}),
      "calendar.sources is not a non-empty array", True),
     ("(c''') calendar account missing",
      json.dumps({**VALID, "calendar": {"sources": VALID["calendar"]["sources"]}}),
@@ -101,13 +101,13 @@ CASES = [
      json.dumps({**VALID, "calendar": {**VALID["calendar"],
                                        "sources": [{"name": "Personal"}]}}),
      "a calendar.sources[].calendar_id is blank", True),
-    # The failure the account model hid: several sources saying "primary" all
+    # The failure the account model hid: several sources naming the SAME
     # resolve to the gog-authenticated account's one calendar. Uniqueness
-    # subsumes the at-most-one-"primary" rule.
+    # subsumes the at-most-one-own-calendar rule.
     ("(d'') duplicate calendar_id values",
      json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": [
-         {"calendar_id": "primary", "name": "Personal"},
-         {"calendar_id": "primary", "name": "Work"}]}}),
+         {"calendar_id": "owner@example.test", "name": "Personal"},
+         {"calendar_id": "owner@example.test", "name": "Work"}]}}),
      "calendar.sources[].calendar_id values are not unique", True),
     ("(e) leftover placeholder (calendar_id)",
      json.dumps({**VALID, "calendar": {**VALID["calendar"],

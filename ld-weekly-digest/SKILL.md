@@ -48,7 +48,7 @@ duplicate, so carrying one makes every run fail before it starts.
 
 Read `calendar.account` and `calendar.sources` from `/opt/data/ld/config.json`,
 comma-join the sources' `calendar_id` values, then fetch the main window with
-ONE `plow_run_command` call — EXACTLY this argv, substituting only those
+ONE `mcp__plow__plow_run_command` call — EXACTLY this argv, substituting only those
 config-supplied values (which never vary between runs):
 
     ["gog", "calendar", "events", "list", "--account=<calendar.account>",

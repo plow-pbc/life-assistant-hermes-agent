@@ -106,7 +106,7 @@ def event(minutes=20, *, summary="Standup", uid="uid-1@google.com",
     a qualifying virtual-less in-person meeting 20 minutes out, owner
     attending, one human counterparty."""
     ev = {
-        "CalendarID": "primary",
+        "CalendarID": "owner@example.test",
         "iCalUID": uid,
         "id": "evt-" + uid,
         "kind": "calendar#event",

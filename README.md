@@ -134,9 +134,9 @@ now; they are stated here as design, not as something this tree enforces:
   property access facts, door and keypad codes among them.
 - **Hostex and Seam** *(agent-mgr's compose contract)*. No PMS access, no lock control — those belong to the
   rentals agent and reach a different person's property.
-- **Anyone else's Mac** *(asserted here)*. `tests/` asserts `latch` is the only `mcp_servers`
+- **Anyone else's Mac** *(asserted here)*. `tests/` asserts `plow` is the only `mcp_servers`
   entry, so a sibling's block arriving by copy-paste fails loudly. Which Mac
-  `latch` reaches is the dotenv's business, not this tree's.
+  `plow` reaches is the dotenv's business, not this tree's.
 
 One mount here against the rentals agent's six. That asymmetry is the design,
 not an omission to be tidied up later.
@@ -150,11 +150,14 @@ Nothing to land first for the dashboard itself. Before restoring this revision,
 deploy the Plow current-session preferences endpoint and compatible
 `hermes-plow-chat` pin; otherwise removing the local notification override can
 put self-improvement reviews back in the owner's chat. The agent writes its own
-`ld/config.json` and mints
-the wall's token on the owner's first reply: `runtime/SOUL.md` tells it that
-a missing or gate-failing config means it is not set up, and
-`ld-setup/SKILL.md` is what it runs then — the interview, `write_config.py`,
-`mint_wall_token.py`, then the Pi bring-up. The Pi keeps its own
+`ld/config.json` from the owner's first DM: `runtime/SOUL.md` tells it that a
+config missing any of `family.owner.name`, `weather.location`,
+`sports.followed` or `calendar.sources` means onboarding is unfinished, and
+`ld-setup/SKILL.md` is what it runs then — a conversation, not a form, drafting
+each answer through `write_config.py` as it lands and discovering the calendars
+from the Mac through Latch once it is connected. **The wall is opt-in.** Only if
+the owner takes that offer does the rest follow: `mint_wall_token.py`, the Pi
+bring-up, and the crons. The Pi keeps its own
 `/api/message` server on the household LAN, which the agent reaches only
 through Plow Latch on the owner's Mac: it ships the token there in two files
 (never through chat), runs the two install lines on the Pi over `ssh` from
@@ -217,11 +220,16 @@ docker exec -it hermes-<agent> /command/s6-setuidgid hermes \
   /usr/local/bin/agent-index-client --login
 just check-latch <agent>             # can this container reach that owner's Mac?
 
-# Then the owner replies to the agent's 👋 from their phone. That reply IS the
-# rest of bring-up: the agent interviews them, writes ld/config.json, mints
-# the wall's token, brings the Pi up through Latch over their LAN and ships
-# the token to the Pi and the Mac (or texts them the lines when there's no
-# Mac), registers the crons and forces a weather card (ld-setup/SKILL.md).
+# Then the owner texts the agent from their phone. That message IS the rest of
+# bring-up: onboarding starts on its own -- the agent introduces itself, asks
+# what to call them, their city and their teams, writes ld/config.json as each
+# answer lands, and picks up their calendars from the Mac once Latch is
+# connected (ld-setup/SKILL.md).
+#
+# The wall is a separate, optional offer at the end. Only an owner who takes it
+# gets the rest: the token minted, the Pi brought up through Latch over their
+# LAN, the token shipped to the Pi and the Mac (or texted when there's no Mac),
+# the crons registered and a weather card forced.
 # Nothing more to run here.
 ```
 
@@ -238,8 +246,8 @@ inside these nested binds before (`plow-pbc/agent-mgr#44`).
 
 **A turn costs you the exit code.** `write_config.py`, `mint_wall_token.py` and
 `register_crons.py` all refuse loudly with a non-zero exit, but a chat turn
-returns the *turn's* status. `ld-setup/SKILL.md` therefore holds the agent to
-`ld-dashboard`'s contract — paste each script's output verbatim with its
+returns the *turn's* status. `ld-setup/SKILL.md` and `ld-wall-setup/SKILL.md`
+therefore hold the agent to `ld-dashboard`'s contract — paste each script's output verbatim with its
 exit status, and treat the phase as unfinished until it has. `refusing`,
 `WARNING` or `PAUSED` anywhere in that output means bring-up did not finish.
 
@@ -361,7 +369,8 @@ the object or changing any other preference, then require an empty result from
 exact gog argv; manually run and approve each new 1-day, 3-day, and 7-day gather
 shape once through Latch before relying on the unattended crons. The calendar
 strip adds a fourth shape — its `/api/calendar` curl — for the same reason: its
-timer ticks with nobody there to answer an approval card. `ld-setup` Phase 4
+timer ticks with nobody there to answer an approval card. `ld-wall-setup`
+Phase 4
 approves it by running the strip once with the owner present, but only on an
 image that has the timer, and only on a run that reaches Phase 4. An instance
 already carrying `/opt/data/ld/setup-complete` skips that phase, so a standalone
@@ -402,7 +411,9 @@ ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 (scheduled by runtime/life-calendar-feed.timer, cloud image only)
 ld-dashboard/   the six cron schedules, all registered
 ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
-ld-setup/       first-run setup end-to-end: config -> wall token -> Pi over Latch -> crons
+ld-setup/       first-run onboarding over chat (config)
+ld-wall-setup/  the OPTIONAL wall that may follow onboarding: wall token ->
+                Pi over Latch -> crons
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 Dockerfile      builds this agent as a standalone image -- adapter only (see below)
@@ -421,7 +432,7 @@ the documented escape hatch, rather than a compose file this repo no longer owns
 
 ## Latch — whose Mac an instance reaches
 
-`mcp_servers.latch` points at the Plow relay, which forwards to Plow Latch on
+`mcp_servers.plow` points at the Plow relay, which forwards to Plow Latch on
 the owner's Mac: `plow_read_file`, `plow_write_file`, `plow_run_command`,
 `plow_browser_*`, `plow_vault` and friends. The relay authorises the connection
 and tells the Mac who is asking; the Mac authorises each action, so the approval
