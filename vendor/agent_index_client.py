@@ -1,4 +1,4 @@
-# VENDORED from plow-pbc/agent-index-client @ c54ed672fa4a70ca2542a23a7a724564905c88c6
+# VENDORED from plow-pbc/agent-index-client @ d9f5d150aeddca778905118059d8fe70588752a2
 #   path: standalone/agent_index_client.py   owner: eng-550
 # Copied, not fetched: that repo is PRIVATE, so a build-time curl 404s.
 # To update: copy the file again from that repo and bump the sha above.
@@ -48,15 +48,31 @@ KEYS = ("input", "output", "cache_read", "cache_write")
 FAILURES = []
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse every redirect. urlopen follows them by default, which would
+    forward the GitHub bearer to wherever a 30x points — so a compromised or
+    misconfigured API host could harvest the token by answering with a
+    redirect. Matches ld-shared/scripts/bearer_http.py in the agent repo."""
+
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+
+def _open_no_redirect(req, timeout=30):
+    return urllib.request.build_opener(_NoRedirect).open(req, timeout=timeout)
+
+
 def _post(url, body, headers):
     req = urllib.request.Request(url, data=json.dumps(body).encode(),
                                  headers={"content-type": "application/json",
                                           "accept": "application/json", **headers},
                                  method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with _open_no_redirect(req) as r:
             return r.status, json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
+        # A refused redirect surfaces here as the 30x itself, which is what we
+        # want: reported, never followed with the token attached.
         return e.code, json.loads(e.read() or b"{}")
 
 
@@ -147,14 +163,28 @@ def from_hermes(days, home=None):
         # container nobody is watching the path resolve.
         print(f"  no Hermes store at {db} (set HERMES_HOME if that is wrong)")
         return {}
-    # started_at is a unix epoch float, not a string — date() on it alone
-    # returns NULL and every row silently vanishes.
-    q = """SELECT date(started_at,'unixepoch','localtime') AS d,
+    # Read session_model_usage, not sessions, and key on last_seen.
+    #
+    # Two bugs in doing it the obvious way. sessions.model is ONE model per
+    # session, so a session that used two models reported both under one name;
+    # session_model_usage carries the real per-model split. And the counters
+    # are CUMULATIVE for the life of a session, while a Hermes gateway session
+    # is per chat and long-lived — so grouping on started_at attributed weeks
+    # of tokens to the day the chat opened, and once that day fell outside the
+    # window the agent reported ZERO while being busy. Measured on a real
+    # store: a session spanning 2.5 days with 290k tokens, all on day one.
+    #
+    # ponytail: last_seen still lumps a multi-day session onto its final active
+    # day rather than spreading it. That is wrong in distribution but never
+    # wrong in presence, which is the failure that matters — an active agent is
+    # always inside the window. Spreading properly needs per-day deltas held in
+    # local state, which is a bigger change and a new class of desync.
+    q = """SELECT date(last_seen,'unixepoch','localtime') AS d,
                   COALESCE(model,'unknown') AS m,
                   SUM(COALESCE(input_tokens,0)), SUM(COALESCE(output_tokens,0)),
                   SUM(COALESCE(cache_read_tokens,0)), SUM(COALESCE(cache_write_tokens,0))
-           FROM sessions
-           WHERE started_at >= strftime('%s', 'now', ?) GROUP BY d, m"""
+           FROM session_model_usage
+           WHERE last_seen >= strftime('%s', 'now', ?) GROUP BY d, m"""
     out = defaultdict(dict)
     try:
         c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -187,7 +217,7 @@ def tags():
     across agents.
     """
     req = urllib.request.Request(f"{API}/v1/tags", headers={"accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with _open_no_redirect(req) as r:
         return json.loads(r.read()).get("tags", [])
 
 
@@ -262,24 +292,40 @@ def self_check():
     assert merge({}, {}) == [], "no data must send no days, not a day of zeros"
     assert from_hermes(28, home="/nonexistent") == {}, "a missing store is empty, not a crash"
 
-    # Hermes stores started_at as a unix epoch float. Reading it as a string
-    # makes date() return NULL and every row disappear silently, which is
-    # exactly how this was broken the first time.
+    # Hermes stores its timestamps as unix epoch floats. Reading one as a
+    # string makes date() return NULL and every row disappear silently, which
+    # is how this collector once reported a confident zero on 30M tokens.
+    #
+    # The fixture mirrors session_model_usage, NOT sessions: the collector
+    # reads the per-model table and keys on last_seen, because the counters are
+    # cumulative and a long-lived session would otherwise land all its tokens
+    # on the day it opened.
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         db = os.path.join(tmp, "state.db")
         c = sqlite3.connect(db)
-        c.execute("CREATE TABLE sessions (started_at REAL, model TEXT, input_tokens INT,"
-                  " output_tokens INT, cache_read_tokens INT, cache_write_tokens INT)")
-        c.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?)",
-                  (time.time() - 3600, "gpt-5.5", 11, 22, 33, 44))
-        c.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?)",
-                  (time.time() - 400 * 86400, "old", 1, 1, 1, 1))
+        c.execute("CREATE TABLE session_model_usage (session_id TEXT, model TEXT,"
+                  " input_tokens INT, output_tokens INT, cache_read_tokens INT,"
+                  " cache_write_tokens INT, first_seen REAL, last_seen REAL)")
+        now = time.time()
+        # opened long ago, still active today: must count as TODAY, and this is
+        # the case that used to vanish from the window entirely.
+        c.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?)",
+                  ("s1", "gpt-5.5", 11, 22, 33, 44, now - 40 * 86400, now - 3600))
+        # genuinely old: excluded
+        c.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?)",
+                  ("s2", "old", 1, 1, 1, 1, now - 400 * 86400, now - 400 * 86400))
+        # same session, second model: the per-model split sessions.model lost
+        c.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?)",
+                  ("s1", "claude-opus-5", 5, 6, 0, 0, now - 7200, now - 3600))
         c.commit(); c.close()
+
         got = from_hermes(28, home=tmp)
-        assert len(got) == 1, f"recent session must be collected, old one excluded: {got}"
-        row = list(got.values())[0]["gpt-5.5"]
-        assert row == {"input": 11, "output": 22, "cache_read": 33, "cache_write": 44}, row
+        assert len(got) == 1, f"only the recent day should appear: {got}"
+        day = list(got.values())[0]
+        assert day["gpt-5.5"] == {"input": 11, "output": 22, "cache_read": 33, "cache_write": 44}, day
+        assert "claude-opus-5" in day, f"both models must survive the split: {day}"
+        assert "old" not in day, "a session last active 400 days ago must be excluded"
 
     print("self-check OK — merge sums both collectors, ordering, empty store, and epoch dates")
 

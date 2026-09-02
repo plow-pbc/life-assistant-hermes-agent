@@ -492,9 +492,9 @@ is the trade for the supply-chain guarantee.
 ## Usage reporting
 
 Each instance can report its own token usage to the Agent Index. It is **off
-unless that instance's own dotenv asks for it**: `agent-mgr` resolves
-`AGENT_INDEX` from `$AGENT_HOME/.env`, and the service exits without reporting
-unless it is truthy.
+unless that instance's own dotenv asks for it**: the service reads
+`AGENT_INDEX` from `/opt/data/.env` — the agent's own home — and exits without
+reporting unless it is `1`.
 
 Delivered by mount, not baked. `agent-mgr` runs the pinned upstream image and
 never builds this repo's `Dockerfile`, so a `COPY` there reaches the standalone
@@ -510,15 +510,22 @@ so it is copied rather than fetched at build time.
 To turn it on, opt that instance in from its **own** dotenv:
 
 ```sh
-echo AGENT_INDEX=1 >> ~/.hermes-<agent>/.env
+AGENT_HOME=$(agent-mgr resolve <agent> | sed -n 's/^AGENT_HOME=//p')
+printf '\nAGENT_INDEX=1\n' >> "${AGENT_HOME:?resolve printed no home}/.env"
 agent-mgr restart <agent>
 ```
 
-Not `compose.override.yml`, and not an exported variable. This file is shared
-by every instance registered against the checkout, so putting the switch here
-opts in a sibling who did not choose it -- the same reason `AGENT_TZ` is
-per-person. `agent-mgr` scrubs an exported `AGENT_INDEX` for the matching
-reason: it would follow every agent the operator brings up.
+The leading newline is load-bearing. That dotenv holds credentials, and a bare
+`>>` onto a file not ending in one welds the key to the last line — turning
+`PLOW_AGENT_TOKEN=…` into `PLOW_AGENT_TOKEN=…AGENT_INDEX=1`, which takes the
+agent off its chat while the opt-in is not seen either.
+
+Not `compose.override.yml`. That file merges after `agent-mgr`'s template and
+wins — measured — and it is shared by every instance registered against the
+checkout, so a switch there opts in a sibling who did not choose it. The switch
+never passes through Compose at all: the home is already mounted, so the
+service reads it from the one file that is per-person, and nothing in Compose
+can forge a value Compose never carries.
 
 `AGENT_ID` needs no setting — `agent-mgr` supplies it from the registry name,
 so two instances of this repo report as two agents rather than one.

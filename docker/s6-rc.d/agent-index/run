@@ -6,10 +6,21 @@
 # not switched on, exit 0 and let the finish script return 125 so s6 marks
 # the slot down rather than restarting it forever.
 
-case "${AGENT_INDEX:-}" in
-    1|true|TRUE|True|yes|YES|Yes) ;;
-    *) exit 0 ;;
-esac
+# The opt-in is read from the agent's OWN dotenv, not from the environment.
+# /opt/data is this instance's home, so this file belongs to one person.
+#
+# It is deliberately not a compose variable. compose.override.yml merges after
+# agent-mgr's template and can replace anything the template set -- measured:
+# an override naming AGENT_INDEX wins -- and that override is shared by every
+# instance registered against the checkout. A switch there opts in siblings who
+# never asked. Read here, the answer comes from the one file that is already
+# per-person, and nothing in Compose can forge it.
+#
+# grep, never `.`: this file holds the agent's credentials, and sourcing it
+# would put every one of them into the reporter's environment.
+AGENT_INDEX=$(grep -m1 -E '^AGENT_INDEX=' /opt/data/.env 2>/dev/null | cut -d= -f2- | tr -d ' "'"'"'')
+
+[ "${AGENT_INDEX:-}" = 1 ] || exit 0
 
 # HOME is set explicitly, NOT inherited. s6-setuidgid changes uid/gid but
 # leaves HOME pointing at root's, and the client resolves its token path with
@@ -19,40 +30,27 @@ esac
 # That failure is silent in the reporting path: an agent with no usage prints
 # "nothing to report" and exits 0 before it ever needs the token.
 #
-# HERMES_HOME is named rather than left to resolve, and it is NOT the same
-# path as HOME would imply. The base image happens to export
-# HERMES_HOME=/opt/data today, so the client already finds the store at
-# /opt/data/state.db -- this line changes nothing right now. It is here
-# because the client's OWN fallback is $HOME/.hermes/state.db, which is wrong
-# for this image, so the correct path currently depends on an env var owned by
-# a base image we pin by digest and periodically bump.
+# HERMES_HOME is named for the same class of reason. The base image happens to
+# export HERMES_HOME=/opt/data today, so the client already finds the store at
+# /opt/data/state.db -- this changes nothing right now. It is here because the
+# client's OWN fallback is $HOME/.hermes/state.db, which is wrong for this
+# image, so the correct path currently depends on an env var owned by a base
+# image we pin by digest and periodically bump. A store that is not found is
+# not an error: the reporter posts a cheerful zero and the agent lands on the
+# index looking like one nobody uses.
 #
-# The reason that dependency is worth removing: a store that is not found is
-# not an error. from_hermes returns {} and the reporter posts a cheerful zero,
-# so the agent lands on the index looking like one nobody uses. There is no
-# crash and no red check -- just a wrong number, indefinitely.
+# The non-zero exit is deliberately not fatal to the loop. The client exits
+# non-zero when every collector fails and it refuses to publish a zero it never
+# measured, which is right there and the wrong trigger for a restart here: a
+# collector failing is a data problem, not a liveness one, and letting it kill
+# the run script would flap the slot because agentsview was briefly busy. The
+# echo replaces a bare `|| true`, which would have swallowed that signal and
+# left no trace in this service's own output.
 #
 # One-shot client on a timer: it has no scheduler of its own by design, and a
 # second scheduler inside a supervised container is a 2am bug. s6 owns the
-# lifecycle, this loop owns only the interval.
-#
-# The client reads AGENT_ID from the environment itself, so it is neither
-# rechecked nor forwarded here: two validation paths for one variable is one
-# more than the failure deserves. agent-mgr requires AGENT_ID, and an agent
-# that cannot say who it is should not report anonymously.
-#
-# The non-zero exit is deliberately not fatal to the loop. The client now
-# exits non-zero when every collector fails and it refuses to publish a zero
-# it never measured, which is the right call there and the wrong trigger for
-# a restart here: a collector failing is a data problem, not a liveness one,
-# and letting it kill the run script would flap the slot because agentsview
-# was briefly busy. The loop survives and the failure is named in the log
-# instead -- so the echo replaces a bare `|| true`, which would have swallowed
-# the new signal silently and left no trace in this service's own output.
-#
-# The interval is fixed. It was configurable while the cadence was being
-# validated; nothing in production sets it, and the file is a mount now, so
-# a shorter cadence for testing is an edit rather than a rebuild.
+# lifecycle, this loop owns only the interval. The client reads AGENT_ID from
+# the environment itself, so it is neither rechecked nor forwarded here.
 exec s6-setuidgid hermes env HOME=/opt/data HERMES_HOME=/opt/data sh -c '
   while :; do
     /opt/hermes/.venv/bin/python3 /usr/local/bin/agent-index-client \

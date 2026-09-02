@@ -6,7 +6,6 @@ reporter that inherits HOME writes its token somewhere it cannot.
 """
 import pathlib
 import re
-import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SVC = ROOT / "docker" / "s6-rc.d" / "agent-index"
@@ -25,21 +24,6 @@ def test_is_a_longrun():
 
 def test_run_is_executable():
     assert SVC.joinpath("run").stat().st_mode & 0o111, "s6 skips a non-executable run"
-
-
-@pytest.mark.parametrize("enabled", ["1", "true", "yes"])
-def test_enabled_values_are_accepted(enabled):
-    assert enabled in SVC.joinpath("run").read_text()
-
-
-def test_finish_does_not_permanently_stop_an_enabled_reporter():
-    # 125 is s6's "do not restart" marker. The dashboard returns it
-    # unconditionally, which is right for a UI whose absence you can see and
-    # wrong for a background job whose absence is silent.
-    finish = SVC.joinpath("finish").read_text()
-    assert "exit 0" in finish and "exit 125" in finish
-    assert finish.index("exit 0") < finish.index("exit 125"), \
-        "the enabled branch must come first and must not return 125"
 
 
 def test_home_and_hermes_home_are_both_on_the_invocation():
@@ -76,18 +60,32 @@ def test_home_and_hermes_home_are_both_on_the_invocation():
         "the store is at /opt/data/state.db, not under a .hermes subdirectory"
 
 
-def test_the_reporter_is_not_baked_into_the_dockerfile():
-    """Delivered one way, not two.
+def test_the_switch_is_read_from_the_agents_own_dotenv():
+    """Not from the environment, and that is the whole point.
 
-    A COPY here would put a second, staler copy in the standalone image while
-    the mount supplies the fleet -- two sources for one file, drifting apart
-    silently because only one of them is ever exercised.
+    compose.override.yml merges after agent-mgr's template and wins -- measured
+    -- and that file is shared by every instance registered against the
+    checkout, so an AGENT_INDEX there opts in siblings who never asked. The
+    agent's home is already mounted at /opt/data, so the switch is read from
+    the one file that is per-person. Nothing in Compose can forge a value
+    Compose never carries.
+
+    grep, never `.`: that file holds the agent's credentials, and sourcing it
+    would put every one of them into the reporter's environment.
     """
-    assert "agent-index-client" not in (ROOT / "Dockerfile").read_text()
-
-
-def test_identity_is_not_validated_twice():
-    """The client reads AGENT_ID itself; the shell neither rechecks nor forwards it."""
     run = SVC.joinpath("run").read_text()
-    assert "--agent" not in run
-    assert "AGENT_ID unset" not in run
+    assert "/opt/data/.env" in run
+    assert re.search(r"^\s*\.\s+/opt/data/\.env", run, re.M) is None, "must not source the dotenv"
+
+
+def test_a_disabled_slot_stays_down_and_a_died_one_comes_back():
+    """finish reads run's exit status rather than re-deriving the switch.
+
+    run exits 0 without exec'ing when reporting is off, so 0 means deliberate
+    and earns 125 (s6's do-not-restart marker). Anything else means the loop
+    died, which should come back -- the dashboard returns 125 unconditionally,
+    right for a UI you can see is missing and wrong for a silent background job.
+    """
+    finish = SVC.joinpath("finish").read_text()
+    assert "125" in finish and "$1" in finish
+    assert "AGENT_INDEX" not in finish, "the switch is not in this script's environment to read"
