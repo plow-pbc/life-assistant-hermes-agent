@@ -128,22 +128,14 @@ def test_outcome_memories_get_a_raised_char_limit():
 
 
 def test_the_main_model_has_somewhere_to_fall_back_to():
-    """The owner reads a provider-failed message when a codex 503 burst outlasts
-    the loop's three retries (~15s, 2026-09-01). The image only fails over into
-    the top-level chain, so its absence -- not the burst -- is what reaches the
-    thread. Same target as compression: the only other id this account serves,
-    on the instance's own auth, so no new credential."""
+    """The image only fails over into the top-level chain, so its absence -- not
+    the overload burst -- is what reaches the owner as a provider-failed
+    message. An entry equal to the primary cannot help: the shed request would
+    land on the same overloaded route."""
     chain = config()["fallback_providers"]
 
-    assert [e["model"] for e in chain] == ["gpt-5.5"]
-    assert chain[0]["provider"] == "openai-codex", (
-        "the fallback rides this instance's own codex auth -- a provider "
-        "needing a new credential would not resolve here at all"
-    )
-    assert chain[0]["model"] != config()["model"]["default"], (
-        "a chain entry equal to the primary is a fallback that cannot help: "
-        "the shed request would land on the same overloaded route"
-    )
+    assert chain == [{"provider": "openai-codex", "model": "gpt-5.5"}]
+    assert chain[0]["model"] != config()["model"]["default"]
 
 
 def test_compression_has_somewhere_to_fall_back_to():

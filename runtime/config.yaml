@@ -24,20 +24,14 @@ group_sessions_per_user: false
 model:
   default: gpt-5.6-sol
   provider: openai-codex
-# The main model needs the same escape hatch compression got. A ChatGPT-account
-# codex answers 503 `server_is_overloaded` in bursts (2026-09-01: 13 shed calls
-# across the four instances in under an hour, on four separate accounts, while a
-# hand-probe of the same endpoint returned 200 throughout -- so it is upstream
-# load-shedding, not this deployment). The image classifies that as
-# FailoverReason.overloaded and WOULD fail over on the third attempt, but only
-# into a chain read from this top-level key; with none configured the loop
-# exhausts three retries in ~15s and the owner reads "The model provider failed
-# after retries" instead of an answer.
+# The main model's own escape hatch, for the 503 bursts a ChatGPT-account codex
+# sheds under load. The image classifies those as FailoverReason.overloaded and
+# fails over on the third attempt -- but only into THIS top-level key, so with
+# none configured the loop exhausts its three retries in ~15s and the owner
+# reads a provider-failed message instead of an answer.
 #
-# Same target and same reasoning as auxiliary.compression below: gpt-5.5 is the
-# only other id this account serves, and it rides the instance's own codex auth,
-# so this costs no new credential. Verified 200 on that credential the same hour
-# the primary was being shed.
+# Same target and reasoning as auxiliary.compression below: gpt-5.5 is the only
+# other id this account serves, on the instance's own auth, so no new credential.
 fallback_providers:
 - provider: openai-codex
   model: gpt-5.5
