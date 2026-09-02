@@ -17,7 +17,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location(
-    "mint_wall_token", ROOT / "ld-setup" / "scripts" / "mint_wall_token.py")
+    "mint_wall_token", ROOT / "ld-wall-setup" / "scripts" / "mint_wall_token.py")
 mwt = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mwt)
 

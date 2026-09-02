@@ -22,6 +22,7 @@ COPY ld-morning-triage/   /var/lib/hermes/skills/ld-morning-triage/
 COPY ld-morning-updates/  /var/lib/hermes/skills/ld-morning-updates/
 COPY ld-setup/            /var/lib/hermes/skills/ld-setup/
 COPY ld-shared/           /var/lib/hermes/skills/ld-shared/
+COPY ld-wall-setup/       /var/lib/hermes/skills/ld-wall-setup/
 COPY ld-sports/           /var/lib/hermes/skills/ld-sports/
 COPY ld-viewer-dev/       /var/lib/hermes/skills/ld-viewer-dev/
 COPY ld-weather/          /var/lib/hermes/skills/ld-weather/
