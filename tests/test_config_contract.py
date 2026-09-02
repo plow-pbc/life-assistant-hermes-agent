@@ -55,7 +55,8 @@ def config():
 DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
 
 
-def test_the_clarify_tool_is_taken_away_not_merely_forbidden():
+@pytest.mark.parametrize("toolset", ["clarify", "browser"])
+def test_unbacked_tools_are_taken_away_not_merely_forbidden(toolset):
     """`clarify` renders a blocking ❓ menu and stops the turn until the owner
     picks something. It has never been reached deliberately here -- it is what a
     turn grabs when it cannot find the mechanism it wants -- and it arrived three
@@ -65,10 +66,16 @@ def test_the_clarify_tool_is_taken_away_not_merely_forbidden():
 
     It is the only tool in its toolset, so disabling the toolset removes that one
     and nothing else.
+
+    `browser` is Hermes' own browser_* / browser_exec stack, which nothing in
+    this container can back (no desktop Chrome for the Browser Use harness, no
+    agent-browser CLI): every call ends in chrome-not-running, and an agent that
+    still sees the tools picks them over Latch's plow_browser tools and tells
+    the owner the browser is down.
     """
-    disabled = (config().get("agent") or {}).get("disabled_toolsets")
-    assert disabled and "clarify" in disabled, (
-        "a deployed agent can reach the tool behind the ❓ rows")
+    disabled = config()["agent"]["disabled_toolsets"]
+    assert toolset in disabled, (
+        f"a deployed agent can reach the unbacked {toolset} tools")
 
 
 def test_the_file_mutation_verifier_footer_is_off():
