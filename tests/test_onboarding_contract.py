@@ -371,6 +371,30 @@ def test_calendar_names_are_named_as_untrusted():
 # Two sentences that carry an invariant
 # --------------------------------------------------------------------------
 
+def test_the_sheet_names_no_tool_that_does_not_exist():
+    """Naming an unavailable tool sends the model hunting for it.
+
+    The sheet described `send_message` -- to say it was NOT callable -- and the
+    turn went terminal, skill_view, tool_search, tool_search, tool_search, then
+    `clarify` with the question "placeholder". That was the entire first thing
+    the agent said to a new owner: "❓ placeholder".
+    """
+    assert "send_message" not in SKILL
+
+
+def test_clarify_is_forbidden_during_onboarding():
+    """The ❓ rows are a tool, and it blocks the turn until someone picks.
+
+    Three times it reached a real owner: a menu asking them to name the
+    assistant, a menu asking how messages should be sent, and `❓ placeholder`.
+    Banning numbered menus in prose did not cover the tool that renders them.
+    """
+    text = " ".join(ONBOARDING.split())
+    assert "Never call `clarify` during onboarding" in text
+    assert "it blocks the turn" in text
+    assert "through the `clarify` tool" in text, "the prose ban must name the tool too"
+
+
 def test_mid_turn_commentary_is_switched_off_in_config():
     """The half of the fix that does not depend on the model complying.
 
