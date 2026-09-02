@@ -475,6 +475,40 @@ def test_the_listing_file_is_written_only_where_a_listing_exists():
     assert "calendar-listing.json" not in ONBOARDING[:ONBOARDING.index("### 5 ·")]
 
 
+def test_the_connected_branch_turns_on_the_listing_not_on_the_probe():
+    """`configured` says a relay is registered. It does not say a Mac answered.
+
+    Read as the same thing, an owner whose Mac is asleep is handed the branch for
+    an owner whose Mac is up: no install link, and a calendar question about
+    calendars nobody could read. The probe decides whether to ATTEMPT the call;
+    only a listing that came back decides what the message says.
+    """
+    algorithm = " ".join(
+        ONBOARDING[ONBOARDING.index("**2 · Run the Latch status probe"):
+                   ONBOARDING.index("### 1 ·")].split())
+    assert "permission to attempt the listing call, and nothing more" in algorithm
+    assert "CONNECTED is a listing that came back" in algorithm
+
+    # Nowhere may `configured` alone gate the connected copy.
+    for marker in ("the pitch-and-link\n  paragraph is the only part dropped",
+                   "the catch and the link are omitted"):
+        window = ONBOARDING[max(0, ONBOARDING.index(marker) - 260):ONBOARDING.index(marker) + 60]
+        assert "listing" in window.lower() and "CAME BACK" in window.upper(), (
+            f"the connected branch at {marker!r} is gated on the probe, not the listing")
+
+
+def test_step_four_names_exactly_one_deferral():
+    """Structural, because the count is the contract.
+
+    "Defer whenever the turn ends on a question" was the over-broad version and
+    it made every turn's write conditional on wording. There is one exception --
+    the turn that learns the name and sends the one-time introduction -- and a
+    second one appearing here is the enumeration growing back.
+    """
+    step4 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[3]):ALGORITHM.index(STEPS[4])].split())
+    assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
+
+
 def test_the_relay_tool_is_named_only_where_it_exists():
     """The sheet must not name a tool the build may not have.
 
