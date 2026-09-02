@@ -231,93 +231,129 @@ leaves their name on file and the introduction never sent. Writing last
 satisfies the second and breaks the first. So neither — and the way out is not
 a schedule of turns but one rule about when a hold is safe, below.
 
-## The algorithm — four steps, and the decision is not yours
+## The algorithm — every owner turn, the same five steps
 
-Every owner turn, first or fiftieth, resumed or fresh, runs these four steps.
-There is no table of turn shapes and no rule here to interpret: what this turn
-asks, what it writes and whether it introduces you are decided by a script.
+There is no turn schedule and no table of shapes to match. Every turn of this
+conversation, first or fiftieth, resumed or fresh, runs THESE FIVE STEPS in
+this order. A turn that goes looking for its own special case finds none, which
+is the point: every enumerated list of turn shapes this sheet has carried grew
+a hole, and each hole reached an owner as `❓ placeholder` — a blocking menu —
+because a turn that cannot find its own shape improvises one.
 
-**1 · Stage what this message gave you**, with your FILE tool, at
-`/opt/data/ld/.turn.json` — never a heredoc, never argv:
+**1 · Read the config.** `/opt/data/ld/config.json`, once, at the top. It is
+the only record of how far this got; there is no marker and no second source.
+The four keys, in order: `family.owner.name`, `weather.location`,
+`sports.followed`, `calendar.sources`. Present-but-empty is answered.
 
-    {"answers": {"name": "…", "city": "…, …", "teams": […], "calendars": […]},
-     "carried": {"name": "…"}}
+**2 · Run the Latch status probe.** `latch_status.py`, as described above.
+`unconfigured` means not connected: no tool lookup, nothing said about it, and
+the pitch and link still stand. `configured` means the listing call is
+available to step 5.
 
-`answers` is only what THIS message carried. Omit a key you were not given; a
-roster label is not a name.
+**3 · Take what this message gave you.** Their name, their city, their teams,
+their calendar picks — whatever actually arrived, judged from what they typed
+and nothing else. A roster label is not a name. Nothing arrives on a first
+turn, so nothing is collected and nothing is written.
 
-`carried` is an answer an EARLIER turn gave you and told you to hold — in
-practice the one deferred name. It goes here, never in `answers`: the split is
-how the script knows the introduction has already gone out, and a carried name
-filed as a fresh one reads as a first meeting every turn.
+**4 · Write everything you hold that is not yet in the config — NOW, before
+the message.** One draft, carrying everything held, never just the newest.
 
-Nothing else goes in that file, and no relay call is made to fill it. The
-listing belongs to step 4, on the one turn that asks about calendars.
+There is exactly ONE deferral, and it is not "whenever the turn ends on a
+question". It is the turn that has just learned their name **and** is sending
+the introduction: that turn holds the name back and the next turn writes it,
+because the introduction is one-time and a crash between the write and the
+message would skip it for good. Nothing else is ever held: the turn their city
+lands on writes the name **and** the city and asks about teams; the turn their
+teams land on writes the teams.
 
-**2 · Ask what the turn is:**
+That one deferral lapses when the turn asks nothing, because nothing is coming
+back to carry it. Then the name is written now, in this turn, alongside the
+introduction and the close.
 
-    python3 /opt/data/skills/ld-setup/scripts/onboarding_state.py --input /opt/data/ld/.turn.json
+**5 · Compose the one message**, in this shape:
 
-It prints one object: `missing` (ordered), `ask` (`name` / `city` / `teams` /
-`calendars` / `null`), `write_now`, `defer`, `intro_due`, `latch`.
+- **acknowledge what just landed** — their city back to them, their teams in
+  their own words, their name if they have just given it;
+- **then the introduction, if their name was learned THIS turn** — the
+  introduction, the privacy line, the previews, and the pitch and link. A name
+  already in the config means it has been sent: nothing records whether it
+  actually was, deliberately, because a second record of progress is the bug
+  this file exists without. Re-introducing yourself to someone who has been
+  talking to you for a week is the worse of the two errors, and it is the one
+  an owner notices. Where the probe said `configured`, the pitch-and-link
+  paragraph is the only part dropped — the rest of the introduction stands;
+- **then ask the FIRST key still missing**, in order: name → city → teams →
+  calendars. Calendars only where the probe said `configured`: list them and
+  ask which to track, and write the picks, the account and the lookaheads on
+  the turn that answers. **If no key is missing, ask nothing** — say they are
+  set and offer the wall.
 
-**That object is yours and never theirs.** Not quoted, not summarised, not
-mentioned. `write_now needs name + weather.location drafted now` went to a real
-owner as its own message, seconds before the sentence she was actually waiting
-for. The words `write_now`, `defer`, `intro_due`, `missing`, `ask` and `latch`
-have no meaning to a person being introduced to their assistant, and neither
-does the fact that a script ran. Read it, act on it, say the step's own
-sentence.
+Nothing to ask is never nothing to say. A turn that reaches step 5 with no
+question owed still owes a message, and the message is the close.
 
-**3 · Do exactly what it said.** If `write_now` is non-empty, stage those
-answers as a partial config with your file tool at `/opt/data/ld/.draft.json`
-and draft it:
+**Examples, not authorities** — every one of these is just the five steps run
+against a different config. Where an example and the algorithm disagree, the
+algorithm is right:
+
+- nothing stored, first message → nothing collected, nothing written, ask the
+  name;
+- name just given, nothing stored → introduce yourself, ask the city, and hold
+  the name (the one deferral);
+- name just given, city and teams already stored, Latch unconfigured → nothing
+  left to ask, so the deferral lapses: write the name now, introduce yourself,
+  and close;
+- city just given → write the name and the city together, ask about teams;
+- teams just given, calendars still missing and Latch unconfigured → write the
+  teams, and close;
+- name already in the config, city missing → the introduction has been sent;
+  just ask the city.
+
+**What a crash between step 4 and step 5 costs.** A repeated question: the
+answer is on file and the message that would have asked for the next thing
+never went, so the next turn asks it again and the owner answers in four
+seconds. The exception is the terminal turn, where the deferral lapsed and the
+introduction can be skipped once — still the right trade, because the
+alternative there is not a window but a name that is never written at all.
+
+Never write ahead of the answer. A turn with nothing in hand writes nothing:
+a first turn has been told nothing yet, so it makes no draft and invents no
+name. Observed, from wording that only said "draft first": a fabricated name
+written to the config, then retracted to the owner across two messages.
+
+**Nothing the owner said ever reaches a shell.** Their name, their city, and
+above all a calendar's display name — which is text a stranger wrote — are
+staged as JSON with your FILE tool and passed by path. There is no heredoc in
+this sheet for a reason: a heredoc composed around someone's words is a command
+built out of their input, and a calendar called `"; rm -rf ~; echo "` is a
+string to show the owner, not a command to run.
+
+**Every answer reaches the config a step later at most**, one draft at a
+time, never as one blob at the end:
+
+Stage this with your file tool at `/opt/data/ld/.draft.json`:
+
+    {"family": {"owner": {"name": "Mary"}}}
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
 
-Anything in `defer` is held in the conversation and staged by the next turn —
-under `carried`, not `answers`.
-An empty `write_now` means no draft at all this turn.
+`--draft`, not `--patch`. Stdin is a PARTIAL CONFIG in the shape of
+`/opt/data/skills/ld-shared/references/config.example.json`, deep-merged onto
+whatever is there — and unlike `--patch` it works before the file exists and
+excuses the shared gate for the questions not yet asked. It has to: the gate
+wants a calendar account and its sources, and onboarding never asks for those,
+because the calendar arrives through Latch's connectors later. So a long
+`gate:` line listing the calendar keys is the EXPECTED output, not a failure.
+A value you actually supplied is still judged: `refusing to draft:` means the
+answer as you composed it is wrong — fix what it names and run it again.
 
-**4 · Compose the one message**: acknowledge what just landed, then the
-introduction if `intro_due`, then the question `ask` names — or, when `ask` is
-`null`, the close and the wall offer. The sections below are the copy for each
-of those pieces.
-
-**Only when `ask` is `calendars`** does this turn make the listing call §5
-describes — one call, hand the output to `calendar_list.py`, show them what
-came back. If that call fails or is refused, the Mac is not answering: say
-nothing about it, ask nothing about calendars, and close instead. On every
-other turn no relay tool is called at all.
-
-`ask: null` never means "say nothing". A turn that reaches step 4 with no
-question owed still owes a message, and the message is the close. Where the
-sheet left that void, an owner received `❓ dummy`.
-
-**Why a script.** The same decision written as prose grew a hole every time it
-was extended, and each hole reached an owner as a blocking `❓`. The rules are
-in `onboarding_state.py` and are not restated here to drift from.
-
-**Nothing the owner said ever reaches a shell** — their name, their city, and
-above all a calendar's display name, which is text a stranger wrote. Stage it
-as JSON with your file tool and pass the path.
-
-**The fewest tool calls the turn needs.** Every gap between two of them is
-somewhere a sentence can escape. A turn that did ten before saying hello leaked
-one: *"The opener step calls for a simple hello and asking their name."*
-
-**`--draft`, not `--patch`.** The staged file is a PARTIAL CONFIG in the shape
-of `/opt/data/skills/ld-shared/references/config.example.json`, deep-merged
-onto whatever is there — and unlike `--patch` it works before the file exists
-and excuses the gate for the questions not yet asked. So a long `gate:` line
-listing the calendar keys is the EXPECTED output, not a failure; `refusing to
-draft:` means the answer as you composed it is wrong.
-
-Every script's output here is yours the same way — no pasted `gate:` line, no
-exit status, no file paths. If a draft refuses and you cannot fix it from what
-they said, ask them the one question that resolves it, in plain words. (The
-paste-everything rule further down belongs to the wall phases, where the owner
-is deliberately being walked through an install.)
+**This output is yours, not the owner's.** Read it, act on it, and say nothing
+script-shaped in chat: no pasted `gate:` line, no exit status, no file paths,
+no "wrote config.json". The owner is having a conversation, and a person who
+just told you their name should hear their name back, not a validator. (The
+paste-everything rule further down this sheet belongs to the wall phases,
+where the owner is deliberately being walked through an install.) If a draft
+refuses and you cannot fix it from what they said, ask them the one question
+that resolves it, in plain words.
 
 ### 1 · Opener
 
@@ -639,13 +675,12 @@ formatting. The script expects gog's output exactly as gog produced it.
 
 **That file is written HERE and nowhere else, and only ever with the listing
 call's own output.** Not on the introduction turn, not as an empty file, not as
-a placeholder to fill in later, and never with anything you composed. Before a
-listing exists there is nothing to put in it, and a write that fails leaves
-more than a missing file: a failed write is reported in a footer appended to
-the turn's final response, and the turn's final response is a message to the
-owner. One arrived inside an introduction — a `⚠️ File-mutation verifier:`
-block naming container paths and a JSONDecodeError, mid-sentence, to someone
-who had just said hello.
+a placeholder to fill in later. Before a listing exists there is nothing to put
+in it, and a write that fails leaves more than a missing file: a failed write is
+reported in a footer appended to the turn's final response, and that response is
+a message to the owner. One arrived inside an introduction — a `⚠️ File-mutation
+verifier:` block naming container paths and a JSONDecodeError, mid-sentence, to
+someone who had just said hello.
 
     python3 /opt/data/skills/ld-setup/scripts/calendar_list.py /opt/data/ld/calendar-listing.json
 
@@ -732,12 +767,11 @@ If an earlier answer is still unwritten when this draft goes — an owner who
 connected Latch before they gave their city — it rides along in the same
 object. Step 4 writes everything held, never just the newest.
 
-**Ids only — no `name` key, and no display string anywhere in that file.**
+**Ids only — no `name` key, and no display string anywhere in that heredoc.**
 A calendar's display name is written by whoever owns it, so it is text a
-stranger controls. A calendar called
+stranger controls, and this heredoc is shell. A calendar called
 `"; rm -rf ~; echo "` is a string to show the owner in one sentence and never
-to persist in their config — and it is why nothing here is ever composed into a
-command. The producers read
+to interpolate into a command or persist in their config. The producers read
 `calendar_id` and nothing else, and the gate accepts a source without a name.
 
 **`owner_identities` is the UNION**, deduplicated: every address in the

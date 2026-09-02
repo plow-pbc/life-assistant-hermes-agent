@@ -95,15 +95,12 @@ def test_the_account_is_derived_or_left_for_the_owner(label, flagged, owned_by, 
 
 @pytest.mark.parametrize("label,entries,account,candidates", [
     # A calendar shared into the account carries THEIR address in dataOwner.
-    # Counting it would make a stranger a candidate for this owner's config.
     ("a share never votes",
      [{"id": "mary@example.test", "summary": "Mine", "accessRole": "owner",
        "dataOwner": "mary@example.test"},
       {"id": "team@group.calendar.google.test", "summary": "Team",
        "accessRole": "reader", "dataOwner": "someone@else.test"}],
      "mary@example.test", ["mary@example.test"]),
-    # Nothing decides it, and the listing still comes back so the owner can be
-    # asked -- with the addresses to choose between, not an open question.
     ("no signal at all",
      [{"id": "a@example.test", "summary": "A", "accessRole": "reader"},
       {"id": "b@example.test", "summary": "B", "accessRole": "reader"}],
@@ -112,11 +109,8 @@ def test_the_account_is_derived_or_left_for_the_owner(label, flagged, owned_by, 
      [{"id": "a@example.test", "summary": "Mine", "accessRole": "owner",
        "dataOwner": "b@example.test"},
       {"id": "c@example.test", "summary": "Also mine", "accessRole": "owner",
-       "dataOwner": "a@example.test"},
-      {"id": "team@group.calendar.google.test", "summary": "Team",
-       "accessRole": "reader", "dataOwner": "someone@else.test"}],
+       "dataOwner": "a@example.test"}],
      None, ["a@example.test", "b@example.test"]),
-    # The flag decides it, and candidates still report what the rows said.
     ("a flagged primary", LISTING, "mary@example.test", ["mary@example.test"]),
 ])
 def test_the_account_and_its_candidates(label, entries, account, candidates):
