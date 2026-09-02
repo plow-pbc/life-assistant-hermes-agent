@@ -29,16 +29,16 @@ offer.
 `/api/message` behind a bearer, port 5174 — on the owner's home network,
 and you cannot reach that network. The owner's Mac can, and it runs Plow
 Latch, so every step that touches the Pi runs *from the Mac* through the
-Latch tools (`mcp__latch__plow_run_command`, `mcp__latch__plow_write_file`). Argv is shown to the
+Latch tools (`mcp__plow__plow_run_command`, `mcp__plow__plow_write_file`). Argv is shown to the
 owner on an approval card and kept in an audit record; there is no stdin and
 no env. So a secret never rides argv: the wall's token travels only inside
-files you ship whole with `mcp__latch__plow_write_file`, and every `curl` reads it from
-`~/Plow/ld/dashboard.hdr` with `-H @…`. `mcp__latch__plow_run_command` execs its argv
+files you ship whole with `mcp__plow__plow_write_file`, and every `curl` reads it from
+`~/Plow/ld/dashboard.hdr` with `-H @…`. `mcp__plow__plow_run_command` execs its argv
 directly rather than through a shell, so anything needing a redirect, a `&&`
 or a `~` is written as `["sh","-c","…"]`. Its `network` defaults to false
 and every call below that leaves the Mac passes `network=true`; its `timeout`
 is in milliseconds and defaults to 10000, and a call that exceeds it comes
-back as a job handle to poll with `mcp__latch__plow_get_output`. Paths under `~/Plow`
+back as a job handle to poll with `mcp__plow__plow_get_output`. Paths under `~/Plow`
 auto-approve.
 
 Cards refresh only while that Mac is awake with Latch running — an accepted
@@ -58,7 +58,7 @@ on a non-zero exit.
 `/opt/data/ld/dashboard.hdr`, or any line containing `TOKEN` into chat.** The
 dotenv carries this agent's own Plow bearer and the wall's token; the scripts
 read it for you. The two `ld/` files are read with your file tool for one
-purpose only — to become the `content` of a `mcp__latch__plow_write_file` call — and
+purpose only — to become the `content` of a `mcp__plow__plow_write_file` call — and
 their content goes nowhere else: not into a chat message, not into argv. The
 single exception is the no-Mac fallback in Phase 3, which says exactly what
 may cross chat and once.
@@ -157,7 +157,7 @@ bare lines, `pi_line_1=…` and `pi_line_2=…`, for Phase 3:
 - `/opt/data/ld/dashboard.hdr` — `Authorization: Bearer …`, the header every
   `curl` from the Mac reads. Ship it now, when the owner has a Mac:
 
-      mcp__latch__plow_write_file(path="~/Plow/ld/dashboard.hdr", content=<the content of /opt/data/ld/dashboard.hdr, read with your file tool>)
+      mcp__plow__plow_write_file(path="~/Plow/ld/dashboard.hdr", content=<the content of /opt/data/ld/dashboard.hdr, read with your file tool>)
 
   That call is the one time you handle the token, and its content goes into
   that call and nowhere else — not into chat, not into argv. Paste the
@@ -180,13 +180,13 @@ Phase 2 printed `re-pointed:` or this run supplied `ical_url`: the freshly
 rewritten `pi.env` has to reach the Pi or the new feed/address never takes
 effect.
 
-    mcp__latch__plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
+    mcp__plow__plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
 
 **Read the failure before treating it as "viewer not up."** A `curl` exit 22
 (an HTTP 4xx) means something *answered* on 5174 — probe the always-open
 liveness path to tell the two states apart:
 
-    mcp__latch__plow_run_command(argv=["sh","-c","curl -fsS http://<pi_address>:5174/healthz"], network=true)
+    mcp__plow__plow_run_command(argv=["sh","-c","curl -fsS http://<pi_address>:5174/healthz"], network=true)
 
 `ok` here plus a 403/404 above = the viewer is alive and serving the wall
 but runs a build that predates the updater contract (no `/api/version`, or no
@@ -204,7 +204,7 @@ fails fast instead of hanging on a password prompt with no tty;
 `StrictHostKeyChecking=accept-new` because the first connection has no host
 key yet and there is no tty to answer the prompt on.
 
-    mcp__latch__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "<pi_user>@<pi_address>", "true"], network=true)
+    mcp__plow__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "<pi_user>@<pi_address>", "true"], network=true)
 
 If that fails, the **one hands-on moment**: tell the owner to run
 `ssh-copy-id <pi_user>@<pi_address>` in their own Mac terminal. That is not
@@ -215,12 +215,12 @@ confirm it ran, re-probe; do not proceed on a refused probe.
 
 Once the probe succeeds, run each Pi line the same way with `network=true`
 and a `timeout` of `600000` (ten minutes — `apt-get` is slow on a Pi; a run
-this long comes back as a job handle, so poll it with `mcp__latch__plow_get_output`
+this long comes back as a job handle, so poll it with `mcp__plow__plow_get_output`
 rather than waiting on the call). `<pi_line_1>` and `<pi_line_2>` are the two
 values Phase 2 printed, each dropped whole into one argv element:
 
-    mcp__latch__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_1>"], network=true, timeout=600000)
-    mcp__latch__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_2>"], network=true, timeout=600000)
+    mcp__plow__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_1>"], network=true, timeout=600000)
+    mcp__plow__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_2>"], network=true, timeout=600000)
 
 Raspberry Pi OS grants the Imager's primary user passwordless sudo by
 default; if `pi_line_1` instead comes back asking for a sudo password, that
@@ -234,8 +234,8 @@ the viewer. The shell text here is static: the owner's two values ride the
 trailing argv positions (`$1`/`$2`), so nothing they answered is ever parsed
 as shell:
 
-    mcp__latch__plow_write_file(path="~/Plow/ld/pi.env", content=<the content of /opt/data/ld/pi.env>)
-    mcp__latch__plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env $1@$2:ld-data/.env && ssh -o BatchMode=yes $1@$2 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'","sh","<pi_user>","<pi_address>"], network=true, timeout=30000)
+    mcp__plow__plow_write_file(path="~/Plow/ld/pi.env", content=<the content of /opt/data/ld/pi.env>)
+    mcp__plow__plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env $1@$2:ld-data/.env && ssh -o BatchMode=yes $1@$2 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'","sh","<pi_user>","<pi_address>"], network=true, timeout=30000)
 
 Finish with the skip check at the top of this phase: JSON with a `sha` means
 the viewer is up and the token is live. Paste it. Any other result — 401
@@ -318,7 +318,7 @@ order, per `/opt/data/skills/ld-shared/references/latch-delivery.md`. Wait
 until `/opt/hermes/bin/hermes cron runs` lists that run as finished, then
 read the card back the same way the producers write it:
 
-    mcp__latch__plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr 'http://<pi_address>:5174/api/message?card=3'"], network=true)
+    mcp__plow__plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr 'http://<pi_address>:5174/api/message?card=3'"], network=true)
 
 `{"message": {…"type":"weather"…}}` is the gate: the weather producer's card
 is on the Pi. `{"message": null}` means it is not — read the forced run's

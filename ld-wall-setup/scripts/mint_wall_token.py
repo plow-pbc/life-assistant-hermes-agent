@@ -278,7 +278,7 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR, argv=None):
         # Qualified: this line is read by the model, and a bare tool name is one
         # the build does not register.
         print(f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr (mode 600) -- "
-              "ship them with mcp__latch__plow_write_file; never paste them.")
+              "ship them with mcp__plow__plow_write_file; never paste them.")
         # The one authoritative ssh target for Phase 3 -- both halves validated
         # above, so the skill binds its placeholders from this line rather than
         # re-deriving (or re-asking for) either half.

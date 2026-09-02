@@ -41,7 +41,7 @@ DISCOVERY_ARGV = 'argv=["gog", "calendar", "calendars", "--json", "--results-onl
 # prefix, so a sheet naming the bare suffix names a tool that is not there: one
 # calendar turn spent twenty-one API calls on tool_search and answered the owner
 # with nothing.
-RELAY_TOOL = "mcp__latch__plow_run_command"
+RELAY_TOOL = "mcp__plow__plow_run_command"
 
 
 def load(name, rel):
@@ -533,7 +533,7 @@ def test_the_wall_names_its_relay_tools_as_the_image_registers_them():
     does not register and a turn that cannot find it hunts through tool_search
     instead of calling it. Measured on the onboarding side at twenty-one API
     calls and no reply to the owner."""
-    for hit in re.finditer(r"(?<!mcp__latch__)\bplow_[a-z_]+\b", WALL):
+    for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", WALL):
         raise AssertionError(
             f"the wall names a relay tool without its prefix: "
             f"{WALL[hit.start():hit.start() + 30]!r}")
@@ -558,7 +558,7 @@ def test_the_relay_tool_is_named_only_where_it_exists():
     assert "latch_status.py" in ONBOARDING[:configured], "the probe must come first"
     # Every relay tool, not the two that happened to appear first: the family is
     # `plow_<something>` and the next one added would otherwise slip in bare.
-    for hit in re.finditer(r"(?<!mcp__latch__)\bplow_[a-z_]+\b", ONBOARDING):
+    for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", ONBOARDING):
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
             "that has established it exists")
@@ -591,7 +591,7 @@ def test_the_scripts_print_relay_tools_qualified_too():
         source = (ROOT / rel).read_text()
         printed = re.findall(r'"[^"\n]*\bplow_[a-z_]+[^"\n]*"', source)
         for literal in printed:
-            for hit in re.finditer(r"(?<!mcp__latch__)\bplow_[a-z_]+\b", literal):
+            for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", literal):
                 raise AssertionError(
                     f"{rel} prints an unqualified relay tool: {literal.strip()!r}")
 
@@ -601,49 +601,49 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
     box with no relay at all rather than raising -- that is the whole case."""
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
     configured = [
-        "mcp_servers:\n  latch:\n    url: https://x.test\n",
+        "mcp_servers:\n  plow:\n    url: https://x.test\n",
         # A relay beside another server, one carrying only headers, one quoted,
         # one with a comment above it, and one that is not the first key in the
         # file -- every shape the deployment's own stanza has been seen in.
-        "mcp_servers:\n  other:\n    url: x\n  latch:\n    url: y\n",
-        "mcp_servers:\n  latch:\n    headers:\n      Authorization: Bearer x\n",
-        "mcp_servers:\n  # the relay\n  latch:\n    url: y\n",
+        "mcp_servers:\n  other:\n    url: x\n  plow:\n    url: y\n",
+        "mcp_servers:\n  plow:\n    headers:\n      Authorization: Bearer x\n",
+        "mcp_servers:\n  # the relay\n  plow:\n    url: y\n",
         # A comment indented deeper than the servers, and a blank line before
         # them: the level comes from the first real KEY, not the first indented
         # line, or a stray comment would set it too far in.
-        "mcp_servers:\n      # indented however its author felt\n  latch:\n    url: y\n",
-        "mcp_servers:\n\n  latch:\n    url: y\n",
-        "model:\n  a: b\nmcp_servers:\n  latch:\n    url: x\nplugins:\n  a: b\n",
+        "mcp_servers:\n      # indented however its author felt\n  plow:\n    url: y\n",
+        "mcp_servers:\n\n  plow:\n    url: y\n",
+        "model:\n  a: b\nmcp_servers:\n  plow:\n    url: x\nplugins:\n  a: b\n",
     ]
     unconfigured = [
         "mcp_servers: {}\n",
         "mcp_servers:\n",
         "model:\n  default: x\n",
         "mcp_servers:\n  other:\n    url: x\n",
-        # `latch:` nested inside ANOTHER server's settings is not our relay --
+        # `plow:` nested inside ANOTHER server's settings is not our relay --
         # it registers no tool, so reading it as one would answer "configured"
         # for a build that cannot reach a Mac and send the turn to call a tool
         # that is not there.
-        "mcp_servers:\n  other:\n    latch:\n      url: https://x.test\n",
-        "mcp_servers:\n  other:\n    headers:\n      latch:\n        url: x\n",
-        # Both together: a deeper comment AND a nested latch. Deriving the level
+        "mcp_servers:\n  other:\n    plow:\n      url: https://x.test\n",
+        "mcp_servers:\n  other:\n    headers:\n      plow:\n        url: x\n",
+        # Both together: a deeper comment AND a nested plow. Deriving the level
         # from the comment would put it at the nested key and answer
         # "configured" for a build with no relay of ours at all.
-        "mcp_servers:\n    # deeper than the servers\n  other:\n    latch:\n      url: x\n",
+        "mcp_servers:\n    # deeper than the servers\n  other:\n    plow:\n      url: x\n",
         # A trailing space is valid YAML and the same mapping, and it is still
         # not the stanza the deployment writes -- yaml.safe_dump never emits
         # one, so a line carrying it was edited by hand. Unconfigured is the
         # safe direction: an install link the owner has already followed, rather
         # than a call to a tool that may not be registered.
-        "mcp_servers:\n  latch: \n    url: https://x.test\n",
+        "mcp_servers:\n  plow: \n    url: https://x.test\n",
         # A name with nothing under it registers no tool: no url, no bearer.
-        "mcp_servers:\n  latch:\n",
-        "mcp_servers:\n  latch:\nmodel:\n  default: x\n",
+        "mcp_servers:\n  plow:\n",
+        "mcp_servers:\n  plow:\nmodel:\n  default: x\n",
         # And the old spelling is not the relay: the tool would be registered
         # under a prefix the sheet does not name.
-        "mcp_servers:\n  plow:\n    url: https://x.test\n",
+        "mcp_servers:\n  latch:\n    url: https://x.test\n",
         # A commented-out relay is not a relay.
-        "mcp_servers:\n  # latch: gone\n  other:\n    url: x\n",
+        "mcp_servers:\n  # plow: gone\n  other:\n    url: x\n",
     ]
     for text in configured:
         assert ls.relay_configured(text), text
@@ -691,20 +691,21 @@ def test_the_status_probe_needs_only_the_standard_library():
     assert not re.search(r"yaml\.(safe_)?load", body), "PyYAML is being called"
 
 
-def test_the_relay_key_is_latch_and_only_latch():
+def test_the_relay_key_is_plow_and_only_plow():
     """One spelling, because the key is also the tool's prefix.
 
-    `latch` is the base seed's name for the relay and this repo's, and the model
-    calls `mcp__latch__plow_run_command`. Accepting a second spelling here would
-    answer "configured" for a build whose tool is registered under a name the
-    sheet does not use -- and the turn would go hunting for a tool that is not
-    there, which is how one calendar turn spent its whole budget on tool_search.
+    `plow` is this repo's name for the relay and the prefix on the tool the
+    model calls -- `mcp__plow__plow_run_command`. Accepting a second spelling
+    here would answer "configured" for a build whose tool is registered under a
+    name the sheet does not use -- and the turn would go hunting for a tool that
+    is not there, which is how one calendar turn spent its whole budget on
+    tool_search.
     """
     ls = load("latch_status", "ld-setup/scripts/latch_status.py")
     # Behaviour, not a constant: what matters is that the old spelling does not
     # answer "configured", whatever the code calls the name it looks for.
-    assert not ls.relay_configured("mcp_servers:\n  plow:\n    url: https://x\n")
-    assert ls.relay_configured("mcp_servers:\n  latch:\n    url: https://x\n")
+    assert not ls.relay_configured("mcp_servers:\n  latch:\n    url: https://x\n")
+    assert ls.relay_configured("mcp_servers:\n  plow:\n    url: https://x\n")
 
 
 def test_discovery_is_one_argv_and_never_auth_list():

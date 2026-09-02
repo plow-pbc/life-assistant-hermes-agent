@@ -90,7 +90,7 @@ rule above quoted back at her. The script answered the question. Believe it.
 
 **`configured` means, and only then, make the one read-only call §5 needs:**
 
-    mcp__latch__plow_run_command(argv=["gog", "calendar", "calendars", "--json", "--results-only"])
+    mcp__plow__plow_run_command(argv=["gog", "calendar", "calendars", "--json", "--results-only"])
 
 Two outcomes from there:
 
@@ -667,10 +667,10 @@ you do not ask, and you do not run this twice. Sources already written means
 this is done, however many listings later probes return. It is one call, exactly this argv — one plain argv, no
 shell, no flags of your own; Latch injects what it needs:
 
-    mcp__latch__plow_run_command(argv=["gog", "calendar", "calendars", "--json", "--results-only"])
+    mcp__plow__plow_run_command(argv=["gog", "calendar", "calendars", "--json", "--results-only"])
 
-**The prefix is the relay server's key.** `latch` is what this repo's
-config.yaml registers it as, so the tool is `mcp__latch__plow_run_command`. If
+**The prefix is the relay server's key.** `plow` is what this repo's
+config.yaml registers it as, so the tool is `mcp__plow__plow_run_command`. If
 your tool list shows the same suffix under another prefix, that is the tool —
 use it. Never search for it: a turn that goes looking for a relay tool by name
 spends its whole budget on `tool_search` and answers the owner with nothing,
@@ -684,7 +684,7 @@ below carries the account anyway, which is why one call is enough.
 Do not parse that output yourself — hand it to the normalizer, which knows the
 shapes gog actually returns.
 
-`mcp__latch__plow_run_command` has no redirect, so the listing arrives one of
+`mcp__plow__plow_run_command` has no redirect, so the listing arrives one of
 two ways and both end at the same file:
 
 - **A persisted result** — the call returns a handle or a path rather than the
