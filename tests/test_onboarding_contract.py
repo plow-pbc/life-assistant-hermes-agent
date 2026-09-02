@@ -401,6 +401,23 @@ def test_the_opener_is_a_hello_a_gif_and_a_name():
     assert "by the name you have" in opener
 
 
+def test_no_mode_of_write_config_touches_the_crons():
+    """The script writes one file. Its docstring once said otherwise.
+
+    The claim that --patch re-registered the crons survived three readings of
+    this file, in the module docstring, a merged PR description and a review
+    note, while no version of the code had ever done it. Prose about behaviour
+    is only as good as something that fails when it stops being true.
+    """
+    source = (ROOT / "ld-setup/scripts/write_config.py").read_text()
+    assert "subprocess" not in source
+    assert "register_crons" not in source.split('"""', 2)[2], \
+        "the body names register_crons -- either it runs it now, or the name is stale"
+    assert "NO mode touches the crons" in source
+    # And the sheet the agent actually follows says the same thing.
+    assert "It does **not** touch the crons" in SKILL
+
+
 def test_draft_and_patch_are_not_both_accepted():
     """Two merge modes with different verdicts; silently preferring one would
     make the strict one unreachable from a caller that thought it asked."""

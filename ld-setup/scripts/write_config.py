@@ -57,11 +57,14 @@ left to register_crons.py (which also refuses): the owner is the one answering,
 and the fix is AGENT_TZ in the instance dotenv on the HOST, which only the
 operator can edit -- so the refusal names it for the owner to relay.
 
-A patch also re-registers the crons. A setting that was blank is why a producer
-has no job, so the change that fills it is exactly the moment its job should
-appear -- and register_crons.py is idempotent, so a patch that changed nothing
-scheduling-shaped is a no-op there. The first-run path does NOT: Phase 4 of
-SKILL.md owns that registration and proves a card after it.
+NO mode touches the crons. This script writes one file and nothing else; the
+six schedules are register_crons.py's, run from the wall phases of SKILL.md,
+which prove a card after them. An earlier version of this paragraph claimed a
+patch re-registered them -- it never did, in any released version, and the
+claim outlived three readings of the file before anyone ran it. Nothing here is
+gated on a producer being configured, so a settings change has no schedule to
+add, and re-running the registration would fail an unrelated change on paused
+cron state it has no business judging.
 """
 from __future__ import annotations
 
