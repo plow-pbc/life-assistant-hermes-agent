@@ -50,65 +50,37 @@ def config_path(env=None):
 def relay_configured(text):
     """True when config.yaml registers the relay to the owner's Mac.
 
-    `latch:` must be a DIRECT child of `mcp_servers:` -- one level in, not any
-    level in. A deeper `latch:` belongs to some other server's settings (a
-    header, a nested block someone added) and registers no tool of ours, so
-    reading it as the relay would answer "configured" for a build that cannot
-    reach a Mac, and the turn would call a tool that is not there.
-
-    The stanza is written by the deployment, not by hand, and it always has the
-    same shape -- a top-level `mcp_servers:` mapping with `latch:` as one of its
-    keys and that server's settings under it:
+    The stanza is written by the deployment, never by hand, and it has exactly
+    one shape -- a top-level `mcp_servers:` mapping, the server at two spaces,
+    its settings deeper still:
 
         mcp_servers:
           latch:
             url: https://…
 
-    So the question is exactly "does a two-space `latch:` key sit under
-    `mcp_servers:`, with something below it", and it is answered by looking for
-    that, not by parsing YAML. Standard library only: the sheet runs this as
-    plain `python3`, and PyYAML lives in Hermes' own venv rather than the system
-    interpreter in at least one build we ship -- an `import yaml` under
-    /usr/bin/python3 once took down every container start. A probe that raises
-    is worse than no probe, because the turn improvises.
+    So that is what this looks for, literally. An earlier version derived the
+    servers' indent from whatever it found first and matched `latch:` at that
+    level, which is a small YAML parser wearing a regex -- and it read a `latch:`
+    nested inside another server's settings as the relay whenever a comment sat
+    deeper than the keys. A parser that is nearly right about a file it does not
+    have to parse is worse than a check that knows the one line it is looking
+    for: this answers "unconfigured" for any shape it does not recognise, which
+    costs a calendar step and never invents a Mac that is not there.
 
-    A key with nothing under it registers no tool: the url and the bearer are
-    what make a server, so `latch:` alone is not a relay.
+    Standard library only -- the sheet runs this as plain `python3`, and PyYAML
+    lives in Hermes' own venv rather than the system interpreter in at least one
+    build we ship. A `latch:` with nothing under it registers no tool: the url
+    and the bearer are what make a server.
     """
-    block = re.search(r"^mcp_servers:[ \t]*$\n((?:[ \t]+.*|[ \t]*)\n*)*",
-                      text, re.MULTILINE)
-    if not block:
-        return False
-    body = block.group(0)
-
-    # The servers sit at the first indent inside the mapping; whatever that
-    # indent is, it is the ONLY level the relay may be named at.
-    #
-    # Derived from the first real KEY, not the first indented line: a comment is
-    # indented however its author felt, and one sitting deeper than the servers
-    # would set the level too far in -- which would read a `latch:` nested in
-    # another server's settings as the relay, the false positive this check
-    # exists to refuse.
-    indent = None
-    for line in body[body.index("\n") + 1:].splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        leading = line[:len(line) - len(line.lstrip())]
-        if not leading:
-            break
-        indent = re.escape(leading)
-        break
-    if indent is None:
-        return False
-
-    # And a key with nothing under it registers no tool -- the url and the
-    # bearer are what make a server -- so the settings beneath it are required.
-    match = re.search(
-        rf"^{indent}[\"']?latch[\"']?:[ \t]*$"
-        r"(?:\n[ \t]*(?:#.*)?)*"
-        rf"\n{indent}[ \t]+\S",
-        body, re.MULTILINE)
-    return match is not None
+    return re.search(
+        r"^mcp_servers:[ \t]*$"          # the mapping, on its own line
+        r"(?:\n[ \t]*(?:#.*)?)*"          # blanks and comments, any indent
+        r"(?:\n  [^\s#][^\n]*"            # other servers at two spaces, and
+        r"(?:\n(?:[ \t]*|    [^\n]*))*)*"  # their settings, deeper
+        r"\n  [\"']?latch[\"']?:[ \t]*$"  # the relay, at two spaces
+        r"(?:\n[ \t]*(?:#.*)?)*"          # blanks and comments
+        r"\n    [^\s#]",                  # and at least one setting under it
+        text, re.MULTILINE) is not None
 
 
 def main(env=None):

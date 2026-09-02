@@ -150,11 +150,14 @@ Nothing to land first for the dashboard itself. Before restoring this revision,
 deploy the Plow current-session preferences endpoint and compatible
 `hermes-plow-chat` pin; otherwise removing the local notification override can
 put self-improvement reviews back in the owner's chat. The agent writes its own
-`ld/config.json` and mints
-the wall's token on the owner's first reply: `runtime/SOUL.md` tells it that
-a missing or gate-failing config means it is not set up, and
-`ld-setup/SKILL.md` is what it runs then — the interview, `write_config.py`,
-`mint_wall_token.py`, then the Pi bring-up. The Pi keeps its own
+`ld/config.json` from the owner's first DM: `runtime/SOUL.md` tells it that a
+config missing any of `family.owner.name`, `weather.location`,
+`sports.followed` or `calendar.sources` means onboarding is unfinished, and
+`ld-setup/SKILL.md` is what it runs then — a conversation, not a form, drafting
+each answer through `write_config.py` as it lands and discovering the calendars
+from the Mac through Latch once it is connected. **The wall is opt-in.** Only if
+the owner takes that offer does the rest follow: `mint_wall_token.py`, the Pi
+bring-up, and the crons. The Pi keeps its own
 `/api/message` server on the household LAN, which the agent reaches only
 through Plow Latch on the owner's Mac: it ships the token there in two files
 (never through chat), runs the two install lines on the Pi over `ssh` from
@@ -209,11 +212,16 @@ agent-mgr up <agent>                 # must precede sign-in: that runs inside th
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 just check-latch <agent>             # can this container reach that owner's Mac?
 
-# Then the owner replies to the agent's 👋 from their phone. That reply IS the
-# rest of bring-up: the agent interviews them, writes ld/config.json, mints
-# the wall's token, brings the Pi up through Latch over their LAN and ships
-# the token to the Pi and the Mac (or texts them the lines when there's no
-# Mac), registers the crons and forces a weather card (ld-setup/SKILL.md).
+# Then the owner texts the agent from their phone. That message IS the rest of
+# bring-up: onboarding starts on its own -- the agent introduces itself, asks
+# what to call them, their city and their teams, writes ld/config.json as each
+# answer lands, and picks up their calendars from the Mac once Latch is
+# connected (ld-setup/SKILL.md).
+#
+# The wall is a separate, optional offer at the end. Only an owner who takes it
+# gets the rest: the token minted, the Pi brought up through Latch over their
+# LAN, the token shipped to the Pi and the Mac (or texted when there's no Mac),
+# the crons registered and a weather card forced.
 # Nothing more to run here.
 ```
 
@@ -394,7 +402,8 @@ ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 (scheduled by runtime/life-calendar-feed.timer, cloud image only)
 ld-dashboard/   the six cron schedules, all registered
 ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
-ld-setup/       first-run setup end-to-end: config -> wall token -> Pi over Latch -> crons
+ld-setup/       first-run onboarding over chat (config), and the OPTIONAL wall
+                that may follow it: wall token -> Pi over Latch -> crons
 scripts/        latch-verdict.py -- the one thing this repo owns outright
 tests/          this agent's own contract; the fleet-wide ones live in agent-mgr
 Dockerfile      builds this agent as a standalone image -- adapter only (see below)

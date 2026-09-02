@@ -183,25 +183,35 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
     it passed [] instead, `--patch` was parsed as no flags and the partial config
     went through the first-run path, which refuses it as missing answers.
 
-    Run in place, against the real /opt/data path that does not exist here: the
-    refusal it reaches is the proof. "could not read ... config.json" is the
-    patch path; "missing required answer(s)" is the first-run path.
+    Run against a config path in a writable temp dir -- a verbatim copy of the
+    script with only its CONFIG constant repointed, so the entry point under
+    test is the real one. Pointing it at /opt/data instead made the LOCK refuse
+    first (it is taken before the mode branch and fails closed), and a lock
+    error proves nothing about how --patch was parsed.
+
+    The refusal it reaches is the proof: "could not read ... config.json" is the
+    patch path -- a patch onto a config that does not exist yet -- while
+    "missing required answer(s)" is the first-run path.
     """
-    script = ROOT / "ld-setup" / "scripts" / "write_config.py"
+    source = (ROOT / "ld-setup" / "scripts" / "write_config.py").read_text()
+    target = tmp_path / "ld" / "config.json"
+    assert f'CONFIG = "{wc.CONFIG}"' in source, "the constant moved; repoint this copy"
+    script = tmp_path / "write_config.py"
+    script.write_text(source.replace(f'CONFIG = "{wc.CONFIG}"',
+                                     f'CONFIG = {str(target)!r}'))
     proc = subprocess.run(
         [sys.executable, str(script), "--patch"],
         input=json.dumps({"family": {"owner": {"name": "Ro"}}}),
-        capture_output=True, text=True, env={**os.environ, "TZ": TZ})
+        capture_output=True, text=True,
+        # The copy lives outside the repo, so the shared gate it imports by
+        # relative path has to be reachable some other way.
+        env={**os.environ, "TZ": TZ,
+             "PYTHONPATH": str(ROOT / "ld-shared" / "scripts")})
 
     combined = proc.stdout + proc.stderr
     assert "missing required answer(s)" not in combined, (
         "--patch was dropped and the partial config went through build()")
-    # Either refusal proves it: both come from the patch path. Where /opt/data
-    # exists it is "refusing to patch: could not read"; where it does not, the
-    # lock refuses first, because the lock is taken before the read now and
-    # fails closed rather than letting a write run unlocked.
-    assert ("refusing to patch" in combined
-            or "could not take the config lock" in combined), combined
+    assert "refusing to patch" in combined, combined
 
 
 def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypatch):
@@ -364,3 +374,44 @@ def test_a_staged_input_is_removed_after_a_write_and_kept_after_a_refusal(tmp_pa
     with pytest.raises(SystemExit):
         wc.main(["--draft", "--input", str(staged)], env=ENV, config_path=str(target))
     assert staged.exists(), "a refusal deleted the file the turn has to fix"
+
+
+def test_an_input_that_is_the_config_is_refused(tmp_path):
+    """The staged input is deleted once written through, so an input that IS the
+    config would delete the household's config on a write that reported PASS --
+    every answer they ever gave, gone, with a success line above it.
+
+    It is also never what a caller means: --input carries a PARTIAL config to
+    merge, and merging a file onto itself changes nothing.
+    """
+    target = tmp_path / "ld" / "config.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(live_config()))
+
+    for path in (str(target), str(target.parent / "." / "config.json")):
+        with pytest.raises(SystemExit) as refusal:
+            wc.main(["--patch", "--input", path], env=ENV, config_path=str(target))
+        assert "--input is the config itself" in str(refusal.value)
+    assert json.loads(target.read_text()) == live_config(), "the config was touched"
+
+
+def test_a_staged_input_that_cannot_be_removed_is_reported(tmp_path, monkeypatch):
+    """Not swallowed. The file holds the owner's own words, and one left behind
+    is a second copy of their data that nothing will read. The write succeeded,
+    so the refusal says both -- what landed and what did not -- and exits
+    non-zero so a caller cannot read the run as clean."""
+    target = tmp_path / "ld" / "config.json"
+    staged = tmp_path / ".draft-abcd1234.json"
+    staged.write_text('{"family": {"owner": {"name": "Ro"}}}')
+
+    def refuse_remove(path):
+        raise OSError(13, "Permission denied")
+    monkeypatch.setattr(wc.os, "remove", refuse_remove)
+
+    with pytest.raises(SystemExit) as refusal:
+        wc.main(["--draft", "--input", str(staged)], env=ENV, config_path=str(target))
+    message = str(refusal.value)
+    assert "could not remove the staged answers" in message
+    assert "wrote" in message, "the caller is not told the write landed"
+    # The write really did land -- this is a partial success, reported as one.
+    assert json.loads(target.read_text())["family"]["owner"]["name"] == "Ro"

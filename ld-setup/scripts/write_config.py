@@ -381,6 +381,15 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     args = parser.parse_args(argv or [])
     if args.patch and args.draft:
         raise SystemExit("refusing to write: pass --patch or --draft, not both")
+    # The staged input is deleted once it has been written through, so an input
+    # that IS the config would delete the household's config on success -- every
+    # answer they ever gave, removed by a write that reported PASS. It is also
+    # never what a caller means: --input carries a PARTIAL config to merge, and
+    # merging the file onto itself changes nothing.
+    if args.input and os.path.realpath(args.input) == os.path.realpath(config_path):
+        raise SystemExit(
+            "refusing to write: --input is the config itself. Stage the partial "
+            "config in its own file; this one is what it merges onto.")
     env = os.environ if env is None else env
     try:
         if args.input:
@@ -460,8 +469,17 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     # write succeeded -- a refusal leaves the file so the turn can fix it and
     # run again.
     if args.input:
-        with contextlib.suppress(OSError):
+        try:
             os.remove(args.input)
+        except OSError as exc:
+            # Not swallowed: the file holds the owner's own words, and one left
+            # behind is a second copy of their data that nothing will read. The
+            # write itself succeeded, so say both -- what landed, and what did
+            # not -- and exit non-zero so a caller cannot read this as clean.
+            raise SystemExit(
+                f"wrote {config_path} (mode 600); gate: {verdict or 'PASS'}\n"
+                f"but could not remove the staged answers at {args.input}: {exc}. "
+                "Delete it: it holds the owner's own words.") from None
     print(f"wrote {config_path} (mode 600); gate: {verdict or 'PASS'}")
     # The geocoder's verdict, in the SAME tool result as the write.
     #
