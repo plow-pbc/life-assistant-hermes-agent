@@ -23,10 +23,11 @@ eye, and each step of that parse has a way to go quietly wrong:
     a nonzero exit_code, so it is reused rather than re-implemented.
   * The names arrive wrapped. The runtime fences text it fetched from Google
     in `<<<EXTERNAL_UNTRUSTED_CONTENT ...>>>` markers, so `summary` is a
-    five-line block with the calendar's actual name on the inside. Unwrapped
-    here, deterministically, because the alternative is the model lifting the
-    name out by eye -- and a listing where some rows are fenced and some are
-    not is exactly the shape an eye normalises inconsistently.
+    five-line block with the calendar's actual name on the inside.
+    unwrap_external() (ld-shared) takes it off, because the alternative is the
+    model lifting the name out by eye -- and a listing where some rows are
+    fenced and some are not is exactly the shape an eye normalises
+    inconsistently.
   * The account is derived, not assumed. `primary: true` is the clearest
     signal and is used when it is there -- but it was seen on ONE Mac and
     nothing documents that gog always emits it, so its absence is a case and
@@ -55,12 +56,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"))
 
+from external_content import unwrap_external  # noqa: E402
 from gather_result import GatherError, read_gather  # noqa: E402
 
 
@@ -78,39 +79,6 @@ def extract_array(text):
         return json.loads(text[start:])
     except json.JSONDecodeError as e:
         raise GatherError(f"calendar listing is not valid JSON: {e}") from e
-
-
-# One fenced block and nothing else: the opening marker, the `Source:` line the
-# runtime adds, a `---` rule, the content, and a closing marker carrying THE
-# SAME id. Anchored end to end, and the id is a backreference rather than a
-# second `\w+`, so a name that merely contains marker-shaped text is left alone
-# instead of being cut at whatever looked like a fence.
-_WRAPPED = re.compile(
-    r'\A<<<EXTERNAL_UNTRUSTED_CONTENT id="(?P<id>[^"\n]*)">>>\n'
-    r'(?:Source:[^\n]*\n)?'
-    r'---\n'
-    r'(?P<body>.*)'
-    r'\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="(?P=id)">>>\Z',
-    re.DOTALL)
-
-
-def unwrap_external(text):
-    """The content of an `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` block, or `text`.
-
-    Deterministic in both directions: text that is not exactly one whole block
-    comes back untouched. That is the case that matters, because the fencing is
-    not uniform -- the same listing carries a wrapped `summary` beside a bare
-    `summaryOverride` -- and a stripper that guessed at partial matches would
-    turn an inconsistent input into an inconsistently mangled one.
-
-    `.*` is greedy under DOTALL, so a body holding its own end-marker keeps it:
-    the outermost fence is the real one, and the forgery stays visible as text
-    rather than truncating the name at somebody else's say-so.
-    """
-    if not isinstance(text, str):
-        return text
-    match = _WRAPPED.match(text)
-    return match.group("body") if match else text
 
 
 def normalize(entries):

@@ -73,6 +73,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import post_to_kiosk  # noqa: E402
 from bearer_http import open_no_redirect  # noqa: E402
+from external_content import strip_markers  # noqa: E402
 from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 CONFIG_FILE = "/opt/data/ld/config.json"
@@ -92,12 +93,6 @@ LATCH_BODY_PATH = "~/Plow/ld/calendar.json"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
 
-# gog 0.36 wraps each free-text field as
-#   <<<EXTERNAL_UNTRUSTED_CONTENT id="x">>>\nSource: google_api\n---\n<value>\n<<<END_...>>>
-# Stripping the marker alone leaves `Source: google_api ---` on the surface.
-_MARKERS = re.compile(
-    r'<<<EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>\nSource: google_api\n---\n'
-    r'|<<<END_EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
 # Deliberately broad, the same trade nudge_candidates.py's redaction makes:
 # native join links use schemes other than http, and stripping an ordinary
 # letter-led colon token costs less than publishing a join credential to a
@@ -115,9 +110,7 @@ def redact(value):
     Newlines included: the strip is a one-row-per-event contract, so a title
     carrying a newline could otherwise spoof a row.
     """
-    if not isinstance(value, str):
-        return ""
-    return " ".join(_URI_TOKEN.sub("", _MARKERS.sub("", value)).split())
+    return " ".join(_URI_TOKEN.sub("", strip_markers(value)).split())
 
 
 def event_key(event):

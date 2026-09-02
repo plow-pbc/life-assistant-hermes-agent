@@ -48,6 +48,7 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
+from external_content import strip_markers  # noqa: E402
 from gather_result import GatherError, read_gather  # noqa: E402
 
 LIMIT = 115
@@ -63,13 +64,6 @@ HANDOFF = "/opt/data/ld/calendar-nudge-text"
 # builds the argv, and a steerable --config could point at a model-written
 # JSON whose identities/lookaheads make a non-qualifying event publish.
 CONFIG_FILE = "/opt/data/ld/config.json"
-# gog 0.36 (openclaw/gogcli internal/outfmt/untrusted.go) wraps each field as
-#   <<<EXTERNAL_UNTRUSTED_CONTENT id="x">>>\nSource: google_api\n---\n<value>\n<<<END_...>>>
-# The open marker carries that exact metadata line and a `---` rule; stripping
-# the marker alone left `Source: google_api ---` on a live card (2026-08-28).
-_MARKERS = re.compile(
-    r'<<<EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>\nSource: google_api\n---\n'
-    r'|<<<END_EXTERNAL_UNTRUSTED_CONTENT id="[^"]*">>>')
 # Two patterns for two opposite risk profiles.
 #
 # REDACTION (title stripping) uses the broad one: any URI, not just http(s)
@@ -99,7 +93,7 @@ def unwrap(value):
     newlines included — to single spaces. The composed reminder is a ONE-line
     contract: an event title carrying an embedded newline could otherwise
     spoof extra reminder-looking lines on the shared kiosk."""
-    return " ".join(_MARKERS.sub("", value).split()) if isinstance(value, str) else ""
+    return " ".join(strip_markers(value).split())
 
 
 def is_human_external(email, identities):

@@ -774,19 +774,30 @@ def test_the_staged_listing_is_never_named_json():
     assert set(staged) == {"txt"}, f"staged listing named .{set(staged) - {'txt'}}"
 
 
-def test_the_sheet_carries_no_literal_turn_id_to_copy():
+# ids= keeps the whole sheet out of the test id -- the parameter is a file.
+@pytest.mark.parametrize("sheet,text", [(
+    "ld-setup", SKILL), ("ld-wall-setup", WALL)], ids=["ld-setup", "ld-wall-setup"])
+def test_the_sheet_carries_no_literal_turn_id_to_copy(sheet, text):
     """`<turn>` has to be generated, and a sample is a thing to copy.
 
     A run copied an eight-hex example verbatim, which is a fixed staging name
     wearing a random one's clothes: every turn writes the same path, and two
     that overlap have the second overwrite the first before the first is read.
-    So the sheet carries the generating command and no specimen -- any bare
-    8-hex literal sitting where `<turn>` belongs is one waiting to be copied.
+    So a sheet that stages by turn carries the generating command and no
+    specimen -- any bare 8-hex literal sitting where `<turn>` belongs is one
+    waiting to be copied.
+
+    BOTH sheets, because both stage by turn and each is entered on its own: the
+    wall is a separate skill an owner reaches without onboarding running in the
+    same conversation, so a rule that lives only in ld-setup is one its reader
+    never sees. That is exactly what the split left behind -- `.wall-<turn>.json`
+    in one file and the definition of `<turn>` in another.
     """
-    assert "openssl rand -hex 4" in SKILL, "the sheet must show how to generate one"
+    assert "<turn>" in text, f"{sheet} no longer stages by turn -- retarget this test"
+    assert "openssl rand -hex 4" in text, f"{sheet} must show how to generate one"
     literal = re.findall(
-        r"(?:draft|calendar-listing|wall)-([0-9a-f]{8})\b", SKILL, re.IGNORECASE)
-    assert not literal, f"a copyable turn id is in the sheet: {literal}"
+        r"(?:draft|calendar-listing|wall)-([0-9a-f]{8})\b", text, re.IGNORECASE)
+    assert not literal, f"a copyable turn id is in {sheet}: {literal}"
 
 
 # --------------------------------------------------------------------------
