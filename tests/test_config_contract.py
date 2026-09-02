@@ -55,6 +55,48 @@ def config():
 DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
 
 
+def test_the_clarify_tool_is_taken_away_not_merely_forbidden():
+    """`clarify` renders a blocking ❓ menu and stops the turn until the owner
+    picks something. It has never been reached deliberately here -- it is what a
+    turn grabs when it cannot find the mechanism it wants -- and it arrived three
+    times as the entire first thing this agent said to a new owner. The prompt
+    has forbidden it throughout, and the ban held right up until a turn was
+    confused, which is exactly when it does not.
+
+    It is the only tool in its toolset, so disabling the toolset removes that one
+    and nothing else.
+    """
+    disabled = (config().get("agent") or {}).get("disabled_toolsets")
+    assert disabled and "clarify" in disabled, (
+        "a deployed agent can reach the tool behind the ❓ rows")
+
+
+def test_the_file_mutation_verifier_footer_is_off():
+    """The footer appends to the assistant's FINAL RESPONSE whenever a
+    write_file failed in the turn -- in a terminal that is a safety net against a
+    model claiming edits landed. Here the final response is a text message to a
+    person, and one arrived inside an owner's introduction: a `⚠️ File-mutation
+    verifier:` block naming container paths and a JSONDecodeError, mid-sentence.
+
+    The failures still reach the log, where whoever needs them is looking.
+    """
+    display = config().get("display") or {}
+    assert display.get("file_mutation_verifier") is False, (
+        "a failed write can append container paths to a message to the owner")
+
+
+def test_the_display_key_that_deletes_the_message_stays_absent():
+    """The neighbouring key, and the reason this one is safe.
+
+    `display.interim_assistant_messages: false` was tried to stop the same class
+    of leak and DELETED the real message: the model writes its reply mid-turn and
+    a note afterwards, so switching interim delivery off keeps only the note.
+    A leaked note is cosmetic; a missing introduction is the product.
+    """
+    display = config().get("display") or {}
+    assert "interim_assistant_messages" not in display
+
+
 def test_the_descriptor_carries_nothing_but_the_shared_config_path():
     """Closed set, deliberately: every instance reads this one file, so a key
     added here is given to ALL of them.

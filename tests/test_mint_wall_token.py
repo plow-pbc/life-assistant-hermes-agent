@@ -44,6 +44,32 @@ def run(home, capsys, pi=PI, user="pi", ical=None):
     return rc, capsys.readouterr().out
 
 
+def test_the_staged_path_is_the_seam_the_sheet_uses(home, capsys, tmp_path):
+    """The sheet tells the turn to stage its answers with the file tool and pass
+    the path -- pi_address and pi_user are the owner's own words, and a heredoc
+    composed around them is a command built out of their input. Every other test
+    here drives stdin, so the path the sheet actually names needs its own.
+    """
+    dotenv, ld = home
+    staged = tmp_path / "wall.json"
+    staged.write_text(json.dumps({"pi_address": PI, "pi_user": "pi"}))
+    assert mwt.main(argv=["--input", str(staged)],
+                    dotenv_path=str(dotenv), ld_dir=str(ld)) == 0
+    assert "DASHBOARD_ENDPOINT_URL" in dotenv.read_text()
+
+    # A path that is not there is named, not swallowed: the turn staged it, so
+    # a missing file means the staging failed and the operator needs to know.
+    with pytest.raises(SystemExit) as refusal:
+        mwt.main(argv=["--input", str(tmp_path / "absent.json")],
+                 dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "could not read" in str(refusal.value)
+
+    # And argv is for the path and nothing else -- no answer ever rides it.
+    with pytest.raises(SystemExit) as refusal:
+        mwt.main(argv=["--pi-address", PI], dotenv_path=str(dotenv), ld_dir=str(ld))
+    assert "usage:" in str(refusal.value)
+
+
 def refuse(home, **payload):
     dotenv, ld = home
     with pytest.raises(SystemExit) as e:

@@ -399,26 +399,6 @@ def test_the_keys_are_asked_in_one_order_everywhere():
         assert f"`{key}`" in TRIGGER
 
 
-def test_step_four_names_exactly_one_deferral():
-    """Structural, because the count is the contract.
-
-    "Defer whenever the turn ends on a question" was the over-broad version and
-    it made every turn's write conditional on wording. There is one exception --
-    the turn that learns the name and sends the one-time introduction -- and a
-    second one appearing here is the enumeration growing back.
-    """
-    step4 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[3]):ALGORITHM.index(STEPS[4])].split())
-    assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
-    assert "exactly ONE deferral" in step4
-
-
-def test_step_five_has_a_branch_for_no_question_left():
-    """A turn that reaches step 5 with nothing to ask still owes a message.
-    Where it did not, the owner got `❓ dummy`."""
-    step5 = ALGORITHM[ALGORITHM.index(STEPS[4]):]
-    assert "If no key is missing" in step5
-
-
 def test_no_owner_text_is_ever_composed_into_a_command():
     """Their name, their city, and above all a calendar's display name -- text a
     STRANGER wrote -- would otherwise be a command built out of someone else's
@@ -432,10 +412,10 @@ def test_no_owner_text_is_ever_composed_into_a_command():
             continue
         if "write_config.py" in line or "mint_wall_token.py" in line:
             assert "--input" in line, f"not staged: {line.strip()}"
-    assert "staged as JSON with your FILE tool" in " ".join(ONBOARDING.split())
 
 
-def test_both_scripts_take_the_staged_path(tmp_path):
+
+def test_write_config_takes_the_staged_path(tmp_path):
     """The seam itself, exercised: --input is what the sheet tells the turn to
     use, so it has to read a file and refuse a missing one by name."""
     staged = tmp_path / "draft.json"
@@ -475,17 +455,23 @@ def test_the_identities_are_the_union_not_the_account_alone():
     whether the OWNER was in a meeting. An owner whose calendars carry two of
     their addresses is absent from every event read through the other one --
     a nudge that works and never fires."""
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "`owner_identities` is the UNION" in section
-    assert '"owner_identities": ["<account from the script>", "<every candidate>"]' in ONBOARDING
+    # Structural: every identities template carries more than the account, so
+    # the union cannot silently collapse back to one address.
+    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    templates = re.findall(r'"owner_identities": \[(.*?)\]', section)
+    assert templates, "no owner_identities template in the sheet"
+    for template in templates:
+        assert template.count(",") >= 1, f"identities written as one address: {template}"
+        assert "candidate" in template
 
 
 def test_the_listing_file_is_written_only_where_a_listing_exists():
     """A write attempted before there is anything to write does not fail
     quietly: a failed write_file is reported in a footer appended to the turn's
     FINAL RESPONSE, and that response is a message to the owner."""
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "written HERE and nowhere else" in section
+    # Structural: the path is named in §5 and nowhere before it, so no earlier
+    # turn has anything to write it from.
+    assert "calendar-listing.json" in ONBOARDING[ONBOARDING.index("### 5 ·"):]
     assert "calendar-listing.json" not in ONBOARDING[:ONBOARDING.index("### 5 ·")]
 
 

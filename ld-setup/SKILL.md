@@ -419,9 +419,10 @@ the link. The whole of §1 is: hello, your name, a GIF, and what to call them.
 ### 2 · Their name, then who you are
 
 *The copy for step 5's one-time content: the introduction, the privacy line,
-the previews, and the pitch and link. Due the first time you know their name
-and have not yet introduced yourself. What this turn asks after it, and whether
-it writes, are step 4's and step 5's business, not this section's.*
+the previews, and the pitch and link. Due when their name was learned THIS turn
+— a name already in the config means it has been sent. What this turn asks
+after it, and whether it writes, are step 4's and step 5's business, not this
+section's.*
 
 **One message, and short.** Three ideas, a few lines each, blank lines between
 them — the way a person texts, not three paragraphs of prose. It carries:
@@ -467,7 +468,9 @@ read perfectly. Four attachments on the one message, not four messages.
 The order is the argument: the vault login is the privacy line made concrete,
 then groceries, then a purchase, then the medical errand — small and ordinary
 first, trusted with more by the last one. It is a question you do not wait for
-an answer to; the catch and the link follow in the same message.
+an answer to; what follows it in the same message is the catch and the link (if
+the relay is unconfigured) and then step 5's question — the first key still
+missing, in order, which is not always the calendars.
 
 Then the catch — **but only if the probe said Latch is not up.** In that case:
 you are not on their Mac yet, so right now you are flying blind, no calendar,
@@ -478,14 +481,13 @@ preview:
 
 Close that stretch by telling them to reach out any time if setup snags.
 
-**If the probe returned a listing, the catch-and-link paragraph is the only
-part that is dropped** — not the flying-blind line, not the link, not the offer
-to help with the install. It is already done, and sending it anyway asks
+**Where the relay is configured, the catch and the link are omitted** — the
+"I'm not on your Mac yet" line, the `plow.co/latch` URL and the offer to help
+with the install, all three. It is already done, and sending it anyway asks
 someone to install what they installed, which reads as an assistant that has
 not noticed them. Everything else in this section still goes. What the message
-ends on is step 5's business and is the first key still missing, exactly as it
-is on any other turn — which, with `calendar.sources` absent and a listing in
-hand, is the calendar question.
+ends on is step 5's business: the first key still missing, in order, exactly as
+on any other turn.
 
 All of this is one message and it is the last thing the turn does — nothing
 after it, and nothing before it but steps 1 to 4.
@@ -589,8 +591,11 @@ Mountain View is the Sacramento Kings — and turn it into ESPN's own terms:
 
 Read the list back in their words, not the JSON. "None" is a real answer:
 `{"sports": {"followed": []}}` — the question was asked, and that is what
-onboarding needs. With the teams answered, no key is missing, so step 5 asks
-nothing and §4's close is the message.
+onboarding needs. Whether the teams answer finishes the conversation is step
+5's to say and not this section's: with `calendar.sources` still absent and a
+relay configured, the calendars are the next question; with no relay to ask
+through, or with the calendars already stored, no key is missing and §4's close
+is the message.
 
 Do not ask for their email, their calendars, or their Mac username. Those
 arrive through Latch's connectors. Do not ask what time they want their
@@ -640,10 +645,12 @@ So: do not build on any of these beyond what the script already does, and do
 not tell the owner about them.
 
 **This is two turns of the algorithm, not one.** The listing turn makes the one
-read-only call, shows what came back and asks which calendars to track — step 4
-writes nothing there, because the answer it needs has not been given yet. The
-next turn collects the picks and step 4 writes them, with the account and the
-lookaheads. A single turn that listed and drafted in one go would be writing
+read-only call, shows what came back and asks which calendars to track; the next
+turn collects the picks and writes them, with the account and the lookaheads.
+Step 4 is unchanged on both: each writes every answer it holds and is not yet in
+the config. What waits for the second turn is the PICKS, because they have not
+been given yet — not the earlier answers, which are written when they land like
+any other. A single turn that listed and drafted in one go would be writing
 calendars nobody chose.
 
 The owner never types a calendar id — but they may name which of the listed
