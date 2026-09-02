@@ -58,29 +58,62 @@ def relay_configured(text):
           latch:
             url: https://…
 
-    So that is what this looks for, literally. An earlier version derived the
-    servers' indent from whatever it found first and matched `latch:` at that
-    level, which is a small YAML parser wearing a regex -- and it read a `latch:`
-    nested inside another server's settings as the relay whenever a comment sat
-    deeper than the keys. A parser that is nearly right about a file it does not
-    have to parse is worse than a check that knows the one line it is looking
-    for: this answers "unconfigured" for any shape it does not recognise, which
-    costs a calendar step and never invents a Mac that is not there.
+    So that is what this looks for, line by line, and nothing else. Two earlier
+    versions were regexes: the first derived the servers' indent and matched at
+    it, which read a `latch:` nested in another server's settings as the relay
+    whenever a comment sat deeper than the keys; the second pinned the two-space
+    shape but nested a repetition inside a repetition, which CodeQL flagged as
+    exponential backtracking (py/redos) -- a config.yaml full of blank indented
+    lines would have hung the probe, and a probe that hangs is a turn that
+    improvises.
+
+    A scan has neither problem. It reads each line once, it cannot backtrack,
+    and what it accepts is legible without running it: anything it does not
+    recognise is "unconfigured", which costs a calendar step and never invents a
+    Mac that is not there.
 
     Standard library only -- the sheet runs this as plain `python3`, and PyYAML
     lives in Hermes' own venv rather than the system interpreter in at least one
     build we ship. A `latch:` with nothing under it registers no tool: the url
     and the bearer are what make a server.
     """
-    return re.search(
-        r"^mcp_servers:[ \t]*$"          # the mapping, on its own line
-        r"(?:\n[ \t]*(?:#.*)?)*"          # blanks and comments, any indent
-        r"(?:\n  [^\s#][^\n]*"            # other servers at two spaces, and
-        r"(?:\n(?:[ \t]*|    [^\n]*))*)*"  # their settings, deeper
-        r"\n  [\"']?latch[\"']?:[ \t]*$"  # the relay, at two spaces
-        r"(?:\n[ \t]*(?:#.*)?)*"          # blanks and comments
-        r"\n    [^\s#]",                  # and at least one setting under it
-        text, re.MULTILINE) is not None
+    lines = text.splitlines()
+    inside = False
+    for index, line in enumerate(lines):
+        if not inside:
+            inside = line.rstrip() == "mcp_servers:"
+            continue
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue                      # blanks and comments, at any indent
+        if not line.startswith(" "):
+            return False                  # the next top-level key: block over
+        if _key_of(line) != "latch" or not _at_two_spaces(line):
+            continue                      # some other server, or its settings
+        # The relay, named at the servers' level. It counts only with settings
+        # under it -- `latch:` alone registers nothing.
+        for follower in lines[index + 1:]:
+            if not follower.strip() or follower.lstrip().startswith("#"):
+                continue
+            # Anything indented deeper than the server's own level is under it.
+            return len(follower) - len(follower.lstrip()) > 2
+        return False
+    return False
+
+
+def _key_of(line):
+    """The key a `name:` line names, unquoted. Not a parser: one line, one key,
+    and anything else falls through as "some other server"."""
+    return line.strip().rstrip(":").strip().strip("\"'")
+
+
+def _at_two_spaces(line):
+    """The servers' own level, and only it.
+
+    A `latch:` deeper than this belongs to another server's settings and
+    registers no tool of ours; reading it as the relay would answer
+    "configured" for a build that cannot reach a Mac.
+    """
+    return line.startswith("  ") and not line[2:3].isspace()
 
 
 def main(env=None):

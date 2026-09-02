@@ -19,6 +19,7 @@ import importlib.util
 import io
 import json
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -623,6 +624,25 @@ def test_the_status_probe_answers_without_a_relay(tmp_path):
     # first turn of a brand new agent.
     assert ls.config_path({"HERMES_HOME": str(tmp_path)}) == str(tmp_path / "config.yaml")
     assert ls.main(env={"HERMES_HOME": str(tmp_path)}) == 0
+
+
+def test_the_status_probe_cannot_be_made_to_hang(tmp_path):
+    """CodeQL py/redos, high, on the regex this replaced: a repetition nested in
+    a repetition, which a config.yaml full of blank indented lines drives into
+    exponential backtracking. A probe that hangs is a turn that improvises, and
+    improvising is what this file exists to stop.
+
+    A line scan reads each line once and cannot backtrack. Eighty thousand of
+    the pathological shape, to make the point in wall-clock rather than by
+    reading the code.
+    """
+    ls = load("latch_status", "ld-setup/scripts/latch_status.py")
+    hostile = "mcp_servers:\n" + ("    \n" * 80_000)
+    started = time.monotonic()
+    assert ls.relay_configured(hostile) is False
+    assert time.monotonic() - started < 2, "the probe backtracks"
+    assert "re.search" not in (ROOT / "ld-setup/scripts/latch_status.py").read_text(), (
+        "the scan is back to being a regex")
 
 
 def test_the_status_probe_needs_only_the_standard_library():
