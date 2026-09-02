@@ -85,13 +85,21 @@ check-latch agent:
       rm -f /tmp/latch-body' > "$raw"
     {{justfile_directory()}}/scripts/latch-verdict.py "$raw"
 
-# Nothing announces a base change: plow-hermes-agent ships no CI, so a commit
-# there neither builds nor tags itself, and this repo's FROM can be arbitrarily
-# stale with no signal. Run before every deploy -- step 0 of the runbook.
+# Five repositories hold six pins between a plugin commit and a running tenant,
+# and nothing watches any of them: every hop is a manual PR in a different repo,
+# several with no CI at all, each invisible from the one below. "Is anything
+# stale?" used to mean walking all five by hand. Run before every deploy.
 #
-# Exits non-zero on UPGRADE RECOMMENDED, so it can gate. The verdict is a path
-# classification, not a reading of the change: it says the reader was shown the
-# commits, not that the upgrade is right. Read them.
+# Exits non-zero when there is a gap, so it can gate. The verdicts are a path
+# classification, not a reading of the changes: it says the gaps were put in
+# front of you, not that closing them is right. Read them.
+[doc("Walk the whole pin chain, name every gap, and print the ordered release plan.")]
+release-check *ARGS:
+    {{justfile_directory()}}/scripts/release-check.py {{ARGS}}
+
+# The one hop this repo owns: what landed in the base since our Dockerfile
+# pinned it. Kept as its own name because it is the question asked before a
+# base bump specifically, and it needs neither gh nor plow.
 [doc("Compare the pinned base against plow-hermes-agent main and say whether to upgrade.")]
 check-base-drift *ARGS:
-    {{justfile_directory()}}/scripts/check-base-drift.py {{ARGS}}
+    {{justfile_directory()}}/scripts/release-check.py base {{ARGS}}
