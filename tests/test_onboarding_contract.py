@@ -449,9 +449,13 @@ def test_the_listing_file_is_written_only_where_a_listing_exists():
     quietly: a failed write_file is reported in a footer appended to the turn's
     FINAL RESPONSE, and that response is a message to the owner."""
     # Structural: the path is named in §5 and nowhere before it, so no earlier
-    # turn has anything to write it from.
-    assert "calendar-listing.json" in ONBOARDING[ONBOARDING.index("### 5 ·"):]
-    assert "calendar-listing.json" not in ONBOARDING[:ONBOARDING.index("### 5 ·")]
+    # turn has anything to write it from -- and it is per-turn, like the drafts,
+    # because two turns sharing one staging name is one file each overwrites.
+    assert "calendar-listing-<turn>.json" in ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert "calendar-listing" not in ONBOARDING[:ONBOARDING.index("### 5 ·")]
+    for staged in re.findall(r"/opt/data/ld/\.?[a-z-]*(?:draft|wall|listing)[a-z-]*\.json",
+                             SKILL):
+        assert "<turn>" in staged, f"a staging path is shared between turns: {staged}"
 
 
 def test_the_connected_branch_turns_on_the_listing_not_on_the_probe():
@@ -498,6 +502,16 @@ def test_the_listing_reaches_disk_through_the_file_tool_alone():
     section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
     assert "ONLY the file tool" in section
     assert "execute_code" in section, "the alternative the turn actually reached for"
+
+
+def test_every_calendar_is_shown_including_the_odd_ones():
+    """A calendar the owner can see on their Mac and not in your message is a
+    list that disagrees with theirs. Observed: the hostile-named one left out
+    entirely, and mentioned only when the owner asked about it. Its name is
+    text, which is all it ever was."""
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "Show every calendar the script returned" in section
+    assert "shown as TEXT" in section
 
 
 def test_the_relay_tool_is_named_only_where_it_exists():

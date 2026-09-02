@@ -289,28 +289,38 @@ def config_lock(config_path):
     no longer exists the moment the first writer finishes. Advisory `flock` is
     enough because every writer of this file comes through here.
 
-    If the lock cannot be opened at all, the work still runs. The only reason it
-    cannot is a directory that is missing or unwritable, and every path inside
-    already refuses that by name -- "could not read", "no space left on device"
-    -- which is a better sentence than anything this could add. Swallowing the
-    real refusal to report a lock problem is how a mistyped path started looking
-    like a concurrency bug.
+    FAIL CLOSED. An earlier version ran the work anyway when the lock could not
+    be taken, on the reasoning that the only cause was an unwritable directory
+    which the write would refuse by itself. That reasoning is wrong for the case
+    that matters most: on a FIRST draft the directory does not exist yet, so
+    neither writer could take a lock, both created it, and both wrote -- the
+    race reproduced ten times out of ten with an answer lost each time. So the
+    directory is created BEFORE the lock is taken, and a lock that still cannot
+    be taken refuses the write rather than proceeding without it.
     """
+    lock_path = config_path + ".lock"
     handle = None
     try:
-        handle = open(config_path + ".lock", "a+")
+        # Before the lock, not after: the first draft of a new household has no
+        # directory yet, and two writers racing to create one are two writers
+        # with no lock between them.
+        parent = os.path.dirname(lock_path)
+        if parent:
+            os.makedirs(parent, mode=0o700, exist_ok=True)
+        handle = open(lock_path, "a+")
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-    except OSError:
+    except OSError as exc:
         if handle is not None:
             handle.close()
-        handle = None
+        raise SystemExit(
+            f"refusing to write: could not take the config lock ({exc}). "
+            "Another write may be in progress; nothing was changed.") from None
     try:
         yield
     finally:
-        if handle is not None:
-            with contextlib.suppress(OSError):
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            handle.close()
+        with contextlib.suppress(OSError):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 
 def atomic_write(config_path, text):
@@ -443,6 +453,15 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         # A draft reports the gate instead of obeying it. The line is not decoration:
         # it is how a turn learns the config is still short of "installed", and the
         # names in it are exactly what the wall path will need later.
+    # The staged answers are this turn's, and they are the owner's own words:
+    # a name, a city, their calendars. Leaving them beside the config makes a
+    # second copy of that data with no reader, and a later turn that finds a
+    # stale one can act on an answer nobody just gave. Removed only after the
+    # write succeeded -- a refusal leaves the file so the turn can fix it and
+    # run again.
+    if args.input:
+        with contextlib.suppress(OSError):
+            os.remove(args.input)
     print(f"wrote {config_path} (mode 600); gate: {verdict or 'PASS'}")
     # The geocoder's verdict, in the SAME tool result as the write.
     #

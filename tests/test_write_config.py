@@ -196,7 +196,12 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
     combined = proc.stdout + proc.stderr
     assert "missing required answer(s)" not in combined, (
         "--patch was dropped and the partial config went through build()")
-    assert "refusing to patch" in combined, combined
+    # Either refusal proves it: both come from the patch path. Where /opt/data
+    # exists it is "refusing to patch: could not read"; where it does not, the
+    # lock refuses first, because the lock is taken before the read now and
+    # fails closed rather than letting a write run unlocked.
+    assert ("refusing to patch" in combined
+            or "could not take the config lock" in combined), combined
 
 
 def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypatch):
@@ -294,3 +299,68 @@ def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch):
     # And the rest of the config is intact, so neither writer replaced the file
     # with its own partial view of it.
     assert written["calendar"] == live_config()["calendar"]
+
+
+def test_two_first_drafts_race_before_the_directory_exists(tmp_path):
+    """The case fail-open got wrong, and the reason the lock creates the dir.
+
+    On a FIRST draft there is no `ld/` yet. An earlier version took the lock
+    inside that directory and ran the work anyway when it could not -- so
+    neither writer held a lock, both created the directory, both read nothing,
+    and both wrote: an answer lost every time, reproduced ten runs out of ten.
+
+    So the directory is created BEFORE the lock, and a lock that still cannot be
+    taken refuses rather than proceeding. Both answers survive.
+    """
+    target = tmp_path / "ld" / "config.json"
+    assert not target.parent.exists(), "the point of this test is the missing dir"
+
+    start = threading.Barrier(2)
+    errors = []
+
+    def draft(payload):
+        def run():
+            try:
+                start.wait(timeout=5)
+                wc.main(["--draft"], stdin=io.StringIO(json.dumps(payload)),
+                        env=ENV, config_path=str(target))
+            except BaseException as exc:            # noqa: BLE001 - reported below
+                errors.append(exc)
+        return threading.Thread(target=run)
+
+    threads = [draft({"family": {"owner": {"name": "Ro"}}}),
+               draft({"sports": {"followed": []}})]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+        assert not thread.is_alive(), "a writer never finished -- the lock deadlocked"
+    assert not errors, errors
+
+    written = json.loads(target.read_text())
+    assert written["family"]["owner"]["name"] == "Ro", "the name draft was lost"
+    assert "followed" in written.get("sports", {}), "the teams draft was lost"
+    assert oct(target.parent.stat().st_mode)[-3:] == "700", (
+        "the directory the lock created holds a person's data")
+
+
+def test_a_staged_input_is_removed_after_a_write_and_kept_after_a_refusal(tmp_path):
+    """The staged file is the owner's own words -- a name, a city, calendar ids.
+
+    Left beside the config it is a second copy with no reader, and a later turn
+    that finds a stale one can act on an answer nobody just gave. Removed only
+    on success: a refusal keeps it, because the turn's next move is to fix what
+    it named and run again, and deleting the evidence would make that guesswork.
+    """
+    target = tmp_path / "ld" / "config.json"
+    staged = tmp_path / ".draft-abcd1234.json"
+
+    staged.write_text('{"family": {"owner": {"name": "Ro"}}}')
+    wc.main(["--draft", "--input", str(staged)], env=ENV, config_path=str(target))
+    assert not staged.exists(), "the staged answers outlived the write"
+    assert json.loads(target.read_text())["family"]["owner"]["name"] == "Ro"
+
+    staged.write_text('{"wether": {"location": "Denver"}}')
+    with pytest.raises(SystemExit):
+        wc.main(["--draft", "--input", str(staged)], env=ENV, config_path=str(target))
+    assert staged.exists(), "a refusal deleted the file the turn has to fix"
