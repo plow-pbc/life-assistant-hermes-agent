@@ -370,9 +370,14 @@ def test_the_relay_tool_is_named_only_where_it_exists():
             "that has established it exists")
     # And the unconfigured branch stops there: no call, no lookup, no mention.
     unconfigured = " ".join(
-        ONBOARDING[ONBOARDING.index("**`unconfigured` ends it.**"):configured].split())
+        ONBOARDING[ONBOARDING.index("**`unconfigured` ends the ENQUIRY"):configured].split())
     assert "Do not go looking for a tool" in unconfigured
     assert "make no further call" in unconfigured
+    # What ends is the looking, not the pitch. Read as "say nothing", this
+    # branch dropped the install link out of the introduction entirely --
+    # measured on a fresh run: no flying-blind line, no plow.co/latch.
+    assert "ends the ENQUIRY, not the pitch" in unconfigured
+    assert "the flying-blind line, the link" in unconfigured
 
 
 def test_the_status_probe_answers_without_a_relay(tmp_path):

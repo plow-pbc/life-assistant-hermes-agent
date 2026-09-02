@@ -123,9 +123,14 @@ happens to register:
 
     python3 /opt/data/skills/ld-setup/scripts/latch_status.py
 
-**`unconfigured` ends it.** This deployment has no relay to a Mac at all — not
-a Mac that is asleep, a build with nothing to reach one. Treat it exactly as
-not connected, make no further call, and never say a word about it. **Do not
+**`unconfigured` ends the ENQUIRY, not the pitch.** This deployment has no
+relay to a Mac at all — not a Mac that is asleep, a build with nothing to reach
+one. It counts as **not connected**, which is a state §2 already has copy for:
+the flying-blind line, the link, the offer to help if the install snags all
+stand, exactly as they would for a Mac that is merely switched off. What ends
+is the looking — make no further call — and what is never said is the
+machinery: not the word `unconfigured`, not that a tool is missing, not that
+anything was checked. **Do not
 go looking for a tool.** There is none to find, and searching for one is how a
 turn ends up narrating its own plumbing: *"There's no Latch-specific tool
 search hit for the relay's tools — let me check if those exist under a
