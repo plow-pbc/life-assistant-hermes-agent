@@ -49,3 +49,14 @@ def household_host(host):
         return not ipaddress.ip_address(host).is_global
     except ValueError:
         return host.endswith(".local")
+
+
+if __name__ == "__main__":
+    # One key, for a caller that cannot import: the agent-index s6 service is
+    # shell. Without this it grew its own grep/cut/tr parser, which took the
+    # FIRST duplicate and stripped quotes while this one takes the last
+    # literally -- two spellings of the same file, which is the drift the
+    # module docstring exists to prevent.
+    import sys
+
+    print(dotenv_values().get(sys.argv[1], ""))

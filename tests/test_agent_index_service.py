@@ -74,7 +74,18 @@ def test_the_switch_is_read_from_the_agents_own_dotenv():
     would put every one of them into the reporter's environment.
     """
     run = SVC.joinpath("run").read_text()
-    assert "/opt/data/.env" in run
+    # The assignment itself, not the file's prose -- the comment above it
+    # names the grep pipeline this replaced, so a blanket search for that word
+    # matches the explanation and passes whatever the code does.
+    #
+    # Continuations joined first: the command wraps, so reading one line finds
+    # the assignment without the command it runs.
+    joined = run.replace("\\\n", " ")
+    assignment = [l for l in joined.splitlines() if l.startswith("AGENT_INDEX=")][0]
+    assert "runtime_env.py" in assignment, \
+        "read it through the repo's one dotenv parser, not a second spelling"
+    assert "|" not in assignment, \
+        "a private pipeline disagrees with the shared parser about duplicates and quotes"
     assert re.search(r"^\s*\.\s+/opt/data/\.env", run, re.M) is None, "must not source the dotenv"
 
 

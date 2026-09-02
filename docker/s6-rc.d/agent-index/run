@@ -16,9 +16,20 @@
 # never asked. Read here, the answer comes from the one file that is already
 # per-person, and nothing in Compose can forge it.
 #
-# grep, never `.`: this file holds the agent's credentials, and sourcing it
-# would put every one of them into the reporter's environment.
-AGENT_INDEX=$(grep -m1 -E '^AGENT_INDEX=' /opt/data/.env 2>/dev/null | cut -d= -f2- | tr -d ' "'"'"'')
+# Read through ld-shared's runtime_env, the repo's one dotenv parser, rather
+# than a pipeline of this script's own. A second spelling of the same file is
+# a second thing that can drift: the shared one takes the LAST duplicate and
+# the value literally, while a grep/cut/tr version took the first and stripped
+# quotes -- two readers disagreeing about one line.
+#
+# It parses rather than sources, which is the part that matters here: this
+# file holds the agent's credentials, and sourcing it would put every one of
+# them into the reporter's environment.
+#
+# A failed lookup yields empty and the slot stays down. Off is the safe
+# direction for a switch nobody has set.
+AGENT_INDEX=$(/opt/hermes/.venv/bin/python3 \
+  /opt/data/skills/ld-shared/scripts/runtime_env.py AGENT_INDEX 2>/dev/null)
 
 [ "${AGENT_INDEX:-}" = 1 ] || exit 0
 
