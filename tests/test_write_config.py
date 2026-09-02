@@ -77,7 +77,7 @@ def live_config():
 
 def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
     current = live_config()
-    merged = wc.apply_patch({"family": {"owner": {"name": "Ro"}}}, current, ENV)
+    merged = wc.apply_patch({"family": {"owner": {"name": "Ro"}}}, current, ENV)[0]
     assert merged["family"]["owner"]["name"] == "Ro"
     # Everything the owner did not restate: the sibling key inside the object
     # that was patched, and every other section.
@@ -92,7 +92,7 @@ def test_a_patched_list_replaces_rather_than_grows():
     a patch that could only append would have no way to drop one."""
     merged = wc.apply_patch(
         {"sports": {"followed": [{"abbr": "bos", "sport": "baseball", "league": "mlb"}]}},
-        live_config(), ENV)
+        live_config(), ENV)[0]
     assert [t["abbr"] for t in merged["sports"]["followed"]] == ["bos"]
 
 
@@ -100,7 +100,7 @@ def test_a_new_city_takes_its_coordinates_with_it():
     """The one patch that fails silently: the card's title becomes the new city
     and the forecast stays the old one's."""
     merged = wc.apply_patch({"weather": {"location": "Denver"}}, live_config(), ENV,
-                            geocoder=lambda city: (39.74, -104.99))
+                            geocoder=lambda city: (39.74, -104.99))[0]
     assert merged["weather"] == {"location": "Denver", "lat": 39.74, "lon": -104.99}
 
 

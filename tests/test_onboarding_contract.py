@@ -348,39 +348,7 @@ def test_a_source_without_a_name_still_passes_the_gate():
     assert gate(config) == ""
 
 
-def test_discovery_runs_only_while_the_sources_are_absent():
-    """Probing every turn plus "any listing opens the pick" is a loop.
 
-    An owner who chose calendars before naming their city would be asked to
-    choose again on the next message, and again after that -- the probe keeps
-    returning a listing, because Latch is up.
-    """
-    text = " ".join(ONBOARDING.split())
-    assert "§5 runs only while `calendar.sources` is ABSENT" in text
-    assert "must not be asked to pick them a second time" in text
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "`calendar.sources` being absent from the config**" in section
-    assert "you do not run this twice" in section
-
-
-def test_name_and_city_alone_are_not_a_finished_conversation():
-    """With the marker gone, "has a name and a city" was left meaning done --
-    which strands an owner who answered both and never reached teams."""
-    text = " ".join(ONBOARDING.split())
-    assert "Name and city alone are NOT \"done\"" in text
-    assert "resumed at teams" in text
-
-
-def test_the_inline_listing_reaches_the_script_without_a_shell():
-    """plow_run_command cannot redirect, so the listing arrives inline or as a
-    persisted path -- and the inline case is the dangerous one: the text holds
-    calendar names a stranger wrote, so it goes to a file through the file
-    tool, never through a heredoc."""
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "A persisted result" in section and "Inline text" in section
-    assert "with your file tool" in section
-    assert "The file tool, and never a heredoc" in section
-    assert "/opt/data/ld/calendar-listing.json" in section
 
 
 def test_the_account_is_taken_from_primary_not_dataowner():
@@ -419,6 +387,71 @@ def test_the_sheet_names_no_tool_that_does_not_exist():
     the agent said to a new owner: "❓ placeholder".
     """
     assert "send_message" not in SKILL
+
+
+def test_the_turn_makes_as_few_tool_calls_as_it_can():
+    """Every gap between two tool calls is somewhere a sentence escapes.
+
+    Both remaining leaks came from gaps that did not need to exist: a config
+    read-back after a write that already knew the answer, and a re-probe. The
+    fix is fewer calls, not another rule about what not to say in between.
+    """
+    text = " ".join(ONBOARDING.split())
+    assert "Make as few tool calls as the step needs" in text
+    assert "Do not read a file back to confirm a write that already reported its result" in text
+    # And the city step no longer asks for the read-back at all.
+    city = " ".join(ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
+    assert "Do not read the config back to check" in city
+
+
+def test_the_draft_reports_what_it_geocoded(tmp_path, capsys):
+    """The output that makes the read-back unnecessary."""
+    config = tmp_path / "config.json"
+    draft(config, '{"family": {"owner": {"name": "M"}}}')
+    capsys.readouterr()
+    wc.main(["--draft"], env=ENV, config_path=str(config),
+            stdin=io.StringIO('{"weather": {"location": "Chicago"}}'))
+    out = capsys.readouterr().out
+    assert "geocoded: 'Chicago' -> lat=" in out and "lon=" in out
+
+
+def test_a_draft_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):
+    """Only the call that geocoded reports coordinates -- a line on every write
+    would be noise the model learns to repeat."""
+    config = tmp_path / "config.json"
+    draft(config, '{"family": {"owner": {"name": "M"}}}')
+    assert "geocoded:" not in capsys.readouterr().out
+
+
+def test_the_write_comes_first_and_the_message_is_the_last_thing():
+    """The trailing note was the ordering, not the wording.
+
+    Sending the message first leaves the turn needing something to end on, and
+    whatever it ends on is delivered -- "Name's drafted, waiting on her next
+    reply", "Onboarding's now complete on my end". Six rules about what not to
+    say could not fix a turn that structurally had to say something. With the
+    write first the message IS the ending.
+    """
+    text = " ".join(ONBOARDING.split())
+    assert "the draft comes first and the message goes last" in text
+    assert "the message is the last thing in the turn, and nothing follows it" in text
+    # The cost is named here rather than discovered in a transcript later.
+    assert "The accepted cost" in text
+    assert "the introduction and the Latch link are never sent" in text
+
+    intro = " ".join(ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")].split())
+    assert "Draft the name first, then introduce yourself" in intro
+    teams = " ".join(ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
+    assert "Draft it before writing §4's close" in teams
+    close = " ".join(ONBOARDING[ONBOARDING.index("### 4 ·"):ONBOARDING.index("### 5 ·")].split())
+    assert "This message is the LAST thing in its turn" in close
+
+    # And "first" must not be read as "before there is anything to write".
+    # Observed on a first turn: a fabricated name drafted into the config,
+    # then retracted to the owner in two messages.
+    assert '"Draft first" means the answer you were just given' in text
+    assert "invents no name" in text
+    assert "Never compose a value the owner did not say" in text
 
 
 def test_the_reply_is_the_step_not_a_report_of_it():

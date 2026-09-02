@@ -176,6 +176,12 @@ whether it is finished. The owner is not a participant in that process. If a
 sentence would make no sense to someone who does not know this skill exists, it
 is not for them, wherever it sits.
 
+**Make as few tool calls as the step needs.** Every gap between two of them is
+somewhere a sentence can escape, so the shortest turn is the safest one: read
+the config once at the top, probe once, draft once, and reply. Do not read a
+file back to confirm a write that already reported its result, and do not
+re-probe something you probed this turn.
+
 **So: call your tools in silence, then write the step's own message** — the
 introduction, the city question, the close. Not a report of what you just did.
 A turn whose tools all succeeded and whose reply is "name is drafted, waiting
@@ -195,19 +201,34 @@ message that read correctly. Attachments are delivered after the whole text of
 their message, so a picture never precedes the words introducing it; keep the
 text above it short.
 
-**Which is why the message goes out before the answer goes in.** Where a step
-sends something the owner is meant to *see* — the introduction and the Latch
-link in §2, the close and the wall offer in §4 — send it first and draft the
-answer afterwards, in that order, in the same turn. Write first and a restart
-in the gap between them leaves a config saying the question was answered while
-the owner never saw what the answer was supposed to unlock: their name is on
-file, so the resumed turn skips §2 and asks for their city, and the link they
-need in order to be useful to at all is never sent. Nothing later in the
-conversation would notice.
+**Which is why the draft comes first and the message goes last.** Every tool
+call a step needs — the draft included — happens before you write anything;
+the message is the last thing in the turn, and nothing follows it.
 
-Ordered this way, the config can only ever under-claim. A restart in the gap
-costs one repeated question, which the owner answers again in four seconds;
-the other order costs the introduction and the install, silently and for good.
+**"Draft first" means the answer you were just given, and nothing else.** A
+step with no answer in hand writes nothing at all: §1 has been told nothing
+yet, so it makes no draft, invents no name, and simply sends the opener. Never
+compose a value the owner did not say in order to have something to write —
+observed, on a first turn: a fabricated name drafted into the config, then
+retracted to the owner in two messages. If the last thing they said is not an
+answer to the question you asked, there is nothing to record. Ask again, or
+answer what they actually said.
+
+That ordering is the point. A turn that sends the message first still has to
+end on something, and whatever it ends on is delivered: every trailing note
+this conversation has leaked — "Name's drafted, waiting on her next reply",
+"Onboarding's now complete on my end" — was a turn reaching for a way to
+finish after its real message had already gone. Put the write first and the
+message is the ending; there is nothing left to say.
+
+**The accepted cost.** A crash in the gap between the write and the message
+leaves a config claiming an answer the owner never saw the consequence of:
+their name on file, so the resumed turn moves to their city, and the
+introduction and the Latch link are never sent. It is a real hole and it is
+narrow — the gap is one model completion wide, with no network call in it —
+and the alternative was a note appended to every step forever. If a resumed
+conversation ever looks like it skipped the introduction, this is why: send
+it, then carry on from the first missing key.
 
 
 **Every answer is written the moment it lands**, one at a time, never as one
@@ -248,15 +269,6 @@ The picture lands under the question rather than above it. That is how
 attachments are delivered and there is nothing to be done about it; keeping the
 text to two short lines is what keeps them close together.
 
-**"What should I call you?" must not appear anywhere in message one.** That is
-the whole point of splitting them, and it is the part that goes wrong: an
-attachment is delivered behind the text of the message carrying it, so a
-message that says hello, asks the question and attaches the GIF puts the
-picture *after* the question — an interrogation with a stray image trailing it.
-Observed exactly that way in testing, from wording that only said "two
-messages". Hello and picture land together; the question arrives next, on its
-own, with nothing else in it.
-
 **Give your name, and only your name** — *if you have one.* "I'm ⟨name⟩"
 belongs in that first line, the way you would say it to someone at a door,
 before either of you has explained anything.
@@ -288,8 +300,8 @@ the link. The whole of §1 is: hello, your name, a GIF, and what to call them.
 
 ### 2 · Their name, then who you are
 
-Introduce yourself first, then draft the name — that order, per the rule above,
-because a name on file is what makes a resumed turn skip this section.
+Draft the name first, then introduce yourself — per the rule above, so the
+introduction is the last thing in the turn and nothing trails it.
 
 **One message, and short.** Three ideas, a few lines each, blank lines between
 them — the way a person texts, not three paragraphs of prose. It carries:
@@ -343,8 +355,8 @@ the privacy line and the pictures, and go straight to §5 in this same turn: the
 calendars are right there, and the natural next thing to say is which of them
 you should watch.
 
-**Now** draft their name (`family.owner.name`) — after the introduction and the
-link have gone out, so the config cannot claim more than they have been shown.
+All of that is one message, and it is the last thing the turn does — the name
+was already drafted (`family.owner.name`) before a word of it was written.
 
 **The name comes from their reply and from nothing else.** Every turn arrives
 with a roster preamble naming the chat's participants — "You", a phone number,
@@ -387,15 +399,18 @@ at all, so keep the comma:
 
     {"weather": {"location": "Mountain View, California"}}
 
-Then read `/opt/data/ld/config.json` back and look at the `lat`/`lon` that
-landed. If they are not where that place is, the geocoder took a different city
-of the same name: draft the location again, more specifically.
+**Do not read the config back to check.** The draft already tells you what it
+resolved, in its own output:
 
-**That check is yours alone, and it happens between tool calls — so it happens
-in silence.** Read the file, look at the numbers, say nothing. The first thing
-you say about their city is the city and the timezone, and there is nothing
-before it: they said "Mountain View", so *"Mountain View — Pacific time, got
-it."*
+    geocoded: 'Mountain View, California' -> lat=37.38605, lon=-122.08385
+
+If those coordinates are not where that place is, the geocoder took a different
+city of the same name: draft the location again, more specifically. One tool
+call, one answer, no second look — and nothing to say out loud in between.
+
+**The first thing you say about their city is the city and the timezone**, with
+nothing before it: they said "Mountain View", so *"Mountain View — Pacific
+time, got it."*
 
 **Not one word about coordinates, checking, verifying, matching or being
 correct** — not with numbers, not without them. Both of these were sent to a
@@ -426,11 +441,8 @@ Mountain View is the Sacramento Kings — and turn it into ESPN's own terms:
 
 Read the list back in their words, not the JSON. "None" is a real answer:
 `{"sports": {"followed": []}}` — the question was asked, and that is what
-onboarding needs. Send §4's close before drafting either, for the same reason
-the name waits: `sports.followed` present is what tells a resumed turn the
-questions are done, and a restart between the write and the close would leave
-an owner who has never been told they are set, never been offered the wall,
-and has nothing left in the conversation to prompt it.
+onboarding needs. Draft it before writing §4's close, same as everywhere else:
+the tool call comes first and the close is the last thing in the turn.
 
 Do not ask for their email, their calendars, or their Mac username. Those
 arrive through Latch's connectors. Do not ask what time they want their
@@ -439,8 +451,9 @@ nothing can store is a promise you would be breaking.
 
 ### 4 · Close
 
-This message goes out BEFORE the teams draft of §3: `sports.followed` present
-is what tells a resumed turn this section already happened.
+This message is the LAST thing in its turn. The teams draft of §3 happens
+first, silently; `sports.followed` present is what tells a resumed turn this
+section already happened.
 
 Tell them they are set, and offer the wall as the optional extra it is: if they
 want a physical display in the kitchen, the build is at
@@ -497,7 +510,9 @@ formatting. The script expects gog's output exactly as gog produced it.
     python3 /opt/data/skills/ld-setup/scripts/calendar_list.py /opt/data/ld/calendar-listing.json
 
 It prints one object — `{"account": "…", "calendars": [{"id", "display",
-"accessRole"}, …]}` — and refuses loudly rather than guessing. It exists
+"accessRole"}, …]}` — and refuses loudly rather than guessing. Those three
+fields are all you get and all you need: the raw listing is not yours to go
+back to. It exists
 because every step of doing this by eye has a silent failure: the output is
 not JSON (gog prints a `Note: …` line before the array, so parsing the whole
 string fails on a working call), a large result arrives as a persisted
@@ -505,7 +520,8 @@ envelope naming a file, and the account is the `primary` entry's id rather
 than `dataOwner`, which varies across shared calendars.
 
 Then show them what is there and let them choose. Display each by
-`summaryOverride` when it has one, else `summary`, and say the `accessRole`
+its `display` — the script already picked `summaryOverride` over `summary`, so
+that choice is made and not yours to redo — and say its `accessRole`
 (`owner` / `reader`) so a read-only share is not mistaken for theirs. Do not
 mark the primary as special or pre-pick it — it is one row among the others.
 Ask which ones to track; several is normal.

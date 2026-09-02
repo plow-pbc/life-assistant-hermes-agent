@@ -43,23 +43,20 @@ def gather(tmp_path, text):
     return str(path)
 
 
-def test_the_preamble_is_skipped(tmp_path):
-    """The output is not JSON. A parse of the whole string fails on a WORKING
-    call, and a turn that treats that as "no calendars" tells the owner the
-    wrong thing."""
-    result = cl.normalize(cl.extract_array(cl.read_gather(
-        gather(tmp_path, PREAMBLE + json.dumps(LISTING)))))
+@pytest.mark.parametrize("label,payload", [
+    # The output is not JSON: a parse of the whole string fails on a WORKING
+    # call, and a turn that reads that as "no calendars" tells the owner the
+    # wrong thing.
+    ("inline, with gog's preamble", PREAMBLE + json.dumps(LISTING)),
+    # A large result comes back wrapped, naming a file rather than the text.
+    ("a persisted envelope", json.dumps({"result": json.dumps(
+        {"exit_code": 0, "output": PREAMBLE + json.dumps(LISTING)})})),
+])
+def test_both_delivery_shapes_reach_the_same_answer(tmp_path, label, payload):
+    result = cl.normalize(cl.extract_array(cl.read_gather(gather(tmp_path, payload))))
     assert result["account"] == "mary@example.test"
     assert [c["id"] for c in result["calendars"]] == [
         "mary@example.test", "fam@group.calendar.google.test"]
-
-
-def test_a_persisted_envelope_is_unwrapped(tmp_path):
-    """A large result comes back wrapped rather than inline."""
-    envelope = json.dumps({"result": json.dumps(
-        {"exit_code": 0, "output": PREAMBLE + json.dumps(LISTING)})})
-    result = cl.normalize(cl.extract_array(cl.read_gather(gather(tmp_path, envelope))))
-    assert result["account"] == "mary@example.test"
 
 
 def test_a_nonzero_exit_refuses(tmp_path):
@@ -69,44 +66,34 @@ def test_a_nonzero_exit_refuses(tmp_path):
         cl.read_gather(gather(tmp_path, envelope))
 
 
-def test_the_owners_rename_wins_over_the_summary():
-    """summaryOverride is what they see in Google Calendar, so it is what they
-    will recognise being read back."""
-    result = cl.normalize(LISTING)
-    assert [c["display"] for c in result["calendars"]] == ["mary@example.test", "Ours"]
+def test_the_account_is_primary_and_the_display_is_the_owners_rename():
+    """Two properties of the same normalise, and both are about not guessing.
 
-
-def test_the_account_is_primary_never_dataowner():
-    """Shares keep their own owner -- a real listing had three distinct
-    dataOwner values across nine calendars -- so deriving the account from it
-    picks whichever calendar was read last."""
+    summaryOverride is what they see in Google Calendar, so it is what they
+    will recognise read back. And shares keep their own owner -- a real listing
+    had three distinct dataOwner values across nine calendars -- so deriving
+    the account from dataOwner picks whichever calendar was read last.
+    """
     result = cl.normalize(LISTING)
     assert result["account"] == "mary@example.test"
+    assert [c["display"] for c in result["calendars"]] == ["mary@example.test", "Ours"]
     assert "dataOwner" not in json.dumps(result)
 
 
-def test_no_primary_refuses_rather_than_guessing():
-    """Guessing the first row would put a SHARED calendar's address into
-    calendar.account, and every producer would authenticate as someone else."""
-    with pytest.raises(GatherError, match="primary"):
-        cl.normalize([{"id": "shared@example.test", "summary": "Shared"}])
-
-
-def test_two_primaries_refuse():
-    """Not a shape gog should produce; if it does, one of them is wrong and
-    picking either silently is worse than saying so."""
-    with pytest.raises(GatherError, match="primary"):
-        cl.normalize([{"id": "a@b.test", "primary": True},
-                      {"id": "c@d.test", "primary": True}])
-
-
-@pytest.mark.parametrize("entries", [
-    [],                                    # nothing to choose from
-    [{"summary": "No id"}],                # a calendar with no id
-    [{"id": "   ", "primary": True}],      # a blank one
-    "not a list",
+@pytest.mark.parametrize("label,entries", [
+    # Guessing a primary would put a SHARED calendar's address into
+    # calendar.account, and every producer would authenticate as someone else.
+    ("no primary", [{"id": "shared@example.test", "summary": "Shared"}]),
+    # Not a shape gog should produce; if it does, one is wrong and picking
+    # either silently is worse than saying so.
+    ("two primaries", [{"id": "a@b.test", "primary": True},
+                       {"id": "c@d.test", "primary": True}]),
+    ("nothing to choose from", []),
+    ("a calendar with no id", [{"summary": "No id"}]),
+    ("a blank id", [{"id": "   ", "primary": True}]),
+    ("not a list", "not a list"),
 ])
-def test_a_shape_that_cannot_be_used_refuses(entries):
+def test_a_listing_that_cannot_be_used_refuses(label, entries):
     with pytest.raises(GatherError):
         cl.normalize(entries)
 

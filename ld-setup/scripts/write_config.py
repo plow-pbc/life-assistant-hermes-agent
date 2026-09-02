@@ -199,7 +199,7 @@ def check_keys(patch, reference, path="", verb="patch"):
 
 
 def apply_patch(patch, current, env, geocoder=None, gated=True):
-    """The live config with `patch` merged in, or SystemExit naming the refusal.
+    """(merged config, did_geocode), or SystemExit naming the refusal.
 
     `gated=False` is --draft: the same merge and the same key check, onto a
     config that may not exist yet. Only the gate is relaxed; see the module
@@ -250,8 +250,9 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
     if "location" in weather and not {"lat", "lon"} <= set(weather):
         lat, lon = (geocoder or geocode)(merged["weather"]["location"])
         merged["weather"]["lat"], merged["weather"]["lon"] = lat, lon
+        return merged, True
 
-    return merged
+    return merged, False
 
 
 def atomic_write(config_path, text):
@@ -332,7 +333,7 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
         except (OSError, ValueError) as exc:
             raise SystemExit(
                 f"refusing to {verb}: could not read {config_path}: {exc}") from None
-        config = apply_patch(payload, current, env, gated=not args.draft)
+        config, geocoded = apply_patch(payload, current, env, gated=not args.draft)
     else:
         raise SystemExit(
             "refusing to write: pass --draft (onboarding, answer by answer) or "
@@ -370,6 +371,18 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     # it is how a turn learns the config is still short of "installed", and the
     # names in it are exactly what the wall path will need later.
     print(f"wrote {config_path} (mode 600); gate: {verdict or 'PASS'}")
+    # The geocoder's verdict, in the SAME tool result as the write.
+    #
+    # A caller that wants to check the coordinates otherwise has to read the
+    # file back -- a second tool call, and every gap between two tool calls is
+    # somewhere a model narrates into. "Coordinates check out fine (37.38,
+    # -122.08) — that's correct Mountain View, CA" reached a real owner from
+    # exactly that gap. Printing it here removes the gap rather than the
+    # sentence: there is no second call to narrate around.
+    weather = config.get("weather") or {}
+    if geocoded and isinstance(weather, dict):
+        print(f"geocoded: {weather.get('location')!r} -> "
+              f"lat={weather.get('lat')}, lon={weather.get('lon')}")
     return 0
 
 
