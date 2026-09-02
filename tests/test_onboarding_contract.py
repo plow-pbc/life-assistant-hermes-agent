@@ -429,6 +429,35 @@ def test_a_message_the_owner_must_see_is_sent_before_its_answer_is_written():
     assert close.index("Tell them they are set") < close.index("> /opt/data/ld/onboarding-complete")
 
 
+def test_a_nameless_agent_still_opens_the_conversation():
+    """Observed: with no name configured, the agent asked the OWNER to name it
+    -- as a numbered menu, as the first thing it ever said -- and then took
+    "Mary" (the owner's name) as its own.
+
+    Nothing in this repo gives the agent a name, so "introduce yourself by
+    name" without an escape hatch is a dead end, and the model resolves a dead
+    end by improvising at the owner's expense.
+    """
+    opener = SKILL[SKILL.index("### 1 · Opener"):SKILL.index("### 2 ·")]
+    assert "if you have one" in opener
+    assert "say hello without one and carry on" in opener
+    assert "do not ask the owner to name you" in opener
+    assert "numbered multiple-choice question" in opener
+
+
+def test_the_owners_name_may_only_come_from_their_reply():
+    """Observed: family.owner.name was written as "You".
+
+    The plugin prepends a roster preamble to every turn, and "You" is what it
+    calls the human. Taken as an answer it is unrecoverable -- from the next
+    turn on the question reads as answered, so nothing ever asks again.
+    """
+    intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
+    assert "comes from their reply and from nothing else" in intro
+    assert "roster preamble" in intro
+    assert "`You`" in intro
+
+
 def test_the_opener_is_a_hello_a_gif_and_a_name():
     """Spec 2.1, and the two transcripts that failed it.
 
