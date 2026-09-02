@@ -117,5 +117,14 @@ cd /opt/hermes
 HOME=/var/lib/hermes
 export HOME
 
+# The base image ships HERMES_HOME=/opt/data AND HERMES_WRITE_SAFE_ROOT=/opt/data,
+# the fleet's paths. The cloud runtime overrides the first (systemd unit, and us)
+# and NOT the second -- so write_file refuses every path in the agent's own home
+# with "outside HERMES_WRITE_SAFE_ROOT (/opt/data)". Onboarding only survives it
+# because write_config.py runs through the terminal instead. Corrected here so
+# the loop tests the agent rather than that bug; the image itself still has it.
+HERMES_WRITE_SAFE_ROOT=/var/lib/hermes
+export HERMES_WRITE_SAFE_ROOT
+
 exec setpriv --reuid=10000 --regid=10000 --init-groups \
   /opt/hermes/.venv/bin/hermes gateway run --replace --no-supervise
