@@ -196,6 +196,25 @@ def test_bookkeeping_never_becomes_the_final_message():
     assert "Bookkeeping belongs in your reasoning, never in the last thing you write" in text
 
 
+def test_the_geocode_read_back_stays_internal():
+    """Observed in the owner's chat: "Good -- those coordinates match Mountain
+    View, CA, so that's correct."
+
+    They do not know a geocoder ran and cannot act on a lat/lon. The check is
+    real and stays; narrating it is the leak.
+    """
+    city = " ".join(ONBOARDING[ONBOARDING.index("### 3 ·"):ONBOARDING.index("### 4 ·")].split())
+    assert "That check is yours alone" in city
+    assert "never the numbers, never the fact that you checked" in city
+
+
+def test_the_introduction_is_several_sends_not_several_paragraphs():
+    """Same mechanism as the opener: paragraphs are not messages."""
+    intro = " ".join(ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")].split())
+    assert "Two or three short messages means two or three sends" in intro
+    assert "One reply with three paragraphs is ONE message" in intro
+
+
 def test_latch_state_is_probed_every_turn_not_asked():
     """"Have you installed it yet?" is a question with an answer already on file.
 
