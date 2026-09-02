@@ -9,7 +9,7 @@ object saying what the turn does:
      "write_now": ["family.owner.name", "weather.location"],
      "defer": [],                   # keys held back for the next turn
      "intro_due": false,
-     "latch": "unconfigured"}       # or configured / connected
+     "latch": "unconfigured"}       # or configured
 
 Every rule that used to live in prose lives here: the key order, what is
 written now and what is held back, when the introduction is due, and whether
@@ -26,8 +26,7 @@ INPUT is a JSON object on stdin, or in the file named by --input:
 
     {"answers": {"name": "Mary", "city": "Mountain View, California",
                  "teams": [...], "calendars": [...]},
-     "carried": {"name": "Mary"},
-     "listing": true}
+     "carried": {"name": "Mary"}}
 
 `answers` holds only what THIS message actually carried -- the turn's own
 reading of what the owner just said, and nothing recalled from earlier. It is
@@ -42,8 +41,14 @@ one-time: without it, a name deferred on Monday looks freshly learned on
 Tuesday, the introduction goes out again, and the deferral never resolves
 because the same turn keeps holding it back.
 
-`listing` says a calendar listing came back this turn, which is the difference
-between a relay that is configured and one that is answering.
+There is no "did a listing come back" input, deliberately. Asking that would
+mean fetching the listing before knowing whether this turn wants it, and a turn
+that fetches it on the way past writes the listing file with nothing to put in
+it and spends ten tool calls before it says hello. Both were measured: a
+`⚠️ File-mutation verifier:` block inside an owner's introduction, and a
+narration leak ahead of the opener. The relay being CONFIGURED is what this
+decides on; whether it answers is settled by the one call, made only on the
+turn that asks about calendars.
 
 Standard library only, and the config's own key order is the ask order.
 """
@@ -84,14 +89,14 @@ def has_key(config, dotted):
     return True
 
 
-def latch_state(config_yaml_text, listing):
-    """`connected` when a listing came back, else configured / unconfigured.
+def latch_state(config_yaml_text):
+    """`configured` when this deployment has a relay at all, else not.
 
-    A listing is the only proof a Mac answered. Configured-but-silent is a Mac
-    that is asleep, which is not a state the owner is told about.
+    Whether the Mac on the other end is awake is not knowable without calling
+    it, and calling it is what the turn does only when it is about to ask about
+    calendars. A relay that turns out to be asleep is handled there, as a
+    failed call, and the owner is told nothing about either.
     """
-    if listing:
-        return "connected"
     return "configured" if relay_configured(config_yaml_text) else "unconfigured"
 
 
@@ -108,7 +113,7 @@ def decide(config, answers, latch, carried=None):
     # types one, so with no Mac reachable there is nothing to ask and the
     # conversation is as finished as it can get.
     askable = [dotted for dotted in missing
-               if dotted != "calendar.sources" or latch == "connected"]
+               if dotted != "calendar.sources" or latch == "configured"]
     ask = next((key for key, dotted in ORDER if dotted in askable), None)
 
     # The introduction is due on the turn the name is LEARNED. A name already
@@ -184,8 +189,7 @@ def main(argv=None, env=None, config_path_override=None):
     except OSError:
         config_yaml = ""
 
-    json.dump(decide(config, answers,
-                     latch_state(config_yaml, bool(staged.get("listing"))), carried),
+    json.dump(decide(config, answers, latch_state(config_yaml), carried),
               sys.stdout, indent=2)
     print()
     return 0

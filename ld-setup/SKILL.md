@@ -241,8 +241,7 @@ asks, what it writes and whether it introduces you are decided by a script.
 `/opt/data/ld/.turn.json` — never a heredoc, never argv:
 
     {"answers": {"name": "…", "city": "…, …", "teams": […], "calendars": […]},
-     "carried": {"name": "…"},
-     "listing": false}
+     "carried": {"name": "…"}}
 
 `answers` is only what THIS message carried. Omit a key you were not given; a
 roster label is not a name.
@@ -252,7 +251,8 @@ practice the one deferred name. It goes here, never in `answers`: the split is
 how the script knows the introduction has already gone out, and a carried name
 filed as a fresh one reads as a first meeting every turn.
 
-`listing` is true only when a calendar listing came back this turn.
+Nothing else goes in that file, and no relay call is made to fill it. The
+listing belongs to step 4, on the one turn that asks about calendars.
 
 **2 · Ask what the turn is:**
 
@@ -276,46 +276,44 @@ introduction if `intro_due`, then the question `ask` names — or, when `ask` is
 `null`, the close and the wall offer. The sections below are the copy for each
 of those pieces.
 
+**Only when `ask` is `calendars`** does this turn make the listing call §5
+describes — one call, hand the output to `calendar_list.py`, show them what
+came back. If that call fails or is refused, the Mac is not answering: say
+nothing about it, ask nothing about calendars, and close instead. On every
+other turn no relay tool is called at all.
+
 `ask: null` never means "say nothing". A turn that reaches step 4 with no
 question owed still owes a message, and the message is the close. Where the
 sheet left that void, an owner received `❓ dummy`.
 
 **Why a script.** The same decision written as prose grew a hole every time it
-was extended, and each hole reached an owner as a blocking `❓`. The rules it
-applies are in `onboarding_state.py`, with the reason each exists, and are not
-restated here to drift from.
+was extended, and each hole reached an owner as a blocking `❓`. The rules are
+in `onboarding_state.py` and are not restated here to drift from.
 
 **Nothing the owner said ever reaches a shell** — their name, their city, and
-above all a calendar's display name, which is text a stranger wrote. Everything
-is staged as JSON by your file tool and passed by path.
+above all a calendar's display name, which is text a stranger wrote. Stage it
+as JSON with your file tool and pass the path.
 
-**Every answer reaches the config a step later at most**, one draft at a
-time, never as one blob at the end:
+**The fewest tool calls the turn needs.** Every gap between two of them is
+somewhere a sentence can escape. A turn that did ten before saying hello leaked
+one: *"The opener step calls for a simple hello and asking their name."*
 
-Stage this with your file tool at `/opt/data/ld/.draft.json`:
+**`--draft`, not `--patch`.** The staged file is a PARTIAL CONFIG in the shape
+of `/opt/data/skills/ld-shared/references/config.example.json`, deep-merged
+onto whatever is there — and unlike `--patch` it works before the file exists
+and excuses the shared gate for the questions not yet asked. It has to: the
+gate wants a calendar account and its sources, and onboarding never asks for
+those. So a long `gate:` line listing the calendar keys is the EXPECTED output,
+not a failure. A value you actually supplied is still judged: `refusing to
+draft:` means the answer as you composed it is wrong — fix what it names and
+run it again.
 
-    {"family": {"owner": {"name": "Mary"}}}
-
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft.json
-
-`--draft`, not `--patch`. Stdin is a PARTIAL CONFIG in the shape of
-`/opt/data/skills/ld-shared/references/config.example.json`, deep-merged onto
-whatever is there — and unlike `--patch` it works before the file exists and
-excuses the shared gate for the questions not yet asked. It has to: the gate
-wants a calendar account and its sources, and onboarding never asks for those,
-because the calendar arrives through Latch's connectors later. So a long
-`gate:` line listing the calendar keys is the EXPECTED output, not a failure.
-A value you actually supplied is still judged: `refusing to draft:` means the
-answer as you composed it is wrong — fix what it names and run it again.
-
-**This output is yours, not the owner's.** Read it, act on it, and say nothing
-script-shaped in chat: no pasted `gate:` line, no exit status, no file paths,
-no "wrote config.json". The owner is having a conversation, and a person who
-just told you their name should hear their name back, not a validator. (The
-paste-everything rule further down this sheet belongs to the wall phases,
-where the owner is deliberately being walked through an install.) If a draft
-refuses and you cannot fix it from what they said, ask them the one question
-that resolves it, in plain words.
+**That output is yours, not the owner's.** No pasted `gate:` line, no exit
+status, no file paths, no "wrote config.json". A person who just told you their
+name should hear their name back, not a validator. If a draft refuses and you
+cannot fix it from what they said, ask them the one question that resolves it,
+in plain words. (The paste-everything rule further down belongs to the wall
+phases, where the owner is deliberately being walked through an install.)
 
 ### 1 · Opener
 

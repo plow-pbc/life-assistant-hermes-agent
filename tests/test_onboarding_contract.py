@@ -396,23 +396,24 @@ def merged(*parts):
      None, [], [], False),
 
     # --- the calendars, and the two turns they take --------------------
-    ("everything but the calendars, a listing came back: ask them",
-     merged(NAME, CITY, TEAMS), {}, "connected",
-     "calendars", [], [], False),
-    ("configured but silent is not connected: the calendars cannot be asked",
+    ("everything but the calendars, a relay configured: ask them",
      merged(NAME, CITY, TEAMS), {}, "configured",
-     None, [], [], False),
+     "calendars", [], [], False),
     ("the picks land: write them",
-     merged(NAME, CITY, TEAMS), {"calendars": ["a@b.test"]}, "connected",
+     merged(NAME, CITY, TEAMS), {"calendars": ["a@b.test"]}, "configured",
      None, ["calendar.sources"], [], False),
-    ("a listing on the name turn: introduce, ask the calendars, hold the name",
-     merged(CITY, TEAMS), {"name": "Mary"}, "connected",
+    ("a relay on the name turn: introduce, ask the calendars, hold the name",
+     merged(CITY, TEAMS), {"name": "Mary"}, "configured",
      "calendars", [], ["family.owner.name"], True),
+    # The name is still the first missing key, relay or no relay: the listing
+    # is not fetched on a turn that is not going to ask about calendars.
+    ("nothing known, a relay configured: still ask the name",
+     {}, {}, "configured", "name", [], [], False),
 
     # --- present-but-empty is answered ---------------------------------
     ("an empty followed list is an answer, not a gap",
      merged(NAME, CITY, TEAMS), {}, "unconfigured", None, [], [], False),
-    ("everything answered", merged(NAME, CITY, TEAMS, CALS), {}, "connected",
+    ("everything answered", merged(NAME, CITY, TEAMS, CALS), {}, "configured",
      None, [], [], False),
 ])
 def test_the_turn_decides_the_same_way_from_every_partial_config(
@@ -447,7 +448,7 @@ def test_nothing_is_ever_both_written_and_deferred():
         answers = {k: "x" for i, k in enumerate(keys) if bits >> i & 1}
         for config in ({}, NAME, CITY, merged(NAME, CITY), merged(CITY, TEAMS),
                        merged(NAME, CITY, TEAMS)):
-            for latch in ("unconfigured", "configured", "connected"):
+            for latch in ("unconfigured", "configured"):
                 got = state.decide(config, answers, latch)
                 assert not set(got["write_now"]) & set(got["defer"])
                 # And only the name is ever deferred: it is the one one-time
@@ -499,11 +500,19 @@ def test_the_sheet_presents_the_decision_and_does_not_restate_it():
     # the introduction goes out a second time. Observed on a live run before
     # the sheet named `carried` at all.
     assert "`carried`" in ONBOARDING and "never in `answers`" in ONBOARDING
+    # The relay is called on the calendars turn and no other. Fetching it on
+    # the way past cost ten tool calls before the opener, a narration leak, and
+    # a verifier footer inside an owner's introduction.
+    assert "Only when `ask` is `calendars`" in ONBOARDING
     # No table of turn shapes, and no second copy of the ordering rule.
     assert "| the turn | tool calls |" not in ONBOARDING
     assert "| what the config already holds |" not in ONBOARDING
+    # A budget, not a style rule: the section presents four steps and the two
+    # hazards that are about HOW a turn runs (no owner text in a shell, as few
+    # tool calls as it needs). Room for a fifth rule means room for a second
+    # copy of the decision, which is what the script exists to end.
     algorithm = ONBOARDING[ONBOARDING.index("## The algorithm"):ONBOARDING.index("### 1 ·")]
-    assert len(algorithm.split()) < 700, "the sheet is re-deriving the decision again"
+    assert len(algorithm.split()) < 800, "the sheet is re-deriving the decision again"
 
 
 def test_no_owner_text_is_ever_composed_into_a_command():
