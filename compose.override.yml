@@ -89,6 +89,7 @@ services:
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-dashboard:/opt/data/skills/ld-dashboard:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-viewer-dev:/opt/data/skills/ld-viewer-dev:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-setup:/opt/data/skills/ld-setup:ro
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-wall-setup:/opt/data/skills/ld-wall-setup:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/runtime/SOUL.md:/opt/data/SOUL.md:ro
       # Onboarding's GIF, at the path the skill names. The Dockerfile bakes it
       # for the cloud image; the fleet runs the base image with these mounts
