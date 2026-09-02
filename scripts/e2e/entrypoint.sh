@@ -76,6 +76,13 @@ token = (os.environ.get("LATCH_MCP_TOKEN") or "").strip()
 # before anything here runs.
 with open(path) as f:
     config = yaml.safe_load(f) or {}
+
+# The e2e image's config.yaml comes off the home VOLUME, which is seeded once
+# and then outlives every rebuild -- so a key added to runtime/config.yaml does
+# not reach an existing volume. Set here too, or the loop tests an agent that
+# still has the tool the product has taken away.
+config.setdefault("agent", {})["disabled_toolsets"] = ["clarify"]
+
 servers = config.setdefault("mcp_servers", {})
 
 if url and token:
@@ -90,6 +97,8 @@ elif servers.pop("plow", None) is not None:
           "an earlier --latch run left in config.yaml")
 else:
     print("e2e-entrypoint: no Latch relay (config.yaml names no plow MCP server)")
+
+print("e2e-entrypoint: clarify disabled (agent.disabled_toolsets)")
 
 with open(path, "w") as f:
     yaml.safe_dump(config, f, sort_keys=False)
