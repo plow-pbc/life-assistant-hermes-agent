@@ -20,9 +20,11 @@ is unreliable.
 Agent = grey, owner = blue. The agent already knows its own name (existing identity); use it.
 
 1. **Opener (first inbound while onboarding is incomplete):** one message — one warm line acknowledging they
-   showed up, "What should I call you?", and the GIF (`quick-q.gif`) attached. (Decision 2026-09-02: a hermes
-   turn delivers exactly one message and `send_message` is not registered in this image, so the Figma's
-   GIF-before-question ordering is not achievable without an image change; the GIF lands under the question.)
+   showed up, "What should I call you?", and the GIF (`quick-q.gif`) attached. (Decision 2026-09-02: `send_message` is not
+   registered in this image, so there is no deliberate way to split a reply; the gateway does deliver any text the
+   model emits *between tool calls* as its own message — which is how bookkeeping lines leaked — but relying on
+   that for ordering is fragile. The GIF lands under the question; a GIF-first opener is a follow-up once the
+   image registers a send tool.)
 2. **Name lands** → patch config → intro in its own voice: 2–3 lines on what it *does* (books, reorders,
    chases refunds), that the doing happens through an app on their Mac, one privacy line (runs on their
    machine, logins in a vault it can use but never see, they set the boundaries). Then the **photo-stack slot**
