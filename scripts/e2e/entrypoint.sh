@@ -59,7 +59,11 @@ chmod 3770 /var/lib/hermes
 # Written into the config rather than passed as env because Hermes reads its
 # MCP servers from config.yaml; the file is the agent's own (first-boot hands
 # it to uid 10000) so this runs before the chown below.
-/usr/bin/python3 - <<'LATCH_PY'
+# The venv's python, not /usr/bin/python3: pyyaml is installed in Hermes' own
+# environment and nowhere else, so the system interpreter dies here with
+# ModuleNotFoundError -- and because this block now runs on EVERY start, that
+# took down plain no-Latch runs too, before the gateway ever started.
+/opt/hermes/.venv/bin/python3 - <<'LATCH_PY'
 import os
 import yaml
 
