@@ -628,6 +628,16 @@ whole hazard this section exists to avoid. Copy the tool's output into the
 file's content and change nothing about it — not the preamble, not the
 formatting. The script expects gog's output exactly as gog produced it.
 
+**That file is written HERE and nowhere else, and only ever with the listing
+call's own output.** Not on the introduction turn, not as an empty file, not as
+a placeholder to fill in later, and never with anything you composed. Before a
+listing exists there is nothing to put in it, and a write that fails leaves
+more than a missing file: a failed write is reported in a footer appended to
+the turn's final response, and the turn's final response is a message to the
+owner. One arrived inside an introduction — a `⚠️ File-mutation verifier:`
+block naming container paths and a JSONDecodeError, mid-sentence, to someone
+who had just said hello.
+
     python3 /opt/data/skills/ld-setup/scripts/calendar_list.py /opt/data/ld/calendar-listing.json
 
 It prints one object — `{"account": "…", "candidates": […], "calendars":

@@ -620,6 +620,19 @@ def test_discovery_is_one_argv_and_never_auth_list():
     assert not re.search(r'argv=\[[^]]*"auth"', SKILL)
 
 
+def test_the_listing_file_is_written_only_where_a_listing_exists():
+    """A write attempted before there is anything to write does not fail
+    quietly: a failed write_file is reported in a footer appended to the turn's
+    FINAL RESPONSE, and that response is a message to the owner. One reached an
+    owner inside the introduction -- container paths and a JSONDecodeError,
+    mid-sentence."""
+    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "written HERE and nowhere else" in section
+    # And the path is named in §5 only, never in the earlier copy.
+    before_five = ONBOARDING[:ONBOARDING.index("### 5 ·")]
+    assert "calendar-listing.json" not in before_five
+
+
 def test_no_display_name_is_persisted_or_shelled():
     """A calendar's display name is written by whoever owns it.
 
