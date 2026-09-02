@@ -52,6 +52,14 @@ group_sessions_per_user: false
 agent:
   disabled_toolsets:
     - clarify
+    # `browser` is Hermes' own browser_* / browser_exec stack. Nothing on
+    # this box can back it: the Browser Use harness needs a desktop Chrome and
+    # the agent-browser CLI is not installed, so every call ends in
+    # chrome-not-running. Advertised anyway, a fresh agent picks it over
+    # Latch's plow_browser tools, fails, and tells the owner "the browser is
+    # down" (measured live, 2026-09-02). Browsing goes through Latch, on the
+    # owner's own Mac.
+    - browser
 
 # The file-mutation verifier appends a footer to the assistant's FINAL RESPONSE
 # whenever a write_file/patch failed during the turn -- container paths, the
