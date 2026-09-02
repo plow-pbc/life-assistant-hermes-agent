@@ -158,7 +158,10 @@ def test_the_sheet_states_the_one_message_per_turn_limit():
     assert "call your tools in silence, and speak once, at the end" in text
     # All three leaks that reached a real owner, quoted so the rule keeps its
     # evidence -- and behind NOT: so the scan can tell them from instructions.
-    assert MECHANICS.count("    NOT: ") == 3
+    assert MECHANICS.count("    NOT: ") == 5
+    # The rule that covers all of them: subject, not placement.
+    assert "never send a sentence whose subject is the setup itself" in text
+    assert "would make no sense to someone who does not know this skill exists" in text
 
 
 def test_the_owner_is_never_told_about_the_machinery():

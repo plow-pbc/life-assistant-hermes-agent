@@ -148,6 +148,19 @@ None of those were meant for the owner. All three were thinking-out-loud
 around a `write_config.py` run or a config read-back, and the owner got them
 as texts.
 
+**The test is subject, not placement.** Every leak so far has been a sentence
+*about the setup process* — what you just wrote, what you checked, what step
+you are on, whether onboarding is finished. The owner is not a participant in
+that process; they are having a conversation. So: never send a sentence whose
+subject is the setup itself. Not before the message, not after it, not tucked
+at the top of one. These all reached real owners, in four different runs:
+
+    NOT: No config yet — this is a fresh start. Sending the opener per skill instructions.
+    NOT: Onboarding complete. No further action needed right now.
+
+If a sentence would make no sense to someone who does not know this skill
+exists, it is not for them.
+
 **So during onboarding: call your tools in silence, and speak once, at the
 end.** Draft the config, read it back, probe the relay, check what came out —
 say nothing at all while doing it. The single message you write after the last
