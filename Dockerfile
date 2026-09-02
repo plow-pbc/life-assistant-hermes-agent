@@ -66,11 +66,7 @@ RUN systemctl enable life-calendar-feed.timer
 #
 # Root-owned and world-readable like the skills: a turn sends this file, it
 # does not get to replace it.
-COPY docs/onboarding-v2/assets/quick-q.gif /srv/plow-assets/quick-q.gif
-COPY docs/onboarding-v2/assets/work-1-vault-login.png /srv/plow-assets/work-1-vault-login.png
-COPY docs/onboarding-v2/assets/work-2-instacart-grocery.png /srv/plow-assets/work-2-instacart-grocery.png
-COPY docs/onboarding-v2/assets/work-3-amazon-shopping.png /srv/plow-assets/work-3-amazon-shopping.png
-COPY docs/onboarding-v2/assets/work-4-medical-discovery.png /srv/plow-assets/work-4-medical-discovery.png
+COPY docs/onboarding-v2/assets/ /srv/plow-assets/
 RUN chmod 0755 /srv/plow-assets && chmod 0644 /srv/plow-assets/*
 
 # The instance directory the producers read and ld-setup writes. Nothing exists

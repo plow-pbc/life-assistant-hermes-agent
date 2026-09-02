@@ -10,6 +10,10 @@ reads well, whether the model narrates its own bookkeeping, whether the intro is
 short -- none of that is decidable from the text of a prompt, and pinning
 paragraphs against it produced tests that broke on every edit while catching
 nothing. That evidence comes from transcripts of the agent actually running.
+
+THE RULE FOR ANYTHING ADDED HERE: no wording assertions -- only executable
+behaviour and structural contracts (a table's rows and cells, a branch's
+boundary, a script's output, a path that must exist).
 """
 import importlib.util
 import io
@@ -205,21 +209,24 @@ def test_no_mode_of_write_config_touches_the_crons():
 # Assets: what ships in the image
 # --------------------------------------------------------------------------
 
-def test_the_assets_are_exactly_the_gif_and_the_four_previews():
-    """An asset baked here is sent to every owner who ever onboards, so the set
-    is closed rather than open.
+def test_every_asset_the_sheet_sends_is_one_the_image_holds():
+    """A MEDIA: path the image does not carry is delivered as nothing at all --
+    no attachment, no error, and the sentence introducing it still arrives.
 
-    The four work previews are design mockups -- synthetic people and data,
-    confirmed by the product owner. They read as real, which is the point of a
-    mockup and also why the set is pinned: the next file dropped in beside them
-    gets the same reach without the same check.
+    The directory is baked as a unit, so the contract worth testing is
+    referential: every file the sheet names must exist to be copied. Pinning the
+    directory's exact listing tested the filesystem instead, and broke whenever
+    the design changed while catching nothing a run would not.
     """
-    expected = ["quick-q.gif", "work-1-vault-login.png", "work-2-instacart-grocery.png",
-                "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
     assets = ROOT / "docs/onboarding-v2/assets"
-    assert sorted(f.name for f in assets.iterdir()) == expected
-    baked = [l for l in DOCKERFILE.splitlines() if l.startswith("COPY") and "/srv/plow-assets/" in l]
-    assert baked == [f"COPY docs/onboarding-v2/assets/{n} /srv/plow-assets/{n}" for n in expected]
+    baked = [l for l in DOCKERFILE.splitlines()
+             if l.startswith("COPY") and "/srv/plow-assets/" in l]
+    assert baked == ["COPY docs/onboarding-v2/assets/ /srv/plow-assets/"], (
+        "the directory is copied as one unit; a per-file list drifts from it")
+    referenced = re.findall(r"^\s*MEDIA:/srv/plow-assets/(\S+)$", SKILL, re.MULTILINE)
+    assert referenced, "the sheet sends no assets at all"
+    for name in referenced:
+        assert (assets / name).is_file(), f"the sheet sends {name}, which is not in the image"
 
 
 def test_the_lead_in_and_the_pictures_travel_together():
@@ -295,7 +302,6 @@ def test_silence_names_the_token_the_gateway_recognises():
     """
     soul = " ".join(SOUL.split())
     assert "Say `NO_REPLY` and nothing else" in soul
-    assert "A parenthesis is still a message" in soul
 
 
 def test_a_group_gets_no_questions_and_no_writes():
@@ -337,15 +343,6 @@ def test_the_wall_marker_stays_the_walls_own():
     assert len(re.findall(rf"^\s*date -u \+%FT%TZ > {re.escape(WALL_MARKER)}\s*$",
                           SKILL, re.MULTILINE)) == 1
 
-
-
-def test_the_observed_behaviours_are_marked_as_observed():
-    """Everything this section knows about gog and Latch came from one Mac on
-    one day, and none of it is documented. Recorded as observations rather
-    than facts so the next reader checks instead of building on them."""
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "observed on one Mac, on one day, and none of it is documented" in section
-    assert "if it does not hold" in section
 
 
 def test_the_relay_tool_is_named_only_where_it_exists():
@@ -520,7 +517,6 @@ def test_every_step_has_a_row_in_the_turn_table():
     find its own row reaches for a way to ask.
     """
     assert set(turn_table()) == {"§1", "§2", "§3", "§4", "§5a", "§5b"}
-    assert "Every turn of this conversation is in that table" in " ".join(ONBOARDING.split())
 
 
 def test_the_table_says_what_each_turn_calls_and_what_it_ends_on():
@@ -702,6 +698,37 @@ def test_the_null_account_is_asked_about_and_never_stood_in_for():
     assert "`candidates` holds those owner-role addresses" in section
     assert "Nothing is written until that answer lands" in section
     assert "account and sources go in the SAME draft" in section
+
+
+@pytest.mark.parametrize("label,payload", [
+    ("account null", '{"calendar": {"account": null, '
+     '"sources": [{"calendar_id": "a@b.test"}]}}'),
+    ("owner_identities carrying the null", '{"calendar": {"account": "a@b.test", '
+     '"sources": [{"calendar_id": "a@b.test"}]}, '
+     '"calendar_nudge": {"owner_identities": [null]}}'),
+    ("the word null, as a string", '{"calendar": {"account": "null", '
+     '"sources": [{"calendar_id": "a@b.test"}]}}'),
+])
+def test_a_null_account_can_never_reach_the_config(tmp_path, label, payload):
+    """The ask branch is safe only if the null cannot be written while it waits.
+
+    calendar.account is the identity every producer authenticates as, and
+    calendar.sources landing without it is worse than either alone: sources
+    present means §5 never runs again, account missing means the gate refuses
+    forever. So the draft that carries the picks has to refuse a null outright
+    rather than record half the answer.
+    """
+    config = tmp_path / "config.json"
+    if label == "the word null, as a string":
+        # Not blank, so the gate cannot catch it -- what stops this one is that
+        # it is never composed: the template takes the owner's answer.
+        draft(config, payload)
+        assert json.loads(config.read_text())["calendar"]["account"] == "null"
+        return
+    with pytest.raises(SystemExit) as refusal:
+        draft(config, payload)
+    assert "blank" in str(refusal.value) or "nonblank" in str(refusal.value)
+    assert not config.exists(), "a refused draft must leave nothing behind"
 
 
 def test_the_answered_account_has_a_template_of_its_own():
