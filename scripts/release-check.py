@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Walk the whole pin chain and name every gap, in the order they have to close.
 
-Usage: release-check.py [all|base] [--offline]
+Usage: release-check.py [all|base]
 
 Five repositories hold six pins between a plugin commit and a running tenant,
 and not one of them is watched by anything:
@@ -66,6 +66,9 @@ MATTERS = {
     "image/systemd/": "the units that start the gateway and run first boot",
     "image/first-boot.sh": "what runs once on the tenant VM before the gateway starts",
     "image/seed/skills/": "skills baked beside ours in /var/lib/hermes/skills",
+    # Shapes what the base's own COPY lines can see, so it changes the built
+    # filesystem without appearing in any Dockerfile diff.
+    ".dockerignore": "the base's build context -- what its COPY lines can reach",
 }
 
 # Not counted, and each for a reason worth stating rather than a silent miss.
@@ -74,7 +77,6 @@ WHY_NOT = {
     "README.md": "prose",
     "scripts/": "the base repo's own build/CI checks; the image does not run them",
     ".gitignore": "not in the image",
-    ".dockerignore": "build context only",
 }
 
 
@@ -96,14 +98,19 @@ def try_run(*args: str, cwd: Path | None = None) -> str | None:
 MIRRORS = Path(run("git", "rev-parse", "--path-format=absolute", "--git-common-dir", cwd=REPO_ROOT)) / "release-check-mirrors"
 
 
-def mirror(url: str, name: str, offline: bool) -> Path:
+def mirror(url: str, name: str) -> Path:
+    """A fresh mirror of `url`. Always fetches: a stale answer is worse than none.
+
+    There is no offline mode. The whole output is "what is the latest", and a
+    cached mirror answers that question with yesterday's tips while looking
+    exactly like a live run -- a verdict of NO MATERIAL DRIFT computed against a
+    week-old main is the single most dangerous thing this could print.
+    """
     path = MIRRORS / f"{name}.git"
     if not path.exists():
-        if offline:
-            raise SystemExit(f"--offline and no mirror at {path}; run once without it")
         path.parent.mkdir(parents=True, exist_ok=True)
         run("git", "clone", "--quiet", "--mirror", url, str(path))
-    elif not offline:
+    else:
         run("git", "fetch", "--quiet", "origin", "+refs/heads/*:refs/heads/*", cwd=path)
     return path
 
@@ -127,8 +134,23 @@ def behind(repo: Path, older: str, newer: str) -> int | None:
     return int(out) if out is not None else None
 
 
+# Commit subjects are attacker-controlled text from repositories this script
+# clones. A subject carrying ESC, CR or a newline can repaint or overwrite the
+# report -- hiding a whole hop's verdict behind a cursor move -- on a terminal
+# whose reader is deciding what to publish. Printable ASCII plus a bounded
+# length is all a subject line needs to be.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def sanitize(text: str, limit: int = 120) -> str:
+    """Remote text, made safe to print. Never used on anything we compare."""
+    clean = _CONTROL.sub("?", text)
+    return clean if len(clean) <= limit else clean[: limit - 1] + "…"
+
+
 def subject(repo: Path, sha: str) -> str:
-    return try_run("git", "log", "-1", "--format=%cs %s", sha, cwd=repo) or "<unknown commit>"
+    raw = try_run("git", "log", "-1", "--format=%cs %s", sha, cwd=repo)
+    return sanitize(raw) if raw else "<unknown commit>"
 
 
 # ------------------------------------------------------------------ classify
@@ -280,14 +302,32 @@ class Report:
         print(f"     CURRENT  {current}")
         print(f"     LATEST   {latest}")
         if count is None:
-            print("     behind   unknown (the two do not share a line of descent)")
-        else:
-            print(f"     behind   {count} commit(s)")
+            # Not "0 behind", and never an UPGRADE recommendation. A pin that is
+            # not an ancestor of main is a commit somebody published off a
+            # branch: there is no upgrade path to compute, the file lists would
+            # describe a diff nobody is proposing, and the honest output is to
+            # say so and refuse to rank it. It counts as a gap, so the run still
+            # exits non-zero -- an unanswerable hop must never read as a clean
+            # one, which is the shape that lets a stale chain look released.
+            print("     behind   n/a -- not on the same line of descent")
+            print("     VERDICT  DIVERGED -- manual comparison required")
+            self.gaps.append(f"hop {n} diverged")
+            print()
+            return
+        print(f"     behind   {count} commit(s)")
         if verdict:
             print(f"     VERDICT  {verdict}")
             self.gaps.append(verdict)
         else:
             print("     VERDICT  current")
+        print()
+
+    def unknown(self, n: int, title: str, why: str) -> None:
+        """A hop that could not be read at all. Loud, and a gap."""
+        print(f"── hop {n}: {title}")
+        print(f"     VERDICT  UNKNOWN -- {why}")
+        print("     This hop was not checked. Treat the chain as unverified.")
+        self.gaps.append(f"hop {n} unknown")
         print()
 
     def step(self, repo: str, file: str, field: str, target: str, note: str) -> None:
@@ -315,10 +355,22 @@ def hop4_base_drift(rep: Report, base: Path, pin: str, head: str, published: str
         return
 
     if not is_ancestor(base, pin, head):
-        print("     !! the pinned commit is NOT an ancestor of base main. It is a branch")
-        print("        commit someone published a tag for; everything below is the diff")
-        print("        against main's history, not an upgrade path. Read it as such.")
+        # Short-circuit, not a warning above an otherwise normal report. The
+        # pinned commit is on a branch that never merged -- someone published a
+        # tag for it -- so `pinned..main` is not an upgrade path and the MATTERS
+        # set computed from it would describe a change nobody is proposing.
+        # Printing UPGRADE RECOMMENDED off that is worse than printing nothing:
+        # it names a direction that does not exist.
+        print("     behind   n/a -- not on the same line of descent")
+        print("     VERDICT  DIVERGED -- manual comparison required")
         print()
+        print("     The pinned commit is NOT an ancestor of base main: it is a branch")
+        print("     commit someone published a tag for. Compare the two by hand and")
+        print("     decide what this repo should be building on; there is no upgrade")
+        print("     path to compute, so none is offered.")
+        print()
+        rep.gaps.append("hop 4 diverged")
+        return
 
     # The whole diff, not per-commit name-only unions: a file touched and then
     # reverted inside the range is not drift, and summing commits reports it as
@@ -329,17 +381,17 @@ def hop4_base_drift(rep: Report, base: Path, pin: str, head: str, published: str
 
     print(f"     {len(commits)} commit(s) in pinned..main (merges included):")
     for line in commits:
-        print(f"       {line}")
+        print(f"       {sanitize(line)}")
     print()
 
     hits = classify(files)
     print(f"     net diff touches {len(files)} file(s):")
     for f in sorted(files):
         if f in hits:
-            print(f"       MATTERS  {f}")
+            print(f"       MATTERS  {sanitize(f)}")
         else:
             reason = why_not(f)
-            print(f"                {f}" + (f"   ({reason})" if reason else ""))
+            print(f"                {sanitize(f)}" + (f"   ({reason})" if reason else ""))
     print()
 
     reasons = sorted(set(hits.values()))
@@ -354,13 +406,12 @@ def hop4_base_drift(rep: Report, base: Path, pin: str, head: str, published: str
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("subcommand", nargs="?", default="all", choices=["all", "base"])
-    ap.add_argument("--offline", action="store_true", help="use cached mirrors, skip the registry and gh")
     args = ap.parse_args()
 
-    base = mirror(BASE_REPO, "plow-hermes-agent", args.offline)
+    base = mirror(BASE_REPO, "plow-hermes-agent")
     base_head = run("git", "rev-parse", "main", cwd=base)
     life_pin = life_pinned_base()
-    tags = None if args.offline else registry_tags()
+    tags = registry_tags()
     published = newest_published_on_main(base, tags, base_head)
 
     rep = Report()
@@ -378,7 +429,7 @@ def main() -> int:
         hop4_base_drift(rep, base, life_pin, base_head, published, tags)
         return 1 if rep.gaps else 0
 
-    plugin = mirror(PLUGIN_REPO, "hermes-plow-chat", args.offline)
+    plugin = mirror(PLUGIN_REPO, "hermes-plow-chat")
     plugin_head = run("git", "rev-parse", "main", cwd=plugin)
 
     print("PIN CHAIN\n")
@@ -395,15 +446,15 @@ def main() -> int:
     if base_plugin_pin and n:
         print("     the plugin commits it is missing:")
         for line in (try_run("git", "log", "--oneline", f"{base_plugin_pin}..{plugin_head}", cwd=plugin) or "").splitlines():
-            print(f"       {line}")
+            print(f"       {sanitize(line)}")
         print()
         rep.step("plow-pbc/plow-hermes-agent", "Dockerfile", "ARG PLOW_CHAT_PLUGIN_SHA", plugin_head,
                  "moves the plugin; publishes nothing on its own")
 
     # hop 2 -- is base main published at all?
     if tags is None:
-        rep.hop(2, "registry  <-  plow-hermes-agent main", "unknown", f"base-{short(base_head)}", None,
-                "registry unreachable -- check base-<main sha> by hand")
+        rep.unknown(2, "registry  <-  plow-hermes-agent main",
+                    "the registry could not be reached; check base-<main sha> by hand")
     elif f"base-{base_head}" in tags:
         rep.hop(2, "registry  <-  plow-hermes-agent main",
                 f"base-{short(base_head)} IS published", f"base-{short(base_head)}", 0, None)
@@ -422,7 +473,10 @@ def main() -> int:
     dep = agents_json(dep_ref) if dep_ref else None
 
     if live is None:
-        print("── hops 3 and 5: plow agents.json unreadable (gh not authenticated?) -- unknown\n")
+        rep.unknown(3, "plow .exe.hermes.revision  <-  the base",
+                    "plow's agents.json could not be read (is `gh` installed and authenticated?)")
+        rep.unknown(5, "plow .exe.life.revision  <-  this repo's main",
+                    "plow's agents.json could not be read (is `gh` installed and authenticated?)")
     else:
         hermes_pin = live["exe"]["hermes"]["revision"]
         life_ref_pinned = live["exe"]["life"]["revision"]
@@ -433,7 +487,7 @@ def main() -> int:
                 f"{short(base_head)}  {subject(base, base_head)}   (base main)", n3,
                 f"hermes pin behind main by {n3}" if n3 else None)
 
-        life = mirror(LIFE_REPO, "life-assistant-hermes-agent", args.offline)
+        life = mirror(LIFE_REPO, "life-assistant-hermes-agent")
         life_head = run("git", "rev-parse", "main", cwd=life)
         n5 = behind(life, life_ref_pinned, life_head)
         rep.hop(5, "plow .exe.life.revision  <-  this repo's main",
@@ -442,7 +496,10 @@ def main() -> int:
                 f"life pin behind main by {n5}" if n5 else None)
 
         if dep is None:
-            print(f"     DEPLOYED  unknown (no deploy/api/* tag readable)\n")
+            print("     DEPLOYED  UNKNOWN -- no deploy/api/* tag readable, so what is actually")
+            print("               live could not be established. Not the same as up to date.")
+            rep.gaps.append("deployed state unknown")
+            print()
         else:
             print(f"     DEPLOYED  as of plow {short(dep_ref)}: "
                   f"hermes={short(dep['exe']['hermes']['revision'])} "

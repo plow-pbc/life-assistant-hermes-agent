@@ -125,6 +125,9 @@ class TestClassification:
         "image/systemd/hermes-gateway.service",
         "image/first-boot.sh",
         "image/seed/skills/growth/plow-invite/SKILL.md",
+        # Shapes what the base's own COPY lines can see, so it changes the built
+        # filesystem without showing up in any Dockerfile diff.
+        ".dockerignore",
     ])
     def test_material_paths_are_flagged(self, path):
         assert rc.classify([path]) != {}
@@ -136,7 +139,6 @@ class TestClassification:
         ("README.md", "prose"),
         ("scripts/check-image.sh", "does not run them"),
         (".gitignore", "not in the image"),
-        (".dockerignore", "build context"),
     ])
     def test_immaterial_paths_are_not_flagged_but_are_explained(self, path, reason):
         assert rc.classify([path]) == {}
@@ -238,8 +240,96 @@ class TestExitCodes:
         )
         assert out.returncode != 0
 
-    def test_offline_without_a_mirror_fails_instead_of_reporting_nothing(self, tmp_path, monkeypatch):
+    def test_there_is_no_offline_mode(self):
+        # Deliberately removed. The whole output is "what is the latest", and a
+        # cached mirror answers that with yesterday's tips while looking exactly
+        # like a live run -- NO MATERIAL DRIFT computed against a week-old main
+        # is the most dangerous line this could print.
+        out = subprocess.run(
+            [sys.executable, str(SCRIPT), "--offline"], capture_output=True, text=True, cwd=ROOT
+        )
+        assert out.returncode != 0
+        assert "--offline" not in SCRIPT.read_text().split('"""', 2)[1]
+
+    def test_an_unreachable_remote_fails_loudly_rather_than_reporting_nothing(self, tmp_path, monkeypatch):
         # The dangerous shape is a clean exit 0 that checked nothing.
         monkeypatch.setattr(rc, "MIRRORS", tmp_path / "absent")
-        with pytest.raises(SystemExit):
-            rc.mirror("https://example.invalid/x", "x", offline=True)
+        with pytest.raises(subprocess.CalledProcessError):
+            rc.mirror("https://example.invalid/nope", "x")
+
+
+class TestUnknownIsNeverCurrent:
+    """The failure this guards is a clean-looking run that checked nothing.
+
+    Every one of these states used to print as "current" or be skipped, which
+    is the exact shape that lets a stale chain read as released.
+    """
+
+    def test_a_diverged_hop_reports_diverged_not_a_count(self, capsys):
+        rep = rc.Report()
+        rep.hop(1, "t", "a", "b", None, None)
+        out = capsys.readouterr().out
+        assert "DIVERGED" in out
+        assert "manual comparison required" in out
+        assert "current" not in out
+
+    def test_a_diverged_hop_never_recommends_an_upgrade(self, capsys):
+        # Even when the caller hands it an upgrade verdict, divergence wins:
+        # there is no direction to upgrade in.
+        rep = rc.Report()
+        rep.hop(1, "t", "a", "b", None, "plugin pin behind upstream by 4")
+        out = capsys.readouterr().out
+        assert "DIVERGED" in out
+        assert "behind upstream" not in out
+
+    def test_a_diverged_hop_counts_as_a_gap(self):
+        rep = rc.Report()
+        rep.hop(3, "t", "a", "b", None, None)
+        assert rep.gaps == ["hop 3 diverged"]
+
+    def test_an_unreadable_hop_is_loud_and_a_gap(self, capsys):
+        rep = rc.Report()
+        rep.unknown(5, "t", "gh is not authenticated")
+        out = capsys.readouterr().out
+        assert "UNKNOWN" in out
+        assert "unverified" in out
+        assert rep.gaps == ["hop 5 unknown"]
+
+    def test_a_current_hop_is_not_a_gap(self):
+        rep = rc.Report()
+        rep.hop(1, "t", "a", "a", 0, None)
+        assert rep.gaps == []
+
+    def test_a_behind_hop_is_a_gap(self):
+        rep = rc.Report()
+        rep.hop(1, "t", "a", "b", 3, "plugin pin behind upstream by 3")
+        assert rep.gaps == ["plugin pin behind upstream by 3"]
+
+
+class TestRemoteTextIsSanitized:
+    """Commit subjects come from repositories this script clones, and land on a
+    terminal whose reader is deciding what to publish. A subject carrying ESC or
+    CR can repaint the report and hide a whole hop's verdict."""
+
+    def test_escape_sequences_are_defanged(self):
+        assert "\x1b" not in rc.sanitize("subject \x1b[2J\x1b[H gone")
+
+    def test_carriage_returns_cannot_overwrite_the_line(self):
+        assert "\r" not in rc.sanitize("harmless\rVERDICT current")
+
+    def test_newlines_cannot_forge_extra_report_lines(self):
+        assert "\n" not in rc.sanitize("one\n     VERDICT  current")
+
+    def test_ordinary_text_is_untouched(self):
+        text = "2026-09-02 fix: name the relay MCP server `plow` (#15)"
+        assert rc.sanitize(text) == text
+
+    def test_a_very_long_subject_is_bounded(self):
+        assert len(rc.sanitize("x" * 500)) <= 120
+
+    def test_a_sanitized_subject_reaches_the_report(self, repo):
+        # End to end: the real git call, through the real formatter.
+        subprocess.run(["git", "commit", "--quiet", "--allow-empty",
+                        "-m", "evil \x1b[2Ktitle"], cwd=repo["path"], check=True,
+                       capture_output=True)
+        assert "\x1b" not in rc.subject(repo["path"], "HEAD")
