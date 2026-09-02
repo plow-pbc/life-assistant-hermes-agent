@@ -19,7 +19,7 @@ Assets: `assets/quick-q.gif` (320×320 GIF, Figma layer "hot chocolate", origina
 - **Agent:** The doing happens through an app on your Mac. That's what lets me act on your actual accounts instead of just talking about it.
 - **Agent:** And since I run on your machine, not some server, your stuff stays yours: your logins sit in a vault I can use but never see, and nothing ever leaves your Mac. You set the boundaries, I work inside them. 🔒
 - **Agent:** Want to see the kind of thing I mean?
-- **Agent:** [4 Photos — screenshots of Plow working in a browser]
+- **Agent:** [3 Photos — screenshots of Plow working in a browser]
 - **Agent:** Only catch — I'm not on your Mac yet. So right now I'm flying blind: no calendar, no inbox, nothing. Let's fix that.
 - **Agent:** [Link card: Download Plow Latch — plow.co]
 - **Agent:** Reach out anytime if you have a question during setup. I'm happy to help.

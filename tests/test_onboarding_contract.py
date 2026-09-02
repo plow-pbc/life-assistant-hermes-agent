@@ -252,9 +252,11 @@ def test_the_lead_in_and_the_pictures_travel_together():
             in_comment = False
     live = "\n".join(live)
     tags = [l for l in live.splitlines() if l.strip().startswith("MEDIA:/srv/plow-assets/work-")]
+    # Three, and work-3 deliberately absent: it repeated work-2's argument, and
+    # every tag is one more message on the owner's phone.
     assert [t.strip().rsplit("/", 1)[1] for t in tags] == [
         "work-1-vault-login.png", "work-2-instacart-grocery.png",
-        "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
+        "work-4-medical-discovery.png"]
 
 
 def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
