@@ -205,7 +205,11 @@ def test_compression_has_somewhere_to_fall_back_to():
         "a task-level compression timeout is floored to 300s by the image, so "
         "one below it is inert and one above it only lengthens the stall"
     )
-    assert chain[0]["timeout"] >= 300
+    assert chain[0]["timeout"] >= 300, (
+        "the chain entry gets no floor of its own -- the image's applies to the "
+        "task-level key this test just required to be absent -- so without an "
+        "explicit budget it inherits the 30s auxiliary default"
+    )
 
 
 def test_latch_is_the_only_mcp_server():
