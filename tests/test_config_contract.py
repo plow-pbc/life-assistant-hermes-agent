@@ -184,9 +184,15 @@ def test_compression_has_somewhere_to_fall_back_to():
     """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
     a cheaper-sounding id installs a fallback that can never fire -- and a naive
     probe misses it, because the implicit main-model fallback reports success on
-    the caller's behalf. The ordering matters as much as the model: the primary
-    must give up sooner than the fallback runs, or widening its budget silently
-    delays the only thing that can still succeed."""
+    the caller's behalf.
+
+    The chain entry carries its own timeout because the task-level one is
+    deliberately absent: the image floors a config-derived compression timeout
+    at 300s (#54915), so a lower value is silently raised and a value that DID
+    bite would cut off a slow summary into the deterministic context marker.
+    Without a per-entry timeout the fallback inherits the 30s auxiliary default
+    instead -- far too short to summarise the transcript it was reached for.
+    """
     compression = config()["auxiliary"]["compression"]
     chain = compression["fallback_chain"]
 
@@ -195,11 +201,11 @@ def test_compression_has_somewhere_to_fall_back_to():
         "the fallback rides this instance's own codex auth -- a provider "
         "needing a new credential would not resolve here at all"
     )
-    assert compression["timeout"] < chain[0]["timeout"], (
-        "the primary attempt must give up SOONER than the fallback runs: the "
-        "stall is what the user feels, and a long primary budget just delays "
-        "reaching the only thing that can still succeed"
+    assert "timeout" not in compression, (
+        "a task-level compression timeout is floored to 300s by the image, so "
+        "one below it is inert and one above it only lengthens the stall"
     )
+    assert chain[0]["timeout"] >= 300
 
 
 def test_latch_is_the_only_mcp_server():
