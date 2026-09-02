@@ -56,6 +56,19 @@ RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills -type f \
 COPY runtime/life-calendar-feed.service runtime/life-calendar-feed.timer /etc/systemd/system/
 RUN systemctl enable life-calendar-feed.timer
 
+# Onboarding's own assets, and NOT under the home. Hermes refuses to deliver a
+# model-emitted MEDIA: path whose prefix is on its media denylist -- /etc /proc
+# /sys /dev /root /boot /var/log /var/lib /var/run -- and this runtime's whole
+# HERMES_HOME is /var/lib/hermes, so a GIF parked beside the skills is dropped
+# with "Skipping unsafe MEDIA directive path" and the opener arrives as text
+# with no picture and no error anywhere the owner or the agent can see.
+# /srv is outside that list, which is the whole reason for the path.
+#
+# Root-owned and world-readable like the skills: a turn sends this file, it
+# does not get to replace it.
+COPY docs/onboarding-v2/assets/ /srv/plow-assets/
+RUN chmod 0755 /srv/plow-assets && chmod 0644 /srv/plow-assets/*
+
 # The instance directory the producers read and ld-setup writes. Nothing exists
 # before first boot, so the image creates it empty: an unset-up agent is routed
 # to ld-setup by SOUL.md, exactly as on the fleet.

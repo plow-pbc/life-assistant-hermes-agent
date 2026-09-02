@@ -310,8 +310,8 @@ def test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_requ
         "stdout is the fixed NOT DELIVERED block with both Latch calls and the JSON",
         out == (
             "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
-            "1. plow_write_file  path=~/Plow/ld/card-3.json  content=<the JSON below>\n"
-            "2. plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
+            "1. mcp__latch__plow_write_file  path=~/Plow/ld/card-3.json  content=<the JSON below>\n"
+            "2. mcp__latch__plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
             "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-3.json "
             f"{base}/api/message\"] network=true\n"
             f"{wire}\n"

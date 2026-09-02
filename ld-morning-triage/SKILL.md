@@ -13,7 +13,7 @@ kiosk as card 1, `type: alert`. Runs every morning at 07:05 in
 never self-registers.
 
 The source is iMessage only, read from the owner's Mac through the Latch
-`plow_run_command` tool. Slack returns when its vendored CLI lands (gated on
+`mcp__latch__plow_run_command` tool. Slack returns when its vendored CLI lands (gated on
 the plow-pbc/latch#181 token rotation); calendar context returns with the
 latch#183 calendar producers. Gmail is not retained: iMessage is this
 producer's designed source — the Gmail/Slack shape was the workaround for a
@@ -36,7 +36,7 @@ uses:
 - `morning_triage.chat_db_path` — absolute path to the owner's
   `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
   template's `[CHAT_DB_PATH]` placeholder, **stop before calling
-  `plow_run_command`** and say the config has not been migrated — the shared
+  `mcp__latch__plow_run_command`** and say the config has not been migrated — the shared
   gate rejects the unfilled placeholder for exactly this reason.
 - `morning_triage.ranking_instructions` — free-form prompt context the user
   uses to shape prioritization (e.g. "always prioritize Stephanie;
@@ -52,7 +52,7 @@ or empty.
 ## Gather
 
 Read `morning_triage.chat_db_path` from the config, then call
-`plow_run_command` with EXACTLY this argv, substituting only the
+`mcp__latch__plow_run_command` with EXACTLY this argv, substituting only the
 config-supplied path (which never varies between runs):
 
     ["sqlite3", "-readonly", "-json", "<chat_db_path>",

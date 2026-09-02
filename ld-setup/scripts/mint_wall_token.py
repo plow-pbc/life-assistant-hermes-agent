@@ -67,6 +67,11 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 from runtime_env import DOTENV, dotenv_values, household_host  # noqa: E402
+# This script's own directory, for the sibling helper: a skill is copied
+# to /var/lib/hermes/skills/<name>/ whole, so siblings are found by realpath
+# rather than by anything that assumes a working directory.
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from exclusive_lock import exclusive_lock  # noqa: E402
 
 LD_DIR = "/opt/data/ld"
 # A LAN IP or an mDNS/DNS name. It lands inside a URL in the dotenv and inside
@@ -133,9 +138,36 @@ def write_private(path, text):
         f.write(text)
 
 
-def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
+def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR, argv=None):
+    # --input PATH, and nothing else: the answers are the owner's own words, so
+    # the turn stages them with its file tool rather than composing a heredoc
+    # around them. Same rule as the onboarding drafts, same reason.
+    # [] rather than argparse's usual sys.argv fallback: main() is called as a
+    # library by the tests, and would otherwise parse pytest's own argv.
+    argv = [] if argv is None else argv
+    staged = None
+    if argv:
+        if argv[0] != "--input" or len(argv) != 2:
+            raise SystemExit("usage: mint_wall_token.py [--input <staged.json>]")
+        staged = argv[1]
+    if staged is not None:
+        # The staged file is consumed on success, so an input that IS one of the
+        # targets would delete it under a line reporting success. It is also
+        # never meaningful: --input carries the answers, not the dotenv.
+        targets = [dotenv_path, os.path.join(ld_dir, "pi.env"),
+                   os.path.join(ld_dir, "dashboard.hdr")]
+        if any(os.path.realpath(staged) == os.path.realpath(t) for t in targets):
+            raise SystemExit(
+                "refusing: --input is a file this writes. Stage the answers in "
+                "their own file.")
     try:
-        answers = json.load(stdin or sys.stdin)
+        if staged is not None:
+            with open(staged, encoding="utf-8") as handle:
+                answers = json.load(handle)
+        else:
+            answers = json.load(stdin or sys.stdin)
+    except OSError as exc:
+        raise SystemExit(f"refusing: could not read {staged}: {exc}") from None
     except json.JSONDecodeError as exc:
         raise SystemExit(f"refusing: stdin is not one JSON object: {exc}") from None
     unknown = set(answers) - {"pi_address", "pi_user", "ical_url"}
@@ -143,110 +175,127 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
         raise SystemExit(f"refusing: unknown keys {sorted(unknown)}")
     ical_url = answers.get("ical_url")  # absent = keep what pi.env holds
 
-    values = dotenv_values(dotenv_path)
-    # Lowercased once at intake: DNS and mDNS names are case-insensitive, and
-    # urlsplit lowercases on recovery -- without this a mixed-case address
-    # would "re-point" the endpoint on every resume that omits it.
-    pi_address = str(answers.get("pi_address") or "").strip().lower()
-    if not pi_address:
-        pi_address = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+    # Everything from the dotenv read to both private writes happens under one
+    # lock: the read decides whether a token already exists, and two runs that
+    # both read "no" mint two, leaving the Pi and the Mac holding different
+    # bearers.
+    with exclusive_lock(dotenv_path, "refusing"):
+        values = dotenv_values(dotenv_path)
+        # Lowercased once at intake: DNS and mDNS names are case-insensitive, and
+        # urlsplit lowercases on recovery -- without this a mixed-case address
+        # would "re-point" the endpoint on every resume that omits it.
+        pi_address = str(answers.get("pi_address") or "").strip().lower()
         if not pi_address:
+            pi_address = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+            if not pi_address:
+                raise SystemExit(
+                    "refusing: no pi_address on stdin and no DASHBOARD_ENDPOINT_URL to recover "
+                    "it from -- ask the owner for the Pi's address"
+                )
+        if not PI_ADDRESS_RE.fullmatch(pi_address):
             raise SystemExit(
-                "refusing: no pi_address on stdin and no DASHBOARD_ENDPOINT_URL to recover "
-                "it from -- ask the owner for the Pi's address"
+                f"refusing: pi address {pi_address!r} is not [A-Za-z0-9.-] -- "
+                "it lands in a URL and in an ssh argv element"
             )
-    if not PI_ADDRESS_RE.fullmatch(pi_address):
-        raise SystemExit(
-            f"refusing: pi address {pi_address!r} is not [A-Za-z0-9.-] -- "
-            "it lands in a URL and in an ssh argv element"
-        )
-    if not household_host(pi_address):
-        raise SystemExit(
-            f"refusing: pi address {pi_address!r} is not on the household network "
-            "(a private IP or a .local name) -- the wall's bearer rides every "
-            "request to this host"
-        )
-    pi_user = str(answers.get("pi_user") or "").strip()
-    remembered_host = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
-    if not pi_user:
-        # A remembered login belongs to the remembered Pi: a re-point to a new
-        # address must not silently pair the new device with the old login --
-        # the wrong-ssh-target bug this script exists to prevent. The address
-        # checks above run first, so a bad address surfaces as its own refusal.
-        if remembered_host and pi_address != remembered_host:
+        if not household_host(pi_address):
             raise SystemExit(
-                f"refusing: the address changed ({remembered_host!r} -> {pi_address!r}) but no "
-                "pi_user came with it -- ask the owner for the new Pi's login (never guess one)"
+                f"refusing: pi address {pi_address!r} is not on the household network "
+                "(a private IP or a .local name) -- the wall's bearer rides every "
+                "request to this host"
             )
-        pi_user = values.get("DASHBOARD_PI_USER", "").strip()
-    if not pi_user:
-        raise SystemExit(
-            "refusing: no pi_user on stdin and no DASHBOARD_PI_USER remembered -- ask the "
-            "owner for the Pi's login (never guess one)"
-        )
-    if not PI_USER_RE.fullmatch(pi_user):
-        raise SystemExit(
-            f"refusing: pi user {pi_user!r} is not [A-Za-z0-9._-] -- "
-            "it lands in an ssh argv element in Phase 3"
-        )
+        pi_user = str(answers.get("pi_user") or "").strip()
+        remembered_host = urlsplit(values.get("DASHBOARD_ENDPOINT_URL", "").strip()).hostname or ""
+        if not pi_user:
+            # A remembered login belongs to the remembered Pi: a re-point to a new
+            # address must not silently pair the new device with the old login --
+            # the wrong-ssh-target bug this script exists to prevent. The address
+            # checks above run first, so a bad address surfaces as its own refusal.
+            if remembered_host and pi_address != remembered_host:
+                raise SystemExit(
+                    f"refusing: the address changed ({remembered_host!r} -> {pi_address!r}) but no "
+                    "pi_user came with it -- ask the owner for the new Pi's login (never guess one)"
+                )
+            pi_user = values.get("DASHBOARD_PI_USER", "").strip()
+        if not pi_user:
+            raise SystemExit(
+                "refusing: no pi_user on stdin and no DASHBOARD_PI_USER remembered -- ask the "
+                "owner for the Pi's login (never guess one)"
+            )
+        if not PI_USER_RE.fullmatch(pi_user):
+            raise SystemExit(
+                f"refusing: pi user {pi_user!r} is not [A-Za-z0-9._-] -- "
+                "it lands in an ssh argv element in Phase 3"
+            )
 
-    old = values.get("DASHBOARD_ENDPOINT_URL", "").strip()
-    endpoint = f"http://{pi_address}:5174/api/message"
-    if old:
-        token = values.get("DASHBOARD_TOKEN", "").strip()
-        if not token:
-            raise SystemExit(
-                f"refusing: {dotenv_path} names DASHBOARD_ENDPOINT_URL but DASHBOARD_TOKEN "
-                "is blank -- the Pi's token is not here to ship; restore the line or start over"
-            )
-        # ONE atomic replacement for everything that converges on a resume:
-        # the endpoint and its login are a coupled identity (a crash between
-        # separate writes could pair the new Pi with the old login -- the
-        # wrong-ssh-target bug this script exists to prevent), and a
-        # pre-latch dotenv's delivery converges to latch in the same pass
-        # (leaving it unset would send every producer on a direct POST that
-        # cannot reach the LAN-only Pi).
-        changed = converge_dotenv(dotenv_path, values, [
-            ("DASHBOARD_ENDPOINT_URL", endpoint),
-            ("DASHBOARD_DELIVERY", "latch"),
-            ("DASHBOARD_PI_USER", pi_user),
-        ])
-        if "DASHBOARD_ENDPOINT_URL" in changed:
-            print(f"re-pointed: DASHBOARD_ENDPOINT_URL={endpoint} (token unchanged -- "
-                  "cards now target this Pi; ship pi.env to it in Phase 3)")
+        old = values.get("DASHBOARD_ENDPOINT_URL", "").strip()
+        endpoint = f"http://{pi_address}:5174/api/message"
+        if old:
+            token = values.get("DASHBOARD_TOKEN", "").strip()
+            if not token:
+                raise SystemExit(
+                    f"refusing: {dotenv_path} names DASHBOARD_ENDPOINT_URL but DASHBOARD_TOKEN "
+                    "is blank -- the Pi's token is not here to ship; restore the line or start over"
+                )
+            # ONE atomic replacement for everything that converges on a resume:
+            # the endpoint and its login are a coupled identity (a crash between
+            # separate writes could pair the new Pi with the old login -- the
+            # wrong-ssh-target bug this script exists to prevent), and a
+            # pre-latch dotenv's delivery converges to latch in the same pass
+            # (leaving it unset would send every producer on a direct POST that
+            # cannot reach the LAN-only Pi).
+            changed = converge_dotenv(dotenv_path, values, [
+                ("DASHBOARD_ENDPOINT_URL", endpoint),
+                ("DASHBOARD_DELIVERY", "latch"),
+                ("DASHBOARD_PI_USER", pi_user),
+            ])
+            if "DASHBOARD_ENDPOINT_URL" in changed:
+                print(f"re-pointed: DASHBOARD_ENDPOINT_URL={endpoint} (token unchanged -- "
+                      "cards now target this Pi; ship pi.env to it in Phase 3)")
+            else:
+                print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
+            if "DASHBOARD_DELIVERY" in changed:
+                print("converged: DASHBOARD_DELIVERY=latch")
+            if "DASHBOARD_PI_USER" in changed:
+                print(f"remembered: DASHBOARD_PI_USER={pi_user} (the Pi's ssh login, for resumed runs)")
         else:
-            print(f"already minted: DASHBOARD_ENDPOINT_URL={endpoint} (unchanged -- the Pi holds this token)")
-        if "DASHBOARD_DELIVERY" in changed:
-            print("converged: DASHBOARD_DELIVERY=latch")
-        if "DASHBOARD_PI_USER" in changed:
-            print(f"remembered: DASHBOARD_PI_USER={pi_user} (the Pi's ssh login, for resumed runs)")
-    else:
-        token = secrets.token_urlsafe(24)
-        append_dotenv(dotenv_path, [
-            ("DASHBOARD_ENDPOINT_URL", endpoint),
-            ("DASHBOARD_TOKEN", token),
-            ("DASHBOARD_DELIVERY", "latch"),
-            ("DASHBOARD_PI_USER", pi_user),
-        ])
-        print(f"minted the wall token; appended DASHBOARD_ENDPOINT_URL={endpoint}, "
-              f"DASHBOARD_TOKEN, DASHBOARD_DELIVERY=latch and DASHBOARD_PI_USER={pi_user} "
-              f"to {dotenv_path}.")
+            token = secrets.token_urlsafe(24)
+            append_dotenv(dotenv_path, [
+                ("DASHBOARD_ENDPOINT_URL", endpoint),
+                ("DASHBOARD_TOKEN", token),
+                ("DASHBOARD_DELIVERY", "latch"),
+                ("DASHBOARD_PI_USER", pi_user),
+            ])
+            print(f"minted the wall token; appended DASHBOARD_ENDPOINT_URL={endpoint}, "
+                  f"DASHBOARD_TOKEN, DASHBOARD_DELIVERY=latch and DASHBOARD_PI_USER={pi_user} "
+                  f"to {dotenv_path}.")
 
-    ical = ical_url
-    if ical is None:
-        # Omitted is not "blank": an idempotent re-run must not erase the
-        # feed a later re-point or Pi rebuild ships. dotenv_values reads a
-        # missing pi.env as empty, so a first run still writes it blank.
-        ical = dotenv_values(os.path.join(ld_dir, "pi.env")).get("ICAL_URL", "")
+        ical = ical_url
+        if ical is None:
+            # Omitted is not "blank": an idempotent re-run must not erase the
+            # feed a later re-point or Pi rebuild ships. dotenv_values reads a
+            # missing pi.env as empty, so a first run still writes it blank.
+            ical = dotenv_values(os.path.join(ld_dir, "pi.env")).get("ICAL_URL", "")
 
-    os.makedirs(ld_dir, mode=0o700, exist_ok=True)
-    write_private(os.path.join(ld_dir, "pi.env"), f"ICAL_URL={ical}\nDASHBOARD_TOKEN={token}\n")
-    write_private(os.path.join(ld_dir, "dashboard.hdr"), f"Authorization: Bearer {token}\n")
-    print(f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr (mode 600) -- "
-          "ship them with plow_write_file; never paste them.")
-    # The one authoritative ssh target for Phase 3 -- both halves validated
-    # above, so the skill binds its placeholders from this line rather than
-    # re-deriving (or re-asking for) either half.
+        os.makedirs(ld_dir, mode=0o700, exist_ok=True)
+        write_private(os.path.join(ld_dir, "pi.env"), f"ICAL_URL={ical}\nDASHBOARD_TOKEN={token}\n")
+        write_private(os.path.join(ld_dir, "dashboard.hdr"), f"Authorization: Bearer {token}\n")
+        # Qualified: this line is read by the model, and a bare tool name is one
+        # the build does not register.
+        print(f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr (mode 600) -- "
+              "ship them with mcp__latch__plow_write_file; never paste them.")
+        # The one authoritative ssh target for Phase 3 -- both halves validated
+        # above, so the skill binds its placeholders from this line rather than
+        # re-deriving (or re-asking for) either half.
+    if staged is not None:
+        try:
+            os.remove(staged)
+        except OSError as exc:
+            # Not swallowed: it can hold an ical_url and the Pi's address, and
+            # one left behind is a second copy with no reader. The writes landed,
+            # so say both and exit non-zero.
+            raise SystemExit(
+                f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr, but could not "
+                f"remove the staged answers at {staged}: {exc}. Delete it.") from None
     print(f"pi_target={pi_user}@{pi_address}")
     print(f"pi_line_1={PI_LINE_1}")
     print(f"pi_line_2={PI_LINE_2}")
@@ -254,4 +303,5 @@ def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # sys.argv[1:] explicitly, never argparse's implicit fallback -- see main().
+    sys.exit(main(argv=sys.argv[1:]))

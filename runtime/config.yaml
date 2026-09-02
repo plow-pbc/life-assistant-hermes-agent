@@ -21,6 +21,55 @@
 # thread-reply incident), and the plow-chat plugin's config.extra flag never
 # reaches the gateway session store — this gateway-level key is the control.
 group_sessions_per_user: false
+# NOT set here: display.interim_assistant_messages.
+#
+# Turning it off looked like the structural fix for mid-turn commentary
+# reaching the owner, and it made things much worse. Measured, twice: with
+# interim delivery off the ENTIRE introduction disappeared -- the pitch, the
+# privacy line and the Latch link -- and all the owner received for that turn
+# was "Already saved that. Now I'll wait for her next reply."
+#
+# The reason is that the model writes the real message mid-turn, before its
+# last tool call, and a note to itself afterwards. Interim delivery is what
+# carries the real message; switching it off deletes that and leaves the note.
+# A leaked note is cosmetic. A missing introduction is the product.
+#
+# So the commentary stays a prompt problem (ld-setup/SKILL.md), and this key
+# stays absent until something can suppress notes without suppressing the
+# message they were written beside.
+# `clarify` is the tool behind the ❓ rows: it renders a blocking menu and stops
+# the turn until the owner picks something. In this product nothing is worth
+# one -- and it has never been reached deliberately. It is what a turn grabs
+# when it cannot find the mechanism it wants, and it arrived three times as the
+# entire first thing the agent ever said to a new owner ("❓ placeholder",
+# "❓ dummy", a menu asking the owner to name the assistant).
+#
+# The prompt has forbidden it for as long as those incidents have been known,
+# and the ban held right up until a turn was confused, which is exactly when it
+# does not. So it is taken away instead: `clarify` is the only tool in its
+# toolset, so disabling the toolset removes it and nothing else (measured
+# against the image: 21 tools offered, 20 with this set).
+agent:
+  disabled_toolsets:
+    - clarify
+
+# The file-mutation verifier appends a footer to the assistant's FINAL RESPONSE
+# whenever a write_file/patch failed during the turn -- container paths, the
+# exception, a bulleted list. It is a developer's safety net against a model
+# claiming edits landed when they did not, and in a terminal it is exactly
+# right. Here the final response is a text message to a person who is being
+# introduced to their assistant, and one arrived inside that introduction:
+# a `⚠️ File-mutation verifier:` block naming /var/lib/hermes/ld/... and a
+# JSONDecodeError, mid-sentence.
+#
+# `display.file_mutation_verifier` (run_agent.py, default true) is the gate;
+# HERMES_FILE_MUTATION_VERIFIER overrides it. The failures it reports still
+# reach the log, where whoever needs them is looking -- and unlike
+# `display.interim_assistant_messages`, which was tried and deleted the real
+# message, this suppresses only the appended footer.
+display:
+  file_mutation_verifier: false
+
 model:
   default: gpt-5.6-sol
   provider: openai-codex

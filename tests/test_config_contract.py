@@ -55,6 +55,48 @@ def config():
 DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
 
 
+def test_the_clarify_tool_is_taken_away_not_merely_forbidden():
+    """`clarify` renders a blocking ❓ menu and stops the turn until the owner
+    picks something. It has never been reached deliberately here -- it is what a
+    turn grabs when it cannot find the mechanism it wants -- and it arrived three
+    times as the entire first thing this agent said to a new owner. The prompt
+    has forbidden it throughout, and the ban held right up until a turn was
+    confused, which is exactly when it does not.
+
+    It is the only tool in its toolset, so disabling the toolset removes that one
+    and nothing else.
+    """
+    disabled = (config().get("agent") or {}).get("disabled_toolsets")
+    assert disabled and "clarify" in disabled, (
+        "a deployed agent can reach the tool behind the ❓ rows")
+
+
+def test_the_file_mutation_verifier_footer_is_off():
+    """The footer appends to the assistant's FINAL RESPONSE whenever a
+    write_file failed in the turn -- in a terminal that is a safety net against a
+    model claiming edits landed. Here the final response is a text message to a
+    person, and one arrived inside an owner's introduction: a `⚠️ File-mutation
+    verifier:` block naming container paths and a JSONDecodeError, mid-sentence.
+
+    The failures still reach the log, where whoever needs them is looking.
+    """
+    display = config().get("display") or {}
+    assert display.get("file_mutation_verifier") is False, (
+        "a failed write can append container paths to a message to the owner")
+
+
+def test_the_display_key_that_deletes_the_message_stays_absent():
+    """The neighbouring key, and the reason this one is safe.
+
+    `display.interim_assistant_messages: false` was tried to stop the same class
+    of leak and DELETED the real message: the model writes its reply mid-turn and
+    a note afterwards, so switching interim delivery off keeps only the note.
+    A leaked note is cosmetic; a missing introduction is the product.
+    """
+    display = config().get("display") or {}
+    assert "interim_assistant_messages" not in display
+
+
 def test_the_descriptor_carries_nothing_but_the_shared_config_path():
     """Closed set, deliberately: every instance reads this one file, so a key
     added here is given to ALL of them.
@@ -508,7 +550,14 @@ def test_the_hermes_volumes_are_exactly_these():
         # Same exact-string discipline: drop :ro, reroot the source, or mount
         # a directory and this fails with both sets printed.
         "${AGENT_DIR:?set by agent-mgr from the registry}"
-        "/runtime/SOUL.md:/opt/data/SOUL.md:ro"
+        "/runtime/SOUL.md:/opt/data/SOUL.md:ro",
+        # Onboarding's GIF, at the path ld-setup names. The Dockerfile bakes it
+        # for the cloud image; the fleet has only these mounts, so without this
+        # the opener's MEDIA: tag points at nothing on every agent-mgr instance
+        # and the attachment is dropped with no error. Outside /opt/data
+        # because Hermes' media denylist covers the home.
+        "${AGENT_DIR:?set by agent-mgr from the registry}"
+        "/docs/onboarding-v2/assets:/srv/plow-assets:ro"
     }
 
 
@@ -731,7 +780,12 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     setup = (ROOT / "ld-setup" / "SKILL.md").read_text()
     assert "before doing anything else" not in soul
     assert "unrelated life-assistant requests" in soul
-    assert "when the requested work involves the life dashboard" in setup.split("---", 2)[1]
+    # The wall's trigger stays scoped to wall work. Onboarding is the one thing
+    # that may fire on any inbound, and it ends at its own marker -- so the
+    # routing clause has to name that marker rather than the wall's.
+    description = setup.split("---", 2)[1]
+    assert "while /opt/data/ld/config.json is missing any of" in description
+    assert "when the owner asks to set up or re-set-up their wall" in description
 
 
 def test_cross_session_claims_are_verified_and_outcomes_journaled():
