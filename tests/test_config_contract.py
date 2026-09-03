@@ -402,45 +402,42 @@ def test_the_calendar_strip_is_a_supervised_service_that_waits_for_first_boot():
     assert (FEED_SERVICE / "run").stat().st_mode & 0o111
 
 
-def test_the_calendar_service_hands_the_producer_no_environment():
-    """No `with-contenv`, and nothing that sources either dotenv.
+def test_the_calendar_service_hands_the_producer_two_names_and_nothing_else():
+    """The service's whole environment boundary, in one place.
 
-    calendar_feed.py reads the agent's own file itself and holds what it finds
-    there to the household-network check before the run may hand that endpoint
-    a bearer. The gate keys on WHERE the value came from, so putting that file
-    into this process would launder every line of something the agent can write
-    into something the script reads as trusted. Hermes' own dotenv is not read
-    here either: this service runs as root until it drops."""
+    Nothing wholesale: no `with-contenv`, no dotenv sourced. calendar_feed.py
+    reads the agent's own file itself and holds what it finds there to the
+    household-network check before the run may hand that endpoint a bearer. The
+    gate keys on WHERE the value came from, so putting that file into this
+    process would launder every line of something the agent can write into
+    something the script reads as trusted.
+
+    And exactly two by name: the producer reaches its relay only because the
+    run script reads `PLOW_MCP_URL` and `PLOW_AGENT_TOKEN` while it is still
+    root -- s6 writes that directory 0600 root, and the producer runs as uid
+    10000. Delete that bridge, or move the read under `s6-setuidgid`, and
+    nothing fails loudly: the producer finds no relay, prints `not configured`,
+    and stands down on every tick with the same line a household that has no
+    wall prints. Invisible in a boot log, and the exact shape of the bug this
+    branch exists to fix.
+
+    Two names and not the directory: importing it wholesale would hand the
+    producer the tenant's entire credential set, which is the same mistake as
+    `with-contenv` wearing different clothes.
+    """
     lines = (FEED_SERVICE / "run").read_text().splitlines()
     assert lines[0] == "#!/bin/sh", (
         "the interpreter line is the whole mechanism: a #!/command/with-contenv "
         "shebang is how a service asks for the container environment")
     # Code only -- the script SAYS with-contenv in the comment explaining why it
     # has none, and a whole-file check would read that as the thing it forbids.
-    code = " ".join(l for l in lines[1:] if not l.lstrip().startswith("#"))
-    assert "with-contenv" not in code
-    for spelling in (". /var/lib/hermes/.env", "source /var/lib/hermes/.env", "set -a"):
-        assert spelling not in code, f"the run script sources a dotenv ({spelling!r})"
-    assert "ld/.env" not in code, "the supervisor must not touch the agent's file"
-
-
-def test_the_supervisor_bridges_the_relay_across_the_privilege_drop():
-    """The two names the producer needs, read as root and exported.
-
-    s6 writes /run/s6/container_environment 0600 root, and this service drops
-    to uid 10000 before the producer runs -- so the values first boot published
-    reach it only because the run script reads them while it still can. Delete
-    that bridge and nothing fails loudly: the producer finds no PLOW_MCP_URL,
-    reports `not configured`, and stands down on every tick with the same line
-    a household that has no wall prints. That is the failure this asserts
-    against, and it is invisible in a boot log.
-
-    The read must come BEFORE the privilege drop. Below `s6-setuidgid` it is a
-    root-only file the process can no longer open.
-    """
-    run = (FEED_SERVICE / "run").read_text()
-    code = [l for l in run.splitlines() if not l.lstrip().startswith("#")]
+    code = [l for l in lines[1:] if not l.lstrip().startswith("#")]
     body = "\n".join(code)
+    assert "with-contenv" not in body
+    for spelling in (". /var/lib/hermes/.env", "source /var/lib/hermes/.env", "set -a"):
+        assert spelling not in body, f"the run script sources a dotenv ({spelling!r})"
+    assert "ld/.env" not in body, "the supervisor must not touch the agent's file"
+
     for name in ("PLOW_MCP_URL", "PLOW_AGENT_TOKEN"):
         assert f"/run/s6/container_environment/{name}" in body, (
             f"the run script no longer reads {name} from the container "
@@ -456,8 +453,6 @@ def test_the_supervisor_bridges_the_relay_across_the_privilege_drop():
             f"{name} is read after the privilege drop, where the file is "
             "unreadable -- uid 10000 cannot open a 0600 root file")
 
-    # And ONLY those two: the allowlist is the point. Importing the directory
-    # would hand the producer the tenant's whole credential set.
     assert "container_environment/PLOW_HOME_CHANNEL" not in body
     assert "for f in /run/s6/container_environment" not in body
 

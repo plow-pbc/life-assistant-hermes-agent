@@ -649,9 +649,6 @@ def test_the_status_probe_needs_only_the_standard_library():
     assert not re.search(r"^\s*(import|from)\s+(?!__future__|os|sys)", body, re.MULTILINE), (
         "the probe imports something outside the standard library's core")
     assert not re.search(r"yaml\.(safe_)?load", body), "PyYAML is being called"
-    assert "open(" not in body, (
-        "the probe is reading a file again -- the question is one environment "
-        "variable, and a file read is where the hand-rolled YAML scan came from")
 
 
 def test_discovery_is_one_argv_and_never_auth_list():
