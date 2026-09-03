@@ -49,11 +49,10 @@ Create-if-missing, so it is safe to re-run: it reads what is already scheduled
 and creates only what is absent.
 
 Create-if-missing also means a row whose spec changed is left as it was:
-an instance that registered `ld-morning-triage` before it carried a
-delivery target keeps the old, card-only job. Give it the target once —
-`hermes cron edit <job id> --deliver plow_chat:<the PLOW_HOME_CHANNEL
-value>` from a turn, or remove the job and re-run this — and the
-`ld-evening-triage` row registers on its own as a missing one.
+an instance that registered `ld-morning-triage` before the row carried a
+delivery target and the Gmail gather keeps the old job — prompt, skill and
+all. Remove it (`hermes cron remove <job id>`) and re-run this: the row is
+recreated from the current spec and `ld-evening-triage` registers alongside.
 
 Then verify it — see [Unattended runs](#unattended-runs), which owns both the
 host and in-container forms and what a forced run does and does not prove.
