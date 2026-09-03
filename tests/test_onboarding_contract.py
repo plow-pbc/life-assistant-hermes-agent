@@ -681,7 +681,7 @@ def test_no_display_name_is_persisted_or_shelled():
 
 def test_a_source_without_a_name_still_passes_the_gate():
     """The claim the ids-only write rests on."""
-    config = {"family": {"owner": {"name": "M"}, "timezone": "UTC"},
+    config = {"family": {"timezone": "UTC"},
               "calendar": {"account": "a@b.test", "sources": [{"calendar_id": "a@b.test"}]},
               "calendar_nudge": {"owner_identities": ["a@b.test"],
                                  "lookahead_virtual_minutes": 30,

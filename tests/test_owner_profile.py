@@ -61,6 +61,22 @@ def test_set_records_exactly_what_the_owner_said(api, tmp_path, capsys):
     assert not staged.exists()
 
 
+def test_the_name_is_printed_even_when_the_staged_file_will_not_go(
+        api, tmp_path, monkeypatch, capsys):
+    """The sheet tells the turn to say this line back. A staged file that will
+    not delete is loud, as it should be, but it must not take the name with
+    it -- the write landed, and the owner is owed the reply."""
+    staged = stage(tmp_path, '{"display_name": "Sam"}')
+
+    def refuse_remove(_path):
+        raise OSError(13, "Permission denied")
+    monkeypatch.setattr(op.os, "remove", refuse_remove)
+
+    with pytest.raises(OSError):
+        op.main(["set", "--input", str(staged)])
+    assert capsys.readouterr().out.strip() == "Sam"
+
+
 @pytest.mark.parametrize("payload", ['{"display_name": "   "}', "{}"],
                          ids=["blank", "no-such-key"])
 def test_set_refuses_a_name_that_is_not_there(api, tmp_path, payload):

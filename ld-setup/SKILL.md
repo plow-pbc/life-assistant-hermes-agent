@@ -389,7 +389,7 @@ time, never as one blob at the end:
 
 Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
-    {"family": {"owner": {"name": "Mary"}}}
+    {"family": {"owner": {"introduced": true}}}
 
     python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --draft --input /var/lib/hermes/ld/.draft-<turn>.json
 

@@ -48,13 +48,16 @@ def main(argv=None):
         if not name:
             sys.exit("error: display_name is blank; nothing was recorded")
         profile = request_json("PATCH", base, PROFILE, token, f"PATCH {PROFILE}", {"display_name": name})
-        # Removed only after the write landed: a refusal keeps the file so the
-        # turn can fix what was named and run again, and a success must not
-        # leave the owner's own words on disk as a second copy of their name.
-        os.remove(args.input)
     else:
         profile = request_json("GET", base, PROFILE, token, f"GET {PROFILE}")
     print(profile.get("display_name") or "(unset)")
+    # After the name is printed, never before: the sheet tells the turn to say
+    # that line back, and an OSError here must not take it with it. Only after
+    # the write landed, too -- a refusal above keeps the file so the turn can
+    # fix what was named and run again -- and never left behind on success,
+    # where it would be a second copy of the owner's own words.
+    if args.command == "set":
+        os.remove(args.input)
 
 
 if __name__ == "__main__":
