@@ -51,11 +51,8 @@ def main(argv=None):
     else:
         profile = request_json("GET", base, PROFILE, token, f"GET {PROFILE}")
     print(profile.get("display_name") or "(unset)")
-    # After the name is printed, never before: the sheet tells the turn to say
-    # that line back, and an OSError here must not take it with it. Only after
-    # the write landed, too -- a refusal above keeps the file so the turn can
-    # fix what was named and run again -- and never left behind on success,
-    # where it would be a second copy of the owner's own words.
+    # Print before the cleanup so a failed remove never eats the name the turn
+    # says back.
     if args.command == "set":
         os.remove(args.input)
 
