@@ -5,7 +5,7 @@ Why this exists at all. `hermes cron` persists jobs to /var/lib/hermes/cron/jobs
 which no rebuild replays -- so a rebuilt agent comes up with
 a wall screen that never updates and nothing to diff against. Keeping the seven
 rows here means "set up the life dashboard crons" replays a reviewed spec
-instead of improvising six schedules from a sentence.
+instead of improvising seven schedules from a sentence.
 
 Schedules and prompts are ported from the retired seed's CRON_JOBS table
 (seed-life-dashboard-hermes-agent@678c7b17, ref/install-skills.sh:366-410), so
