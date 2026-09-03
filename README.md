@@ -21,6 +21,28 @@ the hardened home, the s6 boot layer, and the gateway's own `config.yaml` — is
 [`plow-pbc/plow-hermes-agent`](https://github.com/plow-pbc/plow-hermes-agent).
 The `Dockerfile` here adds a persona, its skills and one background job.
 
+## Usage reporting
+
+This image carries a reporter that publishes this agent's token usage to the
+[Agent Index](https://aiworthusing.com/agent-index) once an hour: day x model
+counts and nothing else — no prompts, no task titles, no file paths, no costs.
+
+**There is no switch.** The reporter is in the image because somebody built it
+in, and that is the decision: an agent whose owner does not want their usage
+published is built without this service. A flag would only re-ask a question the
+Dockerfile has already answered, somewhere that can disagree with it.
+
+The pinned client uses `PLOW_AGENT_TOKEN` once to exchange for a report-only
+`aik_` key; every report authenticates with that stored key. It needs
+`AGENT_ID` — which agent this is —
+in the container's environment; without it the service says so and stands down,
+because guessing a name files this container's usage under somebody else's
+agent.
+
+The client itself is fetched at build from the commit `vendor/client.pin` names
+and checked against the hash beside it. Bumping that pin is an edit somebody
+reviews.
+
 ## Run locally
 
 Building and running an agent on your own machine — the token, the `.env`, the
@@ -164,15 +186,17 @@ published.
 ## No connectors, and what that costs
 
 `plow-connectors` — the skill that reached this owner's Gmail, Google Calendar
-and Slack with the gateway's own `PLOW_AGENT_TOKEN` — is not installed, and
-nothing here replaces it.
+and Slack with the gateway's own `PLOW_AGENT_TOKEN` — is not installed. Only
+Slack stays out of reach: Google Calendar and Gmail are read through Latch's
+vendored `gog` and `plow-gog` on the owner's Mac instead.
 
 That is a deliberate trade. The two producers that need no account —
 `ld-weather` (NWS) and `ld-sports` (ESPN) — work immediately, as does
-`ld-morning-triage`, read from the Mac's iMessage DB through Latch, and the
-three calendar producers — `ld-morning-updates`, `ld-weekly-digest`,
+the triage — `ld-morning-triage` at 07:05 and `ld-evening-triage` at 18:00,
+iMessage and Gmail read through Latch, texted to the owner — and the three
+calendar producers — `ld-morning-updates`, `ld-weekly-digest`,
 `ld-calendar-nudge` — whose calendar reads go through Latch's vendored `gog`.
-`ld-dashboard` carries all six schedules.
+`ld-dashboard` carries all seven schedules.
 
 ## Trusted group conversations
 
@@ -199,10 +223,12 @@ Before restoring an existing agent, migrate its config in place: copy
 `calendar_nudge.owner_identities[0]` to `calendar.account` without rebuilding
 the object or changing any other preference, then require an empty result from
 `ld_config_gate.py`. The three calendar skills add that account to their exact
-gog argv; manually run and approve each new 1-day, 3-day and 7-day gather shape
-once through Latch before relying on the unattended crons. The calendar strip
-adds a fourth — its `/api/calendar` curl — for the same reason: it ticks with
-nobody there to answer an approval card. `ld-wall-setup` approves it by running
+gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
+shape — and the triage's exact `plow-gog gmail search` argv from
+`ld-morning-triage/SKILL.md` — once through Latch before relying on the
+unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
+— for the same reason: it ticks with nobody there to answer an approval card.
+`ld-wall-setup` approves it by running
 the strip once with the owner present, and an agent already carrying
 `/var/lib/hermes/ld/setup-complete` skips that phase, so one set up before the
 strip landed needs the step once, by hand, with its owner at their Mac:
@@ -223,11 +249,11 @@ runtime/        SOUL.md: the persona and the setup rule. No config.yaml -- the
                 model, plugins and mcp_servers are the base image's
 image/          the s6 service definition for the calendar strip's schedule
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
-ld-morning-triage/  the iMessage triage producer, read through Latch
+ld-morning-triage/  the triage producer: iMessage + Gmail through Latch, 07:05 and 18:00, texted
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
 ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 calendar_feed.py -- the kiosk's calendar strip, no model in it
-ld-dashboard/   the six cron schedules, all registered
+ld-dashboard/   the seven cron schedules, all registered
 ld-setup/       first-run onboarding over chat
 ld-wall-setup/  the wall, if the owner wants one: token -> Pi over Latch -> crons
 tests/          this agent's own contract; the runtime's live in plow-hermes-agent
@@ -282,10 +308,11 @@ docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
 ## Open
 
 - **Connectors are gone, not unlinked.** This agent installs no
-  `plow-connectors`, so Gmail and Slack are unreachable however linked the
-  owner's Plow account is. Google Calendar is back — through a vendored `gog`
-  behind Latch rather than a connector skill; all three calendar producers ride
-  it. See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
+  `plow-connectors`, so Slack is unreachable however linked the
+  owner's Plow account is. Google Calendar and Gmail are back — through the
+  vendored `gog` and `plow-gog` behind Latch rather than a connector skill; the
+  three calendar producers ride the first and the triage rides the second.
+  See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
 
 ## License
 

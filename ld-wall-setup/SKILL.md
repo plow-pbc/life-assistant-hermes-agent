@@ -75,7 +75,7 @@ landed is skipped and the run resumes where it stopped.
 |---|---|---|
 | 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/var/lib/hermes/ld/pi.env`, `/var/lib/hermes/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…` |
 | 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/var/lib/hermes/ld/pi-brought-up` exists |
-| 4 · crons + proof | the six schedules and one real card | `/var/lib/hermes/ld/setup-complete` exists |
+| 4 · crons + proof | the seven schedules and one real card | `/var/lib/hermes/ld/setup-complete` exists |
 
 The wall needs a config the shared gate accepts, and onboarding alone cannot
 produce one — `calendar.account`, its sources and

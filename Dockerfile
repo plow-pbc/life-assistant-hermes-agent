@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-63c8b9c107ad2f3cae64357d235a2224f32dec49@sha256:611ce06c4115db4e0ff05b5caaf2384cbcf2fe4f5b211ebf0e40e6b54182ec38
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-49a6f31fc9070dc5f65fa8333b9c7a2635d83519@sha256:0482d9ba476dfd211d675de3baf6282dab509ee56949cb41a81ff00d6eed8bde
 
 # Flat, all as siblings directly under the skills root: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
@@ -74,6 +74,27 @@ RUN chown -R root:root /opt/plow \
 
 # The calendar strip's schedule, as a supervised service beside the gateway.
 # The run script lands in /etc/s6-overlay, outside the skills tree.
+# The usage reporter, fetched at build from the commit vendor/client.pin names
+# and checked against the hash beside it. Fetched rather than committed because
+# plow-pbc/agent-index-client owns that file; pinned rather than tracked from a
+# branch because this runs inside an agent holding a live credential, and a
+# moving reference would substitute unreviewed code under it. The checksum is
+# the second half: a sha in a URL is only as good as the host serving it.
+#
+# Root-owned under /opt/plow, like the calendar producer and for the same
+# reason: the copy in the agent's home belongs to uid 10000 in a running
+# container, so scheduling that one would run whatever a turn last wrote there.
+COPY vendor/client.pin /opt/plow/agent-index-client.pin
+RUN set -eu; \
+    sha="$(sed -n 's/^sha=//p' /opt/plow/agent-index-client.pin)"; \
+    want="$(sed -n 's/^sha256=//p' /opt/plow/agent-index-client.pin)"; \
+    path="$(sed -n 's/^path=//p' /opt/plow/agent-index-client.pin)"; \
+    curl -fsS --max-time 60 -o /opt/plow/agent-index-client.py \
+      "https://raw.githubusercontent.com/plow-pbc/agent-index-client/${sha}/${path}"; \
+    got="$(sha256sum /opt/plow/agent-index-client.py | cut -d' ' -f1)"; \
+    [ "$got" = "$want" ] || { echo "agent-index client is $got, pin says $want" >&2; exit 1; }; \
+    chmod 0644 /opt/plow/agent-index-client.py
+
 COPY image/s6-overlay/ /etc/s6-overlay/
 
 # The process timezone, resolved from this household's config before any

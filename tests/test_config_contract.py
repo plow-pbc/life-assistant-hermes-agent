@@ -359,31 +359,34 @@ WALL = ("ld-wall-setup", "SKILL.md")
 
 CONTRACTS = [
     # A first message answered "What can I help with?" by an assistant that
-    # runs six named things for the household.
-    (SOUL, "Six producers run on a schedule"),
+    # runs seven scheduled things for the household.
+    (SOUL, "Seven scheduled runs"),
     (SOUL, "**Morning updates**"),
     (SOUL, "**Morning triage**"),
+    (SOUL, "**Evening triage**"),
     (SOUL, "**Weekly digest**"),
     (SOUL, "**Calendar nudge**"),
     (SOUL, "**Weather**"),
     (SOUL, "**Sports**"),
     (SOUL, 'Never answer only "What can I help with?"'),
     # Only ld-morning-updates and ld-weekly-digest carry the shared-screen rule
-    # ("skip medical, private, or sensitive titles"). ld-morning-triage has no
-    # such filter -- it paraphrases one real inbound iMessage onto the same
-    # wall -- so a blanket kid-safe promise covers the one producer that cannot
-    # keep it.
+    # ("skip medical, private, or sensitive titles"). The two triage runs have no
+    # such filter -- they paraphrase a real inbound message — an iMessage or an
+    # email — onto the same wall — so a blanket kid-safe promise covers the two
+    # runs that cannot keep it.
     (SOUL, "do not extend that promise to the morning alert"),
     # The strip is a seventh producer with no model in it, published by a
     # supervised service on its own five-minute tick -- so a turn may not
     # claim it as work it did.
     (SOUL, "It refreshes whether or not you"),
     (SOUL, "not yours to claim you refreshed"),
-    # No mail connector is installed, so an offer to read the OWNER's mail
-    # cannot be kept -- but the assistant's own public mailbox now can be, and
-    # a prompt that denies it makes ld-email-inbox unreachable by asking.
+    # No mail connector is installed. The owner's Gmail is read only where a
+    # producer's sheet says so (the triage, through Latch's plow-gog), so an
+    # open offer to search their inbox is one nothing here can keep -- while
+    # the assistant's own public mailbox stays reachable by asking
+    # (ld-email-inbox), and a prompt denying it would make that unreachable.
     (SOUL, "Never advertise smart-home control, documents, spreadsheets, or"),
-    (SOUL, "access to the owner's Gmail"),
+    (SOUL, "The owner's Gmail is read where a producer's sheet says so"),
     (SOUL, "public mailbox on demand"),
     # Browsing is the one that cannot be flatly denied -- the Latch server does
     # expose browser tools -- so it is bounded by whether a skill asks for them,
