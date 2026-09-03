@@ -28,16 +28,23 @@ compose service — lives in
 [`plow-agents`](https://github.com/plow-pbc/plow-agents), and is not restated
 here.
 
-Two things differ for this agent. Build this repo's image
-(`docker build -t life-assistant .`) and point that project's service at the
-`life-assistant` tag instead of the base image. And **`TZ` is this agent's own,
-not the provisioner's**: the base image sets none, so a cont-init step here
-writes it at boot from `family.timezone` in `ld/config.json`, falling back to
-`UTC` before onboarding has asked anyone where they live. Every schedule fires
-in that zone — `hermes cron create` takes no per-job zone — so changing the
-household's timezone takes effect on the next restart, and both `ld-setup` and
-the cron registration refuse a config that disagrees with the zone the
-container actually booted with.
+Two things differ for this agent. `plow-agents` builds this image from source
+rather than pulling a published one — point it at this repository and let it
+build:
+
+```sh
+PLOW_AGENT_REPO=https://github.com/plow-pbc/life-assistant-hermes-agent.git#main \
+  docker compose up --build
+```
+
+And **`TZ` is this agent's own, not the provisioner's**: the base image sets
+none, so a cont-init step here writes it at boot from `family.timezone` in
+`ld/config.json`, falling back to `UTC` before onboarding has asked anyone
+where they live. Every schedule fires in that zone — `hermes cron create` takes
+no per-job zone — so changing the household's timezone takes effect on the next
+restart. `ld-setup` writes the new zone and says so; the cron registration is
+what refuses, and it will not schedule anything while the config and the
+running container disagree.
 
 ## The account boundary — how one repo serves two people
 
@@ -46,7 +53,7 @@ container actually booted with.
 entirely by *which phone texts the code back*. That single fact is what lets the
 tracked tree stay identical for everyone:
 
-- The `PLOW_AGENT_TOKEN` that lands in the dotenv belongs to whoever texted.
+- The `PLOW_AGENT_TOKEN` the host drops in belongs to whoever texted.
 - The Plow Chat credential and private conversation belong to that owner. Other
   people participate through group conversations; explicit owner trust controls
   whether a group can use normal tools and owner material.
@@ -66,8 +73,8 @@ image is shared; the Mac those values resolve to is not.
 Here a copy-paste can cross an **account** boundary, not just an agent one.
 
 - **Another agent's state.** Two gateways sharing one home share one
-  `auth.json` and one dotenv, including one `PLOW_HOME_CHANNEL`, so whichever
-  started last owns the chat. One agent per home volume, always.
+  `auth.json` and one dotenv, and a container serves one credential, so
+  whichever started last owns the chat. One agent per home volume, always.
 - **The operations vault** (`~/hermes-vault`) — compiled guest conversations and
   property access facts, door and keypad codes among them. Not in this image.
 - **Hostex and Seam.** No PMS access, no lock control — those belong to the
@@ -133,10 +140,17 @@ The mechanics — running activation, what to do when a code expires — are in
 
 ## What the operator can see
 
-The agent's Plow token lives in its dotenv, in the home volume on whatever host
-runs it, and through it that person's mailbox is reachable from that host. This
+The agent's Plow token is the two-line file the host drops at
+`/var/lib/plow/credentials`, root-owned and unreadable to the agent, and first
+boot publishes it into the container environment rather than into any file the
+agent can read. Through it, that person's mailbox is reachable from that host.
+Whoever can read that file, or exec into the container as root, holds it. This
 is stated rather than left implied — it is a fact an owner should know before
 they text the activation code, not one to discover afterwards.
+
+The agent's own dotenv is a different file and a smaller one: `ld/.env` holds
+what the agent records during setup — the wall's endpoint and token, the Pi's
+login, the delivery mode, the relay pair — and no `PLOW_*` name appears in it.
 
 ## No connectors, and what that costs
 

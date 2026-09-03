@@ -13,10 +13,8 @@ to a different person.
 """
 import importlib.util
 import json
-import os
 import re
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -51,7 +49,6 @@ def test_no_credential_file_is_tracked():
 
 
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
-DEPLOYED_SKILL_DIRS = SKILL_DIRS
 
 
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():

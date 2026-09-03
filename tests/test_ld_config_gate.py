@@ -256,19 +256,14 @@ def test_the_gate_returns_the_spec_verdict(label, raw, expected, jq_crosscheck):
     """One case per row, so a failure names the shape that broke it.
 
     These ran inside a `main()` loop that counted rather than raised, which is
-    the whole reason a subprocess shim had to read its exit code."""
-    assert run_gate(PY_RUNNER, raw) == expected
+    the whole reason a subprocess shim had to read its exit code.
 
-
-@pytest.mark.parametrize(
-    "label,raw,expected,jq_crosscheck",
-    [c for c in CASES if c[3]], ids=[c[0] for c in CASES if c[3]])
-def test_the_python_gate_matches_the_jq_filter_it_replaced(
-        label, raw, expected, jq_crosscheck):
-    """The gate runs ON THE PI, where jq is not provisioned -- it replaced a jq
-    filter each install step used to carry verbatim. Where jq is present, the
-    two must still agree byte for byte; where it is not, the spec assertions
-    above are the whole check and this skips rather than passing quietly."""
-    if not HAVE_JQ:
-        pytest.skip("jq is not installed -- spec assertions only, as on the Pi")
-    assert run_gate(PY_RUNNER, raw) == jq_gate(raw)
+    The rows marked for cross-check also run the jq filter this gate replaced
+    and compare byte for byte -- the gate runs ON THE PI, where jq is not
+    provisioned, so the filter is history rather than a dependency. Where jq is
+    absent the spec assertion is the whole check for that row.
+    """
+    got = run_gate(PY_RUNNER, raw)
+    assert got == expected
+    if jq_crosscheck and HAVE_JQ:
+        assert got == jq_gate(raw)
