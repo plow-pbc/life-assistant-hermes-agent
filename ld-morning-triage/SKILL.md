@@ -31,8 +31,9 @@ Read `/var/lib/hermes/ld/config.json` before starting (template:
 uses:
 
 - `family.timezone` — the household's tz; the cron fires in it.
-- `family.owner.imessage` / `family.partner.imessage` — handle→name mapping
-  for the composed alert.
+- `family.owner.imessage` / `family.partner.imessage` — which handle is whose,
+  for the composed alert. The partner's name is `family.partner.name`; the
+  owner's is not in this file at all (see below).
 - `morning_triage.chat_db_path` — absolute path to the owner's
   `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
   template's `[CHAT_DB_PATH]` placeholder, **stop before calling
@@ -128,8 +129,14 @@ Send the surviving candidates to the LLM with:
 - Each candidate (`chat_id`, `handle`, `sent_at`, excerpt).
 - `morning_triage.ranking_instructions`.
 
-Map handles to names via `family.owner.imessage` /
-`family.partner.imessage` when they match; otherwise use the raw handle.
+Map handles to names when they match: `family.owner.imessage` is the owner,
+and the owner's name comes from their Plow account —
+
+    /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py get
+
+— while `family.partner.imessage` is the partner, named by
+`family.partner.name`. Read the name, use it, cache nothing: the account is the
+one place it lives. Otherwise use the raw handle.
 
 Ask for JSON output:
 
