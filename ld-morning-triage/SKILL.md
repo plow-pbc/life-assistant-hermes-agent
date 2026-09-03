@@ -64,7 +64,7 @@ config-supplied path (which never varies between runs):
 
 The SQL is a byte-identical literal every run, and that is load-bearing:
 Latch always-allow rules key on the exact argv, so a computed date anywhere
-in it would make every morning's argv novel and strand the run on an
+in it would make every run's argv novel and strand the run on an
 approval card nobody answers (plow-pbc/latch#181). The relative window lives
 *inside* the SQL instead — `strftime('%s','now') - 129600` is 36 hours.
 `chat.db` stores Apple-epoch nanoseconds; the `/1000000000 + 978307200`
@@ -82,7 +82,7 @@ is scoped to inbound rows (`m.is_from_me = 1 or …`) because an outbound row
 matters only as proof a reply happened — an attachment-only reply with no
 text must still count as one.
 
-A full morning's result is too large to fit in context, so the runtime
+A full 36-hour result is too large to fit in context, so the runtime
 persists it to a file (e.g. `/tmp/hermes-results/call_<id>.txt`) and gives
 you that path in place of the content — that file IS the gather; do not
 try to re-save, re-read, or transform it. Only if the result came back
