@@ -119,7 +119,8 @@ one replaces it) and the final response is `No alert today.` (see below).
 
 Call `mcp__plow__plow_run_command` with EXACTLY this argv — no substitutions
 and no account flag (`plow-gog` searches every account the owner connected,
-and each item names its `account`):
+and every item carries its `account` whatever `--fields` asks for —
+measured through the live door on 2026-09-01):
 
     ["plow-gog", "gmail", "search",
      "newer_than:2d is:unread -category:promotions -category:social",
