@@ -51,6 +51,32 @@ def test_no_credential_file_is_tracked():
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
 
 
+def test_nothing_tells_the_owner_the_assistant_has_no_inbox():
+    """The capability is stated in one place and denied in several.
+
+    `ld-email-inbox` gives the assistant a mailbox of its own, and three
+    separate rounds of review found some other file still saying it has none --
+    the runtime prompt, then both copies of onboarding's not-connected pitch. A
+    prompt that disowns the feature makes it unreachable by the only route
+    anyone takes: asking.
+
+    Normalised whitespace because that is how a copy hides. One of these sat
+    across a line wrap as "no calendar, no\ninbox" and a grep for the phrase
+    walked straight past it.
+
+    The owner's OWN inbox is still off limits and saying so is fine -- what may
+    not appear is an unqualified claim that there is no inbox at all.
+    """
+    denials = ("no inbox", "no email", "cannot check email")
+    for parts in (SOUL, SETUP):
+        text = " ".join((ROOT.joinpath(*parts)).read_text().split()).lower()
+        for denial in denials:
+            assert denial not in text, (
+                f"{'/'.join(parts)} says {denial!r}, but this image ships ld-email-inbox. "
+                "Qualify it as the OWNER's inbox, or drop it."
+            )
+
+
 def test_every_skill_in_the_tree_is_copied_into_the_image():
     """A skill the Dockerfile forgets ships as an empty promise.
 
