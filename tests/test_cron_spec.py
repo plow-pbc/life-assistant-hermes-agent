@@ -334,18 +334,19 @@ ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"}
     ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": ""}, "the injected env"),
     ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "   "}, "the injected env"),
     ({"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_legacy"}, "the injected env"),
-    (None, "absent.env"),
-], ids=["unset", "empty", "blank", "legacy-only", "absent-dotenv"])
-def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path):
+    (None, "the container environment"),
+], ids=["unset", "empty", "blank", "legacy-only", "no-env-no-dotenv"])
+def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path, monkeypatch):
     """The silent-drop trap: hermes accepts an empty or half-expanded target,
     so the digest would post its card and message nobody, every Sunday, in
     front of nobody. Registration must stop, say which variable to fix, and
     name the source it actually consulted. The legacy-only row is an instance
     still carrying the retired PLOW_CHAT_CHAT_UID and nothing else: that spelling
     is not read, so it refuses like any other unexpandable target. The last row
-    is the production shape (env=None, the dotenv as the sole source, here an
-    absent file)."""
+    is the production shape (env=None: the container environment, with the
+    dotenv behind it -- here neither carries it)."""
     mod = spec()
+    monkeypatch.delenv("PLOW_HOME_CHANNEL", raising=False)
     digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     with pytest.raises(SystemExit) as excinfo:
         mod.create_argv(digest, env, dotenv_path=tmp_path / "absent.env")
@@ -353,25 +354,56 @@ def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_p
     assert named_source in str(excinfo.value)
 
 
-@pytest.mark.parametrize("source", ["env", "dotenv"])
-def test_the_deliver_target_expands_from_either_source(source, tmp_path):
-    """Registration runs via `docker exec`, whose session env does NOT carry
-    the activation-written PLOW_* values -- those live in /opt/data/.env,
-    the file the gateway loads. Both routes must yield the same argv; the
-    card-only job gets no --deliver arm either way."""
+@pytest.mark.parametrize("source", ["injected", "container-env", "dotenv"])
+def test_the_deliver_target_expands_from_either_source(source, tmp_path, monkeypatch):
+    """PLOW_HOME_CHANNEL is published into the CONTAINER environment by first
+    boot, which is what a service and any `with-contenv` caller inherit -- that
+    is the production shape now. The gateway's dotenv is kept behind it for an
+    instance still carrying the value where activation used to write it. All
+    three routes must yield the same argv; the card-only job gets no --deliver
+    arm on any of them."""
     mod = spec()
     digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     dotenv = tmp_path / "agent.env"
-    if source == "env":
+    monkeypatch.delenv("PLOW_HOME_CHANNEL", raising=False)
+    if source == "injected":
         env, _ = ENV_OK, dotenv.write_text("")
+    elif source == "container-env":
+        env = None
+        dotenv.write_text("")
+        monkeypatch.setenv("PLOW_HOME_CHANNEL", "cht_test")
     else:
-        env = None  # production shape: no injection, the dotenv IS the source
-        dotenv.write_text("# activation writes this shape\nPLOW_HOME_CHANNEL=cht_test\n")
+        env = None
+        dotenv.write_text("# where activation used to write it\nPLOW_HOME_CHANNEL=cht_test\n")
     argv = mod.create_argv(digest, env, dotenv_path=dotenv)
     assert argv[-2:] == ["--deliver", "plow_chat:cht_test"]
 
     weather = next(j for j in mod.JOBS if j["name"] == "ld-weather")
     assert "--deliver" not in mod.create_argv(weather, env, dotenv_path=dotenv)
+
+
+def test_the_container_environment_outranks_the_dotenv(tmp_path, monkeypatch):
+    """A home volume outlives its tenant, so a stale dotenv from a previous
+    activation can still be sitting in the home when first boot resolves the
+    real chat from the credential. The live answer has to win, or the digest
+    delivers into the last tenant's chat."""
+    mod = spec()
+    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
+    dotenv = tmp_path / "agent.env"
+    dotenv.write_text("PLOW_HOME_CHANNEL=cht_stale\n")
+    monkeypatch.setenv("PLOW_HOME_CHANNEL", "cht_live")
+    assert mod.create_argv(digest, None, dotenv_path=dotenv)[-1] == "plow_chat:cht_live"
+
+
+def test_a_blank_in_the_environment_does_not_shadow_the_dotenv(tmp_path, monkeypatch):
+    """"Exported empty" is not an answer. Letting it win would turn a working
+    legacy instance into a refusal on the strength of a variable nobody set."""
+    mod = spec()
+    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
+    dotenv = tmp_path / "agent.env"
+    dotenv.write_text("PLOW_HOME_CHANNEL=cht_test\n")
+    monkeypatch.setenv("PLOW_HOME_CHANNEL", "   ")
+    assert mod.create_argv(digest, None, dotenv_path=dotenv)[-1] == "plow_chat:cht_test"
 
 
 def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):

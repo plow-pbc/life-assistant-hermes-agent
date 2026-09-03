@@ -12,9 +12,20 @@ FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-380a99729e906c3080cdf30e522c
 
 # Flat, the same layout compose.override.yml produces at /opt/data/skills: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
-# off its own realpath, so the three have to land as siblings. Copied root-owned
-# and world-readable, never chowned to the agent's uid, so a turn cannot write
-# to the skill it is running. The base ships its own SOUL.md; this replaces it.
+# off its own realpath, so the three have to land as siblings.
+#
+# Copied root-owned, and that lasts exactly until the first boot: the runtime
+# reconciles its bundled skills into $HERMES_HOME/skills and chowns what it
+# seeds to uid 10000, so in a RUNNING container every directory and file below
+# is the agent's. Measured on this image: as uid 10000 a turn appends to a
+# SKILL.md it is running and renames a whole skill out of the scan path, both
+# succeeding. Do not read the root ownership here as a guarantee about runtime
+# -- it is the state of the layer, not of the agent's home.
+#
+# What does hold is /opt/hermes/skills, the base's bundled copy outside every
+# home: unwritable to uid 10000 (measured), which is why an image update still
+# reaches a skill the agent has not customised. The base ships its own SOUL.md;
+# this replaces it, and first boot re-asserts root ownership on that one file.
 COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
 COPY ld-calendar-nudge/   /var/lib/hermes/skills/ld-calendar-nudge/
 COPY ld-dashboard/        /var/lib/hermes/skills/ld-dashboard/
@@ -31,10 +42,11 @@ COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
 # Normalize whatever modes the checkout carried, preserving the executable bit:
 # several SKILL.md files invoke a script by bare path, so a blanket 0644 makes
 # them fail with Permission denied. Ownership is left as root.
-# -mindepth 1: the skills root itself is the base's, root-owned and sticky so a
-# turn cannot rename a baked skill out of the scan path. Recursing over it would
-# reset that mode and leave the directory unwritable for the gateway's own
-# bundled-skill install, which then scans nothing.
+# -mindepth 1: the skills root itself is the base's, root-owned and sticky, and
+# recursing over it would reset that mode and leave the directory unwritable for
+# the gateway's own bundled-skill install, which then scans nothing. Sticky here
+# stops a turn unlinking an entry it does NOT own; after first boot it owns every
+# skill under this root, so it does not stop the rename -- see above.
 RUN find /var/lib/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /var/lib/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
  && find /var/lib/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \

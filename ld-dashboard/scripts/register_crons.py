@@ -59,9 +59,11 @@ LD_CONFIG = "/opt/data/ld/config.json"
 # purpose:
 #   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
 #     weekly and ALWAYS has content, so relaying its final response is exactly
-#     the chat leg the sheet promises. create_argv() expands the ${VAR} from
-#     /opt/data/.env -- the file activation writes and the gateway loads; a
-#     docker-exec session's env never carries it -- and refuses a blank one.
+#     the chat leg the sheet promises. create_argv() expands the ${VAR} from the
+#     container environment, where first boot publishes PLOW_HOME_CHANNEL after
+#     asking Plow which chat this agent's owner holds -- and refuses a blank one.
+#     Run it with `with-contenv`, or from a service that already inherits it: a
+#     bare `docker exec` carries none of those values.
 #   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
 #     quiet no-op runs, and --deliver relays EVERY final response -- its chat
 #     leg lives in its committed post_nudge.py coordinator, keeping quiet ticks silent
@@ -257,19 +259,30 @@ def registered_jobs(jobs_path=JOBS_FILE):
 
 
 def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
-    """Expand every ${VAR} in a delivery target from ONE source.
+    """Expand every ${VAR} in a delivery target: the container environment
+    first, the gateway's dotenv behind it.
 
-    The chat uid is minted by this instance's own activation, so it can never
-    be a literal in a repo more than one person runs -- in production it lives
-    in /opt/data/.env, the file the gateway loads (a docker-exec session's env
-    never carries it -- measured). That file IS the source; an explicit `env`
-    is the test-injection override, taken alone. An unset or blank variable
-    REFUSES loudly: hermes would accept the half-expanded or empty target and
-    the digest's chat leg would drop silently, every Sunday, in front of
-    nobody -- the exact trap the old tripwire test existed to catch.
+    The chat uid is not this repo's to know -- it is whichever chat the owner
+    holds with this agent -- so it can never be a literal here. First boot
+    resolves it from the credential the host dropped in and publishes it as
+    PLOW_HOME_CHANNEL into the container environment, which every service and
+    every `with-contenv` caller inherits; that is the source now. The dotenv is
+    kept behind it for an instance still carrying the value where activation
+    used to write it. An unset or blank variable REFUSES loudly: hermes would
+    accept the half-expanded or empty target and the digest's chat leg would
+    drop silently, every Sunday, in front of nobody -- the exact trap the old
+    tripwire test existed to catch.
+
+    An explicit `env` is still the test-injection override, taken alone.
     """
     if env is None:
-        values, source = dotenv_values(dotenv_path), f"{dotenv_path} (the file activation writes it to)"
+        # os.environ last, so it wins -- but only where it actually carries a
+        # value. A variable exported blank must not shadow a real one in the
+        # dotenv into a refusal; "set to nothing" is not an answer, and with
+        # neither source carrying it the expansion refuses below either way.
+        values = {**dotenv_values(dotenv_path),
+                  **{k: v for k, v in os.environ.items() if v.strip()}}
+        source = f"the container environment or {dotenv_path}"
     else:
         values, source = env, "the injected env"
 
