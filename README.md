@@ -285,10 +285,11 @@ was built from, and the `@sha256:` half is what the build actually resolves — 
 no tag reassignment can substitute different bytes under an existing owner. Bump
 both together when moving to a newer base.
 
-ECR Public answers `HEAD` on a digest reference with `403 Forbidden` while
-answering `GET` normally, and BuildKit resolves a `FROM` with `HEAD` — so a
-clean `docker build .` fails at metadata resolution until the digest is in the
-local store:
+The builder cannot fetch this base on its own. A clean build fails at metadata
+resolution with `403 Forbidden` from ECR Public — with a tag as readily as with
+a digest, and neither `--pull` nor building with no stored credentials avoids
+it. `docker pull` goes through the daemon's own resolver and does work, so pull
+once and the build finds the base already in the local store:
 
 ```sh
 docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
