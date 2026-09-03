@@ -353,9 +353,12 @@ CONTRACTS = [
     # claim it as work it did.
     (SOUL, "It refreshes whether or not you"),
     (SOUL, "not yours to claim you refreshed"),
-    # No connector skill is installed: an offer to check someone's mail
-    # cannot be kept.
-    (SOUL, "Never advertise smart-home control, documents, spreadsheets, or email"),
+    # No mail connector is installed, so an offer to read the OWNER's mail
+    # cannot be kept -- but the assistant's own public mailbox now can be, and
+    # a prompt that denies it makes ld-email-inbox unreachable by asking.
+    (SOUL, "Never advertise smart-home control, documents, spreadsheets, or"),
+    (SOUL, "access to the owner's Gmail"),
+    (SOUL, "public mailbox on demand"),
     # Browsing is the one that cannot be flatly denied -- the Latch server does
     # expose browser tools -- so it is bounded by whether a skill asks for them,
     # not by naming tasks that sound webby. No skill is named here: ld-payments
