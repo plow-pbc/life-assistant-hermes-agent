@@ -208,13 +208,19 @@ agent-mgr activate <agent>           # prints a code — its owner texts it from
 # host's `sh` that collapses to one literal directory and exits 0.
 mkdir -p ~/.hermes-<agent>/skills ~/.hermes-<agent>/ld
 
+just client                          # fetch the reporter BEFORE up: the mount has
+                                     # no source until you do, and a bind with a
+                                     # missing source creates a DIRECTORY at the
+                                     # target -- so an opted-in agent starts with
+                                     # no reporter and quietly reports nothing.
 agent-mgr up <agent>                 # must precede sign-in: that runs inside this container
 agent-mgr sign-in <agent>            # one-time Codex device flow — its owner completes it
 
-# Usage reporting needs no step here. It is off unless AGENT_INDEX=1 is in
-# that instance's own ~/.hermes-<agent>/.env (see Usage reporting), and when
-# it is on the container reports as its own PLOW_AGENT_TOKEN -- no sign-in,
-# no second account, nothing for the owner to complete.
+# Usage reporting needs no separate SIGN-IN. It is off unless AGENT_INDEX=1 is
+# in that instance's own ~/.hermes-<agent>/.env (see Usage reporting), and when
+# it is on the container reports as its own PLOW_AGENT_TOKEN -- no second
+# account, nothing for the owner to complete. The one step is `just client`
+# above, which the host runs once per checkout.
 just check-latch <agent>             # can this container reach that owner's Mac?
 
 # Then the owner texts the agent from their phone. That message IS the rest of
