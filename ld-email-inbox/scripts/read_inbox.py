@@ -65,25 +65,41 @@ def resolve_mailbox(base, token):
     return mailboxes[0]
 
 
-def render(thread):
-    """One thread, with every body fenced as what it is: someone else's text.
+OPEN = "<<<UNTRUSTED_EMAIL>>>"
+CLOSE = "<<<END_UNTRUSTED_EMAIL>>>"
 
-    The fence is a label, not a boundary -- the words inside are written by
-    whoever sent the mail, and an instruction among them is still just text
+
+def defang(value):
+    """Take the fence out of text that is inside the fence.
+
+    A sender who writes the closing marker into their own body would otherwise
+    end the fence early and have whatever follows read as ours -- the one way a
+    label like this fails. So the markers are stripped from every field the
+    sender controls, which is all of them.
+    """
+    return str(value).replace(OPEN, "<<<").replace(CLOSE, "<<<")
+
+
+def render(thread):
+    """One thread, wholly inside the fence: headers as well as bodies.
+
+    A subject is as sender-written as a body, so drawing the line between them
+    would just move the gap. The fence is a label and not a wall -- the words
+    inside are someone else's, and an instruction among them is still only text
     the owner asked us to read.
     """
     messages = thread.get("messages", [])
     # Subject lives on the message, not the thread; the first one names it.
     subject = (messages[0].get("subject") if messages else "") or "(no subject)"
-    out = [f"## {subject}"]
+    out = [f"## {defang(subject)}", OPEN]
     for message in messages:
-        out.append(f"\nFrom: {message.get('from_address', '?')}  ({message.get('date', '?')})")
+        out.append(f"\nFrom: {defang(message.get('from_address', '?'))}  ({defang(message.get('date', '?'))})")
         for field in ("to", "cc"):
             if message.get(field):
-                out.append(f"{field.title()}: {', '.join(message[field])}")
-        out.append("<<<UNTRUSTED_EMAIL_BODY>>>")
-        out.append((message.get("body_text") or "").strip() or "(empty)")
-        out.append("<<<END_UNTRUSTED_EMAIL_BODY>>>")
+                out.append(f"{field.title()}: {defang(', '.join(message[field]))}")
+        out.append("")
+        out.append(defang(message.get("body_text") or "").strip() or "(empty)")
+    out.append(CLOSE)
     return "\n".join(out)
 
 
