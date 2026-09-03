@@ -21,6 +21,28 @@ the hardened home, the s6 boot layer, and the gateway's own `config.yaml` — is
 [`plow-pbc/plow-hermes-agent`](https://github.com/plow-pbc/plow-hermes-agent).
 The `Dockerfile` here adds a persona, its skills and one background job.
 
+## Usage reporting
+
+This image carries a reporter that publishes this agent's token usage to the
+[Agent Index](https://aiworthusing.com/agent-index) once an hour: day x model
+counts and nothing else — no prompts, no task titles, no file paths, no costs.
+
+**There is no switch.** The reporter is in the image because somebody built it
+in, and that is the decision: an agent whose owner does not want their usage
+published is built without this service. A flag would only re-ask a question the
+Dockerfile has already answered, somewhere that can disagree with it.
+
+It reports as the container's own `PLOW_AGENT_TOKEN`, which first boot exports
+from the credential the host dropped in, so there is no second account and
+nothing for an owner to complete. It needs `AGENT_ID` — which agent this is —
+in the container's environment; without it the service says so and stands down,
+because guessing a name files this container's usage under somebody else's
+agent.
+
+The client itself is fetched at build from the commit `vendor/client.pin` names
+and checked against the hash beside it. Bumping that pin is an edit somebody
+reviews.
+
 ## Run locally
 
 Building and running an agent on your own machine — the token, the `.env`, the
