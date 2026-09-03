@@ -27,6 +27,7 @@ FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-63c8b9c107ad2f3cae64357d235a
 # reaches a skill the agent has not customised. The base ships its own SOUL.md;
 # this replaces it, and first boot re-asserts root ownership on that one file.
 COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
+COPY LICENSE NOTICE /usr/share/doc/life-assistant/
 COPY ld-calendar-nudge/   /var/lib/hermes/skills/ld-calendar-nudge/
 COPY ld-dashboard/        /var/lib/hermes/skills/ld-dashboard/
 COPY ld-email-inbox/      /var/lib/hermes/skills/ld-email-inbox/
