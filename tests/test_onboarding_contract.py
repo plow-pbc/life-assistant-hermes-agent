@@ -434,7 +434,8 @@ def test_no_owner_text_is_ever_composed_into_a_command():
         # that merely names a script.
         if not line.startswith("    ") or line.strip().startswith("|"):
             continue
-        if "write_config.py" in line or "mint_wall_token.py" in line:
+        if any(script in line for script in
+               ("write_config.py", "mint_wall_token.py", "owner_profile.py set")):
             assert "--input" in line, f"not staged: {line.strip()}"
 
 

@@ -269,13 +269,18 @@ written.
 the message.** One draft, carrying everything held, never just the newest.
 
 The name is not part of that draft. It goes to their ACCOUNT, in the same
-turn, before the intro:
+turn, before the intro. Stage it with your file tool at
+`/var/lib/hermes/ld/.name-<turn>.json`, the way you stage everything they said:
 
-    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set "<exactly what they said>"
+    {"display_name": "<exactly what they said>"}
 
-Its printed line is the name as stored; say that name back. What the draft
-carries in its place is `{"family": {"owner": {"introduced": true}}}` -- that
-the intro went out, and nothing about what they are called.
+    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set --input /var/lib/hermes/ld/.name-<turn>.json
+
+Its printed line is the name as stored; say that name back. The script removes
+the staged file once it has written through, so their name is left in one place
+only. What the draft carries in its stead is
+`{"family": {"owner": {"introduced": true}}}` -- that the intro went out, and
+nothing about what they are called.
 
 There is exactly ONE deferral, and it is not "whenever the turn ends on a
 question". It is the turn that has just learned their name **and** is sending
@@ -348,16 +353,12 @@ A first turn has been told nothing yet, so it makes no draft and invents no
 name. Observed, from wording that only said "draft first": a fabricated name
 recorded, then retracted to the owner across two messages.
 
-**Nothing the owner said ever reaches a shell.** Their city, and above all a
-calendar's display name, which is text a stranger wrote, are staged as JSON
-with your FILE tool and passed by path. There is no heredoc in this sheet for a
-reason. A heredoc composed around someone's words is a command built out of
-their input, and a calendar called `"; rm -rf ~; echo "` is a string to show
-the owner, not a command to run. The ONE exception is their own name, which
-`owner_profile.py set` takes as its single argument: it is the owner's own
-reply about themselves, never a calendar's name, never a roster label, and
-never the account's own string echoed back. Pass it as one argument and build
-nothing around it.
+**Nothing the owner said ever reaches a shell.** Their name, their city, and
+above all a calendar's display name, which is text a stranger wrote, are
+staged as JSON with your FILE tool and passed by path. There is no heredoc in
+this sheet for a reason. A heredoc composed around someone's words is a command
+built out of their input, and a calendar called `"; rm -rf ~; echo "` is a
+string to show the owner, not a command to run.
 
 **`<turn>` is eight random hex characters you GENERATE, fresh each turn.**
 Generate them. Do not invent them by hand and do not copy a hex-looking string
@@ -1051,9 +1052,12 @@ nobody is currently restating, their teams, their extra calendars, their
 triage exclusions, silently, because a config missing those still passes the
 gate.
 
-A new name is not a config change. It lives on their account:
+A new name is not a config change; it lives on their account. Stage it with
+your file tool at `/var/lib/hermes/ld/.name-<turn>.json`:
 
-    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set "<what they said>"
+    {"display_name": "<what they said>"}
+
+    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set --input /var/lib/hermes/ld/.name-<turn>.json
 
 and you say back the name it printed. Everything else is a patch.
 

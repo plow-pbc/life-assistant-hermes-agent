@@ -30,6 +30,14 @@ def api(monkeypatch):
     return calls, state
 
 
+def stage(tmp_path, payload):
+    """The turn's FILE tool, stubbed. The name reaches the script by path and
+    never through argv, so no command is ever composed around someone's words."""
+    path = tmp_path / ".name-abcd1234.json"
+    path.write_text(payload)
+    return path
+
+
 def test_get_says_unset_in_words_when_the_account_has_no_name(api, capsys):
     op.main(["get"])
     assert capsys.readouterr().out.strip() == "(unset)"
@@ -42,17 +50,34 @@ def test_get_prints_the_name(api, capsys):
     assert capsys.readouterr().out.strip() == "Samuel Odio"
 
 
-def test_set_records_exactly_what_the_owner_said(api, capsys):
+def test_set_records_exactly_what_the_owner_said(api, tmp_path, capsys):
     calls, _ = api
-    op.main(["set", "Sam"])
+    staged = stage(tmp_path, '{"display_name": "Sam"}')
+    op.main(["set", "--input", str(staged)])
     assert calls == [("PATCH", "/v1/auth/profile", {"display_name": "Sam"})]
     assert capsys.readouterr().out.strip() == "Sam"
+    # The account is the one place the name lives, so the staged copy of the
+    # owner's own words must not outlive the write that carried it there.
+    assert not staged.exists()
 
 
-def test_set_refuses_a_blank_name(api):
+@pytest.mark.parametrize("payload", ['{"display_name": "   "}', "{}"],
+                         ids=["blank", "no-such-key"])
+def test_set_refuses_a_name_that_is_not_there(api, tmp_path, payload):
+    """Nothing is sent, and the file stays so the turn can fix it and re-run."""
+    staged = stage(tmp_path, payload)
     with pytest.raises(SystemExit) as refusal:
-        op.main(["set", "   "])
-    assert "blank" in str(refusal.value)
+        op.main(["set", "--input", str(staged)])
+    assert "display_name is blank" in str(refusal.value)
+    assert staged.exists()
+
+
+def test_set_refuses_a_path_it_cannot_read(api, tmp_path):
+    """How a mistyped staging path announces itself, rather than a name that
+    quietly never reached the account."""
+    with pytest.raises(SystemExit) as refusal:
+        op.main(["set", "--input", str(tmp_path / "absent.json")])
+    assert "could not read" in str(refusal.value)
 
 
 @pytest.mark.parametrize("name", ["PLOW_API_BASE", "PLOW_AGENT_TOKEN"])
