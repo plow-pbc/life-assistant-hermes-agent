@@ -325,22 +325,17 @@ is on the Pi. `{"message": null}` means it is not — read the forced run's
 output (`/opt/hermes/bin/hermes cron runs`) for what went wrong, fix it, and
 force it again.
 
-**Then, only where a scheduler exists, run the calendar strip once.** The
-strip (`ld-shared/scripts/calendar_feed.py`) runs unattended with no model in
-it and ships through Latch like every card, but with argv Latch has never
-seen — and an unapproved argv on an unattended run stops at a card nobody is
-present to answer. Running it here, with the owner watching, is what approves
-those calls. First check whether anything will ever run it:
+**Then run the calendar strip once.** The strip
+(`ld-shared/scripts/calendar_feed.py`) runs unattended with no model in it and
+ships through Latch like every card, but with argv Latch has never seen — and
+an unapproved argv on an unattended run stops at a card nobody is present to
+answer. Running it here, with the owner watching, is what approves those calls.
 
-    test -f /etc/systemd/system/life-calendar-feed.timer && echo has-timer || echo no-timer
+Its schedule is the `life-calendar-feed` service, supervised beside the gateway
+and ticking every five minutes from boot. Confirm it is there, then run the
+producer once as the gateway user:
 
-`no-timer` — this is a fleet instance and nothing schedules the strip yet
-(plow-pbc/agent-mgr#109). **Skip this step entirely.** Do not post a calendar
-body: with no timer to replace it, an empty week would sit on the wall as a
-household's whole calendar, indefinitely, and a wrong strip is worse than no
-strip. Go on to the owner question.
-
-`has-timer` — run it once, as the gateway user:
+    s6-svstat /run/service/life-calendar-feed
 
     /opt/hermes/.venv/bin/python3 /opt/data/skills/ld-shared/scripts/calendar_feed.py
 

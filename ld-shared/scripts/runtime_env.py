@@ -13,7 +13,25 @@ from __future__ import annotations
 import ipaddress
 import pathlib
 
+# Hermes' own dotenv. Read for the gateway's local API key; the tenant values
+# are NOT here.
+#
+# PLOW_API_BASE, PLOW_AGENT_TOKEN and PLOW_HOME_CHANNEL live in the container
+# environment, which first boot fills from the credential the host dropped in
+# and which the agent cannot write -- that, not this file's mode, is what stops
+# a turn re-pointing the API base and sending its own bearer somewhere else.
 DOTENV = "/opt/data/.env"
+
+# The agent's own file, in the instance directory it already owns. Everything
+# the agent itself records after setup lives here -- the wall's endpoint and
+# token, the relay pair its owner minted -- because those are the agent's to
+# write and the tenant's credential is not.
+#
+# The split is a boundary, not a second copy: no name appears in both, nothing
+# running as root reads this file, and what it holds stays UNTRUSTED. An
+# endpoint read from here is still held to the household-network gate before
+# anything hands it a bearer.
+AGENT_DOTENV = "/opt/data/ld/.env"
 
 
 def dotenv_values(path=DOTENV):
@@ -33,6 +51,12 @@ def dotenv_values(path=DOTENV):
         for name, _, value in (line.partition("=") for line in lines)
         if name.isidentifier()  # a '#'-comment line fails this on its own
     }
+
+
+def agent_values(path=AGENT_DOTENV):
+    """The agent's own file, parsed the same one way. Absent reads as empty:
+    an agent whose owner has not finished setup has written nothing yet."""
+    return dotenv_values(path)
 
 
 def household_host(host):

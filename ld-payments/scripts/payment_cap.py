@@ -31,14 +31,16 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 from bearer_http import open_no_redirect  # noqa: E402
-from runtime_env import DOTENV, dotenv_values  # noqa: E402
+from runtime_env import AGENT_DOTENV, agent_values  # noqa: E402
 
 PLOW_API_ORIGIN = "https://api.plow.co"
 
 
 def _preference_credentials() -> tuple[str, str]:
     """Resolve the same agent identity activation installed for this runtime."""
-    dotenv = dotenv_values(os.environ.get("PLOW_RUNTIME_ENV_FILE", DOTENV))
+    # The agent's own file: the relay pair is minted on the owner's Mac and
+    # recorded by the agent, so it is never in the provisioner's dotenv.
+    dotenv = agent_values(os.environ.get("PLOW_RUNTIME_ENV_FILE", AGENT_DOTENV))
     token = (os.environ.get("DOMO_MCP_TOKEN")
              or dotenv.get("DOMO_MCP_TOKEN", "")).strip()
     if not token:

@@ -8,13 +8,24 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-089a6b1ec99e96eaba00fbe203b49b612988d0b6@sha256:80ca5040bb58181b37bc22e645b5f15c6462d2dd0de5b8780b84c9256b34ba02
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-23e56996dffa13eee5c9088bde3e5b5a6c30e07a@sha256:fe4533fd9793c20a93bf6f306d02935e1fdcdd9532a3b884b5ba68c8e48a69b8
 
 # Flat, the same layout compose.override.yml produces at /opt/data/skills: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
-# off its own realpath, so the three have to land as siblings. Copied root-owned
-# and world-readable, never chowned to the agent's uid, so a turn cannot write
-# to the skill it is running. The base ships its own SOUL.md; this replaces it.
+# off its own realpath, so the three have to land as siblings.
+#
+# Copied root-owned, and that lasts exactly until the first boot: the runtime
+# reconciles its bundled skills into $HERMES_HOME/skills and chowns what it
+# seeds to uid 10000, so in a RUNNING container every directory and file below
+# is the agent's. Measured on this image: as uid 10000 a turn appends to a
+# SKILL.md it is running and renames a whole skill out of the scan path, both
+# succeeding. Do not read the root ownership here as a guarantee about runtime
+# -- it is the state of the layer, not of the agent's home.
+#
+# What does hold is /opt/hermes/skills, the base's bundled copy outside every
+# home: unwritable to uid 10000 (measured), which is why an image update still
+# reaches a skill the agent has not customised. The base ships its own SOUL.md;
+# this replaces it, and first boot re-asserts root ownership on that one file.
 COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
 COPY ld-calendar-nudge/   /var/lib/hermes/skills/ld-calendar-nudge/
 COPY ld-dashboard/        /var/lib/hermes/skills/ld-dashboard/
@@ -31,14 +42,34 @@ COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
 # Normalize whatever modes the checkout carried, preserving the executable bit:
 # several SKILL.md files invoke a script by bare path, so a blanket 0644 makes
 # them fail with Permission denied. Ownership is left as root.
-# -mindepth 1: the skills root itself is the base's, root-owned and sticky so a
-# turn cannot rename a baked skill out of the scan path. Recursing over it would
-# reset that mode and leave the directory unwritable for the gateway's own
-# bundled-skill install, which then scans nothing.
+# -mindepth 1: the skills root itself is the base's, root-owned and sticky, and
+# recursing over it would reset that mode and leave the directory unwritable for
+# the gateway's own bundled-skill install, which then scans nothing. Sticky here
+# stops a turn unlinking an entry it does NOT own; after first boot it owns every
+# skill under this root, so it does not stop the rename -- see above.
 RUN find /var/lib/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /var/lib/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
  && find /var/lib/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
  && chmod 0644 /var/lib/hermes/SOUL.md
+
+# The unattended producer's own copy, outside every home and out of the agent's
+# reach.
+#
+# What the supervisor runs every 300s must not be a file a turn can rewrite.
+# Everything under $HERMES_HOME/skills belongs to uid 10000 in a running
+# container -- the runtime chowns what it seeds on every boot -- so scheduling
+# the copy that lives there would turn one prompt-injected edit into code that
+# runs unattended, forever, holding the relay credential and the household's
+# calendar. This copy is root-owned and 0755/0644 in a root-owned directory:
+# the agent can read it and cannot change it.
+#
+# The home copy stays exactly as it is -- it is what the agent reads, edits and
+# runs by hand during setup, and taking that away would take the skill with it.
+# Only the SCHEDULE points here.
+COPY ld-shared/ /opt/plow/ld-shared/
+RUN chown -R root:root /opt/plow \
+ && find /opt/plow -type d -exec chmod 0755 {} + \
+ && find /opt/plow -type f -exec chmod 0644 {} +
 
 # The one rewrite. Every path in this repo's content is written against the
 # fleet's HERMES_HOME (/opt/data); this runtime's is /var/lib/hermes. It is a
@@ -46,16 +77,20 @@ RUN find /var/lib/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
 # /opt/data/cron all keep their own names — done to the image's copy so the
 # tracked files stay the fleet's. Hermes' own scanner refuses an unexpanded
 # variable in a skill, which is why this is a literal and not ${HERMES_HOME}.
-RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills -type f \
+# /opt/plow is walked too: the scheduled copy names the same paths.
+RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills /opt/plow -type f \
       \( -name '*.md' -o -name '*.py' -o -name '*.json' \) \
       -exec sed -i 's|/opt/data|/var/lib/hermes|g' {} +
 
-# The calendar strip's schedule. Cloud image only: the fleet container has no
-# systemd, so ld-shared/scripts/calendar_feed.py ships there and nothing calls
-# it until agent-mgr grows a command slot. Both units name /var/lib/hermes
-# outright — they land in /etc/systemd, which the rewrite above does not walk.
-COPY runtime/life-calendar-feed.service runtime/life-calendar-feed.timer /etc/systemd/system/
-RUN systemctl enable life-calendar-feed.timer
+# The calendar strip's schedule, as a supervised service beside the gateway.
+# It names /var/lib/hermes outright — the run script lands in /etc/s6-overlay,
+# which the rewrite above does not walk.
+COPY image/s6-overlay/ /etc/s6-overlay/
+
+# The process timezone, resolved from this household's config before any
+# service starts. The base image sets none; every cron schedule this agent
+# registers fires in whatever this leaves behind.
+COPY --chmod=0755 image/cont-init.d/10-life-timezone /etc/cont-init.d/10-life-timezone
 
 # Onboarding's own assets, and NOT under the home. Hermes refuses to deliver a
 # model-emitted MEDIA: path whose prefix is on its media denylist -- /etc /proc

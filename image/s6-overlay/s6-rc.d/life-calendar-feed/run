@@ -1,0 +1,49 @@
+#!/bin/sh
+# The calendar strip's schedule: one producer, every five minutes, no model.
+#
+# A supervised loop rather than a timer, because there is no timer here — the
+# image is supervised by s6 and this is the shape a periodic job takes under
+# it. The tick fires immediately and then every 300s: the strip shows a
+# seven-day window, so a late or missed tick costs nothing, and the script's
+# own hour-long backoff after three failures is what keeps a dead Pi from being
+# retried at this cadence forever.
+#
+# NO with-contenv, deliberately, and no dotenv sourcing.
+#
+# calendar_feed.py reads /var/lib/hermes/ld/.env ITSELF -- the agent's own
+# dotenv, the one it can write -- and treats a value found there as untrusted:
+# a kiosk endpoint out of it is held to the Pi's own message API on the
+# household network before the run is allowed to hand it a bearer. That gate
+# keys on WHERE the value came from. Putting that file into this process's
+# environment would launder every line of it into something the script reads as
+# trusted, and an injected endpoint would walk the wall's bearer to a host with
+# nothing to refuse it. Provenance is the gate; this is where it is kept.
+#
+# Nothing here reads Hermes' own /var/lib/hermes/.env either. This service runs
+# as root until it drops, and the tenant's values are in the container
+# environment rather than in any file this could source.
+set -eu
+
+# Explicit, and absolute paths below it. A service script inherits whatever
+# PATH the supervisor was started with, which is the supervision tree's and not
+# a login shell's -- so `sleep` and `s6-setuidgid` resolving at all is a
+# property of the init's configuration rather than of this file. Naming both
+# removes the dependency: the loop keeps its period and its privilege drop
+# whatever the tree hands it.
+PATH=/command:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+while :; do
+  # Never fatal. The producer's contract is a one-line stand-down and exit 0,
+  # so a non-zero exit is a crash — and a crashing longrun that exits here
+  # would be respawned in a tight loop. One line, then the next tick.
+  # /opt/plow, never $HERMES_HOME/skills. Both hold this producer; only this
+  # one is root-owned. The home copy belongs to uid 10000 in a running
+  # container, so scheduling it would run whatever a turn last wrote there,
+  # unattended, with the relay credential and the household's calendar.
+  /command/s6-setuidgid hermes \
+    /opt/hermes/.venv/bin/python3 \
+    /opt/plow/ld-shared/scripts/calendar_feed.py \
+    || echo "calendar feed: producer exited non-zero; retrying at the next tick" >&2
+  /bin/sleep 300
+done

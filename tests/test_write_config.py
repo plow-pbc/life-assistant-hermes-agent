@@ -4,7 +4,7 @@ Behavior, not shape: each row is judged by the SHARED gate
 (ld-shared/scripts/ld_config_gate.py, imported), because that gate is the
 single definition of "installed" and a config it refuses is a 06:00 failure
 in front of nobody. The timezone check lives here too -- the owner is the
-one answering, and AGENT_TZ is the operator's to change, so the refusal has
+one answering, and the container's zone is fixed at boot, so the refusal has
 to name it for the owner to relay.
 """
 import importlib.util
@@ -153,12 +153,28 @@ def test_a_new_city_takes_its_coordinates_with_it():
     ({"family": {"owner": {"nme": "Ro"}}}, "'family.owner.nme'"),
     ({"sports": {"followed": [{"abbr": "bos", "leage": "mlb"}]}},
      "'sports.followed[0].leage'"),
-    ({"family": {"timezone": "America/Los_Angeles"}}, "AGENT_TZ"),
-], ids=["section", "nested", "list-item", "timezone"])
+], ids=["section", "nested", "list-item"])
 def test_an_invalid_patch_refuses_and_names_what_is_wrong(patch, expected):
     with pytest.raises(SystemExit) as e:
         wc.apply_patch(patch, live_config(), ENV)
     assert expected in str(e.value)
+
+
+def test_the_restart_notice_reaches_the_caller_with_the_write(tmp_path, monkeypatch, capsys):
+    """Through main(), the way a turn actually sees it -- and only after the
+    write landed, so a refusal never prints a note about a zone that is not in
+    the file."""
+    monkeypatch.setattr(wc, "geocode", fake_geocode)
+    target = tmp_path / "ld" / "config.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(live_config()))
+    capsys.readouterr()
+    wc.main(["--patch"], stdin=io.StringIO('{"family": {"timezone": "America/Los_Angeles"}}'),
+            env={"TZ": "UTC"}, config_path=str(target))
+    out = capsys.readouterr().out
+    assert f"wrote {target}" in out
+    assert "restart" in out and "America/Los_Angeles" in out
+    assert json.loads(target.read_text())["family"]["timezone"] == "America/Los_Angeles"
 
 
 def test_a_patch_the_gate_would_refuse_never_reaches_the_file(tmp_path, monkeypatch):

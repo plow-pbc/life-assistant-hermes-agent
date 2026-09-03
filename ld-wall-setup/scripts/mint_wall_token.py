@@ -66,7 +66,7 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
-from runtime_env import DOTENV, dotenv_values, household_host  # noqa: E402
+from runtime_env import AGENT_DOTENV, dotenv_values, household_host  # noqa: E402
 from exclusive_lock import exclusive_lock  # noqa: E402
 
 LD_DIR = "/opt/data/ld"
@@ -91,6 +91,13 @@ PI_LINE_2 = ("curl -fsSL https://raw.githubusercontent.com/plow-pbc/life-dashboa
 
 
 def append_dotenv(path, pairs):
+    # 0600 on create, and re-asserted on an existing file. This is the agent's
+    # own file and it carries the wall's bearer; O_CREAT's mode only applies to
+    # a new file, so one already sitting at a looser mode is tightened here
+    # rather than trusted.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    os.fchmod(fd, 0o600)
+    os.close(fd)
     # The leading newline is not decoration: a dotenv the gateway or a person
     # last wrote may not end in one, and a bare append would splice the first
     # key onto the last line's value -- taking the instance off its chat, not
@@ -134,7 +141,7 @@ def write_private(path, text):
         f.write(text)
 
 
-def main(stdin=None, dotenv_path=DOTENV, ld_dir=LD_DIR, argv=None):
+def main(stdin=None, dotenv_path=AGENT_DOTENV, ld_dir=LD_DIR, argv=None):
     # --input PATH, and nothing else: the answers are the owner's own words, so
     # the turn stages them with its file tool rather than composing a heredoc
     # around them. Same rule as the onboarding drafts, same reason.

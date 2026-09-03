@@ -73,7 +73,7 @@ def reset_module():
     post_to_kiosk.TOKEN_FILE = "/config/secrets/dashboard-token"
     # Not the real /opt/data/.env: a machine that happens to have one would
     # otherwise satisfy the third source and silence the both-absent refusals.
-    post_to_kiosk.DOTENV = "/nonexistent/dotenv-for-tests/.env"
+    post_to_kiosk.AGENT_DOTENV = "/nonexistent/dotenv-for-tests/.env"
     post_to_kiosk.OUTBOX_DIR = "/opt/data/ld/outbox"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
     os.environ.pop(post_to_kiosk.TOKEN_ENV, None)
@@ -111,10 +111,10 @@ def use_dotenv_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1
     post_to_kiosk.TOKEN_FILE = str(tmp / "nonexistent-token")
     dotenv = tmp / ".env"
     dotenv.write_text(
-        f"PLOW_AGENT_TOKEN={TOKEN}\n{post_to_kiosk.ENDPOINT_ENV}={endpoint}\n"
+        f"{post_to_kiosk.ENDPOINT_ENV}={endpoint}\n"
         f"{post_to_kiosk.TOKEN_ENV}={TOKEN}\n"
     )
-    post_to_kiosk.DOTENV = str(dotenv)
+    post_to_kiosk.AGENT_DOTENV = str(dotenv)
 
 
 def use_env_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1", body_type="alert"):
@@ -141,7 +141,7 @@ def use_latch_delivery(tmp: Path, endpoint, card="3", body_type="weather"):
     os.environ[post_to_kiosk.ENDPOINT_ENV] = endpoint
     dotenv = tmp / ".env"
     dotenv.write_text("DASHBOARD_DELIVERY=latch\n")
-    post_to_kiosk.DOTENV = str(dotenv)
+    post_to_kiosk.AGENT_DOTENV = str(dotenv)
     post_to_kiosk.OUTBOX_DIR = str(tmp / "outbox")
 
 
@@ -359,7 +359,7 @@ def test_a_delivery_that_is_not_latch_still_posts():
                 use_env_secrets(Path(d), endpoint=f"{base}/api/message")
                 dotenv = Path(d) / ".env"
                 dotenv.write_text(f"DASHBOARD_DELIVERY={delivery}\n")
-                post_to_kiosk.DOTENV = str(dotenv)
+                post_to_kiosk.AGENT_DOTENV = str(dotenv)
                 code, _ = run(stdin_text="x")
         finally:
             server.shutdown()

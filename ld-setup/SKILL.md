@@ -639,7 +639,8 @@ message.
 
 Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
 
-    {"family": {"owner": {"name": "<from the name they gave>"}, "timezone": "<$TZ>"},
+    {"family": {"owner": {"name": "<from the name they gave>"},
+                "timezone": "<the IANA zone for the city they gave>"},
     "weather": {"location": "<their city>, <region>"}}
 
     python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
@@ -684,14 +685,20 @@ The owner does not know a geocoder ran, has no opinion about a lat/lon, and
 cannot act on either. Saying it out loud is an assistant narrating its own
 plumbing to someone who asked about the weather. Do the check. Say the city.
 
-The timezone rides along with the city, but it is **not yours to choose**. It
-must equal the container's `$TZ`. Run `echo $TZ`, tell them that zone in plain
-words ("Pacific time, got it"), and draft `family.timezone` as that exact
-value. If they say they are somewhere else, the script refuses and says why:
-the zone is `AGENT_TZ` in the instance dotenv on the host, which only their
-operator can change. Tell them that and stop drafting the zone. Do not write
-one that disagrees with the container, because every card would land at the
-wrong hour.
+The timezone rides along with the city. Draft `family.timezone` as **the zone
+they live in**, from the city they just gave you -- not from `echo $TZ`. A
+first boot has no config to read a zone out of, so the container comes up UTC
+and `$TZ` is the absence of an answer, not one; drafting it back is how a
+household in Chicago ends up recorded as UTC and every card lands two hours
+off. Tell them the zone in plain words ("Central time, got it").
+
+When the zone you wrote is not the one the container is running -- which on a
+first boot is every zone but UTC -- `write_config.py` writes it anyway and says
+so, and you tell them plainly that **it takes effect when their agent next
+restarts**. `TZ` is read once at boot from this same config, so the restart is
+what applies it, and until then nothing schedules: `register_crons.py` refuses
+while the two disagree, which is the guard that keeps a card off the wall at
+the wrong hour rather than on it.
 
 **Their teams**, if any. You keep track of scores and game times so they are
 always ready for game day. Lead with that value, name it plainly, and leave the
@@ -1031,13 +1038,17 @@ configured, so a settings change has no schedule to add, and re-running the
 registration would fail the change on unrelated paused cron state. Paste its
 whole output verbatim anyway. A chat turn does not propagate an exit code.
 
-Three things it refuses rather than doing quietly, each naming what is wrong:
+Two things it refuses rather than doing quietly, each naming what is wrong:
 a key that is not in `config.example.json` **at any depth**, list entries
 included (a misspelled `wether`, or `{"family":{"owner":{"nme":…}}}`, would
 otherwise merge in beside the real key, pass the gate on the old value and
-report a change that never happened); a merged config the gate rejects (nothing
-is written); and a `family.timezone` the container does not share (that is
-`AGENT_TZ` on the host, so the owner has to ask the operator).
+report a change that never happened); and a merged config the gate rejects
+(nothing is written).
+
+A `family.timezone` the container is not running is NOT one of them: it is
+written, and the tool result says it takes a restart to apply. Refusing it was
+a deadlock -- the container reads `TZ` from this very file at boot, so the zone
+could never be recorded on the boot that would have applied it.
 
 Two things to know before composing one. **Lists replace, they do not grow.**
 `sports.followed` and `calendar.sources` are sets the owner states in full, so

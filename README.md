@@ -53,6 +53,24 @@ It runs the upstream `nousresearch/hermes-agent` image directly, pinned by
 digest, with no derived layer. State lives in the instance's own home on the
 host, mounted at `/opt/data`; the image is stateless.
 
+## Run locally
+
+Building and running an agent on your own machine — the token, the `.env`, the
+compose service — lives in
+[`plow-agents`](https://github.com/plow-pbc/plow-agents), and is not restated
+here.
+
+Two things differ for this agent. Build this repo's image
+(`docker build -t life-assistant .`) and point that project's service at the
+`life-assistant` tag instead of the base image. And **`TZ` is this agent's own,
+not the provisioner's**: the base image sets none, so a cont-init step here
+writes it at boot from `family.timezone` in `ld/config.json`, falling back to
+`UTC` before onboarding has asked anyone where they live. Every schedule fires
+in that zone — `hermes cron create` takes no per-job zone — so changing the
+household's timezone takes effect on the next restart, and both `ld-setup` and
+the cron registration refuse a config that disagrees with the zone the
+container actually booted with.
+
 ## Adding a second instance
 
 A second person's instance is **not registered yet**. Everything blocking it
@@ -370,12 +388,11 @@ instance set up before this landed needs the step once, by hand — on that
 instance, with its owner present at their Mac to approve the calls:
 
 ```sh
-systemctl start life-calendar-feed.service   # blocks: it is Type=oneshot
-journalctl -u life-calendar-feed -n 20       # a count and "shipped through the Mac" is the pass
+s6-svstat /run/service/life-calendar-feed    # the schedule, supervised beside the gateway
+/opt/hermes/.venv/bin/python3 /var/lib/hermes/skills/ld-shared/scripts/calendar_feed.py
 ```
 
-The unit rather than the script, deliberately: `ExecStart` already names the
-image's own path (`/var/lib/hermes/skills/...`, not this checkout's) and runs
+The image's own path rather than this checkout's, and run
 as `hermes`, so this cannot drift from what the timer actually ticks — which is
 the whole point of approving it. Fleet instances need nothing until
 plow-pbc/agent-mgr#109 gives them a scheduler.
@@ -400,7 +417,7 @@ ld-morning-triage/  the iMessage triage producer, read through Latch
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
 ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 calendar_feed.py -- the kiosk's calendar strip, no model in it
-                (scheduled by runtime/life-calendar-feed.timer, cloud image only)
+                (scheduled by the life-calendar-feed service in image/)
 ld-dashboard/   the six cron schedules, all registered
 ld-payments/    pay a bill/person via the owner-approval flow (not deployable yet -- see below)
 ld-setup/       first-run onboarding over chat (config)

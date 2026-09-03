@@ -39,8 +39,8 @@ the system interpreter in at least one build we ship -- the e2e entrypoint
 carries a comment about exactly that, from the day an `import yaml` under
 /usr/bin/python3 took down every start. A probe that raises is worse than no
 probe: the turn improvises, and improvising is what this file exists to stop.
-So the one question it asks -- is there a relay key under mcp_servers -- is
-answered by reading the indentation, not by parsing YAML.
+So the one question it asks -- is the relay under mcp_servers switched on --
+is answered by reading the indentation, not by parsing YAML.
 """
 from __future__ import annotations
 
@@ -86,10 +86,24 @@ def relay_configured(text):
     calls a tool that may not be registered, which is where every ❓ in this
     branch's history came from.
 
+    Presence is not enough, and this is the whole point of the check. The base
+    image SEEDS this stanza on every agent, relay or no relay -- the url, the
+    bearer and `enabled: false` -- and provisioning flips that one flag when a
+    relay actually exists. A probe that answered on the key being there would
+    answer "configured" for every agent ever built, which is the same failure
+    as having no probe: the sheet names the relay's tools, they are not
+    registered, and the turn goes hunting.
+
+    So the question is `enabled: true`, under the relay's own key. An absent
+    `enabled` reads as unconfigured even though Hermes would default it on:
+    the deployment always writes the flag, so a stanza without one was not
+    written by the deployment, and unconfigured is the safe direction here --
+    it costs an install link the owner has already followed, where the other
+    direction costs a tool call that cannot land.
+
     Standard library only -- the sheet runs this as plain `python3`, and PyYAML
     lives in Hermes' own venv rather than the system interpreter in at least one
-    build we ship. A `plow:` with nothing under it registers no tool: the url
-    and the bearer are what make a server.
+    build we ship.
     """
     lines = text.splitlines()
     inside = False
@@ -103,13 +117,16 @@ def relay_configured(text):
             return False                  # the next top-level key: block over
         if line != "  plow:":
             continue                      # some other server, or its settings
-        # The relay, named at the servers' level. It counts only with settings
-        # under it -- `plow:` alone registers nothing.
+        # The relay, named at the servers' level. Now read its own settings for
+        # the flag: anything indented deeper than the server's key is under it,
+        # and the first line that is not ends the block.
         for follower in lines[index + 1:]:
             if not follower.strip() or follower.lstrip().startswith("#"):
                 continue
-            # Anything indented deeper than the server's own level is under it.
-            return len(follower) - len(follower.lstrip()) > 2
+            if len(follower) - len(follower.lstrip()) <= 2:
+                return False              # out of the relay's block, no flag
+            if follower.strip() == "enabled: true":
+                return True
         return False
     return False
 

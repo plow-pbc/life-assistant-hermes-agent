@@ -59,16 +59,18 @@ LD_CONFIG = "/opt/data/ld/config.json"
 # purpose:
 #   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
 #     weekly and ALWAYS has content, so relaying its final response is exactly
-#     the chat leg the sheet promises. create_argv() expands the ${VAR} from
-#     /opt/data/.env -- the file activation writes and the gateway loads; a
-#     docker-exec session's env never carries it -- and refuses a blank one.
+#     the chat leg the sheet promises. create_argv() expands the ${VAR} from the
+#     container environment, where first boot publishes PLOW_HOME_CHANNEL after
+#     asking Plow which chat this agent's owner holds -- and refuses a blank one.
+#     Run it with `with-contenv`, or from a service that already inherits it: a
+#     bare `docker exec` carries none of those values.
 #   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
 #     quiet no-op runs, and --deliver relays EVERY final response -- its chat
 #     leg lives in its committed post_nudge.py coordinator, keeping quiet ticks silent
 #     by construction.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
-# the container's zone, which is agent-mgr's AGENT_TZ.
+# the container's zone, which this image sets at boot from family.timezone.
 # require_timezone_agreement() below refuses to register unless that zone equals
 # family.timezone; the ld-config gate does not.
 JOBS = (
@@ -166,7 +168,7 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
 
     Every schedule here is a bare cron expression and `hermes cron create` takes
     no per-job timezone, so jobs fire in the CONTAINER's zone -- agent-mgr's
-    AGENT_TZ -- while all three SKILL.md files promise 06:00 in
+    TZ -- while all three SKILL.md files promise 06:00 in
     `family.timezone`. Nothing else compares them: ld_config_gate.py checks only
     that the zone is non-blank, which a valid America/Chicago config satisfies
     while its cards land at 08:00 family time. Silent, and wrong in exactly the
@@ -181,9 +183,10 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
     container = (env.get("TZ") or "").strip()
     if not container:
         raise SystemExit(
-            "refusing to register: TZ is empty in this container. agent-mgr sets "
-            "it from AGENT_TZ at create time, so an empty one means the schedules "
-            "would fire in a zone nothing here can name."
+            "refusing to register: TZ is empty in this container. The image sets "
+            "it at boot from family.timezone, falling back to UTC, so an empty "
+            "one means that step did not run and the schedules would fire in a "
+            "zone nothing here can name."
         )
     path = pathlib.Path(config_path)
     try:
@@ -210,9 +213,9 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
             f"{family!r} but this container runs in {container!r}. Every schedule "
             "here is a bare cron expression and hermes cron create takes no "
             "per-job zone, so the cards would land at the wrong local hour -- "
-            "silently. Fix whichever is wrong: AGENT_TZ in the instance dotenv "
-            "(after `deploy`, before `up` -- the zone reaches the container at "
-            "create time), or family.timezone in the config."
+            "silently. TZ is fixed at boot from family.timezone, so this means "
+            "the config changed after the container started: restart it to pick "
+            "the new zone up, or fix family.timezone if THAT is what is wrong."
         )
 
 
@@ -256,19 +259,30 @@ def registered_jobs(jobs_path=JOBS_FILE):
 
 
 def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
-    """Expand every ${VAR} in a delivery target from ONE source.
+    """Expand every ${VAR} in a delivery target: the container environment
+    first, the gateway's dotenv behind it.
 
-    The chat uid is minted by this instance's own activation, so it can never
-    be a literal in a repo more than one person runs -- in production it lives
-    in /opt/data/.env, the file the gateway loads (a docker-exec session's env
-    never carries it -- measured). That file IS the source; an explicit `env`
-    is the test-injection override, taken alone. An unset or blank variable
-    REFUSES loudly: hermes would accept the half-expanded or empty target and
-    the digest's chat leg would drop silently, every Sunday, in front of
-    nobody -- the exact trap the old tripwire test existed to catch.
+    The chat uid is not this repo's to know -- it is whichever chat the owner
+    holds with this agent -- so it can never be a literal here. First boot
+    resolves it from the credential the host dropped in and publishes it as
+    PLOW_HOME_CHANNEL into the container environment, which every service and
+    every `with-contenv` caller inherits; that is the source now. The dotenv is
+    kept behind it for an instance still carrying the value where activation
+    used to write it. An unset or blank variable REFUSES loudly: hermes would
+    accept the half-expanded or empty target and the digest's chat leg would
+    drop silently, every Sunday, in front of nobody -- the exact trap the old
+    tripwire test existed to catch.
+
+    An explicit `env` is still the test-injection override, taken alone.
     """
     if env is None:
-        values, source = dotenv_values(dotenv_path), f"{dotenv_path} (the file activation writes it to)"
+        # os.environ last, so it wins -- but only where it actually carries a
+        # value. A variable exported blank must not shadow a real one in the
+        # dotenv into a refusal; "set to nothing" is not an answer, and with
+        # neither source carrying it the expansion refuses below either way.
+        values = {**dotenv_values(dotenv_path),
+                  **{k: v for k, v in os.environ.items() if v.strip()}}
+        source = f"the container environment or {dotenv_path}"
     else:
         values, source = env, "the injected env"
 

@@ -32,7 +32,7 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 import post_to_kiosk  # noqa: E402
-from runtime_env import DOTENV, dotenv_values  # noqa: E402
+from runtime_env import AGENT_DOTENV, DOTENV, agent_values, dotenv_values  # noqa: E402
 
 post_to_kiosk.CARD = "1"
 post_to_kiosk.BODY_TYPE = "alert"
@@ -87,7 +87,7 @@ def main():
     # (direct) or sits durably in the outbox (latch) — the Latch calls above
     # replay from that file, so consuming the handoff loses nothing.
     os.unlink(HANDOFF)
-    latch = dotenv_values(DOTENV).get(post_to_kiosk.DELIVERY_KEY, "").strip() == "latch"
+    latch = agent_values(AGENT_DOTENV).get(post_to_kiosk.DELIVERY_KEY, "").strip() == "latch"
     kiosk = "kiosk card queued for Latch (both calls above still owed)" if latch else "posted kiosk card"
     print(f"{kiosk}; chat nudge posted ({len(text)} chars)")
 

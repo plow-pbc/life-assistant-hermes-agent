@@ -43,7 +43,7 @@ via argv:
     - DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN in the process env (Hermes has no
       per-agent secrets mount; the gateway loads /opt/data/.env once at start
       and the container env is that load), else
-    - the same two names read straight out of that dotenv (runtime_env.DOTENV).
+    - the same two names read out of the agent's own file (runtime_env.AGENT_DOTENV).
       This third source is what makes ld-setup work on a live instance:
       mint_wall_token.py APPENDS its lines after `up`, so they are absent from
       the env the gateway loaded and would stay invisible to every cron-spawned
@@ -63,7 +63,7 @@ via argv:
     - anything else: the direct POST above.
 
 The test suite imports this module and rebinds these constants (the secret-file
-paths, DOTENV, MESSAGE_FILE) and feeds stdin — a seam reachable only by an importer,
+paths, AGENT_DOTENV, MESSAGE_FILE) and feeds stdin — a seam reachable only by an importer,
 not by the CLI a scheduled agent invokes.
 
 Caller contract — the viewer requires all of card/type/text; `card` picks the
@@ -94,7 +94,7 @@ import urllib.request
 from pathlib import Path
 
 from bearer_http import open_no_redirect
-from runtime_env import DOTENV, dotenv_values, household_host
+from runtime_env import AGENT_DOTENV, agent_values, household_host
 
 # Bundle-specific — the wrapper sets these before calling main().
 CARD: str | None = None
@@ -178,11 +178,11 @@ def read_secret(file_path, env_name, label):
     env_value = os.environ.get(env_name, "").strip()
     if env_value:
         return env_value, "env"
-    dotenv_value = dotenv_values(DOTENV).get(env_name, "").strip()
+    dotenv_value = agent_values(AGENT_DOTENV).get(env_name, "").strip()
     if not dotenv_value:
         sys.exit(
             f"error: {label} missing — no file at {file_path}, ${env_name} is unset/empty, "
-            f"and {DOTENV} does not set it"
+            f"and {AGENT_DOTENV} does not set it"
         )
     return dotenv_value, "dotenv"
 
@@ -272,7 +272,7 @@ def main():
     args = parser.parse_args()
 
     text = read_message()
-    dotenv = dotenv_values(DOTENV)
+    dotenv = agent_values(AGENT_DOTENV)
     latch = dotenv.get(DELIVERY_KEY, "").strip() == "latch"
     url, url_source = read_secret(ENDPOINT_FILE, ENDPOINT_ENV, "endpoint URL")
     if latch and url_source == "env" and dotenv.get(ENDPOINT_ENV, "").strip():

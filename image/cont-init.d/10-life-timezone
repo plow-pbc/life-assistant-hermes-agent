@@ -1,0 +1,55 @@
+#!/command/with-contenv sh
+# The process timezone, from this household's own config.
+#
+# `hermes cron create` takes no per-job zone, so every schedule this agent
+# registers fires in the CONTAINER's zone. The base image does not set one --
+# it has no opinion about where a tenant lives -- so if nothing here wrote TZ
+# the six dashboard schedules would fire in whatever the runtime defaulted to
+# and land at the wrong local hour, silently, which is the one failure a life
+# assistant cannot absorb.
+#
+# Written into s6's own environment directory rather than exported: this runs
+# in cont-init, before any service starts, and `with-contenv` is how the
+# gateway and everything under it pick the value up.
+#
+# UTC when there is no config yet, explicitly. A first boot happens before
+# onboarding has asked anyone where they live, and an EMPTY TZ is worse than a
+# wrong one: register_crons.py refuses to register at all on a blank zone, so
+# an unset variable would turn "not set up yet" into a hard failure with no
+# path out of it. UTC is a value the guard can compare and the owner's first
+# real config replaces.
+#
+# Fixed at boot, deliberately. The config stays writable afterwards, so the
+# zone in it can change while this process keeps the one it started with --
+# which is exactly what register_crons.py's require_timezone_agreement()
+# catches: a config edited without the restart that would apply it.
+set -eu
+
+CONFIG=${LIFE_CONFIG:-/var/lib/hermes/ld/config.json}
+OUT=${LIFE_TZ_OUT:-/run/s6/container_environment/TZ}
+PYTHON=${LIFE_PYTHON:-/opt/hermes/.venv/bin/python3}
+
+# Never fatal. A malformed config, an unreadable file, a zone the tz database
+# does not know -- each falls back to UTC with a line saying so. Failing the
+# boot here would take the gateway down over a file the agent itself writes.
+zone=$("$PYTHON" - "$CONFIG" <<'PY' 2>/dev/null || true
+import json, sys
+from zoneinfo import ZoneInfo
+
+try:
+    name = str(json.load(open(sys.argv[1]))["family"]["timezone"]).strip()
+    ZoneInfo(name)          # refuse a name nothing can resolve
+    print(name)
+except Exception:
+    pass
+PY
+)
+
+if [ -z "$zone" ]; then
+  zone=UTC
+  echo "life-timezone: no usable family.timezone in $CONFIG -- TZ=UTC until setup writes one" >&2
+fi
+
+mkdir -p "$(dirname "$OUT")"
+printf '%s' "$zone" > "$OUT"
+echo "life-timezone: TZ=$zone" >&2

@@ -66,13 +66,14 @@ def test_the_job_contract_is_exactly_this():
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
 def test_no_schedule_carries_a_timezone(job):
     """`hermes cron create` takes no per-job zone -- jobs fire in the container's,
-    which is agent-mgr's AGENT_TZ. A tz written into a schedule here is not
+    which this image sets at boot from family.timezone. A tz written into a
+    schedule here is not
     rejected by anything; it is simply ignored, so the job runs at the wrong hour
     while the spec claims otherwise."""
     schedule = job["schedule"]
     assert not re.search(r"[A-Za-z]+/[A-Za-z_]+", schedule), (
         f"{job['name']} schedule {schedule!r} names a timezone; the container's "
-        "AGENT_TZ is the only zone there is"
+        "the container zone is the only zone there is"
     )
     assert re.fullmatch(r"[\d*,/\- ]+", schedule), (
         f"{job['name']} schedule {schedule!r} is not a plain cron expression"
@@ -333,18 +334,19 @@ ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"}
     ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": ""}, "the injected env"),
     ({"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "   "}, "the injected env"),
     ({"TZ": "America/Los_Angeles", "PLOW_CHAT_CHAT_UID": "cht_legacy"}, "the injected env"),
-    (None, "absent.env"),
-], ids=["unset", "empty", "blank", "legacy-only", "absent-dotenv"])
-def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path):
+    (None, "the container environment"),
+], ids=["unset", "empty", "blank", "legacy-only", "no-env-no-dotenv"])
+def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path, monkeypatch):
     """The silent-drop trap: hermes accepts an empty or half-expanded target,
     so the digest would post its card and message nobody, every Sunday, in
     front of nobody. Registration must stop, say which variable to fix, and
     name the source it actually consulted. The legacy-only row is an instance
     still carrying the retired PLOW_CHAT_CHAT_UID and nothing else: that spelling
     is not read, so it refuses like any other unexpandable target. The last row
-    is the production shape (env=None, the dotenv as the sole source, here an
-    absent file)."""
+    is the production shape (env=None: the container environment, with the
+    dotenv behind it -- here neither carries it)."""
     mod = spec()
+    monkeypatch.delenv("PLOW_HOME_CHANNEL", raising=False)
     digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
     with pytest.raises(SystemExit) as excinfo:
         mod.create_argv(digest, env, dotenv_path=tmp_path / "absent.env")
@@ -352,22 +354,37 @@ def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_p
     assert named_source in str(excinfo.value)
 
 
-@pytest.mark.parametrize("source", ["env", "dotenv"])
-def test_the_deliver_target_expands_from_either_source(source, tmp_path):
-    """Registration runs via `docker exec`, whose session env does NOT carry
-    the activation-written PLOW_* values -- those live in /opt/data/.env,
-    the file the gateway loads. Both routes must yield the same argv; the
-    card-only job gets no --deliver arm either way."""
+# One matrix, five rows: which source carries the value, and who wins when more
+# than one does. They were three separate tests with the same setup.
+@pytest.mark.parametrize(("env", "process", "dotenv_value", "expected"), [
+    (ENV_OK, None,       "",          "cht_test"),   # injected, taken alone
+    (None,   "cht_test", "",          "cht_test"),   # the container environment
+    (None,   None,       "cht_test",  "cht_test"),   # the dotenv, still read
+    (None,   "cht_live", "cht_stale", "cht_live"),   # live outranks a stale file
+    (None,   "   ",      "cht_test",  "cht_test"),   # blank is not an answer
+], ids=["injected", "container-env", "dotenv", "live-over-stale", "blank-env"])
+def test_the_deliver_target_expands_from_every_source(
+    env, process, dotenv_value, expected, tmp_path, monkeypatch
+):
+    """PLOW_HOME_CHANNEL is published into the CONTAINER environment by first
+    boot -- what a service and any `with-contenv` caller inherit -- with the
+    gateway's dotenv kept behind it for an instance still carrying the value
+    where activation used to write it.
+
+    The last two rows are the ones with teeth. A home volume outlives its
+    tenant, so a stale dotenv can sit beside a freshly resolved chat and the
+    live answer has to win, or the digest delivers into the previous owner's
+    chat. And a variable exported blank must not shadow a real one into a
+    refusal: "set to nothing" is not an answer.
+    """
     mod = spec()
-    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
+    monkeypatch.delenv("PLOW_HOME_CHANNEL", raising=False)
+    if process is not None:
+        monkeypatch.setenv("PLOW_HOME_CHANNEL", process)
     dotenv = tmp_path / "agent.env"
-    if source == "env":
-        env, _ = ENV_OK, dotenv.write_text("")
-    else:
-        env = None  # production shape: no injection, the dotenv IS the source
-        dotenv.write_text("# activation writes this shape\nPLOW_HOME_CHANNEL=cht_test\n")
-    argv = mod.create_argv(digest, env, dotenv_path=dotenv)
-    assert argv[-2:] == ["--deliver", "plow_chat:cht_test"]
+    dotenv.write_text(f"PLOW_HOME_CHANNEL={dotenv_value}\n" if dotenv_value else "")
+    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
+    assert mod.create_argv(digest, env, dotenv_path=dotenv)[-2:] == ["--deliver", f"plow_chat:{expected}"]
 
     weather = next(j for j in mod.JOBS if j["name"] == "ld-weather")
     assert "--deliver" not in mod.create_argv(weather, env, dotenv_path=dotenv)
@@ -390,7 +407,7 @@ def test_a_config_zone_that_is_not_the_containers_refuses_to_register(tmp_path):
         mod.require_timezone_agreement(config, {"TZ": "America/Los_Angeles"})
     message = str(excinfo.value)
     assert "America/Chicago" in message and "America/Los_Angeles" in message
-    assert "AGENT_TZ" in message, "the message has to name what to fix"
+    assert "restart" in message, "the message has to name what to do about it"
 
     # Agreement passes.
     mod.require_timezone_agreement(config, {"TZ": "America/Chicago"})
@@ -414,7 +431,7 @@ def test_the_container_zone_comes_from_TZ_not_etc_localtime(tmp_path):
 
     with pytest.raises(SystemExit) as excinfo:
         mod.require_timezone_agreement(config, {"TZ": ""})
-    assert "AGENT_TZ" in str(excinfo.value)
+    assert "TZ is empty" in str(excinfo.value)
 
 
 def test_main_refuses_before_creating_anything_when_the_zones_disagree(

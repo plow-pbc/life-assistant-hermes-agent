@@ -56,10 +56,13 @@ differ only in what they excuse.
              have no way to drop one. Nested objects merge key by key, so
              {"weather": {"location": "Denver"}} keeps lat/lon's siblings.
 
-The timezone is checked against the container's TZ in both modes rather than
-left to register_crons.py (which also refuses): the owner is the one answering,
-and the fix is AGENT_TZ in the instance dotenv on the HOST, which only the
-operator can edit -- so the refusal names it for the owner to relay.
+The timezone is compared against the container's TZ in both modes and REPORTED,
+never refused: TZ is fixed at boot from this very file, so a first boot has no
+config, comes up UTC, and refusing a disagreement here made every zone but UTC
+unrecordable -- the owner could say where they live and this script would
+decline to write it, forever. The owner still has to be told, so the write says
+so and names the restart. register_crons.py keeps the refusal that has teeth:
+it will not schedule anything while the two disagree.
 
 NO mode touches the crons. This script writes one file and nothing else; the
 six schedules are register_crons.py's, run from the wall phases of SKILL.md,
@@ -243,22 +246,22 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
 
     merged = deep_merge(current, patch)
 
-    # Same refusal as build(), because it is the same mistake: the zone is the
-    # host's AGENT_TZ, and a config that disagrees with the container puts
-    # every card at the wrong local hour without failing anything.
+    # The zone is WRITTEN, and reported. It used to be refused here, which was a
+    # deadlock: the container reads TZ out of this very file at boot, so a first
+    # boot has no config, comes up UTC, and every zone but UTC then disagreed
+    # with the running container -- the owner could answer "America/Chicago" and
+    # never be able to record it. The disagreement is real and still matters, so
+    # it is said plainly and the cron registrar keeps the refusal that has
+    # teeth: nothing is scheduled until the restart makes the two agree.
     container = (env.get("TZ") or "").strip()
     zone = merged.get("family", {}).get("timezone")
-    # A draft is written before every answer is in, so an absent zone is a
-    # question not yet asked rather than a disagreement. One that IS present
-    # gets the same refusal as a patch: a wrong zone is not more acceptable
-    # for being early, and catching it here is what keeps the owner from
-    # answering four more questions against a config that cannot be finished.
-    if zone is not None or gated:
-        if zone != container:
-            raise SystemExit(
-                f"refusing to {verb}: the config would say {zone!r} but this container "
-                f"runs in {container!r}. The zone is AGENT_TZ in the instance dotenv on "
-                "the host -- tell the owner to ask the operator to change it.")
+    restart_note = None
+    if zone is not None and zone != container:
+        restart_note = (
+            f"family.timezone is {zone!r} and this container runs in {container!r}. "
+            "The zone is written; TZ is fixed at boot from this file, so it takes "
+            "effect after a restart -- until then the schedules stay unregistered."
+        )
 
     # A location without its coordinates is the one patch that fails silently:
     # the card's title changes to the new city and the forecast stays the old
@@ -267,9 +270,9 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
     if "location" in weather and not {"lat", "lon"} <= set(weather):
         lat, lon, matched = (geocoder or geocode)(merged["weather"]["location"])
         merged["weather"]["lat"], merged["weather"]["lon"] = lat, lon
-        return merged, matched
+        return merged, matched, restart_note
 
-    return merged, None
+    return merged, None, restart_note
 
 
 def atomic_write(config_path, text):
@@ -374,7 +377,7 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
             except (OSError, ValueError) as exc:
                 raise SystemExit(
                     f"refusing to {verb}: could not read {config_path}: {exc}") from None
-            config, matched = apply_patch(payload, current, env, gated=not args.draft)
+            config, matched, restart_note = apply_patch(payload, current, env, gated=not args.draft)
         else:
             raise SystemExit(
                 "refusing to write: pass --draft (onboarding, answer by answer) or "
@@ -444,6 +447,11 @@ def main(argv=None, env=None, stdin=None, config_path=CONFIG):
     # to five decimal places into a log that outlives the turn.
     if matched:
         print(f"geocoded: matched {matched}")
+    # After the write, never before it: a gate refusal exits above, and a note
+    # about a zone that did not land would be the same silent-wrongness this
+    # whole path exists to avoid.
+    if restart_note:
+        print(restart_note)
     return 0
 
 
