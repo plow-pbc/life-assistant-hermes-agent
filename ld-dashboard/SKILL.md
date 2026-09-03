@@ -118,10 +118,11 @@ Los_Angeles container, silently.
 posting a card, and which chat that is was minted by this instance's own
 activation — so it can never be a literal here, on a repo more than one person
 runs. It sits in `JOBS` as `plow_chat:${PLOW_HOME_CHANNEL}`, and
-`resolve_deliver()` expands it from `/var/lib/hermes/.env` — the file activation
-writes and the gateway loads; a `docker exec` session's env never carries it —
-refusing an unset or blank variable by name — an empty target is a chat leg
-that silently delivers nowhere.
+`resolve_deliver()` expands it from the container environment, where first boot
+published it after asking Plow which chat this agent's owner holds. Run this
+from a turn, which inherits that environment from the gateway; a bare
+`docker exec` session carries none of it. An unset or blank variable is refused
+by name — an empty target is a chat leg that silently delivers nowhere.
 
 The two producers take different delivery paths, on purpose. `--deliver`
 relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always

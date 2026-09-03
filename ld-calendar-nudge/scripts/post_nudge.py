@@ -5,10 +5,10 @@ The sheet runs only this. One handoff, written by nudge_candidates.py (never
 by the model): every qualifying reminder, earliest first. Order is the
 data-integrity contract:
 
-1. Resolve + validate the Plow Chat config FIRST — env, then /var/lib/hermes/.env
-   (the #24 lesson) — refusing by name before ANYTHING posts, so a blank
-   chat config can never leave a qualifying run half-delivered (kiosk up,
-   owner never messaged).
+1. Resolve + validate the Plow Chat config FIRST — from the process
+   environment, which first boot fills from the credential the host dropped in
+   — refusing by name before ANYTHING posts, so a blank chat config can never
+   leave a qualifying run half-delivered (kiosk up, owner never messaged).
 2. Read the handoff once through post_to_kiosk's fixed-file read/refusal
    seam (missing or empty refuses loudly, nothing consumed).
 3. Kiosk: the FIRST line — the earliest reminder, ≤115 enforced by the
