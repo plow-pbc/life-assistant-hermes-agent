@@ -32,7 +32,7 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 import post_to_kiosk  # noqa: E402
-from runtime_env import AGENT_DOTENV, DOTENV, agent_values, dotenv_values  # noqa: E402
+from runtime_env import AGENT_DOTENV, agent_values  # noqa: E402
 
 post_to_kiosk.CARD = "1"
 post_to_kiosk.BODY_TYPE = "alert"
@@ -42,23 +42,28 @@ post_to_kiosk.TITLE = ""  # hide the eyebrow — the reminder gets the full card
 HANDOFF = "/var/lib/hermes/ld/calendar-nudge-text"
 
 
-def require(name, dotenv):
-    value = (os.environ.get(name) or dotenv.get(name) or "").strip()
+def require(name):
+    value = (os.environ.get(name) or "").strip()
     if not value:
         sys.exit(
-            f"{name} is unset or blank in the env and {DOTENV} -- activation "
-            "writes it there; refusing BEFORE the kiosk post so a half-"
-            "delivered run cannot happen"
+            f"{name} is unset or blank in this process's environment -- first "
+            "boot publishes it there from the credential the host dropped in; "
+            "refusing BEFORE the kiosk post so a half-delivered run cannot "
+            "happen"
         )
     return value
 
 
 def resolve_chat():
-    """The chat endpoint + bearer, validated before anything posts."""
-    dotenv = dotenv_values(DOTENV)
-    base = require("PLOW_API_BASE", dotenv).rstrip("/")
-    uid = require("PLOW_HOME_CHANNEL", dotenv)
-    token = require("PLOW_AGENT_TOKEN", dotenv)
+    """The chat endpoint + bearer, validated before anything posts.
+
+    From the container environment alone. These three are the tenant's
+    credential, and first boot is what publishes them; a file the agent can
+    write is not a place to look for the API base its own bearer is sent to.
+    """
+    base = require("PLOW_API_BASE").rstrip("/")
+    uid = require("PLOW_HOME_CHANNEL")
+    token = require("PLOW_AGENT_TOKEN")
     return f"{base}/v1/chats/{uid}/messages", token
 
 

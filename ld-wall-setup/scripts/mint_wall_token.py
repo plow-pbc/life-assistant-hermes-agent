@@ -11,11 +11,12 @@ owner's approval card and kept in the audit record):
   /var/lib/hermes/ld/pi.env         ICAL_URL + DASHBOARD_TOKEN   -> the Pi's ~/ld-data/.env
   /var/lib/hermes/ld/dashboard.hdr  Authorization: Bearer <t>    -> ~/Plow/ld/dashboard.hdr on the Mac
 
-and three lines are appended to /var/lib/hermes/.env for the producers:
-DASHBOARD_ENDPOINT_URL (the Pi's message API), DASHBOARD_TOKEN, and
-DASHBOARD_DELIVERY=latch, which is what turns post_to_kiosk.py's POST into a
-Latch hand-off. The append lands AFTER the gateway loaded the dotenv, which
-is why post_to_kiosk.py reads the dotenv itself as its third source.
+and three lines are appended to the agent's own dotenv,
+/var/lib/hermes/ld/.env, for the producers: DASHBOARD_ENDPOINT_URL (the Pi's
+message API), DASHBOARD_TOKEN, and DASHBOARD_DELIVERY=latch, which is what
+turns post_to_kiosk.py's POST into a Latch hand-off. They are written after
+the gateway started, which is why post_to_kiosk.py reads that file itself
+rather than expecting the values in its environment.
 
 Idempotent on the token: a dotenv that already names DASHBOARD_ENDPOINT_URL
 never re-mints -- the Pi holds the old token, and a new one here would lock

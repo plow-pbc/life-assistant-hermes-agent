@@ -40,9 +40,8 @@ via argv:
   endpoint URL + bearer token — three fixed sources, in this order:
     - /config/secrets/dashboard-{endpoint-url,token} files when present (Plow
       lands these mode-600 on a read-only secrets mount), else
-    - DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN in the process env (Hermes has no
-      per-agent secrets mount; the gateway loads /var/lib/hermes/.env once at start
-      and the container env is that load), else
+    - DASHBOARD_ENDPOINT_URL / DASHBOARD_TOKEN in the process env (what a caller
+      exports, or what first boot published), else
     - the same two names read out of the agent's own file (runtime_env.AGENT_DOTENV).
       This third source is what makes ld-setup work on a live instance:
       mint_wall_token.py APPENDS its lines after `up`, so they are absent from
@@ -163,15 +162,15 @@ def read_secret(file_path, env_name, label):
     """Read a required secret: file, then env, then the dotenv (module docstring).
 
     All three sources are fixed and non-argv. The file is tried first (Plow's
-    read-only /config/secrets mount); then the process env; then /var/lib/hermes/.env
-    itself, which is the only source that sees a line ld-setup appended after
-    the gateway started. Fails loud when all three are empty, so a
-    misconfigured install never half-posts to an unknown endpoint.
+    read-only /config/secrets mount); then the process env; then the agent's own
+    dotenv, which is the only source that sees a line ld-setup wrote after the
+    gateway started. Fails loud when all three are empty, so a misconfigured
+    install never half-posts to an unknown endpoint.
 
     Returns (value, source) — source is "file", "env" or "dotenv". The caller
     uses the source to decide whether extra validation applies: unlike the
-    read-only secrets mount or the gateway's startup env, /var/lib/hermes/.env is
-    agent-writable at runtime (see _validate_dotenv_endpoint).
+    read-only secrets mount or the process environment, the agent's own dotenv
+    is agent-writable at runtime (see _validate_dotenv_endpoint).
     """
     if Path(file_path).exists():
         return read_required_file(file_path, label), "file"
@@ -189,7 +188,7 @@ def read_secret(file_path, env_name, label):
 
 def _validate_dotenv_endpoint(url):
     """A dotenv-sourced endpoint URL must be exactly the Pi's message API.
-    /var/lib/hermes/.env is agent-writable at runtime, so an injected turn
+    The agent's own dotenv is writable by a turn, so an injected one
     appending a second DASHBOARD_ENDPOINT_URL= line (last duplicate wins in
     dotenv_values) must not be able to steer the bearer to an attacker host.
     The secrets file and the startup env are trusted as today — this only

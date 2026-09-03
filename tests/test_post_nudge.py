@@ -29,17 +29,15 @@ LINE2 = 'Heads up: "Sync" at 12:40pm (40m).'
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
-    """The handoff + dotenv on disk, env cleared, the two seams faked."""
+    """The handoff on disk, the credential in the environment first boot fills,
+    the two seams faked."""
     handoff = tmp_path / "calendar-nudge-text"
     handoff.write_text(LINE1 + "\n" + LINE2 + "\n")
-    dotenv = tmp_path / ".env"
-    dotenv.write_text("PLOW_API_BASE=https://dotenv.test\n"
-                      "PLOW_HOME_CHANNEL=cht_dotenv\n"
-                      "PLOW_AGENT_TOKEN=tok_dotenv\n")
     monkeypatch.setattr(pn, "HANDOFF", str(handoff))
-    monkeypatch.setattr(pn, "DOTENV", str(dotenv))
-    for name in ("PLOW_API_BASE", "PLOW_HOME_CHANNEL", "PLOW_AGENT_TOKEN"):
-        monkeypatch.delenv(name, raising=False)
+    for name, value in (("PLOW_API_BASE", "https://plow.test"),
+                        ("PLOW_HOME_CHANNEL", "cht_home"),
+                        ("PLOW_AGENT_TOKEN", "tok_agent")):
+        monkeypatch.setenv(name, value)
     monkeypatch.setattr(sys, "argv", ["post_nudge.py"])
 
     calls = []
@@ -50,7 +48,7 @@ def rig(tmp_path, monkeypatch):
     monkeypatch.setattr(
         pn.post_to_kiosk, "post_bearer_json",
         lambda url, token, body, label: calls.append(("chat", url, token, body)))
-    return SimpleNamespace(handoff=handoff, dotenv=dotenv, calls=calls,
+    return SimpleNamespace(handoff=handoff, calls=calls,
                            monkeypatch=monkeypatch)
 
 
@@ -58,27 +56,24 @@ def test_success_posts_first_line_to_kiosk_full_body_to_chat_then_consumes(rig):
     pn.main()
     assert rig.calls == [
         ("kiosk", LINE1),
-        ("chat", "https://dotenv.test/v1/chats/cht_dotenv/messages",
-         "tok_dotenv", {"body": LINE1 + "\n" + LINE2}),
+        ("chat", "https://plow.test/v1/chats/cht_home/messages",
+         "tok_agent", {"body": LINE1 + "\n" + LINE2}),
     ]
     assert not rig.handoff.exists(), (
         "the coordinator owns consume-on-success, once, after both legs"
     )
 
 
-def test_env_wins_over_dotenv(rig):
-    rig.monkeypatch.setenv("PLOW_HOME_CHANNEL", "cht_env")
-    pn.main()
-    assert "/v1/chats/cht_env/messages" in rig.calls[1][1]
-
-
 def test_the_retired_names_are_not_read(rig):
     """These are the names the pre-unification adapter used. Nothing reads
-    them any more: a dotenv carrying only those refuses, loudly, rather than
-    half-delivering. An agent still on them re-activates."""
-    rig.dotenv.write_text("PLOW_CHAT_BASE_URL=https://retired.test\n"
-                          "PLOW_CHAT_CHAT_UID=cht_retired\n"
-                          "PLOW_CHAT_TOKEN=tok_retired\n")
+    them any more: an environment carrying only those refuses, loudly, rather
+    than half-delivering. An agent still on them re-activates."""
+    for name in ("PLOW_API_BASE", "PLOW_HOME_CHANNEL", "PLOW_AGENT_TOKEN"):
+        rig.monkeypatch.delenv(name, raising=False)
+    for name, value in (("PLOW_CHAT_BASE_URL", "https://retired.test"),
+                        ("PLOW_CHAT_CHAT_UID", "cht_retired"),
+                        ("PLOW_CHAT_TOKEN", "tok_retired")):
+        rig.monkeypatch.setenv(name, value)
     with pytest.raises(SystemExit) as excinfo:
         pn.main()
     assert "PLOW_API_BASE" in str(excinfo.value)
@@ -91,10 +86,7 @@ def test_the_retired_names_are_not_read(rig):
 def test_a_missing_credential_refuses_before_anything_posts(rig, missing):
     """The half-delivered trap this ordering exists for: a blank chat config
     must stop the run BEFORE the kiosk posts."""
-    rig.dotenv.write_text("".join(
-        f"{n}=value\n" for n in
-        ("PLOW_API_BASE", "PLOW_HOME_CHANNEL", "PLOW_AGENT_TOKEN")
-        if n != missing))
+    rig.monkeypatch.delenv(missing, raising=False)
     with pytest.raises(SystemExit) as excinfo:
         pn.main()
     assert missing in str(excinfo.value)
