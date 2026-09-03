@@ -5,7 +5,6 @@ answering from the wrong mailbox, a failure that reads like an empty inbox, and
 an email body reaching the model without the label that says whose words it is.
 """
 import importlib.util
-import json
 from pathlib import Path
 
 import pytest
@@ -23,17 +22,13 @@ WILLOW = {"uid": "ln_e_2", "provider_type": "email", "provider_key": "willow@plo
 
 @pytest.fixture
 def api(monkeypatch):
-    """Stand in for the API; record what was asked for."""
-    responses, asked = {}, []
+    """Stand in for the API: a path -> payload map the tests fill in."""
+    responses = {}
 
-    def fake_get_json(base, path, token, label):
-        asked.append(path)
-        return responses[path.split("?")[0]]
-
-    monkeypatch.setattr(ri, "get_json", fake_get_json)
+    monkeypatch.setattr(ri, "get_json", lambda base, path, token, label: responses[path.split("?")[0]])
     monkeypatch.setenv("PLOW_API_BASE", "https://api.test")
     monkeypatch.setenv("PLOW_AGENT_TOKEN", "tok")  # pragma: allowlist secret
-    return responses, asked
+    return responses
 
 
 @pytest.mark.parametrize("lines, expected", [
@@ -46,7 +41,7 @@ def api(monkeypatch):
     pytest.param([PHONE], SystemExit, id="none-refuses"),
 ])
 def test_which_mailbox(api, lines, expected):
-    responses, _ = api
+    responses = api
     responses["/v1/lines"] = {"data": lines}
     if expected is SystemExit:
         with pytest.raises(SystemExit) as excinfo:
@@ -68,7 +63,7 @@ def test_a_missing_credential_refuses_by_name(api, monkeypatch, name):
 def test_an_empty_window_says_so_in_words(api, capsys):
     """'Nothing arrived' and 'the call failed' must not read the same to the
     model that is about to answer the owner."""
-    responses, _ = api
+    responses = api
     responses["/v1/lines"] = {"data": [PHONE, ELM]}
     responses["/v1/email-lines/ln_e_1/threads"] = {"data": []}
 
