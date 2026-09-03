@@ -29,9 +29,20 @@ the container reads, and does nothing else about running one.
 
 ```sh
 plow-agents mint ln_xxx        # in this checkout, before the first `up`
-docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"   # once per base
 docker compose up --build -d
 ```
+
+**First build fails with `403 Forbidden` on the base image?** BuildKit cannot
+resolve this repository's pinned base from ECR Public until the image is in the
+local store. Pull it once, then build again:
+
+```sh
+docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
+```
+
+That reads the reference out of the `Dockerfile` rather than spelling it here
+because the pin moves, and a stale copy in this file would quietly build against
+a different base than the one the `Dockerfile` names.
 
 | To | Run |
 | --- | --- |
