@@ -444,6 +444,9 @@ def test_the_agent_owned_names_are_read_from_the_agents_own_file():
             f"{relative} names {sorted(named)} but does not read the agent's own file")
         assert "dotenv_values(DOTENV)" not in text, (
             f"{relative} reads an agent-owned name out of Hermes' own dotenv")
+    # Three: the calendar feed no longer reads an agent-owned name at all --
+    # its relay is the agent's own, out of the container environment -- so it
+    # drops out of this scan rather than failing it.
     assert len(checked) >= 3, f"only {checked} were checked -- the scan stopped finding producers"
 
 
