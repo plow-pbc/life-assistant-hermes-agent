@@ -82,6 +82,9 @@ RUN chown -R root:root /opt/plow \
 # Root-owned under /opt/plow, like the calendar producer and for the same
 # reason: the copy in the agent's home belongs to uid 10000 in a running
 # container, so scheduling that one would run whatever a turn last wrote there.
+# The one-time exchange that keeps the Plow bearer away from the index: it
+# trades the token for an index-scoped key and stores it in the agent's home.
+COPY --chmod=0755 image/s6-overlay/scripts/agent-index-key.py /opt/plow/agent-index-key.py
 COPY vendor/client.pin /opt/plow/agent-index-client.pin
 RUN set -eu; \
     sha="$(sed -n 's/^sha=//p' /opt/plow/agent-index-client.pin)"; \

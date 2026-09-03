@@ -22,7 +22,7 @@ export PATH
 # rather than guessing a name.
 PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)
 AGENT_ID=$(cat /run/s6/container_environment/AGENT_ID 2>/dev/null || true)
-export PLOW_AGENT_TOKEN AGENT_ID
+export AGENT_ID
 
 # The agent's home is where its usage store lives, and the client keeps its
 # ledger beside that store. Fixed, not overridable: this image puts the home
@@ -39,11 +39,35 @@ if [ -z "$AGENT_ID" ]; then
 fi
 
 while :; do
+  # The Plow token crosses to the index ONCE, here, to trade itself for a key
+  # the index scopes to reporting. That token also authorises chats, the Latch
+  # relay and inference, so handing it over hourly would make an index-side
+  # compromise worth the whole agent -- for a job that only needs to add numbers
+  # to a page. After the exchange it is the key that travels, and the key can
+  # neither claim an agent id nor mint another.
+  #
+  # Run AS THE AGENT, and given the Plow token as its only inheritance of it:
+  # the key lands in the agent's own home, readable by the reporter below,
+  # which a root-written 0600 file would not be. Nothing else in this loop ever
+  # sees PLOW_AGENT_TOKEN.
+  /command/s6-setuidgid hermes \
+    env HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
+    /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-key.py >/dev/null || {
+    # Unreachable index, refused token: the next hour tries again. Falling back
+    # to the Plow token would reinstate exactly the exposure this removes.
+    echo "agent-index: no index key this hour, not reporting" >&2
+    /bin/sleep 3600
+    continue
+  }
+
+  # No PLOW_AGENT_TOKEN in this environment. The client finds the key the
+  # exchange stored in the agent's home and reports with that.
+  #
   # Never fatal. A collector that failed says so and exits non-zero; a crashing
   # longrun would be respawned in a tight loop, which turns one bad hour into a
   # hot loop against the index.
   /command/s6-setuidgid hermes \
-    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
+    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" \
     /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
     || echo "agent-index: reporter exited non-zero, see the line above" >&2
   /bin/sleep 3600

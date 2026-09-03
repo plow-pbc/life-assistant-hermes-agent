@@ -52,25 +52,19 @@ def test_it_stands_down_when_nothing_says_which_agent_this_is(tmp_path):
     assert "AGENT_ID" in said, "and it says which value is missing"
 
 
-def test_it_runs_the_client_as_the_agent_with_the_home_this_image_uses(tmp_path):
-    """Given an id and a credential it reaches the invocation -- as the agent,
-    never as root, with the home the store lives in."""
+def test_given_an_id_and_a_credential_it_proceeds(tmp_path):
+    """One run, two things worth knowing about it.
+
+    It reaches the work -- as the agent, with the home this image uses -- and it
+    does NOT stand down, which is the no-switch rule stated as behaviour: with a
+    credential and an id and nothing else set, a switch would have stopped it
+    here for want of a flag."""
     said = run_service(tmp_path, {"PLOW_AGENT_TOKEN": "plow_atokenshapedthing",
                                   "AGENT_ID": "life"})
     assert "standing down" not in said, "it had everything it needed"
     # /command/s6-setuidgid does not exist out here, and that failure is the
-    # evidence: the script got as far as dropping privilege to run the client.
+    # evidence: it got as far as dropping privilege to do the work.
     assert "s6-setuidgid" in said or "not found" in said
-
-
-def test_there_is_no_opt_in_switch(tmp_path):
-    """Installing the reporter is the decision; a flag would re-ask it.
-
-    Asserted by BEHAVIOUR: with a credential and an id and nothing else set, it
-    proceeds. A switch would make this run stand down for want of a flag."""
-    said = run_service(tmp_path, {"PLOW_AGENT_TOKEN": "plow_atokenshapedthing",
-                                  "AGENT_ID": "life"})
-    assert "standing down" not in said
 
 
 def test_the_service_is_wired_the_way_s6_starts_one():

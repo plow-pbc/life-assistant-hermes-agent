@@ -2,7 +2,7 @@
 #
 # Not committed: plow-pbc/agent-index-client owns that file and is public now,
 # so this repo names a commit instead of carrying a copy that drifts from it.
-# `just client` fetches exactly this revision and refuses anything else.
+# The image build fetches exactly this revision and refuses anything else.
 #
 # A sha, never `main`. The same reason the Dockerfile pins its base by digest:
 # a moving reference substitutes unreviewed code under an agent that holds a
