@@ -23,21 +23,24 @@ The `Dockerfile` here adds a persona, its skills and one background job.
 
 ## Run locally
 
-Building and running an agent on your own machine — the token, the `.env`, the
-compose service — lives in
-[`plow-agents`](https://github.com/plow-pbc/plow-agents), and is not restated
-here.
-
-Two things differ for this agent. `plow-agents` builds this image from source
-rather than pulling a published one — point it at this repository and let it
-build:
+`compose.yml` here builds this checkout and runs it.
+[`plow-agents`](https://github.com/plow-pbc/plow-agents) mints the credential
+the container reads, and does nothing else about running one.
 
 ```sh
-PLOW_AGENT_REPO=https://github.com/plow-pbc/life-assistant-hermes-agent.git#main \
-  docker compose up --build
+plow-agents mint ln_xxx        # in this checkout, before the first `up`
+docker compose up --build -d
 ```
 
-And **`TZ` is this agent's own, not the provisioner's**: the base image sets
+| To | Run |
+| --- | --- |
+| rebuild and keep its memory | `docker compose up --build -d` |
+| start fresh — a new install, onboarding again, or any `SOUL.md` or skill edit | `docker compose down -v && docker compose up --build -d` |
+| finish | `plow-agents revoke && docker compose down -v` |
+
+The chat and its history live on Plow, and survive all three.
+
+**`TZ` is this agent's own, not the provisioner's**: the base image sets
 none, so a cont-init step here writes it at boot from `family.timezone` in
 `ld/config.json`, falling back to `UTC` before onboarding has asked anyone
 where they live. Every schedule fires in that zone — `hermes cron create` takes
