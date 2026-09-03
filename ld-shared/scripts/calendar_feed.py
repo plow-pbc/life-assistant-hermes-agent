@@ -12,11 +12,12 @@ Everything it reads is fixed; nothing arrives on argv:
   - `/var/lib/hermes/ld/config.json` for the account, the calendar ids and the
     household zone — the same `calendar.account` + `calendar.sources` shape
     every other calendar producer here reads;
-  - the Plow relay credential (`DOMO_DEVICE_UID`, `DOMO_MCP_TOKEN`) from the
-    Hermes dotenv, the pair ld-wall-setup mints. The relay ORIGIN is a
-    literal here, as it is in the image's own config: the
-    dotenv is agent-writable, and an injected base would walk the relay bearer
-    to another host with nothing to refuse it;
+  - the agent's own relay, `PLOW_MCP_URL` and `PLOW_AGENT_TOKEN`, out of the
+    container environment. First boot resolves both from the credential the
+    host dropped in and publishes them where nothing the agent runs can write,
+    so the endpoint needs no literal origin to defend it: an injected base
+    cannot get in. Nothing here mints or holds a device credential -- an
+    instance whose owner has no relay switched on simply stands down;
   - the kiosk endpoint through post_to_kiosk's own constants, so a
     dotenv-sourced one is held to the Pi's own message API on the household
     network before anything is sent to it.
@@ -77,10 +78,6 @@ from external_content import strip_markers  # noqa: E402
 from runtime_env import AGENT_DOTENV, agent_values  # noqa: E402
 
 CONFIG_FILE = "/var/lib/hermes/ld/config.json"
-# Fixed, never from the dotenv. The image's own config names this origin
-# outright; taking it from the agent's own dotenv instead would hand an
-# injected turn the relay bearer.
-RELAY_ORIGIN = "https://api.plow.co"
 # ld-setup mints one bearer for the viewer's message API; the calendar API is
 # its sibling behind the same bearer. Deriving it keeps ONE address in the
 # dotenv and one thing for setup to re-point when the Pi moves.
@@ -169,20 +166,23 @@ def decode_events(raw):
     return events
 
 
-def relay_config(dotenv):
-    """The Plow relay endpoint and bearer, or (None, the missing name).
+def relay_config():
+    """The agent's own relay endpoint and bearer, or (None, the missing name).
 
-    The device uid names WHICH Mac, the token authorises reaching it — the
-    same pair ld-wall-setup mints. Returned rather than exited on: an
-    instance that has not minted a relay credential is unconfigured, not
-    broken.
+    Both come from the container environment, which first boot fills from the
+    credential the host dropped in -- the same relay the gateway itself uses,
+    reached with the same token. Not from a dotenv: the agent can write one of
+    those, and this endpoint is handed a bearer.
+
+    Returned rather than exited on. `PLOW_MCP_URL` is absent for a tenant whose
+    relay is not switched on, and that is a supported shape, not a fault.
     """
-    uid = dotenv.get("DOMO_DEVICE_UID", "").strip()
-    token = dotenv.get("DOMO_MCP_TOKEN", "").strip()
-    for name, present in (("DOMO_DEVICE_UID", uid), ("DOMO_MCP_TOKEN", token)):
+    url = (os.environ.get("PLOW_MCP_URL") or "").strip()
+    token = (os.environ.get("PLOW_AGENT_TOKEN") or "").strip()
+    for name, present in (("PLOW_MCP_URL", url), ("PLOW_AGENT_TOKEN", token)):
         if not present:
             return None, name
-    return (f"{RELAY_ORIGIN}/v1/relay/devices/{uid}/mcp", token), None
+    return (url, token), None
 
 
 def kiosk_config(dotenv):
@@ -389,8 +389,8 @@ def deliver_via_latch(relay_url, relay_token, calendar_url, feed):
 
 def main(*, now=None):
     now = int(time.time()) if now is None else now
-    # The agent's own file: the wall's endpoint and the relay pair are the
-    # agent's to record; the tenant's credential is not, and is not in a file.
+    # The agent's own file, for the wall's endpoint. The relay is not in it --
+    # that comes from the environment first boot published, below.
     dotenv = agent_values(AGENT_DOTENV)
 
     try:
@@ -404,7 +404,8 @@ def main(*, now=None):
         print(f"calendar feed not configured: {reason}")
         return 0
 
-    relay, missing = relay_config(dotenv)
+    # No dotenv: the relay is the agent's own, published by first boot.
+    relay, missing = relay_config()
     if relay is None:
         print(f"calendar feed not configured: {missing} missing")
         return 0

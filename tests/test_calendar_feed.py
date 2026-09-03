@@ -115,12 +115,14 @@ def feed(tmp_path, monkeypatch):
         sys.path.remove(str(SCRIPTS))
 
     (tmp_path / "config.json").write_text(json.dumps(CONFIG))
-    # Everything through the dotenv, nothing through the process env: the unit
-    # loads no EnvironmentFile, and a value arriving as env would skip the
-    # household-network check that guards a dotenv-sourced endpoint.
+    # The wall's own values through the dotenv, nothing else: a kiosk endpoint
+    # arriving as process env would skip the household-network check that
+    # guards a dotenv-sourced one. The relay is the exception and arrives the
+    # other way round -- it is the agent's own, published by first boot into
+    # the container environment, which the agent cannot write.
+    monkeypatch.setenv("PLOW_MCP_URL", f"{base}/v1/relay/devices/dev1/mcp")
+    monkeypatch.setenv("PLOW_AGENT_TOKEN", "relay-token")
     (tmp_path / "dotenv").write_text(
-        "DOMO_DEVICE_UID=dev1\n"
-        "DOMO_MCP_TOKEN=relay-token\n"
         f"DASHBOARD_ENDPOINT_URL={base}/api/message\n"
         "DASHBOARD_TOKEN=kiosk-token\n"
         # What mint_wall_token.py writes on every set-up instance, on both its
@@ -129,7 +131,6 @@ def feed(tmp_path, monkeypatch):
         "DASHBOARD_DELIVERY=latch\n")
     monkeypatch.setattr(module, "CONFIG_FILE", str(tmp_path / "config.json"))
     monkeypatch.setattr(module, "AGENT_DOTENV", str(tmp_path / "dotenv"))
-    monkeypatch.setattr(module, "RELAY_ORIGIN", base)
     # post_to_kiosk's endpoint validator pins the Pi's exact `:5174/api/message`
     # shape, which a loopback server on an ephemeral port cannot wear. Its rules
     # are that module's contract and are tested there; what matters HERE is that

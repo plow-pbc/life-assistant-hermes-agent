@@ -33,6 +33,22 @@ set -eu
 PATH=/command:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 export PATH
 
+# The agent's own relay, and ONLY those two names.
+#
+# Read here, as root, because s6 writes the container environment 0600 root and
+# this drops to uid 10000 below. Two explicit reads rather than the whole
+# directory: the producer needs the relay it gathers through and nothing else,
+# and an allowlist cannot grow by accident the way importing everything can.
+#
+# This is not the dotenv objection above. These values are s6's, written by
+# first boot from the credential the host dropped in, and the agent cannot
+# write either of them -- which is exactly why the producer may treat this
+# endpoint as trusted while it still holds anything out of ld/.env at arm's
+# length. Absent is fine: a tenant with no relay switched on stands down.
+PLOW_MCP_URL=$(cat /run/s6/container_environment/PLOW_MCP_URL 2>/dev/null || true)
+PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)
+export PLOW_MCP_URL PLOW_AGENT_TOKEN
+
 while :; do
   # Never fatal. The producer's contract is a one-line stand-down and exit 0,
   # so a non-zero exit is a crash — and a crashing longrun that exits here

@@ -12,10 +12,11 @@ from __future__ import annotations
 import ipaddress
 import pathlib
 
-# The agent's own file, in the instance directory it already owns. Everything
-# the agent itself records after setup lives here -- the wall's endpoint and
-# token, the relay pair its owner minted -- because those are the agent's to
-# write and the tenant's credential is not.
+# The agent's own file, in the instance directory it already owns. What the
+# agent itself records after setup lives here -- the wall's endpoint and token,
+# the Pi's login, the delivery mode -- because those are the agent's to write.
+# The tenant's credential is not, and neither is the relay: both come from the
+# environment first boot published, which the agent cannot write.
 #
 # The split is a boundary, not a second copy: no name appears in both, nothing
 # running as root reads this file, and what it holds stays UNTRUSTED. An

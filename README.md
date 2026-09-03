@@ -64,9 +64,10 @@ tracked tree stay identical for everyone:
 Nothing is pre-staged for anyone. There is no credential to hand over before
 bring-up; the activation exchange mints it.
 
-Latch is bound the same way: the relay credential is `DOMO_DEVICE_UID` /
-`DOMO_MCP_TOKEN` in the agent's own dotenv, minted from that owner's Mac. The
-image is shared; the Mac those values resolve to is not.
+Latch is bound the same way: the relay is the agent's own, `PLOW_MCP_URL` and
+`PLOW_AGENT_TOKEN`, resolved by first boot from the credential the host dropped
+in and published where nothing the agent runs can write. The image is shared;
+the Mac that relay resolves to is not.
 
 ## What an agent cannot reach
 
@@ -156,7 +157,9 @@ they text the activation code, not one to discover afterwards.
 
 The agent's own dotenv is a different file and a smaller one: `ld/.env` holds
 what the agent records during setup — the wall's endpoint and token, the Pi's
-login, the delivery mode, the relay pair — and no `PLOW_*` name appears in it.
+login, the delivery mode — and no `PLOW_*` name appears in it. The relay is not
+in it either: that is the agent's own, out of the environment first boot
+published.
 
 ## No connectors, and what that costs
 
@@ -240,17 +243,20 @@ owner's Mac: `plow_read_file`, `plow_write_file`, `plow_run_command`,
 and tells the Mac who is asking; the Mac authorises each action, so the approval
 surface stays on that machine rather than here.
 
-Credentials live in the agent's own dotenv, `ld/.env`, as `DOMO_DEVICE_UID` +
-`DOMO_MCP_TOKEN`, minted from that Mac (`POST /v1/relay/agents`, which needs the
-`relay:device` scope only that machine holds). The token travels in a header,
+The credential is the agent's own: first boot asks Plow who this agent is and
+publishes the relay it is told about as `PLOW_MCP_URL`, reached with
+`PLOW_AGENT_TOKEN` — the same relay the gateway itself uses. Nothing here mints
+or holds a per-device pair, and an agent whose owner has no relay switched on
+simply has no `PLOW_MCP_URL` and stands down. The token travels in a header,
 never in the URL.
 
 **The gateway's config is not in this repo.** Model, plugins and `mcp_servers`
 are the base image's seed, read from the copy in the agent's own home, and
 nothing here asserts or overrides them — changing any of them is a change to
-`plow-pbc/plow-hermes-agent`. The producers reach Latch by reading `ld/.env`
-directly, which is why they work without an `mcp_servers` entry naming those
-variables.
+`plow-pbc/plow-hermes-agent`. The producers do not go through `mcp_servers` to
+reach the wall: they read the endpoint and token out of `ld/.env` themselves,
+and the unattended one gathers through the relay first boot published. Either
+way, nothing here needs an `mcp_servers` entry naming those variables.
 
 ## Building the image
 

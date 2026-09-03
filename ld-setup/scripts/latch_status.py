@@ -5,13 +5,12 @@ Prints one word on stdout: `configured` or `unconfigured`.
 
 This exists so the sheet never has to name a tool that might not be there.
 Whether this deployment can reach a Mac is a property of the image, not of the
-conversation: `mcp_servers` in the agent's own config.yaml either holds the
-relay or it does not, and when it does not, the relay's tools are not
-registered and no tool by that name exists in the turn.
+conversation: either the relay is registered and its tools exist in the turn,
+or it is not and no tool by that name does.
 
 A model told to call a tool that is absent does not conclude "not connected".
 It goes looking -- tool_search, again under another name, then the tool that
-renders a blocking `❓` -- and it narrates the hunt to the owner. Measured, all
+renders a blocking `?` -- and it narrates the hunt to the owner. Measured, all
 three in one turn: "There's no Latch-specific tool search hit for
 `plow_run_command`/`plow_write_file` -- let me check if those exist under a
 different name", then a `clarify` call, then the sheet's own rule quoted back
@@ -20,131 +19,39 @@ to her. A terminal command, by contrast, always exists.
 So the sheet asks THIS first, and names the relay's tools only in the branch
 where they are registered.
 
-The key is `plow`, and only `plow`. It is this repo's name for the relay and
-the prefix on the tool the model calls -- `mcp__plow__plow_run_command` -- so
-accepting a second spelling here would answer "configured" for a build whose
-tool is registered under a name the sheet does not use, and send the turn
-hunting for it.
+The answer is `PLOW_MCP_URL`. First boot asks Plow who this agent is and
+publishes the relay it is told about into the container environment; a tenant
+with no relay gets no such variable, and the same value is what sets
+`mcp_servers.plow.enabled` in the agent's config. One variable, one question,
+and the turn inherits it from the gateway that started it.
 
-That makes the key a contract with whatever seeds config.yaml, not a local
-choice. The base image keys the relay `plow` (plow-hermes-agent #15) and this
-repo matches it; it did not always, and the gap did not announce itself -- a
-sheet compiled against `latch` names a tool a `plow`-keyed build never
-registers, so on a cloud tenant the calendar step simply never ran. The two
-names move together or the probe is lying.
-
-Standard library only, and that is not an aesthetic. The sheet tells a turn to
-run this with plain `python3`, and PyYAML lives in Hermes' own venv rather than
-the system interpreter in at least one build we ship -- the e2e entrypoint
-carries a comment about exactly that, from the day an `import yaml` under
-/usr/bin/python3 took down every start. A probe that raises is worse than no
-probe: the turn improvises, and improvising is what this file exists to stop.
-So the one question it asks -- is the relay under mcp_servers switched on --
-is answered by reading the indentation, not by parsing YAML.
+This used to read the config file instead, with a hand-rolled scan standing in
+for a YAML parser -- because PyYAML lives in Hermes' own venv rather than the
+system interpreter the sheet invokes, and an `import yaml` under
+/usr/bin/python3 once took down every container start. That scan answered the
+same question two steps downstream of this variable: three earlier versions of
+it were wrong in three different ways (a nesting misread, a regex CodeQL
+flagged for exponential backtracking, a quoted-spelling scan), and each fix
+was a parser in miniature judged against a file it did not have to parse. The
+file is still the gateway's source of truth; it is just not the shortest way to
+ask.
 """
 from __future__ import annotations
 
 import os
 import sys
 
-def config_path(env=None):
-    env = os.environ if env is None else env
-    home = env.get("HERMES_HOME") or "/var/lib/hermes"
-    return os.path.join(home, "config.yaml")
-
-
-def relay_configured(text):
-    """True when config.yaml registers the relay to the owner's Mac.
-
-    The stanza is written by the deployment, never by hand, and it has exactly
-    one shape -- a top-level `mcp_servers:` mapping, the server at two spaces,
-    its settings deeper still:
-
-        mcp_servers:
-          plow:
-            url: https://…
-
-    So the relay's line is compared with `  plow:` and nothing cleverer. Three
-    earlier versions tried to be: an indent walk that read a `plow:` nested in
-    another server's settings as the relay whenever a comment sat deeper than
-    the keys; a regex that nested a repetition inside a repetition, which CodeQL
-    flagged as exponential backtracking (py/redos), so a config.yaml full of
-    blank indented lines would have hung the probe -- and a probe that hangs is
-    a turn that improvises; and a key-parsing scan that accepted quoted spellings
-    the deployment does not write.
-
-    Each of those was a YAML parser in miniature, judged against a file this
-    does not have to parse. One string comparison cannot backtrack, cannot
-    misread a nesting level, and is legible without running it.
-
-    The comparison is against the RAW line, trailing spaces and all. `  plow: `
-    is valid YAML meaning the same thing, and this reports it as unconfigured --
-    deliberately, because the deployment writes this file with yaml.safe_dump
-    and never emits a trailing space, so a line that has one was edited by hand
-    and is not the stanza this recognises. Erring that way costs a calendar step
-    and an install link the owner has already followed; erring the other way
-    calls a tool that may not be registered, which is where every ❓ in this
-    branch's history came from.
-
-    Presence is not enough, and this is the whole point of the check. The base
-    image SEEDS this stanza on every agent, relay or no relay -- the url, the
-    bearer and `enabled: false` -- and provisioning flips that one flag when a
-    relay actually exists. A probe that answered on the key being there would
-    answer "configured" for every agent ever built, which is the same failure
-    as having no probe: the sheet names the relay's tools, they are not
-    registered, and the turn goes hunting.
-
-    So the question is `enabled: true`, under the relay's own key. An absent
-    `enabled` reads as unconfigured even though Hermes would default it on:
-    the deployment always writes the flag, so a stanza without one was not
-    written by the deployment, and unconfigured is the safe direction here --
-    it costs an install link the owner has already followed, where the other
-    direction costs a tool call that cannot land.
-
-    Standard library only -- the sheet runs this as plain `python3`, and PyYAML
-    lives in Hermes' own venv rather than the system interpreter in at least one
-    build we ship.
-    """
-    lines = text.splitlines()
-    inside = False
-    for index, line in enumerate(lines):
-        if not inside:
-            inside = line.rstrip() == "mcp_servers:"
-            continue
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue                      # blanks and comments, at any indent
-        if not line.startswith(" "):
-            return False                  # the next top-level key: block over
-        if line != "  plow:":
-            continue                      # some other server, or its settings
-        # The relay, named at the servers' level. Now read its own settings for
-        # the flag: anything indented deeper than the server's key is under it,
-        # and the first line that is not ends the block.
-        for follower in lines[index + 1:]:
-            if not follower.strip() or follower.lstrip().startswith("#"):
-                continue
-            if len(follower) - len(follower.lstrip()) <= 2:
-                return False              # out of the relay's block, no flag
-            if follower.strip() == "enabled: true":
-                return True
-        return False
-    return False
-
 
 def main(env=None):
-    path = config_path(env)
-    try:
-        with open(path) as handle:
-            text = handle.read()
-    except FileNotFoundError:
-        # No config to read is no relay configured. This is a status probe, not
-        # a health check: it answers the question or says the safe thing.
-        print("unconfigured")
-        return 0
-    except OSError as exc:
-        raise SystemExit(f"refusing to report latch status: {exc}") from None
+    """`configured` when first boot published a relay for this tenant.
 
-    print("configured" if relay_configured(text) else "unconfigured")
+    Blank counts as absent: a variable exported empty is nobody's answer, and
+    unconfigured is the safe direction here -- it costs an install link the
+    owner has already followed, where the other direction costs a tool call
+    that cannot land.
+    """
+    env = os.environ if env is None else env
+    print("configured" if (env.get("PLOW_MCP_URL") or "").strip() else "unconfigured")
     return 0
 
 
