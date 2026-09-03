@@ -29,6 +29,7 @@ the container reads, and does nothing else about running one.
 
 ```sh
 plow-agents mint ln_xxx        # in this checkout, before the first `up`
+docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"   # once per base
 docker compose up --build -d
 ```
 
