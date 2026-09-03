@@ -1,6 +1,6 @@
 ---
 name: ld-dashboard
-description: The life-dashboard's cron spec — the seven producer schedules as reviewed data — six producers, the triage on two clocks —, and the idempotent registration that replays them. Use when asked to set up, re-register, inspect or repair the life dashboard crons, or after rebuilding the agent's home.
+description: The life-dashboard's cron spec — the seven producer schedules as reviewed data — six producers, the triage on two clocks — and the idempotent registration that replays them. Use when asked to set up, re-register, inspect or repair the life dashboard crons, or after rebuilding the agent's home.
 ---
 
 # Life Dashboard — the cron spec
@@ -122,10 +122,10 @@ checks only that `family.timezone` is non-blank, which a perfectly valid
 `America/Chicago` config satisfies while its cards land two hours late on a
 Los_Angeles container, silently.
 
-**The Plow Chat delivery target.** Three rows message the owner as well as
-posting a card — the digest and the two triage runs — and which chat that is
-was minted by this instance's own activation — so it can never be a literal
-here, on a repo more than one person runs. It sits in `JOBS` as
+**The Plow Chat delivery target.** Four rows message the owner as well as
+posting a card — the digest, the two triage runs and the nudge — and which
+chat that is was minted by this instance's own activation — so it can never
+be a literal here, on a repo more than one person runs. It sits in `JOBS` as
 `plow_chat:${PLOW_HOME_CHANNEL}`, and
 `resolve_deliver()` expands it from the container environment, where first boot
 published it after asking Plow which chat this agent's owner holds. Run this
