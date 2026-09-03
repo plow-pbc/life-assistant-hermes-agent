@@ -37,9 +37,13 @@ while :; do
   # Never fatal. The producer's contract is a one-line stand-down and exit 0,
   # so a non-zero exit is a crash — and a crashing longrun that exits here
   # would be respawned in a tight loop. One line, then the next tick.
+  # /opt/plow, never $HERMES_HOME/skills. Both hold this producer; only this
+  # one is root-owned. The home copy belongs to uid 10000 in a running
+  # container, so scheduling it would run whatever a turn last wrote there,
+  # unattended, with the relay credential and the household's calendar.
   /command/s6-setuidgid hermes \
     /opt/hermes/.venv/bin/python3 \
-    /var/lib/hermes/skills/ld-shared/scripts/calendar_feed.py \
+    /opt/plow/ld-shared/scripts/calendar_feed.py \
     || echo "calendar feed: producer exited non-zero; retrying at the next tick" >&2
   /bin/sleep 300
 done

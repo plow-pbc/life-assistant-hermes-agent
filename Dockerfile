@@ -52,13 +52,33 @@ RUN find /var/lib/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /var/lib/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
  && chmod 0644 /var/lib/hermes/SOUL.md
 
+# The unattended producer's own copy, outside every home and out of the agent's
+# reach.
+#
+# What the supervisor runs every 300s must not be a file a turn can rewrite.
+# Everything under $HERMES_HOME/skills belongs to uid 10000 in a running
+# container -- the runtime chowns what it seeds on every boot -- so scheduling
+# the copy that lives there would turn one prompt-injected edit into code that
+# runs unattended, forever, holding the relay credential and the household's
+# calendar. This copy is root-owned and 0755/0644 in a root-owned directory:
+# the agent can read it and cannot change it.
+#
+# The home copy stays exactly as it is -- it is what the agent reads, edits and
+# runs by hand during setup, and taking that away would take the skill with it.
+# Only the SCHEDULE points here.
+COPY ld-shared/ /opt/plow/ld-shared/
+RUN chown -R root:root /opt/plow \
+ && find /opt/plow -type d -exec chmod 0755 {} + \
+ && find /opt/plow -type f -exec chmod 0644 {} +
+
 # The one rewrite. Every path in this repo's content is written against the
 # fleet's HERMES_HOME (/opt/data); this runtime's is /var/lib/hermes. It is a
 # pure prefix substitution — /opt/data/skills, /opt/data/ld, /opt/data/.env and
 # /opt/data/cron all keep their own names — done to the image's copy so the
 # tracked files stay the fleet's. Hermes' own scanner refuses an unexpanded
 # variable in a skill, which is why this is a literal and not ${HERMES_HOME}.
-RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills -type f \
+# /opt/plow is walked too: the scheduled copy names the same paths.
+RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills /opt/plow -type f \
       \( -name '*.md' -o -name '*.py' -o -name '*.json' \) \
       -exec sed -i 's|/opt/data|/var/lib/hermes|g' {} +
 
