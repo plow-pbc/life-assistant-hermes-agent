@@ -32,17 +32,16 @@ plow-agents mint ln_xxx        # in this checkout, before the first `up`
 docker compose up --build -d
 ```
 
-**First build fails with `403 Forbidden` on the base image?** BuildKit cannot
-resolve this repository's pinned base from ECR Public until the image is in the
-local store. Pull it once, then build again:
+**Build fails with `403 Forbidden` on the base image?** An old `docker login`
+for `public.ecr.aws` has expired — those credentials last 12 hours, and the
+build sends the stale one instead of asking anonymously. Forget it and build
+again:
 
 ```sh
-docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
+docker logout public.ecr.aws
 ```
 
-That reads the reference out of the `Dockerfile` rather than spelling it here
-because the pin moves, and a stale copy in this file would quietly build against
-a different base than the one the `Dockerfile` names.
+The base is public and pulls anonymously; nothing here needs a registry login.
 
 | To | Run |
 | --- | --- |
@@ -285,15 +284,11 @@ was built from, and the `@sha256:` half is what the build actually resolves — 
 no tag reassignment can substitute different bytes under an existing owner. Bump
 both together when moving to a newer base.
 
-The builder cannot fetch this base on its own. A clean build fails at metadata
-resolution with `403 Forbidden` from ECR Public — with a tag as readily as with
-a digest, and neither `--pull` nor building with no stored credentials avoids
-it. `docker pull` goes through the daemon's own resolver and does work, so pull
-once and the build finds the base already in the local store:
-
-```sh
-docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
-```
+Nothing here needs a registry login: the base is public and is fetched
+anonymously. A build that fails with `403 Forbidden` on it has an expired
+`docker login` for `public.ecr.aws` in the way — those credentials last 12
+hours, and the stale one is sent in place of asking anonymously. `docker logout
+public.ecr.aws` is the whole of the fix.
 
 ## Open
 
