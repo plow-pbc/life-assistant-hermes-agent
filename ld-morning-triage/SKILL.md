@@ -131,9 +131,9 @@ always-allow rules key on the exact argv. The window is Gmail's
 `newer_than:2d` — day granularity is the finest it has — and `is:unread` is
 the unaddressed rule for mail: a thread the owner has opened is one they have
 seen. The first run of this argv needs the owner's approval on their Mac
-once, like every gather shape (README § Trusted group conversations, the approval paragraph); until then it strands on
-an approval card, which the failure rule below turns into a named failure
-rather than a quiet mailbox.
+once, like every gather shape (README § Trusted group conversations, the
+approval paragraph); until then it strands on an approval card, which the
+failure rule below turns into a named failure rather than a quiet mailbox.
 
 Every item is a candidate: `source: "gmail"`, `account`, `from`, `subject`,
 `date`. There is no deterministic filter for mail — the query is the filter
