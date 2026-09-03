@@ -201,7 +201,17 @@ path that the dashboard cannot update.
 Before restoring an existing agent, migrate its config in place: copy
 `calendar_nudge.owner_identities[0]` to `calendar.account` without rebuilding
 the object or changing any other preference, then require an empty result from
-`ld_config_gate.py`. The three calendar skills add that account to their exact
+`ld_config_gate.py`.
+
+The same pass takes the owner's name off the file, or this image reopens
+onboarding on a home that finished months ago: `family.owner.introduced` is the
+marker now and an old config has none. Three homes, once, by hand — stage
+`{"display_name": "<the old family.owner.name>"}` and run `owner_profile.py set
+--input <path>` where the account has no display name, set
+`family.owner.introduced` to `true`, then delete `family.owner.name` by editing
+the mode-600 file, since `--patch` merges and cannot remove a key.
+
+The three calendar skills add that account to their exact
 gog argv; manually run and approve each new 1-day, 3-day and 7-day gather shape
 once through Latch before relying on the unattended crons. The calendar strip
 adds a fourth — its `/api/calendar` curl — for the same reason: it ticks with

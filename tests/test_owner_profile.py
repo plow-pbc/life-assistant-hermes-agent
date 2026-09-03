@@ -38,16 +38,15 @@ def stage(tmp_path, payload):
     return path
 
 
-def test_get_says_unset_in_words_when_the_account_has_no_name(api, capsys):
-    op.main(["get"])
-    assert capsys.readouterr().out.strip() == "(unset)"
-
-
-def test_get_prints_the_name(api, capsys):
+@pytest.mark.parametrize("display_name,expected", [
+    (None, "(unset)"), ("Samuel Odio", "Samuel Odio"),
+], ids=["no-name-yet", "a-name"])
+def test_get_prints_account_name_or_unset(api, capsys, display_name, expected):
+    """A turn has to tell "nobody has said yet" from what to call them."""
     _, state = api
-    state["profile"]["display_name"] = "Samuel Odio"
+    state["profile"]["display_name"] = display_name
     op.main(["get"])
-    assert capsys.readouterr().out.strip() == "Samuel Odio"
+    assert capsys.readouterr().out.strip() == expected
 
 
 def test_set_records_exactly_what_the_owner_said(api, tmp_path, capsys):

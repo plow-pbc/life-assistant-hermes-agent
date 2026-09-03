@@ -384,7 +384,7 @@ either way (`write_config.py` locks its whole read-merge-write), but a staged
 file that changed under its reader is a wrong answer written confidently, which
 is worse than a refusal.
 
-**Every answer reaches the config a step later at most**, one draft at a
+**Every config answer reaches the config a step later at most**, one draft at a
 time, never as one blob at the end:
 
 Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
