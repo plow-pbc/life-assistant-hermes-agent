@@ -25,8 +25,10 @@ AGENT_ID=$(cat /run/s6/container_environment/AGENT_ID 2>/dev/null || true)
 export PLOW_AGENT_TOKEN AGENT_ID
 
 # The agent's home is where its usage store lives, and the client keeps its
-# ledger beside that store.
-HERMES_HOME=${HERMES_HOME:-/var/lib/hermes}
+# ledger beside that store. Fixed, not overridable: this image puts the home
+# there, and a second way to say where it is only creates the case where the
+# reporter and the agent disagree about which store is theirs.
+HERMES_HOME=/var/lib/hermes
 export HERMES_HOME
 
 if [ -z "$AGENT_ID" ]; then
