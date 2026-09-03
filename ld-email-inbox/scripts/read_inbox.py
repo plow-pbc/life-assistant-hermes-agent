@@ -69,6 +69,16 @@ OPEN = "<<<UNTRUSTED_EMAIL>>>"
 CLOSE = "<<<END_UNTRUSTED_EMAIL>>>"
 
 
+# No angle bracket anywhere in it, which is what makes one pass enough: the
+# replacement can never supply a character a marker is built from, so it always
+# separates what was on either side of the text it replaced instead of joining
+# them into a new marker. A replacement sharing the markers' `<<<` prefix does
+# NOT have that property -- it lets a sender reassemble the closing marker out
+# of a body that never contained one, by writing it doubled and letting the
+# first copy be rewritten into the second's missing head.
+REDACTED = "[fence marker removed]"
+
+
 def defang(value):
     """Take the fence out of text that is inside the fence.
 
@@ -77,7 +87,7 @@ def defang(value):
     label like this fails. So the markers are stripped from every field the
     sender controls, which is all of them.
     """
-    return str(value).replace(OPEN, "<<<").replace(CLOSE, "<<<")
+    return str(value).replace(OPEN, REDACTED).replace(CLOSE, REDACTED)
 
 
 def render(thread):
