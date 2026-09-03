@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """post_sports.py — post ld-sports' kiosk tile.
 
-Thin wrapper over `team-skills/ld-shared/scripts/post_to_kiosk.py`: sets
+Thin wrapper over `ld-shared/scripts/post_to_kiosk.py`: sets
 the bundle-specific MESSAGE_FILE + CARD + BODY_TYPE, then dispatches.
 
 Posts as card 5 / type "sports" — a self-contained HTML tile the viewer
@@ -16,7 +16,7 @@ sys.path.insert(
 )
 import post_to_kiosk  # noqa: E402
 
-post_to_kiosk.MESSAGE_FILE = "/opt/data/ld/sports-text"
+post_to_kiosk.MESSAGE_FILE = "/var/lib/hermes/ld/sports-text"
 post_to_kiosk.CARD = "5"
 post_to_kiosk.BODY_TYPE = "sports"
 post_to_kiosk.TITLE = ""  # hide the eyebrow — the self-contained tile owns the card

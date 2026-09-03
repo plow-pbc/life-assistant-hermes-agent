@@ -201,7 +201,7 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
 
     Run against a config path in a writable temp dir -- a verbatim copy of the
     script with only its CONFIG constant repointed, so the entry point under
-    test is the real one. Pointing it at /opt/data instead made the LOCK refuse
+    test is the real one. Pointing it at /var/lib/hermes instead made the LOCK refuse
     first (it is taken before the mode branch and fails closed), and a lock
     error proves nothing about how --patch was parsed.
 

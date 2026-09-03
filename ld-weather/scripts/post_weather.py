@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """post_weather.py — post ld-weather's kiosk tile.
 
-Thin wrapper over `team-skills/ld-shared/scripts/post_to_kiosk.py`: sets
+Thin wrapper over `ld-shared/scripts/post_to_kiosk.py`: sets
 the bundle-specific MESSAGE_FILE + CARD + BODY_TYPE, then dispatches.
 
 Posts as card 3 / type "weather" — a self-contained HTML tile the viewer
@@ -16,7 +16,7 @@ sys.path.insert(
 )
 import post_to_kiosk  # noqa: E402
 
-post_to_kiosk.MESSAGE_FILE = "/opt/data/ld/weather-text"
+post_to_kiosk.MESSAGE_FILE = "/var/lib/hermes/ld/weather-text"
 post_to_kiosk.CARD = "3"
 post_to_kiosk.BODY_TYPE = "weather"
 post_to_kiosk.TITLE = ""  # hide the eyebrow — the self-contained tile owns the card

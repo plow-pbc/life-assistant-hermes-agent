@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""write_config.py -- the ld-setup interview's answers, written as /opt/data/ld/config.json.
+"""write_config.py -- the ld-setup interview's answers, written as /var/lib/hermes/ld/config.json.
 
 TWO modes, one file, because they must not disagree about what a valid config
 is. Both read ONE JSON object -- from `--input PATH` where the turn staged it
@@ -92,7 +92,7 @@ sys.path.insert(
 from exclusive_lock import exclusive_lock  # noqa: E402
 from ld_config_gate import GateError, gate  # noqa: E402
 
-CONFIG = "/opt/data/ld/config.json"
+CONFIG = "/var/lib/hermes/ld/config.json"
 # Every key a patch may name, at every depth, taken from the committed template
 # rather than restated here -- one list to keep in step instead of two. A patch
 # is composed by a model from a sentence, and a misspelling merges in BESIDE the

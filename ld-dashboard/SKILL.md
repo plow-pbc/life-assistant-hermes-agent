@@ -9,8 +9,8 @@ The six producer schedules, versioned. All six are registered.
 
 ## Why a skill and not a note
 
-`hermes cron` persists jobs to `/opt/data/cron/jobs.json`, and `agent-mgr
-deploy` does **not** replay it. A rebuilt instance therefore comes up with a
+`hermes cron` persists jobs to `/var/lib/hermes/cron/jobs.json`, and nothing
+replays it on a rebuild. A rebuilt instance therefore comes up with a
 wall screen that never updates and nothing to diff against — the schedules are
 the one part of this agent's behaviour that a deploy silently drops. Keeping
 them here means "set up the life dashboard crons" replays a reviewed spec rather
@@ -18,7 +18,7 @@ than improvising six schedules from a sentence.
 
 ## Registering
 
-**This is a bring-up step, not a repair step.** `agent-mgr deploy` does not
+**This is a bring-up step, not a repair step.** A rebuild does not
 replay `jobs.json`, so an instance that has been brought up without it has a wall
 screen that never updates — and nothing to diff against, because the failure
 looks identical to a producer that is running and finding nothing. Run it after
@@ -27,7 +27,7 @@ looks identical to a producer that is running and finding nothing. Run it after
 You are already inside the container, running as the gateway's own uid. Just
 run it:
 
-    /opt/data/skills/ld-dashboard/scripts/register_crons.py
+    /var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py
 
 **Then paste its output verbatim and report its exit status. The run is not
 done until you have.** This matters more than it looks: the script signals
@@ -41,9 +41,9 @@ describing a run that failed, and the operator has no way to tell. Do not
 paraphrase, and do not call it done on a non-zero exit.
 
 (The uid matters to whoever invokes this from the *host* — a bare
-`agent-mgr compose … exec` lands as root and would create the schedule
+A `docker exec` lands as root and would create the schedule
 root-owned. That is the README's problem, and the reason bring-up goes through
-`agent-mgr agent` rather than an exec. Nothing for you to do about it here.)
+a chat turn rather than an exec. Nothing for you to do about it here.)
 
 Create-if-missing, so it is safe to re-run: it reads what is already scheduled
 and creates only what is absent.
@@ -51,7 +51,7 @@ and creates only what is absent.
 Then verify it — see [Unattended runs](#unattended-runs), which owns both the
 host and in-container forms and what a forced run does and does not prove.
 
-What counts as "already registered" comes from `/opt/data/cron/jobs.json`, the
+What counts as "already registered" comes from `/var/lib/hermes/cron/jobs.json`, the
 file `hermes cron` itself writes. Not from `hermes cron list`: that is a
 human-readable rendering nothing pins, and matching on its text needed a new
 guard every time it was wrong — whole-word matching, a name regex, a floor for
@@ -86,7 +86,7 @@ summarise: that instruction is what carries the signal across the gap. A
 
 ## The spec
 
-`/opt/data/skills/ld-dashboard/scripts/register_crons.py`'s `JOBS` is the single
+`/var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py`'s `JOBS` is the single
 source; this table summarises it.
 
 | producer | schedule | card | state |
@@ -105,10 +105,10 @@ git history keeps the pattern if one ever loses its data source again.
 ## Two values that are never literals
 
 **The timezone.** `hermes cron create` takes no per-job zone — every job fires in
-the container's zone, which is `agent-mgr`'s `AGENT_TZ`. `0 6 * * *` therefore
+the container's zone, which is `TZ`. `0 6 * * *` therefore
 means 06:00 wherever the container thinks it is, and
 `register_crons.py` is what proves that zone equals `family.timezone` in
-`/opt/data/ld/config.json` — it reads the container's `TZ` and **refuses to
+`/var/lib/hermes/ld/config.json` — it reads the container's `TZ` and **refuses to
 register at all** if the two differ, naming both zones. The gate does not: it
 checks only that `family.timezone` is non-blank, which a perfectly valid
 `America/Chicago` config satisfies while its cards land two hours late on a
@@ -118,10 +118,11 @@ Los_Angeles container, silently.
 posting a card, and which chat that is was minted by this instance's own
 activation — so it can never be a literal here, on a repo more than one person
 runs. It sits in `JOBS` as `plow_chat:${PLOW_HOME_CHANNEL}`, and
-`resolve_deliver()` expands it from `/opt/data/.env` — the file activation
-writes and the gateway loads; a `docker exec` session's env never carries it —
-refusing an unset or blank variable by name — an empty target is a chat leg
-that silently delivers nowhere.
+`resolve_deliver()` expands it from the container environment, where first boot
+published it after asking Plow which chat this agent's owner holds. Run this
+from a turn, which inherits that environment from the gateway; a bare
+`docker exec` session carries none of it. An unset or blank variable is refused
+by name — an empty target is a chat leg that silently delivers nowhere.
 
 The two producers take different delivery paths, on purpose. `--deliver`
 relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always
@@ -147,10 +148,10 @@ Verify rather than trust that paragraph. From inside the container:
 From the host, where the bring-up reader is standing — a turn, for the same
 reason bring-up is one (no uid to get wrong):
 
-    agent-mgr agent <agent> 'list the dashboard crons, force one run, report what happened'
+    text the agent: 'list the dashboard crons, force one run, report what happened'
 
 **What that proves, and what it does not.** A forced run exercises the producer,
-the mount, `/opt/data/ld/config.json` and the kiosk POST — the whole path a
+the mount, `/var/lib/hermes/ld/config.json` and the kiosk POST — the whole path a
 6 a.m. fire would take *once it starts*. It does not show that the
 already-running gateway loaded the newly created schedule. If the gateway caches
 its jobs at startup, every command above succeeds, a card appears, and the wall

@@ -23,18 +23,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
-passed = failed = 0
+import pytest
 
-
-def check(label, condition):
-    global passed, failed
-    if condition:
-        passed += 1
-        print(f"PASS - {label}")
-    else:
-        failed += 1
-        print(f"FAIL - {label}")
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 SNIPPET = (
@@ -57,32 +48,20 @@ WRAPPERS = (
 )
 
 
-def main():
-    shared = REPO_ROOT / "ld-shared" / "scripts" / "post_to_kiosk.py"
-    check("ld-shared/scripts/post_to_kiosk.py is in the checkout", shared.exists())
-    if not shared.exists():
-        print(f"\n{passed} passed, {failed} failed")
-        sys.exit(1)
-
-    for rel_path, expected_card, expected_type in WRAPPERS:
-        wrapper = REPO_ROOT / rel_path
-        check(f"{rel_path} wrapper exists", wrapper.exists())
-        if not wrapper.exists():
-            continue
-        proc = subprocess.run(
-            [sys.executable, "-c", SNIPPET, str(wrapper)], capture_output=True, text=True
-        )
-        check(f"{rel_path} imports cleanly via its own sys.path", proc.returncode == 0)
-        if proc.returncode != 0:
-            print(f"  stderr: {proc.stderr.strip()}")
-            continue
-        card, body_type = proc.stdout.strip().split("\n")
-        check(f"{rel_path} sets CARD={expected_card!r}", card == expected_card)
-        check(f"{rel_path} sets BODY_TYPE={expected_type!r}", body_type == expected_type)
-
-    print(f"\n{passed} passed, {failed} failed")
-    sys.exit(0 if failed == 0 else 1)
-
-
-if __name__ == "__main__":
-    main()
+@pytest.mark.parametrize(
+    "rel_path,expected_card,expected_type", WRAPPERS,
+    ids=[w[0].split("/")[0] for w in WRAPPERS])
+def test_each_wrapper_imports_and_declares_its_card(
+        rel_path, expected_card, expected_type):
+    """The contract each producer has with the shared POST helper: it imports
+    cleanly through its own sys.path hop, and it sets the two constants the
+    helper reads. Run as a subprocess so a wrapper cannot be satisfied by
+    post_to_kiosk already sitting in sys.modules from another test."""
+    wrapper = REPO_ROOT / rel_path
+    assert wrapper.exists(), f"{rel_path} is missing"
+    proc = subprocess.run(
+        [sys.executable, "-c", SNIPPET, str(wrapper)], capture_output=True, text=True)
+    assert proc.returncode == 0, f"{rel_path} did not import: {proc.stderr.strip()}"
+    card, body_type = proc.stdout.strip().split("\n")
+    assert card == expected_card
+    assert body_type == expected_type

@@ -34,7 +34,7 @@ DOCKERFILE = (ROOT / "Dockerfile").read_text()
 ONBOARDING = SKILL[SKILL.index("## Onboarding"):]
 TRIGGER = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].split())
 
-WALL_MARKER = "/opt/data/ld/setup-complete"
+WALL_MARKER = "/var/lib/hermes/ld/setup-complete"
 # The one call Latch permits, byte for byte as the skill must emit it.
 DISCOVERY_ARGV = 'argv=["gog", "calendar", "calendars", "--json", "--results-only"]'
 # The tool as the image REGISTERS it. An MCP tool carries its server's key as a
@@ -485,7 +485,7 @@ def test_the_listing_file_is_written_only_where_a_listing_exists():
     # list. `.txt` as well as `.json`: the listing is staged raw, so its name
     # cannot claim JSON -- see test_the_staged_listing_is_never_named_json.
     staged = re.findall(
-        r"/opt/data/ld/\.?[a-z<>-]*(?:draft|wall|listing)[a-z<>-]*\.(?:json|txt)",
+        r"/var/lib/hermes/ld/\.?[a-z<>-]*(?:draft|wall|listing)[a-z<>-]*\.(?:json|txt)",
         SKILL)
     assert staged, "no staged path found in the sheet -- this regex has gone stale"
     for path in staged:
@@ -920,6 +920,6 @@ def test_the_wall_token_handoff_is_dm_only():
     re-minting and re-shipping the Pi. It moved with the wall; the assertion
     moved with it."""
     wall = WALL[WALL.index("**No Mac (or no Latch):**"):]
-    handoff = " ".join(wall[:wall.index("date -u +%FT%TZ > /opt/data/ld/pi-brought-up")].split())
+    handoff = " ".join(wall[:wall.index("date -u +%FT%TZ > /var/lib/hermes/ld/pi-brought-up")].split())
     assert "in the owner's own one-to-one thread and nowhere else*, and never in a group" in handoff
     assert handoff.index("one-to-one thread and nowhere else") < handoff.index("text the owner, verbatim")

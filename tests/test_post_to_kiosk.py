@@ -25,21 +25,10 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ld-shared" / "scripts"))
 import post_to_kiosk  # noqa: E402
 
 TOKEN = "test-token-abc"
-passed = failed = 0
-
-
-def check(label, condition):
-    global passed, failed
-    if condition:
-        passed += 1
-        print(f"PASS - {label}")
-    else:
-        failed += 1
-        print(f"FAIL - {label}")
 
 
 def run(*args, stdin_text=""):
@@ -71,10 +60,10 @@ def reset_module():
     post_to_kiosk.MESSAGE_FILE = None
     post_to_kiosk.ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
     post_to_kiosk.TOKEN_FILE = "/config/secrets/dashboard-token"
-    # Not the real /opt/data/.env: a machine that happens to have one would
+    # Not the real /var/lib/hermes/.env: a machine that happens to have one would
     # otherwise satisfy the third source and silence the both-absent refusals.
     post_to_kiosk.AGENT_DOTENV = "/nonexistent/dotenv-for-tests/.env"
-    post_to_kiosk.OUTBOX_DIR = "/opt/data/ld/outbox"
+    post_to_kiosk.OUTBOX_DIR = "/var/lib/hermes/ld/outbox"
     os.environ.pop(post_to_kiosk.ENDPOINT_ENV, None)
     os.environ.pop(post_to_kiosk.TOKEN_ENV, None)
 
@@ -101,7 +90,7 @@ def use_dotenv_secrets(tmp: Path, endpoint="https://x.test/api/message", card="1
     """Dotenv transport: no secret file, no env var — both keys in DOTENV alone.
 
     The live case ld-setup creates: mint_wall_token.py appends its lines after
-    the gateway loaded /opt/data/.env, so a cron-spawned producer sees them
+    the gateway loaded /var/lib/hermes/.env, so a cron-spawned producer sees them
     only by reading the file itself.
     """
     reset_module()
@@ -253,7 +242,7 @@ def test_dotenv_secrets_are_the_third_source():
 
 
 def test_dotenv_endpoint_that_is_not_the_pi_is_refused():
-    """/opt/data/.env is agent-writable at runtime; an injected endpoint line
+    """/var/lib/hermes/.env is agent-writable at runtime; an injected endpoint line
     there must not steer the bearer anywhere but http://<host>:5174/api/message.
     A live loopback server on another port proves nothing was sent."""
     server, base = _start_server()
@@ -558,26 +547,11 @@ def test_redirect_not_followed():
     check("redirect 302 causes non-zero exit", code != 0)
 
 
-def main():
-    test_file_secrets_stdin_message_posts_correct_payload()
-    test_env_secrets_message_file_posts_and_consumes_file()
-    test_dotenv_secrets_are_the_third_source()
-    test_dotenv_endpoint_that_is_not_the_pi_is_refused()
-    test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request()
-    test_latch_endpoint_precedence_env_yields_to_dotenv_but_a_file_does_not()
-    test_a_delivery_that_is_not_latch_still_posts()
-    test_message_file_preserved_on_send_failure()
-    test_optional_title_is_posted_when_set()
-    test_dry_run_redacts_body_and_token()
-    test_dry_run_does_not_consume_message_file()
-    test_non_200_exits_non_zero()
-    test_missing_or_empty_inputs_fail_fast()
-    test_unset_wrapper_constants_fail_fast()
-    test_non_http_schemes_rejected_with_no_token_leak()
-    test_redirect_not_followed()
-    print(f"\n{passed} passed, {failed} failed")
-    sys.exit(0 if failed == 0 else 1)
+def check(label, condition):
+    """The suite's own assertion, kept so 70-odd call sites did not have to move.
 
-
-if __name__ == "__main__":
-    main()
+    It used to bump a counter and print; a failure then rode out through a
+    module-global tally that only the runner read, so every one of these
+    reported PASS to pytest whatever happened. An assert is what makes the
+    label a failure message instead of a line of stdout."""
+    assert condition, label

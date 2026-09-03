@@ -13,7 +13,7 @@ with their tip-off time, and finals — from ESPN's public scoreboard feed.
 
 Once per run:
 
-1. Read `family.timezone` and `sports.followed` from `/opt/data/ld/config.json`.
+1. Read `family.timezone` and `sports.followed` from `/var/lib/hermes/ld/config.json`.
 2. Fetch each followed team's ESPN scoreboard (a pure HTTPS fetch —
    `site.api.espn.com`, no key) and parse the team's current game. Only games
    within the next **14 days** are shown — a team whose next game is further
@@ -23,7 +23,7 @@ Once per run:
 3. Compose the **self-contained** scoreboard tile HTML. The canonical `<style>`
    (the `.sp-*` rules, which reference the viewer's shared theme tokens) and the
    game-row markup/grid contract are defined in
-   `/opt/data/skills/ld-shared/references/kiosk-protocol.md` § "Sports tile (card 5)" — the ONE
+   `/var/lib/hermes/skills/ld-shared/references/kiosk-protocol.md` § "Sports tile (card 5)" — the ONE
    source both agent seeds share. Read it and reproduce that tile exactly,
    one `.sp-game` row per shown game (up to 3). It ships its own `<style>`, so
    the viewer holds no sports CSS.
@@ -43,27 +43,27 @@ every feed- or config-derived string (team names, status, scores) — `&`→`&am
 ## Post
 
 Write the composed tile HTML to the fixed handoff file —
-`/opt/data/ld/sports-text` — with your file-writing tool, then run the helper
+`/var/lib/hermes/ld/sports-text` — with your file-writing tool, then run the helper
 by absolute path (the cron's working directory is not the skill directory):
 
-    /opt/data/skills/ld-sports/scripts/post_sports.py
+    /var/lib/hermes/skills/ld-sports/scripts/post_sports.py
 
-It reads the tile from `/opt/data/ld/sports-text`, the endpoint from the
+It reads the tile from `/var/lib/hermes/ld/sports-text`, the endpoint from the
 `DASHBOARD_ENDPOINT_URL` env var, and the token from the `DASHBOARD_TOKEN`
 env var (both from `data/.env`, mode 600) — no value reaches argv. It posts
 as card 5 with `type: "sports"`, http(s)-allowed, no redirects, and fails
 loudly on any non-200 response.
 
 If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
-follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+follow `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md` — the run
 is not done until the Latch `curl` returned 2xx.
 
 Preview without sending: `… post_sports.py --dry-run`.
 
 ## Config
 
-`sports.followed` in `/opt/data/ld/config.json` (template:
-`/opt/data/skills/ld-shared/references/config.example.json`) — a list of teams, each an ESPN
+`sports.followed` in `/var/lib/hermes/ld/config.json` (template:
+`/var/lib/hermes/skills/ld-shared/references/config.example.json`) — a list of teams, each an ESPN
 `{ abbr, sport, league }`:
 
     "sports": {
@@ -86,8 +86,8 @@ single versioned spec for every producer's schedule; this skill never
 self-registers.
 
 The container's zone IS `family.timezone` — `hermes cron create` takes no
-per-job timezone, so jobs fire in whatever `AGENT_TZ` agent-mgr created the
-container with. `/opt/data/skills/ld-dashboard/scripts/register_crons.py` is what proves the two
+per-job timezone, so jobs fire in whatever `TZ` created the
+container with. `/var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py` is what proves the two
 agree: it refuses to register any schedule when the container's `TZ` and
 `family.timezone` differ. (The ld-config gate does not — it only checks the zone
 is non-blank.)

@@ -1,7 +1,7 @@
 # The Plow cloud image: this repo's agent, built for an exe.dev VM.
 #
 # No agent content of its own — the persona and skills copied below are the
-# tracked files agent-mgr bind-mounts into the fleet container. Context is the
+# tracked files this repo owns. Context is the
 # repo root, so those copies are the product content: `docker build .`
 #
 # The tag is an immutable `base-<sha>` naming one commit of the base's source
@@ -10,7 +10,7 @@
 # tag would substitute code underneath them.
 FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-63c8b9c107ad2f3cae64357d235a2224f32dec49@sha256:611ce06c4115db4e0ff05b5caaf2384cbcf2fe4f5b211ebf0e40e6b54182ec38
 
-# Flat, the same layout compose.override.yml produces at /opt/data/skills: every
+# Flat, all as siblings directly under the skills root: every
 # SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
 # off its own realpath, so the three have to land as siblings.
 #
@@ -35,7 +35,6 @@ COPY ld-setup/            /var/lib/hermes/skills/ld-setup/
 COPY ld-shared/           /var/lib/hermes/skills/ld-shared/
 COPY ld-wall-setup/       /var/lib/hermes/skills/ld-wall-setup/
 COPY ld-sports/           /var/lib/hermes/skills/ld-sports/
-COPY ld-viewer-dev/       /var/lib/hermes/skills/ld-viewer-dev/
 COPY ld-weather/          /var/lib/hermes/skills/ld-weather/
 COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
 
@@ -71,20 +70,8 @@ RUN chown -R root:root /opt/plow \
  && find /opt/plow -type d -exec chmod 0755 {} + \
  && find /opt/plow -type f -exec chmod 0644 {} +
 
-# The one rewrite. Every path in this repo's content is written against the
-# fleet's HERMES_HOME (/opt/data); this runtime's is /var/lib/hermes. It is a
-# pure prefix substitution — /opt/data/skills, /opt/data/ld, /opt/data/.env and
-# /opt/data/cron all keep their own names — done to the image's copy so the
-# tracked files stay the fleet's. Hermes' own scanner refuses an unexpanded
-# variable in a skill, which is why this is a literal and not ${HERMES_HOME}.
-# /opt/plow is walked too: the scheduled copy names the same paths.
-RUN find /var/lib/hermes/SOUL.md /var/lib/hermes/skills /opt/plow -type f \
-      \( -name '*.md' -o -name '*.py' -o -name '*.json' \) \
-      -exec sed -i 's|/opt/data|/var/lib/hermes|g' {} +
-
 # The calendar strip's schedule, as a supervised service beside the gateway.
-# It names /var/lib/hermes outright — the run script lands in /etc/s6-overlay,
-# which the rewrite above does not walk.
+# The run script lands in /etc/s6-overlay, outside the skills tree.
 COPY image/s6-overlay/ /etc/s6-overlay/
 
 # The process timezone, resolved from this household's config before any
@@ -107,5 +94,5 @@ RUN chmod 0755 /srv/plow-assets && chmod 0644 /srv/plow-assets/*
 
 # The instance directory the producers read and ld-setup writes. Nothing exists
 # before first boot, so the image creates it empty: an unset-up agent is routed
-# to ld-setup by SOUL.md, exactly as on the fleet.
+# to ld-setup by SOUL.md.
 RUN install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld

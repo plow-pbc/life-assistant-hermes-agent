@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Register the life-dashboard producer crons, idempotently, from a versioned spec.
 
-Why this exists at all. `hermes cron` persists jobs to /opt/data/cron/jobs.json,
-which `agent-mgr deploy` does NOT replay -- so a rebuilt instance comes up with
+Why this exists at all. `hermes cron` persists jobs to /var/lib/hermes/cron/jobs.json,
+which no rebuild replays -- so a rebuilt agent comes up with
 a wall screen that never updates and nothing to diff against. Keeping the six
 definitions here means "set up the life dashboard crons" replays a reviewed spec
 instead of improvising six schedules from a sentence.
@@ -40,15 +40,14 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
-from runtime_env import DOTENV, dotenv_values  # noqa: E402
 
 HERMES = "/opt/hermes/bin/hermes"
 # Where `hermes cron` persists its jobs -- the same file the issue names as the
-# reason this skill exists, because `agent-mgr deploy` does not replay it.
-JOBS_FILE = "/opt/data/cron/jobs.json"
+# reason this skill exists: nothing replays it on a rebuild.
+JOBS_FILE = "/var/lib/hermes/cron/jobs.json"
 # The producers' own config. Read here for one reason: every schedule below is a
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
-LD_CONFIG = "/opt/data/ld/config.json"
+LD_CONFIG = "/var/lib/hermes/ld/config.json"
 
 # The spec. One row per producer — all six are live; the blocked/LIVE
 # partition machinery left with the last blocked row (git history keeps the
@@ -62,7 +61,7 @@ LD_CONFIG = "/opt/data/ld/config.json"
 #     the chat leg the sheet promises. create_argv() expands the ${VAR} from the
 #     container environment, where first boot publishes PLOW_HOME_CHANNEL after
 #     asking Plow which chat this agent's owner holds -- and refuses a blank one.
-#     Run it with `with-contenv`, or from a service that already inherits it: a
+#     Run it from a turn, which inherits that environment from the gateway: a
 #     bare `docker exec` carries none of those values.
 #   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
 #     quiet no-op runs, and --deliver relays EVERY final response -- its chat
@@ -167,8 +166,8 @@ def require_timezone_agreement(config_path=LD_CONFIG, env=None):
     """Refuse to register if the config's zone is not the container's.
 
     Every schedule here is a bare cron expression and `hermes cron create` takes
-    no per-job timezone, so jobs fire in the CONTAINER's zone -- agent-mgr's
-    TZ -- while all three SKILL.md files promise 06:00 in
+    no per-job timezone, so jobs fire in the CONTAINER's zone -- the TZ this
+    image set at boot -- while all three SKILL.md files promise 06:00 in
     `family.timezone`. Nothing else compares them: ld_config_gate.py checks only
     that the zone is non-blank, which a valid America/Chicago config satisfies
     while its cards land at 08:00 family time. Silent, and wrong in exactly the
@@ -258,33 +257,26 @@ def registered_jobs(jobs_path=JOBS_FILE):
     }
 
 
-def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
-    """Expand every ${VAR} in a delivery target: the container environment
-    first, the gateway's dotenv behind it.
+def resolve_deliver(deliver, env=None):
+    """Expand every ${VAR} in a delivery target from the container environment.
 
     The chat uid is not this repo's to know -- it is whichever chat the owner
     holds with this agent -- so it can never be a literal here. First boot
     resolves it from the credential the host dropped in and publishes it as
-    PLOW_HOME_CHANNEL into the container environment, which every service and
-    every `with-contenv` caller inherits; that is the source now. The dotenv is
-    kept behind it for an instance still carrying the value where activation
-    used to write it. An unset or blank variable REFUSES loudly: hermes would
-    accept the half-expanded or empty target and the digest's chat leg would
-    drop silently, every Sunday, in front of nobody -- the exact trap the old
+    PLOW_HOME_CHANNEL, which every service and every `with-contenv` caller
+    inherits. There is no second source: nothing writes these names to a file
+    on this image, and a file the agent can write is not a place to look for
+    the chat its own messages are addressed to.
+
+    An unset or blank variable REFUSES loudly: hermes would accept the
+    half-expanded or empty target and the digest's chat leg would drop
+    silently, every Sunday, in front of nobody -- the exact trap the old
     tripwire test existed to catch.
 
-    An explicit `env` is still the test-injection override, taken alone.
+    An explicit `env` is the test-injection override, taken alone.
     """
-    if env is None:
-        # os.environ last, so it wins -- but only where it actually carries a
-        # value. A variable exported blank must not shadow a real one in the
-        # dotenv into a refusal; "set to nothing" is not an answer, and with
-        # neither source carrying it the expansion refuses below either way.
-        values = {**dotenv_values(dotenv_path),
-                  **{k: v for k, v in os.environ.items() if v.strip()}}
-        source = f"the container environment or {dotenv_path}"
-    else:
-        values, source = env, "the injected env"
+    values = os.environ if env is None else env
+    source = "the container environment" if env is None else "the injected env"
 
     def expand(match):
         name = match.group(1)
@@ -300,7 +292,7 @@ def resolve_deliver(deliver, env=None, dotenv_path=DOTENV):
     return re.sub(r"\$\{(\w+)\}", expand, deliver)
 
 
-def create_argv(job, env=None, dotenv_path=DOTENV):
+def create_argv(job, env=None):
     """The --deliver arm serves exactly one live shape: a producer whose every
     run has content, where relaying the final response IS the chat leg
     (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
@@ -310,7 +302,7 @@ def create_argv(job, env=None, dotenv_path=DOTENV):
     if job["skill"]:
         argv += ["--skill", job["skill"]]
     if job["deliver"]:
-        argv += ["--deliver", resolve_deliver(job["deliver"], env, dotenv_path)]
+        argv += ["--deliver", resolve_deliver(job["deliver"], env)]
     return argv
 
 

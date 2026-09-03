@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /opt/data/ld/config.json as each answer lands, and discover their calendars from the Mac through Latch once it is connected (never asking them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /opt/data/ld/config.json is missing any of family.owner.name, weather.location, sports.followed or calendar.sources. Never use it in a group or in a DM from anyone else, when the owner says Latch is installed and their calendars are not yet in the config, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name). See "Changing one setting later". The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each answer lands, and discover their calendars from the Mac through Latch once it is connected (never asking them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.name, weather.location, sports.followed or calendar.sources. Never use it in a group or in a DM from anyone else, when the owner says Latch is installed and their calendars are not yet in the config, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name). See "Changing one setting later". The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -16,13 +16,13 @@ privately, and stop.
 **The wall is a separate skill.** Onboarding ends with an offer, a screen in
 the kitchen if they want one, and `ld-wall-setup` is what runs if they take
 it. Neither implies the other. Onboarding is finished when the config holds
-their answers, the wall is finished at `/opt/data/ld/setup-complete`, and an
+their answers, the wall is finished at `/var/lib/hermes/ld/setup-complete`, and an
 owner who never wants a screen gets the first and never the second.
-`/opt/data/SOUL.md` checks each for its own half.
+`/var/lib/hermes/SOUL.md` checks each for its own half.
 
 ## Onboarding, the first conversation
 
-This is a conversation, not a form. **`/opt/data/ld/config.json` is the only
+This is a conversation, not a form. **`/var/lib/hermes/ld/config.json` is the only
 record of how far it got.** Read it first, every time, and continue from the
 first key missing: `family.owner.name`, `weather.location`, `sports.followed`,
 `calendar.sources`. The test for each is whether the KEY is there. A
@@ -60,7 +60,7 @@ work through a checklist. Send the message the step calls for and nothing
 else.
 
 **The config is the memory of how far this got.** Read
-`/opt/data/ld/config.json` at the start of every onboarding turn and continue
+`/var/lib/hermes/ld/config.json` at the start of every onboarding turn and continue
 from the first thing missing. Never re-ask something it already holds. A
 resumed session that asks for the owner's name a second time is the failure
 this file exists to prevent. There is no separate progress file. Missing config
@@ -72,7 +72,7 @@ with no calendars in the config yet, ask the status script first. It is a
 terminal command, so it is there in every deployment, whatever tools this build
 happens to register.
 
-    python3 /opt/data/skills/ld-setup/scripts/latch_status.py
+    python3 /var/lib/hermes/skills/ld-setup/scripts/latch_status.py
 
 **`unconfigured` ends the ENQUIRY, not the pitch.** This deployment has no
 relay to a Mac at all. Not a Mac that is asleep, a build with nothing to reach
@@ -237,7 +237,7 @@ is the point. Every enumerated list of turn shapes this sheet has carried grew
 a hole, and each hole reached an owner as `❓ placeholder`, a blocking menu,
 because a turn that cannot find its own shape improvises one.
 
-**1 · Read the config.** `/opt/data/ld/config.json`, once, at the top. It is
+**1 · Read the config.** `/var/lib/hermes/ld/config.json`, once, at the top. It is
 the only record of how far this got. There is no marker and no second source.
 The four keys, in order: `family.owner.name`, `weather.location`,
 `sports.followed`, `calendar.sources`. Present-but-empty is answered.
@@ -365,14 +365,14 @@ is worse than a refusal.
 **Every answer reaches the config a step later at most**, one draft at a
 time, never as one blob at the end:
 
-Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
+Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
     {"family": {"owner": {"name": "Mary"}}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
+    python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --draft --input /var/lib/hermes/ld/.draft-<turn>.json
 
 `--draft`, not `--patch`. Stdin is a PARTIAL CONFIG in the shape of
-`/opt/data/skills/ld-shared/references/config.example.json`, deep-merged onto
+`/var/lib/hermes/skills/ld-shared/references/config.example.json`, deep-merged onto
 whatever is there, and unlike `--patch` it works before the file exists and
 excuses the shared gate for the questions not yet asked. It has to. The gate
 wants a calendar account and its sources, and onboarding never asks for those,
@@ -637,13 +637,13 @@ Step 4's draft carries every answer still unwritten: the name, carried since
 the intro began, and the answer that just arrived. One tool call, then the
 message.
 
-Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
+Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
     {"family": {"owner": {"name": "<from the name they gave>"},
                 "timezone": "<the IANA zone for the city they gave>"},
     "weather": {"location": "<their city>, <region>"}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
+    python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --draft --input /var/lib/hermes/ld/.draft-<turn>.json
 
 Coordinates are left out on purpose. The script geocodes `weather.location`
 for you, and a lat/lon supplied from memory is the one patch that fails
@@ -775,7 +775,7 @@ the link, and you take it from there. `ld-wall-setup` is what runs then. Do not
 start it unless the owner takes the offer. Then stop: the wall offer was the last
 thing this conversation had for them.
 
-Nothing here writes `/opt/data/ld/setup-complete`. That belongs to
+Nothing here writes `/var/lib/hermes/ld/setup-complete`. That belongs to
 `ld-wall-setup` and lands only after its proof card. An owner with no wall finishes here
 and never gets it, and that is a finished install.
 
@@ -843,7 +843,7 @@ two ways and both end at the same file:
 - **A persisted result.** The call returns a handle or a path rather than the
   text. Pass that path straight to the script.
 - **Inline text.** The call returns the output itself. Write it, byte for
-  byte, to `/opt/data/ld/calendar-listing-<turn>.txt` **with your file tool**,
+  byte, to `/var/lib/hermes/ld/calendar-listing-<turn>.txt` **with your file tool**,
   and pass that path.
 
 **`.txt`, and never `.json`.** The listing is not JSON. gog's `Note:` line
@@ -877,7 +877,7 @@ a message to the owner. One arrived inside an intro bubble, a `⚠️ File-mutat
 verifier:` block naming container paths and a JSONDecodeError, mid-sentence, to
 someone who had just said hello.
 
-    python3 /opt/data/skills/ld-setup/scripts/calendar_list.py /opt/data/ld/calendar-listing-<turn>.txt
+    python3 /var/lib/hermes/skills/ld-setup/scripts/calendar_list.py /var/lib/hermes/ld/calendar-listing-<turn>.txt
 
 Delete that file once the script has read it. It holds calendar names a stranger
 wrote and it has no reader after this turn. A stale one found later is a listing
@@ -938,7 +938,7 @@ Never a display name, never `primary`, never one you improved.
 **When the script decided the account**, it came back with an address rather
 than `null`:
 
-Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
+Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
     {"calendar": {"account": "<account from the script>",
     "sources": [{"calendar_id": "<id from the script>"},
@@ -947,13 +947,13 @@ Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
     "lookahead_virtual_minutes": 30,
     "lookahead_in_person_minutes": 60}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
+    python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --draft --input /var/lib/hermes/ld/.draft-<turn>.json
 
 **When it came back `null` and the owner answered**, the account is THEIRS,
 not the script's, and it is the only value in this whole conversation that
 comes from an owner's answer about a calendar. Both places take it:
 
-Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
+Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
     {"calendar": {"account": "<the address the owner said is theirs>",
     "sources": [{"calendar_id": "<id from the script>"},
@@ -962,7 +962,7 @@ Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
     "lookahead_virtual_minutes": 30,
     "lookahead_in_person_minutes": 60}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --draft --input /opt/data/ld/.draft-<turn>.json
+    python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --draft --input /var/lib/hermes/ld/.draft-<turn>.json
 
 Where they picked one of `candidates`, it is that string, unchanged. Where
 there were none to offer and they typed the address, it is what they typed,
@@ -1022,14 +1022,14 @@ gate.
 Use the patch mode instead. It is `--patch`, not the `--draft` onboarding uses.
 By now the config should be gate-valid, and a change that would break it is a
 change to refuse rather than record. Stdin is a PARTIAL CONFIG, the shape
-`/opt/data/skills/ld-shared/references/config.example.json` describes, carrying
+`/var/lib/hermes/skills/ld-shared/references/config.example.json` describes, carrying
 only what changes, never the answer set:
 
-Stage this with your file tool at `/opt/data/ld/.draft-<turn>.json`:
+Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
     {"weather": {"location": "Denver"}}
 
-    python3 /opt/data/skills/ld-setup/scripts/write_config.py --patch --input /opt/data/ld/.draft-<turn>.json
+    python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --patch --input /var/lib/hermes/ld/.draft-<turn>.json
 
 It merges onto the live file key by key, re-runs the shared gate on the
 **merged** result, and writes mode 600. It does **not** touch the crons.

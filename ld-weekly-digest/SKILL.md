@@ -7,10 +7,10 @@ description: Build a concise weekly calendar digest for the life-dashboard house
 
 Build a concise, scannable summary of the household's upcoming week. Runs
 from a Hermes cron job Sundays at 17:00; the schedule is owned by
-`ld-dashboard` (`/opt/data/skills/ld-dashboard/scripts/register_crons.py`) —
+`ld-dashboard` (`/var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py`) —
 this skill never self-registers.
 
-**Read `/opt/data/ld/config.json` before starting** — the shared
+**Read `/var/lib/hermes/ld/config.json` before starting** — the shared
 life-dashboard config. This digest uses two sections:
 
 - `calendar` — the `account` gog reads as and the `sources` list to fetch from
@@ -19,9 +19,9 @@ life-dashboard config. This digest uses two sections:
   as `morning_triage.ranking_instructions`; empty = the full layout) and the
   `long_lead` heads-up rules.
 
-The sibling `/opt/data/skills/ld-shared/references/config.example.json` is
+The sibling `/var/lib/hermes/skills/ld-shared/references/config.example.json` is
 the template for all ld- bundles; the live file lives at
-`/opt/data/ld/config.json` on the Hermes data mount.
+`/var/lib/hermes/ld/config.json` on the Hermes data mount.
 
 ## Core rules
 
@@ -46,7 +46,7 @@ it. Do not add safety flags (`--readonly`, `--wrap-untrusted`) to any argv:
 Latch injects this Mac's own safety flags and REFUSES any caller-supplied
 duplicate, so carrying one makes every run fail before it starts.
 
-Read `calendar.account` and `calendar.sources` from `/opt/data/ld/config.json`,
+Read `calendar.account` and `calendar.sources` from `/var/lib/hermes/ld/config.json`,
 comma-join the sources' `calendar_id` values, then fetch the main window with
 ONE `mcp__plow__plow_run_command` call — EXACTLY this argv, substituting only those
 config-supplied values (which never vary between runs):
@@ -103,7 +103,7 @@ sensitive titles AND locations entirely (don't generalize, don't paraphrase
 single calendar slot, so "Wed — 2 appointments" with the slot otherwise
 empty is the right fallback over leaking a sensitive title via the count.
 This rule applies to the Plow Chat surface too — the digest text written to
-`/opt/data/ld/weekly-digest-text` is the same text returned as the agent's
+`/var/lib/hermes/ld/weekly-digest-text` is the same text returned as the agent's
 final response.
 
 ## Long-lead heads-up
@@ -153,13 +153,13 @@ The digest is composed from untrusted calendar content and is delivered on
 two surfaces, in this order:
 
 1. **Kiosk** — write the digest text to the fixed handoff file —
-   `/opt/data/ld/weekly-digest-text` — with your file-writing tool. Do
+   `/var/lib/hermes/ld/weekly-digest-text` — with your file-writing tool. Do
    **not** build a shell command containing the text, and do **not** pass
    any path or text to the helper: it reads that fixed file, so a
    prompt-injected turn has no argument to steer. Then run the helper by
    absolute path (the cron's working directory is not the skill directory):
 
-       /opt/data/skills/ld-weekly-digest/scripts/post_digest.py
+       /var/lib/hermes/skills/ld-weekly-digest/scripts/post_digest.py
 
    The helper reads endpoint + token from the `DASHBOARD_ENDPOINT_URL` /
    `DASHBOARD_TOKEN` env vars the other ld- bundles use (from `data/.env`,
@@ -172,12 +172,12 @@ two surfaces, in this order:
    failed kiosk post.
 
    If the helper prints `NOT DELIVERED`, this wall is reached through Latch:
-   follow `/opt/data/skills/ld-shared/references/latch-delivery.md` — the run
+   follow `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md` — the run
    is not done until the Latch `curl` returned 2xx.
 
    Preview without sending (body text is redacted to `<redacted, N chars>`):
 
-       /opt/data/skills/ld-weekly-digest/scripts/post_digest.py --dry-run
+       /var/lib/hermes/skills/ld-weekly-digest/scripts/post_digest.py --dry-run
 
 2. **Plow Chat** — after the kiosk post succeeds, end the turn by
    returning the same digest text as the agent's final response. The cron
@@ -194,6 +194,6 @@ just return the digest in the reply.
 The Sunday 17:00 row (`0 17 * * 0` in the container timezone, which
 `register_crons.py` refuses to register unless it equals
 `family.timezone`) lives in
-`/opt/data/skills/ld-dashboard/scripts/register_crons.py`, the single
+`/var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py`, the single
 versioned spec for every producer's schedule; this skill never
 self-registers.

@@ -1,286 +1,32 @@
 """What makes this agent THIS agent -- on someone else's account.
 
-The fleet-wide invariants moved to plow-pbc/agent-mgr with the deployment: the
-home mount, the uid/gid contract, no credential through compose, no recipe
-starting a second gateway, activation refusing a home it does not own. They are
-asserted there once for every agent rather than restated in each repo.
+The boot layer, the hardened home, the plugin pin and the gateway's own config
+are the base image's, and plow-pbc/plow-hermes-agent asserts them once for every
+agent built on it rather than restating them here.
 
-What is left is the instance layer, plus the one thing this repo owns outright:
-scripts/latch-verdict.py, which is why `check-latch` survived the migration.
+What is left is this agent's own layer -- the skills it ships, where their
+paths resolve, and which dotenv each name is read from.
+
 Every assertion here exists because getting it wrong is quiet rather than loud,
 and unlike this repo's siblings the state on the other side of a mistake belongs
 to a different person.
 """
 import importlib.util
 import json
-import os
 import re
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-
-
-def dotenv(path):
-    """The KEY=VALUE lines of a dotenv, stripped, comments dropped.
-
-    One reader for every assertion this file makes about a dotenv. There were
-    three hand-rolled ones and they disagreed: this filters on the STRIPPED
-    line, where an earlier descriptor() tested `#` on the raw line -- so an
-    indented comment reached its dict(split) and raised ValueError, taking down
-    every test that called it, while the newer copies quietly skipped it. Two
-    views of the same file is the one thing a file whose job is asserting that
-    file's contract cannot have.
-    """
-    lines = [l for l in (x.strip() for x in path.read_text().splitlines())
-             if l and not l.startswith("#")]
-    for l in lines:
-        # Loud, not skipped. An `"=" in l` filter here would drop a bare
-        # `sk-...` line silently -- and agent.env is exempted from the
-        # credential guard on the strength of a test that reads through this,
-        # so a line this reader cannot see is a line nothing checks.
-        assert "=" in l, f"{path.name}: not a KEY=VALUE line: {l!r}"
-    return lines
-
-
-def descriptor():
-    return dict(line.split("=", 1) for line in dotenv(ROOT / "agent.env"))
-
-def config():
-    return yaml.safe_load((ROOT / "runtime" / "config.yaml").read_text())
-
-
-DESCRIPTOR_KEYS = {"AGENT_CONFIG", "AGENT_LIVE"}
-
-
-@pytest.mark.parametrize("toolset", ["clarify", "browser"])
-def test_unbacked_tools_are_taken_away_not_merely_forbidden(toolset):
-    """`clarify` renders a blocking ❓ menu and stops the turn until the owner
-    picks something. It has never been reached deliberately here -- it is what a
-    turn grabs when it cannot find the mechanism it wants -- and it arrived three
-    times as the entire first thing this agent said to a new owner. The prompt
-    has forbidden it throughout, and the ban held right up until a turn was
-    confused, which is exactly when it does not.
-
-    It is the only tool in its toolset, so disabling the toolset removes that one
-    and nothing else.
-
-    `browser` is Hermes' own browser_* / browser_exec stack, which nothing in
-    this container can back (no desktop Chrome for the Browser Use harness, no
-    agent-browser CLI): every call ends in chrome-not-running, and an agent that
-    still sees the tools picks them over Latch's plow_browser tools and tells
-    the owner the browser is down.
-    """
-    disabled = config()["agent"]["disabled_toolsets"]
-    assert toolset in disabled, (
-        f"a deployed agent can reach the unbacked {toolset} tools")
-
-
-def test_the_file_mutation_verifier_footer_is_off():
-    """The footer appends to the assistant's FINAL RESPONSE whenever a
-    write_file failed in the turn -- in a terminal that is a safety net against a
-    model claiming edits landed. Here the final response is a text message to a
-    person, and one arrived inside an owner's introduction: a `⚠️ File-mutation
-    verifier:` block naming container paths and a JSONDecodeError, mid-sentence.
-
-    The failures still reach the log, where whoever needs them is looking.
-    """
-    display = config().get("display") or {}
-    assert display.get("file_mutation_verifier") is False, (
-        "a failed write can append container paths to a message to the owner")
-
-
-def test_the_display_key_that_deletes_the_message_stays_absent():
-    """The neighbouring key, and the reason this one is safe.
-
-    `display.interim_assistant_messages: false` was tried to stop the same class
-    of leak and DELETED the real message: the model writes its reply mid-turn and
-    a note afterwards, so switching interim delivery off keeps only the note.
-    A leaked note is cosmetic; a missing introduction is the product.
-    """
-    display = config().get("display") or {}
-    assert "interim_assistant_messages" not in display
-
-
-def test_the_descriptor_carries_nothing_but_the_shared_config_path():
-    """Closed set, deliberately: every instance reads this one file, so a key
-    added here is given to ALL of them.
-
-    That is why AGENT_TZ is absent. A shared descriptor holds one value, and a
-    zone is per-person -- shipping one would boot every other instance on
-    someone else's clock, which no test could catch because the value would be
-    right for whoever it was chosen for.
-
-    Closing the set rather than listing what is forbidden does three jobs at
-    once. AGENT_HOME / AGENT_CONTAINER / AGENT_PROJECT are excluded as a
-    consequence rather than as a second list to keep in sync. A person-valued
-    key cannot arrive at all -- documenting one does not make it shippable,
-    because every instance reads this file.
-
-    And it is what backs agent.env's exemption from the credential guard: that
-    exemption has to rest on something checked, the way .env.example's
-    blank-value test backs its own. A key-shape rule was too weak for the job --
-    every AGENT_* name passed it, so AGENT_TOKEN=sk-... would have shipped green.
-    One exact key cannot."""
-    assert set(descriptor()) == DESCRIPTOR_KEYS, (
-        "agent.env is a CLOSED SET: it holds AGENT_CONFIG and AGENT_LIVE, "
-        "nothing else. "
-        "Every instance reads this one file, so adding a key means editing "
-        "DESCRIPTOR_KEYS deliberately -- see README.md. A person-valued key "
-        "(a timezone, a locale) does not belong here at all, and identity "
-        "(AGENT_HOME/AGENT_CONTAINER/AGENT_PROJECT) is agent-mgr's to derive "
-        "from the registry name."
-    )
-
-
-def test_the_descriptor_names_where_this_agents_config_lives():
-    assert descriptor()["AGENT_CONFIG"] == "runtime/config.yaml"
-    assert (ROOT / "runtime" / "config.yaml").is_file()
-
-
-def test_every_instance_is_live():
-    """Real people's workflows run through every instance, and the gateway
-    messages its person at every restart -- the guard is what makes a
-    transition deliberate, so a descriptor that stopped saying so would
-    silently strip it from all of them."""
-    assert descriptor()["AGENT_LIVE"] == "1"
-
-
-def test_the_phone_line_is_enabled_without_instance_policy():
-    cfg = config()
-    assert "plow-chat-platform" in cfg["plugins"]["enabled"]
-    assert cfg["platforms"]["plow_chat"] == {"enabled": True}
-
-
-def test_group_sessions_are_shared_per_chat():
-    """One group chat = one session, whoever is speaking.
-
-    The image default (true) keys group sessions per sender, splitting one
-    visible iMessage thread into per-person agent contexts. That shipped as a
-    real incident on 2026-08-30: a member's question and the owner's follow-up
-    landed in different sessions, and the reply answered the owner's unrelated
-    in-flight task into the shared thread. The plugin's
-    config.extra["group_sessions_per_user"] = False does not reach the
-    gateway's session store, so the gateway-level key here is the only thing
-    holding the line."""
-    assert config()["group_sessions_per_user"] is False
-
-
-def test_outcome_memories_get_a_raised_char_limit():
-    """A sibling session denied a completed $1,500 transfer (2026-08-31)
-    because outcome entries lost the consolidation fight at the image's
-    2,200-char default. The raised cap is what gives SOUL.md's outcome-journal
-    rule room to work; a template resync dropping it would silently regress."""
-    assert config()["memory"]["memory_char_limit"] == 6000
-
-
-def test_the_main_model_has_somewhere_to_fall_back_to():
-    """The image only fails over into the top-level chain, so its absence -- not
-    the overload burst -- is what reaches the owner as a provider-failed
-    message. An entry equal to the primary cannot help: the shed request would
-    land on the same overloaded route."""
-    chain = config()["fallback_providers"]
-
-    assert chain == [{"provider": "openai-codex", "model": "gpt-5.5"}]
-    assert chain[0]["model"] != config()["model"]["default"]
-
-
-def test_compression_has_somewhere_to_fall_back_to():
-    """A ChatGPT-account codex serves only gpt-5.6-sol and gpt-5.5, so a swap to
-    a cheaper-sounding id installs a fallback that can never fire -- and a naive
-    probe misses it, because the implicit main-model fallback reports success on
-    the caller's behalf."""
-    compression = config()["auxiliary"]["compression"]
-    chain = compression["fallback_chain"]
-
-    assert [e["model"] for e in chain] == ["gpt-5.5"]
-    assert chain[0]["provider"] == "openai-codex", (
-        "the fallback rides this instance's own codex auth -- a provider "
-        "needing a new credential would not resolve here at all"
-    )
-    assert "timeout" not in compression, (
-        "a task-level compression timeout is floored to 300s by the image, so "
-        "one below it is inert and one above it only lengthens the stall"
-    )
-    assert chain[0]["timeout"] >= 300, (
-        "the chain entry gets no floor of its own -- the image's applies to the "
-        "task-level key this test just required to be absent -- so without an "
-        "explicit budget it inherits the 30s auxiliary default"
-    )
-
-
-def test_the_relay_is_the_only_mcp_server():
-    assert list(config()["mcp_servers"]) == ["plow"]
-
-
-def test_the_relay_key_matches_the_tool_prefix_the_skills_call():
-    """The stanza's key IS the tool prefix. A model calls
-    `mcp__<key>__plow_run_command`, so a config.yaml naming one thing while the
-    sheets name another registers a tool nothing asks for -- and the status
-    probe answers "configured" for it."""
-    key, = config()["mcp_servers"]
-    for skill in sorted(ROOT.glob("ld-*/SKILL.md")):
-        for line in skill.read_text().splitlines():
-            if "mcp__" in line and "_run_command" in line:
-                assert f"mcp__{key}__" in line, f"{skill.name}: {line.strip()}"
-
-
-def test_the_relay_is_configured_from_the_environment_not_from_git():
-    """DOMO_DEVICE_UID decides which Mac an instance can drive -- its owner's, not
-    the operator's. It never appears in this repo."""
-    relay = config()["mcp_servers"]["plow"]
-    assert "${DOMO_DEVICE_UID}" in relay["url"]
-    assert "${DOMO_MCP_TOKEN}" in relay["headers"]["Authorization"]
-
-
-def test_every_pinned_skill_is_a_sha_not_a_branch():
-    """Empty today, and the emptiness is the point.
-
-    plow-connectors was the only row, and it went out with the dashboard work:
-    the four producers that read Gmail, Google Calendar and Slack have no data
-    source on this agent, so nothing here reaches a connector. latch#183 is what
-    refills this file -- a vendored gog behind Latch -- and the per-row rule
-    below is what will check that row when it lands.
-
-    Deliberately NOT asserting the file is non-empty. It used to say the
-    connector skill is what lets an instance reach its owner's mail, which was
-    true while there was one; asserting it now would fail the suite for being
-    correct."""
-    rows = [r for r in (ROOT / "skills.tsv").read_text().splitlines() if r.strip()]
-    for row in rows:
-        repo, ref, dest = row.split("\t")[:3]
-        assert len(ref) == 40 and all(c in "0123456789abcdef" for c in ref), row
-        assert repo and dest
-
-
-def test_skills_tsv_carries_no_comment_lines():
-    """A comment here breaks `agent-mgr deploy`, and only at deploy time.
-
-    agent-mgr gates the replay on `[ -s skills.tsv ]` -- size, not content --
-    then feeds every line with a non-empty first tab-field to lib/fetch-tree. A
-    zero-byte file is skipped cleanly, but a file holding only `# see latch#183`
-    is non-empty, so the comment text becomes the repo argument and deploy dies
-    on it. The explanation belongs in a docstring like this one, never in the
-    file itself, and this test is what keeps a well-meaning edit from putting it
-    there."""
-    text = (ROOT / "skills.tsv").read_text()
-    for line in text.splitlines():
-        assert not line.lstrip().startswith("#"), (
-            f"skills.tsv carries a comment line: {line!r} -- agent-mgr feeds it to "
-            "fetch-tree as a repo name and deploy dies. Keep the file empty or "
-            "tab-separated rows only."
-        )
 
 
 def test_no_credential_file_is_tracked():
     """Credentials live in this agent's home dotenv, which is outside the repo.
 
     Two named exemptions, and everything else keeps the broad shape rule. An
-    earlier pass swapped the suffix rule for exact basenames to stop `agent.env`
+    earlier pass swapped the suffix rule for exact basenames to stop a tracked file
     tripping it -- and quietly stopped catching `prod.env`, `secrets.env`,
     `auth.json.bak` and `latch-auth.json` along the way. A false positive on one
     known filename is an allowlist problem, not a reason to narrow the rule.
@@ -294,283 +40,15 @@ def test_no_credential_file_is_tracked():
                          capture_output=True, text=True, check=True)
     for name in out.stdout.split("\0")[:-1]:
         base = name.rsplit("/", 1)[-1]
-        # Anchored to the full path git prints, not the basename. The two
-        # exemptions are excused because two other tests cover those exact
-        # files -- and those tests read ROOT/agent.env and ROOT/.env.example, so
-        # a `secrets/agent.env` or `runtime/.env.example` matched by basename
-        # would be excused by a promise nothing checks. Same reasoning as -z
-        # above, one level up: the allowlist must not be the weakest link.
-        if name in ("agent.env", ".env.example"):
-            continue
+        # No exemptions. There used to be two, each excused by another test
+        # promising to cover that file; both files are gone, and a rule with
+        # nothing carved out of it is one less thing to keep true.
         assert not base.endswith(".env"), f"{name} is tracked"
         assert not base.startswith(".env."), f"{name} is tracked"
         assert "auth.json" not in base and "auth.lock" not in base, f"{name} is tracked"
 
 
-def test_the_dotenv_example_carries_no_values():
-    """The exemption above rests on this: it is a shape, not a secret store."""
-    keys = dotenv(ROOT / ".env.example")
-    assert keys, ".env.example declares no keys -- is it still the skeleton?"
-    for line in keys:
-        key, value = line.split("=", 1)
-        assert value == "", f".env.example carries a value for {key}"
-
-def _recipe(name: str) -> str:
-    """One recipe's body, from the justfile. Read as text rather than run.
-
-    These assertions are about which paths a recipe may name, and running one to
-    find out would reach a live container.
-    """
-    lines = (ROOT / "justfile").read_text().splitlines()
-    # Parameters may be any just identifier, not just uppercase: `check-latch`
-    # takes a lowercase `agent` so one shared repo can probe whichever instance
-    # is asked for. A regex admitting only [A-Z] silently found no recipe and
-    # raised StopIteration from `next`, which reads as "the test is broken"
-    # rather than "the recipe grew a parameter".
-    pattern = rf"^{re.escape(name)}( [A-Za-z_][A-Za-z0-9_-]*)*:$"
-    start = next(
-        (i for i, l in enumerate(lines) if re.match(pattern, l)),
-        None,
-    )
-    assert start is not None, f"no recipe named {name!r} in the justfile"
-    body = []
-    for line in lines[start + 1:]:
-        if line and not line[0].isspace():
-            break
-        body.append(line)
-    return "\n".join(body)
-
-
-def _recipe_code(name: str) -> str:
-    """One recipe's body with comment lines removed.
-
-    Every assertion about what a recipe *does* has to read this, not _recipe().
-    The reasoning blocks in this justfile quote the shapes they warn against, so
-    a substring check against the full body passes on the warning while the code
-    below it does the opposite.
-    """
-    return "\n".join(
-        l for l in _recipe(name).splitlines() if not l.lstrip().startswith("#")
-    )
-
-
-def _latch_module():
-    """The script the check-latch recipe runs, loaded once per call site."""
-    spec = importlib.util.spec_from_file_location(
-        "latch_verdict", ROOT / "scripts" / "latch-verdict.py"
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _verdict():
-    return _latch_module().verdict
-
-
-def test_every_interpolation_in_the_config_is_declared_in_the_dotenv():
-    """A ${NAME} with no matching key ships a literal, unexpanded string.
-
-    The gateway would send `Bearer ${DOMO_MCP_TOKEN}` verbatim, the relay would
-    answer 401, and check-latch would report the token REVOKED — sending the
-    operator to the owner's Mac to re-mint a credential that was never wrong. A
-    rename on either side is silent otherwise: the config test only checks the
-    ${...} spellings, and the dotenv test only checks lines carry no value.
-    """
-    referenced = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", (ROOT / "runtime" / "config.yaml").read_text()))
-    declared = {l.split("=", 1)[0] for l in dotenv(ROOT / ".env.example")}
-    missing = referenced - declared
-    assert missing == set(), (
-        f"runtime/config.yaml interpolates {sorted(missing)}, which .env.example "
-        "does not declare — the gateway would send the literal ${...} text"
-    )
-
-
-def test_check_latch_actually_runs_the_verdict_script():
-    """The verdict tests are worthless if the recipe stops calling it.
-
-    Same contract this file already holds for scripts/model-provider and
-    scripts/reload-if-running, and for the same reason: if check-latch drifts
-    back to an HTTP-status-only `case`, every verdict test above keeps passing
-    against a script nobody runs, and the suite goes green on the exact
-    regression that script exists to prevent.
-    """
-    code = _recipe_code("check-latch")
-    assert "scripts/latch-verdict.py" in code, (
-        "check-latch must delegate its pass/fail decision to the tested script"
-    )
-    # And that it is not deciding for itself alongside it: a status-code case
-    # statement here is how the two would diverge.
-    assert "200)" not in code, (
-        "check-latch must not re-implement a status verdict next to the script"
-    )
-
-
-def test_check_latch_does_not_reintroduce_the_double_zero_fallback():
-    # curl's own -w already emits 000 on a failed transfer; a `|| printf 000`
-    # next to it is what produced "000000".
-    code = _recipe_code("check-latch")
-    assert "printf 000" not in code, (
-        "curl already writes 000 via -w on a failed transfer; a fallback printf "
-        "doubles it and the transport-failure verdict becomes unreachable"
-    )
-
-
-def test_latch_verdict_recognises_a_real_answer_in_any_framing():
-    """The one thing it must get right: a Mac that answered.
-
-    streamable-HTTP lets the server emit notifications before the response and
-    makes the space after `data:` optional, so all of these are the same
-    successful answer. Joining the frames instead of parsing each one is what
-    turned a legal two-frame reply into `{..}{..}`.
-    """
-    v = _verdict()
-    answer = '{"id":1,"result":{"tools":[{"name":"plow_vault"}]}}'
-    for label, body in {
-        "spaced frame": "data: " + answer,
-        "spaceless frame": "data:" + answer,
-        "notification first": 'data: {"method":"notifications/message"}\n\ndata: ' + answer,
-        "bare json": answer,
-        # A malformed early frame must not shadow the real answer behind it:
-        # selection is "the frame carrying tools", not "the first with a key".
-        # id:1 is load-bearing — the removed classifier preferred the id-1
-        # frame, so a noise frame WITHOUT it was already handled correctly and
-        # this row would pass under both implementations, pinning nothing.
-        "malformed frame wearing the answer's id":
-            'data: {"id":1,"error":"boom"}\n\ndata: ' + answer,
-    }.items():
-        assert "1 tools" in v("200", body), f"{label} should be recognised"
-
-    # More tools than the preview shows — the shape actually observed live (12).
-    # One case pins three things a one-tool list cannot separate: the count
-    # comes from `tools` and not from the slice, the preview stops at three, and
-    # the separator is ", ". The row that used to carry this went out with the
-    # degraded rendering it also exercised.
-    four = '{"id":1,"result":{"tools":[{"name":"a"},{"name":"b"},{"name":"c"},{"name":"d"}]}}'
-    assert "4 tools (a, b, c…)" in v("200", four)
-
-
-@pytest.mark.parametrize("code,body", [
-    ("401", '{"error":"invalid token"}'),
-    ("406", "Client must accept both application/json and text/event-stream"),
-    ("000", ""),
-    ("200", 'data: {"id":1,"error":{"code":-32001,"message":"device offline"}}'),
-    ("200", '{"jsonrpc":"2.0","id":1}'),
-    ("502", "<html>Bad Gateway</html>"),
-    # A non-JSON-RPC proxy in front of the relay answers with a string-valued
-    # `error`. The classifier version did `d["error"].get(...)` and died with
-    # AttributeError — the recipe whose whole purpose is one actionable line
-    # crashing instead of printing it. Nothing here reads `error` any more.
-    ("200", '{"error":"unauthorized"}'),
-    # The same unguarded shape lived on `result` until it was checked too — the
-    # truthy-scalar form is what a proxy in front of the relay returns:
-    # `{"result":"ok"}` crashed on .get, and a string-valued `tools` reported
-    # len("nope") — four tools — as a SUCCESS, which is worse than crashing.
-    ("200", '{"id":1,"result":"ok"}'),
-    ("200", '{"id":1,"result":{"tools":"nope"}}'),
-    # Malformed tool lists are not an answer — they take the failure path and
-    # the body is shown. Kept as rows rather than deleted with the rendering
-    # they used to exercise: both of these CRASHED before the unwraps were
-    # shape-checked, so they pin a real regression, not a display contract.
-    ("200", '{"id":1,"result":{"tools":[1,2]}}'),
-    ("200", '{"id":1,"result":{"tools":[{"name":null}]}}'),
-    # >600 chars: the cap that used to truncate here dropped the explaining
-    # line exactly when the body was long enough to need reading.
-    ("502", '{"detail":"' + "x" * 900 + '","reason":"the-line-that-explains-it"}'),
-])
-def test_latch_verdict_fails_loudly_and_shows_what_came_back(code, body):
-    """No taxonomy — the response is the diagnosis.
-
-    Every one of these used to get a hand-written label, and each round of
-    review found another shape the labels got wrong. The contract now is only
-    that failure is loud and the evidence is verbatim, so an unanticipated shape
-    cannot be mislabelled — there is no label.
-    """
-    v = _verdict()
-    with pytest.raises(SystemExit) as e:
-        v(code, body)
-    msg = str(e.value)
-    assert "did NOT answer" in msg
-    assert code in msg, "the status has to be in the message"
-    assert (body in msg) if body.strip() else ("(empty body)" in msg)
-
-
-def test_split_probe_survives_a_body_that_never_arrived():
-    """The bug this pins shipped twice, and the trim deleted its only guard.
-
-    A transport failure writes no body and therefore no newline, and
-    `split("\\n", 1)` returns a one-element list that raises on unpack — the
-    mutation this catches. The status-as-body bug came from the shell version
-    (`${code#*$'\\n'}` does not strip when there is no newline); partition
-    cannot reproduce it, which is why the branch guarding against it was removed
-    as unreachable rather than kept.
-    """
-    mod = _latch_module()
-
-    assert mod.split_probe("000") == ("000", ""), "no body must not echo the status"
-    assert mod.split_probe('200\ndata: {"x":1}') == ("200", 'data: {"x":1}')
-    assert mod.split_probe("200\n") == ("200", ""), "a trailing newline is still no body"
-
-
-def override():
-    """The parsed override, with a message that names the file when it is gone."""
-    path = ROOT / "compose.override.yml"
-    assert path.is_file(), (
-        "compose.override.yml is missing -- it is how the ld- skills reach the "
-        "container, and agent-mgr loads it only if it exists (lib/common.sh:577)"
-    )
-    return yaml.safe_load(path.read_text())
-
-
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
-
-# What actually reaches an agent. ld-payments is the exception, and README
-# "ld-payments is the instruction layer only" is why: the skill tells the agent
-# to stop refusing payment requests, and the fail-closed gate that makes that
-# safe is not live, so it is tracked here for review and deployed nowhere.
-UNDEPLOYABLE = {"ld-payments"}
-DEPLOYED_SKILL_DIRS = [name for name in SKILL_DIRS if name not in UNDEPLOYABLE]
-
-
-def test_the_hermes_volumes_are_exactly_these():
-    """Four declarative strings, asserted exactly.
-
-    This replaces a brace-aware volume parser, its own unit test, and four
-    overlapping invariant paths -- read-only, strict-child, one-segment-deep,
-    ${AGENT_DIR}-rooted, not-an-ancestor-of-the-home -- with the strings those
-    invariants were describing. Every one of them is still enforced, because an
-    exact set cannot be satisfied by a mount that breaks any of them: drop `:ro`,
-    nest a level, mount the checkout root, make a source relative, or forget a
-    skill entirely and this fails with both sets printed.
-
-    Derived from the tree, so adding a producer without its mount fails here
-    rather than at 06:00 as a cron running a skill the container does not have.
-
-    Why these strings and not others -- why flat, why read-only, why
-    ${AGENT_DIR} and not `./` -- is compose.override.yml's own comment. It is the
-    file a reader opens; restating it here was a second copy to keep in step."""
-    assert set(override()["services"]["hermes"]["volumes"]) == {
-        f"${{AGENT_DIR:?set by agent-mgr from the registry}}/{name}"
-        f":/opt/data/skills/{name}:ro"
-        for name in DEPLOYED_SKILL_DIRS
-    } | {
-        # The one non-skill bind: the repo's SOUL.md pinned read-only over the
-        # gateway's own copy (HERMES_HOME is /opt/data), so the setup rule it
-        # carries survives anything a turn writes into the home. The old
-        # config.json:ro bind is gone on purpose: the agent writes that file
-        # now (ld-setup), and pinning it was what forced "land it before up".
-        # Same exact-string discipline: drop :ro, reroot the source, or mount
-        # a directory and this fails with both sets printed.
-        "${AGENT_DIR:?set by agent-mgr from the registry}"
-        "/runtime/SOUL.md:/opt/data/SOUL.md:ro",
-        # Onboarding's GIF, at the path ld-setup names. The Dockerfile bakes it
-        # for the cloud image; the fleet has only these mounts, so without this
-        # the opener's MEDIA: tag points at nothing on every agent-mgr instance
-        # and the attachment is dropped with no error. Outside /opt/data
-        # because Hermes' media denylist covers the home.
-        "${AGENT_DIR:?set by agent-mgr from the registry}"
-        "/docs/onboarding-v2/assets:/srv/plow-assets:ro"
-    }
 
 
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
@@ -586,7 +64,7 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
 
     The check is only worth anything because the mapping is earned:
     test_the_hermes_volumes_are_exactly_these pins
-    ${AGENT_DIR}/<name> -> /opt/data/skills/<name>, so resolving these against
+    <name>/ -> /var/lib/hermes/skills/<name>, so resolving these against
     ROOT really does mean the agent can open them.
 
     It checks that the absolute paths RESOLVE; it does not check that a new
@@ -594,12 +72,12 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     three hand-authored files it cost more than the drift it fenced, and the
     eight paths it found are fixed regardless. The convention is visible in the
     files themselves -- every path in all three is absolute."""
-    prefix = "/opt/data/skills/"
+    prefix = "/var/lib/hermes/skills/"
     leaves = set(SKILL_DIRS)
     seen = 0
     for skill_md in [*sorted(ROOT.glob("ld-*/SKILL.md")), ROOT / "runtime" / "SOUL.md"]:
         text = skill_md.read_text()
-        for ref in re.findall(r"/opt/data/skills/([\w./-]+)", text):
+        for ref in re.findall(r"/var/lib/hermes/skills/([\w./-]+)", text):
             ref = ref.rstrip(".").rstrip("/")
             head, _, rest = ref.partition("/")
             assert head in leaves, (
@@ -613,14 +91,14 @@ def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
             seen += 1
 
     assert seen, (
-        "no /opt/data/skills/ paths found in any SKILL.md -- has the reference "
+        "no /var/lib/hermes/skills/ paths found in any SKILL.md -- has the reference "
         "style changed?"
     )
 
 
 # Hermes confines its file-writing tool to this root; a handoff outside it is
 # denied at 06:00, in front of nobody. The image sets it, not this repo.
-WRITE_SAFE_ROOT = "/opt/data"
+WRITE_SAFE_ROOT = "/var/lib/hermes"
 
 # Listed, not globbed: discovery needed a floor (an empty glob SKIPS a
 # parametrized test), a helper exclusion and a sheet-presence rule -- three
@@ -694,12 +172,12 @@ def test_each_producer_sheet_names_the_handoff_its_wrapper_reads(skill, wrapper)
 
     Each sheet names the handoff twice -- to write, then to read back -- so a
     half-applied change leaves one stale and the agent reads two files. Both
-    scans are whole-token: /mnt/opt/data/ld/weather-text and
-    /opt/data/ld/weather-text.tmp otherwise read as agreement. The stale scan
+    scans are whole-token: /mnt/var/lib/hermes/ld/weather-text and
+    /var/lib/hermes/ld/weather-text.tmp otherwise read as agreement. The stale scan
     wants a PATH ending in -text, never a bare token, because "plain-text
     cards" is the wording cards 1/2/4 use -- exactly the blocked producers;
     anchoring to the handoff's directory instead fails a correct sheet, since
-    /opt/data/ld/config.json lives there too."""
+    /var/lib/hermes/ld/config.json lives there too."""
     path = _handoff(skill, wrapper)
     sheet = (ROOT / skill / "SKILL.md").read_text()
 
@@ -743,7 +221,7 @@ def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
     assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"
 
 
-SETUP_COMPLETE_MARKER = "/opt/data/ld/setup-complete"
+SETUP_COMPLETE_MARKER = "/var/lib/hermes/ld/setup-complete"
 
 
 def test_every_calendar_gather_names_the_configured_gog_account():
@@ -796,7 +274,7 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
     # skill's own: onboarding is the one thing that may fire on any inbound, so
     # its routing clause names the config's keys and nothing about a Pi.
     description = setup.split("---", 2)[1]
-    assert "while /opt/data/ld/config.json is missing any of" in description
+    assert "while /var/lib/hermes/ld/config.json is missing any of" in description
     assert "re-set-up their wall" not in description, (
         "ld-setup still claims the wall's trigger")
     wall = (ROOT / "ld-wall-setup" / "SKILL.md").read_text().split("---", 2)[1]
@@ -804,9 +282,9 @@ def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
 
 
 def test_cross_session_claims_are_verified_and_outcomes_journaled():
-    """The stale-session rules are safety-critical: a sibling session once
-    denied a completed $1,500 transfer from its own memory. Pin the verify-
-    before-claiming, check-before-acting, and outcome-journal language."""
+    """The stale-session rules are safety-critical: an agent that trusts its own
+    memory over a fresh read can deny a transfer it actually completed. Pin the
+    verify-before-claiming, check-before-acting, and outcome-journal language."""
     soul = " ".join((ROOT / "runtime" / "SOUL.md").read_text().split())
     required = (
         "run `session_search` first",
@@ -851,11 +329,13 @@ CONTRACTS = [
     # wall -- so a blanket kid-safe promise covers the one producer that cannot
     # keep it.
     (SOUL, "do not extend that promise to the morning alert"),
-    # The strip is a seventh producer with no model in it, on a systemd timer
-    # the fleet does not run -- so it may be neither claimed nor promised.
-    (SOUL, "Not every deployment runs one, so never promise it unprompted"),
+    # The strip is a seventh producer with no model in it, published by a
+    # supervised service on its own five-minute tick -- so a turn may not
+    # claim it as work it did.
+    (SOUL, "It refreshes whether or not you"),
     (SOUL, "not yours to claim you refreshed"),
-    # skills.tsv is empty: an offer to check someone's mail cannot be kept.
+    # No connector skill is installed: an offer to check someone's mail
+    # cannot be kept.
     (SOUL, "Never advertise smart-home control, documents, spreadsheets, or email"),
     # Browsing is the one that cannot be flatly denied -- the Latch server does
     # expose browser tools -- so it is bounded by whether a skill asks for them,
@@ -964,7 +444,7 @@ def test_the_agent_owned_names_are_read_from_the_agents_own_file():
             f"{relative} names {sorted(named)} but does not read the agent's own file")
         assert "dotenv_values(DOTENV)" not in text, (
             f"{relative} reads an agent-owned name out of Hermes' own dotenv")
-    assert len(checked) >= 4, f"only {checked} were checked -- the scan stopped finding producers"
+    assert len(checked) >= 3, f"only {checked} were checked -- the scan stopped finding producers"
 
 
 def test_the_agents_own_file_lives_in_a_directory_it_owns():
@@ -972,7 +452,7 @@ def test_the_agents_own_file_lives_in_a_directory_it_owns():
     comes from the writer's fchmod, on create and on rewrite -- ld/.env does not
     exist at build time."""
     runtime_env = (ROOT / "ld-shared/scripts/runtime_env.py").read_text()
-    assert 'AGENT_DOTENV = "/opt/data/ld/.env"' in runtime_env
+    assert 'AGENT_DOTENV = "/var/lib/hermes/ld/.env"' in runtime_env
     assert "install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld" in (ROOT / "Dockerfile").read_text()
     mint = (ROOT / "ld-wall-setup/scripts/mint_wall_token.py").read_text()
     assert "dotenv_path=AGENT_DOTENV" in mint, "the writer's default target is the agent's file"

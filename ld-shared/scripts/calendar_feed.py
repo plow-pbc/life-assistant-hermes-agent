@@ -9,12 +9,12 @@ This script is the whole producer — gather, filter, normalize, POST.
 
 Everything it reads is fixed; nothing arrives on argv:
 
-  - `/opt/data/ld/config.json` for the account, the calendar ids and the
+  - `/var/lib/hermes/ld/config.json` for the account, the calendar ids and the
     household zone — the same `calendar.account` + `calendar.sources` shape
     every other calendar producer here reads;
   - the Plow relay credential (`DOMO_DEVICE_UID`, `DOMO_MCP_TOKEN`) from the
-    Hermes dotenv, the pair `just check-latch` probes. The relay ORIGIN is a
-    literal here, as it is in `runtime/config.yaml` and that recipe: the
+    Hermes dotenv, the pair ld-wall-setup mints. The relay ORIGIN is a
+    literal here, as it is in the image's own config: the
     dotenv is agent-writable, and an injected base would walk the relay bearer
     to another host with nothing to refuse it;
   - the kiosk endpoint through post_to_kiosk's own constants, so a
@@ -76,10 +76,10 @@ from bearer_http import open_no_redirect  # noqa: E402
 from external_content import strip_markers  # noqa: E402
 from runtime_env import AGENT_DOTENV, agent_values  # noqa: E402
 
-CONFIG_FILE = "/opt/data/ld/config.json"
-# Fixed, never from the dotenv. runtime/config.yaml and the justfile's
-# check-latch both name this origin outright; taking it from the
-# agent-writable dotenv instead would hand an injected turn the relay bearer.
+CONFIG_FILE = "/var/lib/hermes/ld/config.json"
+# Fixed, never from the dotenv. The image's own config names this origin
+# outright; taking it from the agent's own dotenv instead would hand an
+# injected turn the relay bearer.
 RELAY_ORIGIN = "https://api.plow.co"
 # ld-setup mints one bearer for the viewer's message API; the calendar API is
 # its sibling behind the same bearer. Deriving it keeps ONE address in the
@@ -173,7 +173,7 @@ def relay_config(dotenv):
     """The Plow relay endpoint and bearer, or (None, the missing name).
 
     The device uid names WHICH Mac, the token authorises reaching it — the
-    same pair `just check-latch` probes. Returned rather than exited on: an
+    same pair ld-wall-setup mints. Returned rather than exited on: an
     instance that has not minted a relay credential is unconfigured, not
     broken.
     """

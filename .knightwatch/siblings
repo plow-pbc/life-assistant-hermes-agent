@@ -5,6 +5,6 @@
 # One per line. The reviewer host must also carry a SOURCE_PATHS entry for
 # each, or the sibling reports as `missing` and is never searched.
 
-plow-pbc/agent-mgr
+plow-pbc/plow-hermes-agent
 plow-pbc/str-hermes-agent
 plow-pbc/property-hunt-hermes-agent
