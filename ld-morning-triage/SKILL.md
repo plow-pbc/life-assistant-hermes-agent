@@ -136,7 +136,8 @@ and the owner's name comes from their Plow account —
 
 — while `family.partner.imessage` is the partner, named by
 `family.partner.name`. Read the name, use it, cache nothing: the account is the
-one place it lives. Otherwise use the raw handle.
+one place it lives. `(unset)` is that script saying there is no name yet, not a
+name: fall back to the raw handle, as you do for a handle that matches nobody.
 
 Ask for JSON output:
 
