@@ -136,8 +136,7 @@ All three, then read `/var/lib/hermes/ld/config.json` — **the config is the on
 record of how far this got.** Run the `ld-setup` skill when any of these is
 missing from it:
 
-- `family.owner.introduced` — or their Plow account has no display name yet
-  (`owner_profile.py get` prints `(unset)`)
+- `family.owner.introduced`
 - `weather.location`
 - `sports.followed` — present and empty counts as answered; "none" is a real
   answer
