@@ -166,7 +166,7 @@ def decode_events(raw):
     return events
 
 
-def relay_config(env=None):
+def relay_config():
     """The agent's own relay endpoint and bearer, or (None, the missing name).
 
     Both come from the container environment, which first boot fills from the
@@ -177,9 +177,8 @@ def relay_config(env=None):
     Returned rather than exited on. `PLOW_MCP_URL` is absent for a tenant whose
     relay is not switched on, and that is a supported shape, not a fault.
     """
-    env = os.environ if env is None else env
-    url = (env.get("PLOW_MCP_URL") or "").strip()
-    token = (env.get("PLOW_AGENT_TOKEN") or "").strip()
+    url = (os.environ.get("PLOW_MCP_URL") or "").strip()
+    token = (os.environ.get("PLOW_AGENT_TOKEN") or "").strip()
     for name, present in (("PLOW_MCP_URL", url), ("PLOW_AGENT_TOKEN", token)):
         if not present:
             return None, name

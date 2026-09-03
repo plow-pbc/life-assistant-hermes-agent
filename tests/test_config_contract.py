@@ -424,6 +424,44 @@ def test_the_calendar_service_hands_the_producer_no_environment():
     assert "ld/.env" not in code, "the supervisor must not touch the agent's file"
 
 
+def test_the_supervisor_bridges_the_relay_across_the_privilege_drop():
+    """The two names the producer needs, read as root and exported.
+
+    s6 writes /run/s6/container_environment 0600 root, and this service drops
+    to uid 10000 before the producer runs -- so the values first boot published
+    reach it only because the run script reads them while it still can. Delete
+    that bridge and nothing fails loudly: the producer finds no PLOW_MCP_URL,
+    reports `not configured`, and stands down on every tick with the same line
+    a household that has no wall prints. That is the failure this asserts
+    against, and it is invisible in a boot log.
+
+    The read must come BEFORE the privilege drop. Below `s6-setuidgid` it is a
+    root-only file the process can no longer open.
+    """
+    run = (FEED_SERVICE / "run").read_text()
+    code = [l for l in run.splitlines() if not l.lstrip().startswith("#")]
+    body = "\n".join(code)
+    for name in ("PLOW_MCP_URL", "PLOW_AGENT_TOKEN"):
+        assert f"/run/s6/container_environment/{name}" in body, (
+            f"the run script no longer reads {name} from the container "
+            "environment -- the producer will stand down on every tick")
+    assert "export PLOW_MCP_URL PLOW_AGENT_TOKEN" in body, (
+        "the values are read but not exported, so the producer never sees them")
+
+    drop = next(i for i, l in enumerate(code) if "s6-setuidgid" in l)
+    for name in ("PLOW_MCP_URL", "PLOW_AGENT_TOKEN"):
+        read_at = next(i for i, l in enumerate(code)
+                       if f"/run/s6/container_environment/{name}" in l)
+        assert read_at < drop, (
+            f"{name} is read after the privilege drop, where the file is "
+            "unreadable -- uid 10000 cannot open a 0600 root file")
+
+    # And ONLY those two: the allowlist is the point. Importing the directory
+    # would hand the producer the tenant's whole credential set.
+    assert "container_environment/PLOW_HOME_CHANNEL" not in body
+    assert "for f in /run/s6/container_environment" not in body
+
+
 def test_the_agent_owned_names_are_read_from_the_agents_own_file():
     """Every DOMO_/DASHBOARD_ name a producer reads comes from agent_values.
 
