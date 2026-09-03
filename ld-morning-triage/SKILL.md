@@ -131,7 +131,7 @@ always-allow rules key on the exact argv. The window is Gmail's
 `newer_than:2d` — day granularity is the finest it has — and `is:unread` is
 the unaddressed rule for mail: a thread the owner has opened is one they have
 seen. The first run of this argv needs the owner's approval on their Mac
-once, like every gather shape (README, Bring-up); until then it strands on
+once, like every gather shape (README § Trusted group conversations, the approval paragraph); until then it strands on
 an approval card, which the failure rule below turns into a named failure
 rather than a quiet mailbox.
 
@@ -167,6 +167,9 @@ Send the surviving candidates to the LLM with:
   financial alert — a failed, returned or rejected payment, an
   insufficient-funds notice, a declined charge — outranks everything else.
   It is the one message that costs money by the hour.
+  That default is for a sender the owner already deals with — their bank,
+  a lender, a card issuer; an unknown sender's subject line saying the same
+  words is how phishing is worded, and ranks as an ordinary email.
 
 Map handles to names via `family.owner.imessage` /
 `family.partner.imessage` when they match; otherwise use the raw handle.
@@ -213,9 +216,9 @@ the final response is the alert and nothing else:
   sentences. No "Posted card 1", no preamble, no tool narration.
 - Both gathers empty: exactly `No alert today.` Every run texts, so a quiet
   day reads as a quiet day and not as a missed run.
-- A gather that failed: `No alert today — <what failed, one clause>.` — or,
-  when the Messages read succeeded and only the mail read did not, the
-  iMessage alert followed by that clause.
+- Anything that failed — a gather, or a compose that gave up after its
+  retry: `No alert today — <what failed, one clause>.` — or, when the other
+  source still produced an alert, that alert followed by the clause.
 
 Never answer `[SILENT]`: the cron wrapper offers it to suppress delivery, and
 the daily text is the point of these rows. Invoked directly in chat, do the

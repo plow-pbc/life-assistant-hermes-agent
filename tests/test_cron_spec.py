@@ -23,7 +23,7 @@ def spec():
     return mod
 
 
-# The whole job contract, as one table. name -> (card, type).
+# The whole job contract, as one table. name -> (card, type, skill).
 #
 # This is what a stack of Markdown parsers used to reach for indirectly: the
 # viewer's card map read out of kiosk-protocol.md, SKILL.md's and README's
@@ -39,13 +39,13 @@ def spec():
 # in-tree, so there is no re-vendor to drift from. Card 1 is the only one a
 # producer shares: the two triage runs and calendar-nudge are all alerts.
 JOB_CONTRACT = {
-    "ld-weather":         (3, "weather"),
-    "ld-sports":          (5, "sports"),
-    "ld-morning-updates": (2, "affirmation"),
-    "ld-morning-triage":  (1, "alert"),
-    "ld-evening-triage":  (1, "alert"),
-    "ld-weekly-digest":   (4, "digest"),
-    "ld-calendar-nudge":  (1, "alert"),
+    "ld-weather":         (3, "weather",     "ld-weather"),
+    "ld-sports":          (5, "sports",      "ld-sports"),
+    "ld-morning-updates": (2, "affirmation", "ld-morning-updates"),
+    "ld-morning-triage":  (1, "alert",       "ld-morning-triage"),
+    "ld-evening-triage":  (1, "alert",       "ld-morning-triage"),
+    "ld-weekly-digest":   (4, "digest",      "ld-weekly-digest"),
+    "ld-calendar-nudge":  (1, "alert",       "ld-calendar-nudge"),
 }
 
 
@@ -58,10 +58,13 @@ def test_the_job_contract_is_exactly_this():
     wrong way), and a producer added or dropped -- the things every separate
     check here used to cover between them, without reading a single Markdown
     file. All seven rows register; the blocked/LIVE partition left with the
-    last blocked row (git history keeps the pattern)."""
+    last blocked row (git history keeps the pattern). The skill is pinned per
+    row too: the evening row deliberately attaches the morning sheet, and every
+    other row attaches its own — a row attached to a neighbour's sheet would
+    post nothing rather than fail."""
     assert {
-        (j["name"], j["card"], j["type"]) for j in spec().JOBS
-    } == {(name, card, type_) for name, (card, type_) in JOB_CONTRACT.items()}
+        (j["name"], j["card"], j["type"], j["skill"]) for j in spec().JOBS
+    } == {(name, card, type_, skill) for name, (card, type_, skill) in JOB_CONTRACT.items()}
 
 
 @pytest.mark.parametrize("job", spec().JOBS, ids=lambda j: j["name"])
@@ -130,10 +133,8 @@ def test_a_paused_job_counts_as_registered_but_not_as_runnable(tmp_path):
 
 def test_each_job_attaches_a_skill_that_exists():
     """Without --skill the scheduled turn has to find the producer by name in a
-    directory of skills, and a near-miss posts nothing rather than failing.
-    The row name and the skill name are allowed to differ: ld-evening-triage
-    is the ld-morning-triage sheet on a second clock, one sheet and one
-    wrapper serving two rows. The sheet still has to exist."""
+    directory of skills; which skill each row attaches is pinned in
+    JOB_CONTRACT, and this only checks the sheet exists."""
     for job in spec().JOBS:
         assert (ROOT / job["skill"] / "SKILL.md").is_file(), job["name"]
 

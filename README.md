@@ -201,12 +201,12 @@ Before restoring an existing agent, migrate its config in place: copy
 `calendar_nudge.owner_identities[0]` to `calendar.account` without rebuilding
 the object or changing any other preference, then require an empty result from
 `ld_config_gate.py`. The three calendar skills add that account to their exact
-gog argv; manually run and approve each new 1-day, 3-day and 7-day gather shape
-once through Latch before relying on the unattended crons. The calendar strip
-adds a fourth — its `/api/calendar` curl — for the same reason: it ticks with
-nobody there to answer an approval card. The triage's Gmail search is a
-fifth — the exact `plow-gog gmail search` argv in `ld-morning-triage/SKILL.md`
-— for the same reason. `ld-wall-setup` approves it by running
+gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
+shape — and the triage's exact `plow-gog gmail search` argv from
+`ld-morning-triage/SKILL.md` — once through Latch before relying on the
+unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
+— for the same reason: it ticks with nobody there to answer an approval card.
+`ld-wall-setup` approves it by running
 the strip once with the owner present, and an agent already carrying
 `/var/lib/hermes/ld/setup-complete` skips that phase, so one set up before the
 strip landed needs the step once, by hand, with its owner at their Mac:

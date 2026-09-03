@@ -370,10 +370,10 @@ CONTRACTS = [
     (SOUL, "**Sports**"),
     (SOUL, 'Never answer only "What can I help with?"'),
     # Only ld-morning-updates and ld-weekly-digest carry the shared-screen rule
-    # ("skip medical, private, or sensitive titles"). ld-morning-triage has no
-    # such filter -- it paraphrases one real inbound iMessage onto the same
-    # wall -- so a blanket kid-safe promise covers the one producer that cannot
-    # keep it.
+    # ("skip medical, private, or sensitive titles"). The two triage runs have no
+    # such filter -- they paraphrase a real inbound message — an iMessage or an
+    # email — onto the same wall — so a blanket kid-safe promise covers the two
+    # runs that cannot keep it.
     (SOUL, "do not extend that promise to the morning alert"),
     # The strip is a seventh producer with no model in it, published by a
     # supervised service on its own five-minute tick -- so a turn may not
