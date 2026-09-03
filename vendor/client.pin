@@ -10,6 +10,6 @@
 #
 # The checksum is the second half of that. A sha in a URL is only as good as
 # the host serving it, and this file is executed inside the agent.
-sha=0eb0b6c982c3f61608a6efd93a0135f48fcaab81
-sha256=dade6041dba1422a7345640d9daed1873d448719412dc7f0649a5fb88781db79
+sha=46f258ebbbbb793e41af78ce942fe9b24110c784
+sha256=13c17f23b13f0245d605342d7c1b07786373fd97275937238f53c6dde628b888
 path=standalone/agent_index_client.py
