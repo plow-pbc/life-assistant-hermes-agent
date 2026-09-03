@@ -32,9 +32,9 @@ in, and that is the decision: an agent whose owner does not want their usage
 published is built without this service. A flag would only re-ask a question the
 Dockerfile has already answered, somewhere that can disagree with it.
 
-It reports as the container's own `PLOW_AGENT_TOKEN`, which first boot exports
-from the credential the host dropped in, so there is no second account and
-nothing for an owner to complete. It needs `AGENT_ID` — which agent this is —
+The pinned client uses `PLOW_AGENT_TOKEN` once to exchange for a report-only
+`aik_` key; every report authenticates with that stored key. It needs
+`AGENT_ID` — which agent this is —
 in the container's environment; without it the service says so and stands down,
 because guessing a name files this container's usage under somebody else's
 agent.
