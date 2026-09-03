@@ -37,12 +37,13 @@ def spec():
 # this table restates. Nothing guards that restatement, and nothing needs to:
 # both upstreams are being archived, which is the whole reason these files came
 # in-tree, so there is no re-vendor to drift from. Card 1 is the only one a
-# producer shares, and only because triage and calendar-nudge are both alerts.
+# producer shares: the two triage runs and calendar-nudge are all alerts.
 JOB_CONTRACT = {
     "ld-weather":         (3, "weather"),
     "ld-sports":          (5, "sports"),
     "ld-morning-updates": (2, "affirmation"),
     "ld-morning-triage":  (1, "alert"),
+    "ld-evening-triage":  (1, "alert"),
     "ld-weekly-digest":   (4, "digest"),
     "ld-calendar-nudge":  (1, "alert"),
 }
@@ -56,7 +57,7 @@ def test_the_job_contract_is_exactly_this():
     overwriting another's tile), a retyped one (the right slot rendering the
     wrong way), and a producer added or dropped -- the things every separate
     check here used to cover between them, without reading a single Markdown
-    file. All six rows register; the blocked/LIVE partition left with the
+    file. All seven rows register; the blocked/LIVE partition left with the
     last blocked row (git history keeps the pattern)."""
     assert {
         (j["name"], j["card"], j["type"]) for j in spec().JOBS
@@ -127,12 +128,14 @@ def test_a_paused_job_counts_as_registered_but_not_as_runnable(tmp_path):
     }
 
 
-def test_each_job_attaches_its_own_skill():
+def test_each_job_attaches_a_skill_that_exists():
     """Without --skill the scheduled turn has to find the producer by name in a
-    directory of skills, and a near-miss posts nothing rather than failing."""
+    directory of skills, and a near-miss posts nothing rather than failing.
+    The row name and the skill name are allowed to differ: ld-evening-triage
+    is the ld-morning-triage sheet on a second clock, one sheet and one
+    wrapper serving two rows. The sheet still has to exist."""
     for job in spec().JOBS:
-        assert job["skill"] == job["name"]
-        assert (ROOT / job["skill"] / "SKILL.md").is_file()
+        assert (ROOT / job["skill"] / "SKILL.md").is_file(), job["name"]
 
 
 class _Proc:
@@ -185,7 +188,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
     mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"})
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage",
-        "ld-weekly-digest", "ld-calendar-nudge",
+        "ld-evening-triage", "ld-weekly-digest", "ld-calendar-nudge",
     ], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -210,7 +213,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage",
-        "ld-weekly-digest", "ld-calendar-nudge",
+        "ld-evening-triage", "ld-weekly-digest", "ld-calendar-nudge",
     ], "a paused job must not be re-registered"
     out = capsys.readouterr().out
     assert "PAUSED" in out and "/opt/hermes/bin/hermes cron resume ld-weather" in out
@@ -218,7 +221,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
 
 def test_a_fresh_instance_registers_every_job(monkeypatch, tmp_path):
     """No jobs.json at all — the rebuilt-instance case this script exists
-    for — must end with all six producers scheduled."""
+    for — must end with all seven rows scheduled."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
@@ -313,17 +316,19 @@ def test_no_row_carries_a_literal_delivery_target():
         )
 
 
-def test_only_the_digest_rides_the_native_deliver_arm():
+def test_only_always_has_content_rows_ride_the_native_deliver_arm():
     """The card IS the delivery for every other live producer, and the shape
-    divide is deliberate: --deliver relays EVERY final response, which fits
-    the weekly always-has-content digest and would spam from the half-hourly
-    quiet-no-op nudge -- so the NOW-LIVE nudge's chat leg is its committed
-    post_nudge.py coordinator and its deliver stays None (the row comment
-    records this). This replaces the old tripwire that fired when a job with
-    a target went live: the resolver it demanded is back (resolve_deliver),
-    so the pin is on WHICH jobs use it."""
+    divide is deliberate: --deliver relays EVERY final response, which fits a
+    row whose every run has content -- the weekly digest, and the two triage
+    runs whose final response is the alert or the one-line "No alert today."
+    the owner's previous assistant texted every day -- and would spam from
+    the half-hourly quiet-no-op nudge, whose chat leg is its committed
+    post_nudge.py coordinator with deliver None (the row comment records
+    this). The pin is on WHICH rows use it."""
     mod = spec()
-    assert {j["name"] for j in mod.JOBS if j["deliver"]} == {"ld-weekly-digest"}
+    assert {j["name"] for j in mod.JOBS if j["deliver"]} == {
+        "ld-weekly-digest", "ld-morning-triage", "ld-evening-triage",
+    }
 
 
 ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"}

@@ -3,8 +3,8 @@
 
 Why this exists at all. `hermes cron` persists jobs to /var/lib/hermes/cron/jobs.json,
 which no rebuild replays -- so a rebuilt agent comes up with
-a wall screen that never updates and nothing to diff against. Keeping the six
-definitions here means "set up the life dashboard crons" replays a reviewed spec
+a wall screen that never updates and nothing to diff against. Keeping the seven
+rows here means "set up the life dashboard crons" replays a reviewed spec
 instead of improvising six schedules from a sentence.
 
 Schedules and prompts are ported from the retired seed's CRON_JOBS table
@@ -49,29 +49,43 @@ JOBS_FILE = "/var/lib/hermes/cron/jobs.json"
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
 LD_CONFIG = "/var/lib/hermes/ld/config.json"
 
-# The spec. One row per producer — all six are live; the blocked/LIVE
-# partition machinery left with the last blocked row (git history keeps the
-# pattern if a producer ever loses its data source again).
+# The spec. Seven rows for six producers -- the triage runs on two clocks --
+# and every row is live; the blocked/LIVE partition machinery left with the
+# last blocked row (git history keeps the pattern if a producer ever loses
+# its data source again).
 #
-# `deliver` is None for every card-only producer: the card IS the delivery, over
-# the kiosk POST. Two producers also message the owner, and they diverge on
-# purpose:
-#   - ld-weekly-digest (live) rides the cron's native --deliver arm: it is
-#     weekly and ALWAYS has content, so relaying its final response is exactly
-#     the chat leg the sheet promises. create_argv() expands the ${VAR} from the
-#     container environment, where first boot publishes PLOW_HOME_CHANNEL after
-#     asking Plow which chat this agent's owner holds -- and refuses a blank one.
-#     Run it from a turn, which inherits that environment from the gateway: a
-#     bare `docker exec` carries none of those values.
-#   - ld-calendar-nudge (live) does NOT use --deliver: it is half-hourly with
-#     quiet no-op runs, and --deliver relays EVERY final response -- its chat
-#     leg lives in its committed post_nudge.py coordinator, keeping quiet ticks silent
-#     by construction.
+# `deliver` is None for every card-only producer: the card IS the delivery,
+# over the kiosk POST. The rows that also message the owner take two paths,
+# on purpose:
+#   - ld-weekly-digest and the two triage rows ride the cron's native
+#     --deliver arm: every one of their runs has content (a digest; an alert
+#     or the one-line "No alert today."), so relaying the final response IS
+#     the chat leg -- the owner's previous assistant texted the triage at
+#     07:07 and 18:02 every day, and this keeps that. create_argv() expands
+#     the ${VAR} from the container environment, where first boot publishes
+#     PLOW_HOME_CHANNEL after asking Plow which chat this agent's owner
+#     holds -- and refuses a blank one. Run it from a turn, which inherits
+#     that environment from the gateway: a bare `docker exec` carries none
+#     of those values.
+#   - ld-calendar-nudge does NOT use --deliver: it is half-hourly with quiet
+#     no-op runs, and --deliver relays EVERY final response -- its chat leg
+#     lives in its committed post_nudge.py coordinator, keeping quiet ticks
+#     silent by construction.
 #
 # No timezone anywhere. `hermes cron create` takes no per-job zone: jobs fire in
 # the container's zone, which this image sets at boot from family.timezone.
 # require_timezone_agreement() below refuses to register unless that zone equals
 # family.timezone; the ld-config gate does not.
+
+# One prompt for two rows: the morning and evening triage are the same
+# producer on two clocks, so the text lives once.
+TRIAGE_PROMPT = (
+    "Run the ld-morning-triage producer now: surface the one most-important "
+    "unaddressed inbound -- iMessage and Gmail, both read through Latch -- "
+    "from the last 36h, post it to the kiosk as card 1, type alert, and "
+    "return the alert text as the final response."
+)
+
 JOBS = (
     {
         "name": "ld-weather",
@@ -115,13 +129,20 @@ JOBS = (
         "card": 1,
         "type": "alert",
         "schedule": "5 7 * * *",
-        "prompt": (
-            "Run the ld-morning-triage producer now: surface the one "
-            "most-important unaddressed iMessage from the last 36h and post "
-            "it to the kiosk as card 1, type alert."
-        ),
+        "prompt": TRIAGE_PROMPT,
         "skill": "ld-morning-triage",
-        "deliver": None,
+        "deliver": "plow_chat:${PLOW_HOME_CHANNEL}",
+    },
+    {
+        "name": "ld-evening-triage",
+        "card": 1,
+        "type": "alert",
+        # 18:00 on the same clock the previous assistant fired at 18:02.
+        "schedule": "0 18 * * *",
+        "prompt": TRIAGE_PROMPT,
+        # The morning sheet on a second clock: one sheet, one wrapper, two rows.
+        "skill": "ld-morning-triage",
+        "deliver": "plow_chat:${PLOW_HOME_CHANNEL}",
     },
     {
         "name": "ld-weekly-digest",
@@ -293,11 +314,11 @@ def resolve_deliver(deliver, env=None):
 
 
 def create_argv(job, env=None):
-    """The --deliver arm serves exactly one live shape: a producer whose every
-    run has content, where relaying the final response IS the chat leg
-    (ld-weekly-digest). A quiet-run producer must not take it -- --deliver
-    relays every final response, no-ops included -- which is why the live
-    nudge's deliver is None and its chat leg lives in post_nudge.py."""
+    """The --deliver arm serves one live shape: a row whose every run has
+    content, where relaying the final response IS the chat leg -- the weekly
+    digest and the two triage runs. A quiet-run producer must not take it --
+    --deliver relays every final response, no-ops included -- which is why
+    the nudge's deliver is None and its chat leg lives in post_nudge.py."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]
     if job["skill"]:
         argv += ["--skill", job["skill"]]
