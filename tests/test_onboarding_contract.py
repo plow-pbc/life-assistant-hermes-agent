@@ -348,7 +348,7 @@ def test_the_config_alone_says_whether_to_onboard():
     before the calendars exist stops the skill being invoked at all, and a
     Latch installed next week is never picked up.
     """
-    for field in ("`family.owner.name`", "`weather.location`",
+    for field in ("`family.owner.introduced`", "`weather.location`",
                   "`sports.followed`", "`calendar.sources`"):
         assert field in TRIGGER, f"{field} is not part of the condition"
     assert "present and empty counts as answered" in TRIGGER
@@ -412,7 +412,7 @@ def test_the_keys_are_asked_in_one_order_everywhere():
     and the order is the config's own. Measured when it was not: a resume with
     the city stored was asked for the city again, because the copy named it as
     "the next question" and the rule sat below the copy."""
-    order = ["family.owner.name", "weather.location", "sports.followed", "calendar.sources"]
+    order = ["family.owner.introduced", "weather.location", "sports.followed", "calendar.sources"]
     step1 = ALGORITHM[ALGORITHM.index(STEPS[0]):ALGORITHM.index(STEPS[1])]
     positions = [step1.index(f"`{key}`") for key in order]
     assert positions == sorted(positions), "step 1 lists the keys out of order"

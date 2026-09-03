@@ -87,11 +87,14 @@ Here a copy-paste can cross an **account** boundary, not just an agent one.
 ## Bring-up
 
 The agent writes its own `ld/config.json` from the owner's first DM:
-`runtime/SOUL.md` tells it that a config missing any of `family.owner.name`,
-`weather.location`, `sports.followed` or `calendar.sources` means onboarding is
-unfinished, and `ld-setup/SKILL.md` is what it runs then — a conversation, not a
-form, drafting each answer through `write_config.py` as it lands and discovering
-the calendars from the Mac through Latch once it is connected.
+`runtime/SOUL.md` tells it that a config missing any of
+`family.owner.introduced`, `weather.location`, `sports.followed` or
+`calendar.sources` means onboarding is unfinished, and `ld-setup/SKILL.md` is
+what it runs then — a conversation, not a form, drafting each answer through
+`write_config.py` as it lands and discovering the calendars from the Mac through
+Latch once it is connected. What to call the owner is not in that file: it lives
+on their Plow account, read and set through `ld-shared/scripts/owner_profile.py`,
+so the chat roster and this agent never disagree about their name.
 
 **The wall is opt-in.** Only if the owner takes that offer does the rest follow:
 `ld-wall-setup` mints the wall's token, brings the Pi up, and registers the

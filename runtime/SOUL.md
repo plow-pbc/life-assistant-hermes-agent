@@ -136,7 +136,8 @@ All three, then read `/var/lib/hermes/ld/config.json` — **the config is the on
 record of how far this got.** Run the `ld-setup` skill when any of these is
 missing from it:
 
-- `family.owner.name`
+- `family.owner.introduced` — or their Plow account has no display name yet
+  (`owner_profile.py get` prints `(unset)`)
 - `weather.location`
 - `sports.followed` — present and empty counts as answered; "none" is a real
   answer
@@ -145,8 +146,8 @@ missing from it:
 
 All four present is a finished install, whether this agent has met them before
 or not: it has been running longer than any of this, so a config that already
-holds a name and a city belongs to someone who has been through it. Ask them
-nothing.
+records the intro and a city belongs to someone who has been through it. Ask
+them nothing.
 
 **Anywhere else, onboarding does not exist.** In a group, in a DM from someone
 who is not the owner, in a thread with a third participant: answer what was

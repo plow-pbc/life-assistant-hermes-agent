@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each answer lands, and discover their calendars from the Mac through Latch once it is connected (never asking them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.name, weather.location, sports.followed or calendar.sources. Never use it in a group or in a DM from anyone else, when the owner says Latch is installed and their calendars are not yet in the config, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name). See "Changing one setting later". The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and discover their calendars from the Mac through Latch once it is connected (never asking them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources. Never use it in a group or in a DM from anyone else, when the owner says Latch is installed and their calendars are not yet in the config, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name). See "Changing one setting later". The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -24,8 +24,9 @@ owner who never wants a screen gets the first and never the second.
 
 This is a conversation, not a form. **`/var/lib/hermes/ld/config.json` is the only
 record of how far it got.** Read it first, every time, and continue from the
-first key missing: `family.owner.name`, `weather.location`, `sports.followed`,
-`calendar.sources`. The test for each is whether the KEY is there. A
+first key missing: `family.owner.introduced`, `weather.location`,
+`sports.followed`, `calendar.sources`. The test for each is whether the KEY is
+there. A
 present-but-empty `sports.followed` is answered, not unasked. "None" is a
 real answer and drafting `[]` is how it is recorded.
 
@@ -224,7 +225,7 @@ progress must not be recorded before the owner has seen the one-time message
 that progress will make a later turn skip.
 
 Writing first satisfies the first and breaks the second: a crash in the gap
-leaves their name on file and the intro bubbles never sent. Writing last
+leaves the intro marked as sent on file and the bubbles never sent. Writing last
 satisfies the second and breaks the first. So neither, and the way out is not
 a schedule of turns but one rule about when a hold is safe, below.
 
@@ -237,9 +238,12 @@ is the point. Every enumerated list of turn shapes this sheet has carried grew
 a hole, and each hole reached an owner as `❓ placeholder`, a blocking menu,
 because a turn that cannot find its own shape improvises one.
 
-**1 · Read the config.** `/var/lib/hermes/ld/config.json`, once, at the top. It is
-the only record of how far this got. There is no marker and no second source.
-The four keys, in order: `family.owner.name`, `weather.location`,
+**1 · Read the config.** `/var/lib/hermes/ld/config.json`, once, at the top, and
+run `python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py get` --
+the name is on their ACCOUNT, not in the file.
+`(unset)` means ask for it; a name means confirm it. The config is the only
+record of how far this got. There is no marker and no second source. The four
+keys, in order: `family.owner.introduced`, `weather.location`,
 `sports.followed`, `calendar.sources`. Present-but-empty is answered.
 
 **2 · Run the Latch status probe.** `latch_status.py`, as described above.
@@ -256,22 +260,34 @@ owner hears nothing about any of it.
 
 **3 · Take what this message gave you.** Their name, their city, their teams,
 their calendar picks, whatever actually arrived, judged from what they typed
-and nothing else. A roster label is not a name. Nothing arrives on a first
-turn, so nothing is collected and nothing is written.
+and nothing else. A roster label is not a name. **Learned** covers both
+openers: a name typed cold, and the account's name just confirmed or corrected.
+Nothing arrives on a first turn, so nothing is collected and nothing is
+written.
 
 **4 · Write everything you hold that is not yet in the config, NOW, before
 the message.** One draft, carrying everything held, never just the newest.
 
+The name is not part of that draft. It goes to their ACCOUNT, in the same
+turn, before the intro:
+
+    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set "<exactly what they said>"
+
+Its printed line is the name as stored; say that name back. What the draft
+carries in its place is `{"family": {"owner": {"introduced": true}}}` -- that
+the intro went out, and nothing about what they are called.
+
 There is exactly ONE deferral, and it is not "whenever the turn ends on a
 question". It is the turn that has just learned their name **and** is sending
-the intro bubbles: that turn holds the name back and the next turn writes it,
-because the intro is one-time and a crash between the write and the message
-would skip it for good. Nothing else is ever held: the turn their city
-lands on writes the name **and** the city and asks about teams; the turn their
-teams land on writes the teams.
+the intro bubbles: that turn holds `family.owner.introduced` back and the next
+turn writes it, because the intro is one-time and a crash between the write and
+the message would skip it for good. The name itself is never held -- it is on
+the account the moment they say it. Nothing else is ever held either: the turn
+their city lands on writes the marker **and** the city and asks about teams;
+the turn their teams land on writes the teams.
 
 That one deferral lapses when the turn asks nothing, because nothing is coming
-back to carry it. Then the name is written now, in this turn, alongside the
+back to carry it. Then the marker is written now, in this turn, alongside the
 intro bubbles it sends and the close.
 
 **5 · Compose the one message**, delivered as the turn's bubbles in this shape:
@@ -281,10 +297,10 @@ intro bubbles it sends and the close.
 - **then the intro, if their name was learned THIS turn**, delivered as the
   sequence of separate bubbles in "The intro, a sequence of bubbles in one turn"
   below. The WHOLE intro goes this turn, one bubble after another, without
-  waiting for the owner to reply between them. It is NOT paced across turns. A
-  name already in the config means the intro has already been sent; nothing
-  records that it was, deliberately, because a second record of progress is the
-  bug this file exists without. Re-introducing yourself to someone who has been
+  waiting for the owner to reply between them. It is NOT paced across turns.
+  `family.owner.introduced` in the config means the intro has already been sent;
+  nothing records WHICH bubbles went, deliberately, because a second record of
+  progress is the bug this file exists without. Re-introducing yourself to someone who has been
   talking to you for a week is the worse of the two errors, and it is the one an
   owner notices. Where a listing CAME BACK this turn, the pitch-and-link
   paragraph is the only part dropped; the rest of the intro stands;
@@ -305,38 +321,41 @@ algorithm is right.
 
 - nothing stored, first message → nothing collected, nothing written, send the
   opener and ask the name;
-- name just given, nothing stored → send the whole intro this turn as its
-  sequence of bubbles (gist, app, privacy, previews, catch and link), then ask
-  the city, and hold the name (the one deferral). Do not wait between the intro
-  bubbles;
+- name just given, nothing stored → set it on the account, send the whole intro
+  this turn as its sequence of bubbles (gist, app, privacy, previews, catch and
+  link), then ask the city, and hold `family.owner.introduced` (the one
+  deferral). Do not wait between the intro bubbles;
 - name just given, city and teams already stored, Latch unconfigured → nothing
-  left to ask, so the deferral lapses: write the name now, send the whole intro
-  this turn, and close;
-- city just given → write the name and the city together, ask about teams; the
+  left to ask, so the deferral lapses: write the marker now, send the whole
+  intro this turn, and close;
+- city just given → write the marker and the city together, ask about teams; the
   intro already went on the turn the name was learned, so it is not resent;
 - teams just given, calendars still missing and Latch unconfigured → write the
   teams, and close;
-- name already in the config, city missing → the intro has already been sent;
-  just ask the city.
+- `family.owner.introduced` already in the config, city missing → the intro has
+  already been sent; just ask the city.
 
 **What a crash between step 4 and step 5 costs.** A repeated question: the
 answer is on file and the message that would have asked for the next thing
 never went, so the next turn asks it again and the owner answers in four
 seconds. The exception is the terminal turn, where the deferral lapsed and the
 intro can be skipped once. Still the right trade, because the
-alternative there is not a window but a name that is never written at all.
+alternative there is a marker never written at all, and the whole intro sent
+again on every turn after.
 
 Never write ahead of the answer. A turn with nothing in hand writes nothing.
 A first turn has been told nothing yet, so it makes no draft and invents no
 name. Observed, from wording that only said "draft first": a fabricated name
-written to the config, then retracted to the owner across two messages.
+recorded, then retracted to the owner across two messages.
 
-**Nothing the owner said ever reaches a shell.** Their name, their city, and
-above all a calendar's display name, which is text a stranger wrote, are
-staged as JSON with your FILE tool and passed by path. There is no heredoc in
-this sheet for a reason. A heredoc composed around someone's words is a command
-built out of their input, and a calendar called `"; rm -rf ~; echo "` is a
-string to show the owner, not a command to run.
+**Nothing the owner said ever reaches a shell.** Their city, and above all a
+calendar's display name, which is text a stranger wrote, are staged as JSON
+with your FILE tool and passed by path. There is no heredoc in this sheet for a
+reason. A heredoc composed around someone's words is a command built out of
+their input, and a calendar called `"; rm -rf ~; echo "` is a string to show
+the owner, not a command to run. The one thing that travels as an argument is
+their own name, to `owner_profile.py set`: one quoted word, with nothing built
+around it.
 
 **`<turn>` is eight random hex characters you GENERATE, fresh each turn.**
 Generate them. Do not invent them by hand and do not copy a hex-looking string
@@ -441,10 +460,10 @@ and §5 describe. The city question comes THIS same turn, after bubble 9 (or
 after the privacy previews, where the catch and link are dropped, see below).
 
 **All of these bubbles go on the one turn the name is learned.** Do not wait for
-a reply between them, and do not spread them across turns. A name already in the
-config means the intro has already been sent, and nothing records which bubbles
-went, deliberately, because a second record of progress is the bug this file
-exists without. Re-introducing yourself to someone who has talked to you for a
+a reply between them, and do not spread them across turns. `family.owner.introduced`
+in the config means the intro has already been sent, and nothing records which
+bubbles went, deliberately, because a second record of progress is the bug this
+file exists without. Re-introducing yourself to someone who has talked to you for a
 week is the worse error, and the one an owner notices.
 
 **Bubbles 7 and 8 are gated on Latch status.** Where a listing came back this
@@ -455,22 +474,30 @@ Where the call failed, was refused, or was never made (unconfigured), the catch
 and link stand exactly as written.
 
 **Emit clean copy only, never a note about emitting it.** Between these bubbles
-you will be making tool calls (the name draft is deferred, but a turn may still
-draft or probe), and every gap between two tool calls is a bubble boundary. What
-belongs there is the next intro line, never "sending the previews now" or
+you will be making tool calls (the marker's draft is deferred, but the account
+write, a draft or a probe may still run), and every gap between two tool calls
+is a bubble boundary. What belongs there is the next intro line, never
+"sending the previews now" or
 "waiting to continue". The multi-bubble freedom is a freedom to emit the intro's
 own lines, and nothing else.
 
 ### 1 · Opener
 
-*The copy for step 5's name question, whenever `family.owner.name` is the first
-key missing, on a first message or on a resume whose other answers are long
-since stored. What the config already holds changes nothing about what this
+*The copy for step 5's name question, whenever `family.owner.introduced` is the
+first key missing, on a first message or on a resume whose other answers are
+long since stored. What the config already holds changes nothing about what this
 says.*
 
 One message, and it holds two things in this order: one warm line that they
-showed up (one line, not a greeting card), then `What should I call you?`. No
-attachment.
+showed up (one line, not a greeting card), then the name. No attachment. Which
+name question is the one thing `owner_profile.py get` decides at step 1:
+
+- `(unset)`: ask it cold -- `What should I call you?`
+- a name on the account, say `Samuel Odio`: offer the name they would say at a
+  door, the first name and its natural short form where one exists -- *"May I
+  call you Sam, or do you prefer Samuel?"* One sentence, no list. Whatever they
+  answer, in their own words, is the name, and a different name entirely is the
+  name.
 
 **Give your name, and only your name**, *if you have one.* "I'm ⟨name⟩"
 belongs in that first line, the way you would say it to someone at a door,
@@ -508,9 +535,9 @@ call them.
 privacy line, the previews, and the catch and link. These all go THIS turn, the
 turn their name was learned, as the sequence of separate bubbles from "The
 intro, a sequence of bubbles in one turn" above. You do NOT wait for the owner
-to reply between them. A name already in the config means the intro has already
-been sent. What this turn asks after the intro, and whether it writes, are step
-4's and step 5's business, not this section's.*
+to reply between them. `family.owner.introduced` in the config means the intro
+has already been sent. What this turn asks after the intro, and whether it
+writes, are step 4's and step 5's business, not this section's.*
 
 **Bubble: the greeting.** Say their name back and give your own if you have one:
 *"Hey {name}! I'm {agent-name}."* The agent name is the per-deployment name
@@ -606,13 +633,13 @@ after the intro but that question, and nothing before it but steps 1 to 4 and
 any acknowledgement of what just landed. No process note ever rides between two
 of these bubbles.
 
-**The name comes from their reply and from nothing else.** Every turn arrives
-with a roster preamble naming the chat's participants: "You", a phone number,
-a display name the phone happened to have. That is routing metadata, not an
-answer. A config that says the owner is called `You` is one nobody will ever
-correct, because from the next turn on the question looks answered. If they
-have not typed a name yet, the name is still missing, however many labels are
-in front of you.
+**The name comes from their reply, or from the account you offered them.** Every
+turn arrives with a roster preamble naming the chat's participants: "You", a
+phone number, a display name the phone happened to have. That is routing
+metadata, not an answer. An account that says the owner is called `You` is one
+nobody will ever correct, because from the next turn on the question looks
+answered. Their own reply is what settles it, and until one arrives the name
+question is still owed, however many labels are in front of you.
 
 From here on the turn-top probe is what opens §5, the moment a listing comes
 back, whether that is thirty seconds later or next week, and whether or not
@@ -636,13 +663,13 @@ what the wait is for.*
 **Their city** (or zip), when that is the one they were asked. It gives you
 their timezone and puts a weather read in their mornings.
 
-Step 4's draft carries every answer still unwritten: the name, carried since
-the intro began, and the answer that just arrived. One tool call, then the
+Step 4's draft carries every answer still unwritten: the intro marker, carried
+since the intro began, and the answer that just arrived. One tool call, then the
 message.
 
 Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
-    {"family": {"owner": {"name": "<from the name they gave>"},
+    {"family": {"owner": {"introduced": true},
                 "timezone": "<the IANA zone for the city they gave>"},
     "weather": {"location": "<their city>, <region>"}}
 
@@ -1021,6 +1048,12 @@ at all) builds the config from a full answer set, so it resets every answer
 nobody is currently restating, their teams, their extra calendars, their
 triage exclusions, silently, because a config missing those still passes the
 gate.
+
+A new name is not a config change. It lives on their account:
+
+    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set "<what they said>"
+
+and you say back the name it printed. Everything else is a patch.
 
 Use the patch mode instead. It is `--patch`, not the `--draft` onboarding uses.
 By now the config should be gate-valid, and a change that would break it is a
