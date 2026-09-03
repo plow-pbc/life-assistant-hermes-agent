@@ -7,7 +7,7 @@ the gate's output to the EXACT contract of that old jq filter:
 
   - the documented outcomes (issue #9, updated with the calendar-id invariants
     that replaced the per-source account one — see ld_config_gate.py's
-    docstring): valid → pass; blank owner name; blank/missing family.timezone;
+    docstring): valid → pass; blank/missing family.timezone;
     sources not a non-empty array; blank source calendar_id; duplicate
     calendar_id values; missing/empty/blank calendar_nudge.owner_identities;
     missing/zero/negative/non-number nudge lookaheads; leftover placeholder;
@@ -34,8 +34,7 @@ GATE = Path(__file__).resolve().parent.parent / "ld-shared" / "scripts" / "ld_co
 # The ORIGINAL jq filter, verbatim from the seeds' install-time ld_config_gate()
 # and verify-time v-ld-config — the byte-for-byte spec the python gate must match.
 JQ_FILTER = r"""
-    [ if ((.family.owner.name     // "") | test("\\S")) then empty else "family.owner.name is blank" end,
-      if ((.family.timezone       // "") | test("\\S")) then empty else "family.timezone is blank" end,
+    [ if ((.family.timezone // "") | test("\\S")) then empty else "family.timezone is blank" end,
       if ((.calendar.sources | type) == "array" and (.calendar.sources | length) >= 1)
         then empty else "calendar.sources is not a non-empty array" end,
       if ((.calendar.account // "") | test("\\S"))
@@ -57,7 +56,7 @@ JQ_FILTER = r"""
 """
 
 VALID = {
-    "family": {"owner": {"name": "Sam"}, "timezone": "America/Los_Angeles"},
+    "family": {"owner": {"introduced": True}, "timezone": "America/Los_Angeles"},
     "calendar": {"account": "owner@example.test",
                  "sources": [{"calendar_id": "owner@example.test", "name": "Personal"}]},
     "calendar_nudge": {"owner_identities": ["owner@example.test"],
@@ -72,12 +71,6 @@ VALID = {
 # from jq's accidental behavior (the empty-file and Infinity cases).
 CASES = [
     ("(a) fully valid", json.dumps(VALID), "", True),
-    ("(b) blank owner name",
-     json.dumps({**VALID, "family": {**VALID["family"], "owner": {"name": "   "}}}),
-     "family.owner.name is blank", True),
-    ("(b') missing owner name",
-     json.dumps({**VALID, "family": {**VALID["family"], "owner": {}}}),
-     "family.owner.name is blank", True),
     ("(c) sources empty array",
      json.dumps({**VALID, "calendar": {**VALID["calendar"], "sources": []}}),
      "calendar.sources is not a non-empty array", True),
@@ -165,7 +158,7 @@ CASES = [
      json.dumps({**VALID, "family": {**VALID["family"], "timezone": "   "}}),
      "family.timezone is blank", True),
     ("(f') missing timezone",
-     json.dumps({**VALID, "family": {"owner": {"name": "Sam"}}}),
+     json.dumps({**VALID, "family": {}}),
      "family.timezone is blank", True),
     ("(g) invalid JSON", "{ not json", "not valid JSON", True),
     # An empty file is the first DELIBERATE divergence: jq with no input emits
@@ -177,20 +170,20 @@ CASES = [
     ("(g') empty file → fail-closed (diverges from jq's fail-open)",
      "", "not valid JSON", False),
     # multiple simultaneous failures join with "; " in filter order.
-    ("multi: blank name + missing tz + empty sources + no calendar_nudge",
-     json.dumps({"family": {"owner": {"name": ""}}, "calendar": {"account": "", "sources": []}}),
-     "family.owner.name is blank; family.timezone is blank; "
+    ("multi: missing tz + empty sources + no calendar_nudge",
+     json.dumps({"family": {}, "calendar": {"account": "", "sources": []}}),
+     "family.timezone is blank; "
      "calendar.sources is not a non-empty array; calendar.account is blank; "
      "calendar_nudge.owner_identities is not a non-empty list of nonblank strings; "
      "calendar_nudge.lookahead_virtual_minutes is not a positive number; "
      "calendar_nudge.lookahead_in_person_minutes is not a positive number", True),
     # jq // "" semantics: a false value coalesces to "" (blank), not an error.
-    ("name false → blank",
-     json.dumps({**VALID, "family": {**VALID["family"], "owner": {"name": False}}}),
-     "family.owner.name is blank", True),
+    ("account false → blank",
+     json.dumps({**VALID, "calendar": {**VALID["calendar"], "account": False}}),
+     "calendar.account is blank", True),
     # jq errors (caught → "not valid JSON") on indexing a non-object / non-string test.
-    ("name is a number → not valid JSON",
-     json.dumps({**VALID, "family": {**VALID["family"], "owner": {"name": 5}}}),
+    ("account is a number → not valid JSON",
+     json.dumps({**VALID, "calendar": {**VALID["calendar"], "account": 5}}),
      "not valid JSON", True),
     ("family is non-object → not valid JSON",
      json.dumps({**VALID, "family": "oops"}),

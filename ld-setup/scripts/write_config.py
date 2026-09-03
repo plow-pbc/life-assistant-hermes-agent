@@ -6,9 +6,9 @@ is. Both read ONE JSON object -- from `--input PATH` where the turn staged it
 with its file tool, or from stdin -- and both write mode 600, because
 family.owner and the calendar ids are a person's data.
 
-Nothing the owner said ever reaches argv or a shell. Their name, their city and
-their calendars' display names are text a person wrote (and, for a calendar
-name, text a STRANGER wrote), so a heredoc composed around them is a command
+Nothing the owner said ever reaches argv or a shell. Their city and their
+calendars' display names are text a person wrote (and, for a calendar name,
+text a STRANGER wrote), so a heredoc composed around them is a command
 built out of someone else's input. The turn writes the JSON with its file tool
 and passes the path. Both judge the result by the shared
 gate -- ld_config_gate.gate() imported, not restated -- before writing, and
@@ -31,15 +31,15 @@ differ only in what they excuse.
              calendar_id per source, and a non-empty
              calendar_nudge.owner_identities. Onboarding never asks for any of
              them -- the calendar arrives later, through Latch's connectors --
-             so a config carrying only the name, the city and the teams can
-             never pass, and --patch would refuse every answer as it landed.
+             so a config carrying only the city and the teams can never pass,
+             and --patch would refuse every answer as it landed.
              Refusing to record what the owner just said, because of something
              they have not been asked yet, is what this avoids.
 
              It does NOT excuse a value that was supplied. Every check that
              judges something actually present is enforced exactly as --patch
-             enforces it: a blank owner name, a placeholder left in, a
-             duplicate calendar id, a lookahead that is not a positive number.
+             enforces it: a placeholder left in, a duplicate calendar id, a
+             lookahead that is not a positive number.
              Waving those through would be worse than refusing them, because
              the draft IS the record of progress -- a bad value written here
              reads on the next turn as a question already answered, and the
@@ -96,8 +96,8 @@ CONFIG = "/var/lib/hermes/ld/config.json"
 # Every key a patch may name, at every depth, taken from the committed template
 # rather than restated here -- one list to keep in step instead of two. A patch
 # is composed by a model from a sentence, and a misspelling merges in BESIDE the
-# real key rather than failing: {"family":{"owner":{"nme":"Ro"}}} passes the gate
-# on the old name and reports success while the name never changes. A top-level
+# real key rather than failing: {"weather":{"locaton":"Denver"}} passes the gate
+# on the old city and reports success while the card never changes. A top-level
 # check only catches the shallow half of that.
 EXAMPLE = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
@@ -147,7 +147,6 @@ def geocode(city):
 # more. Absent keys get filled; a key that is PRESENT is never touched, so a
 # supplied value is always judged on its own merits.
 _GATE_STANDINS = (
-    (("family", "owner", "name"), "unasked"),
     (("family", "timezone"), "UTC"),
     (("calendar", "account"), "unasked@unasked.invalid"),
     (("calendar", "sources"), [{"calendar_id": "unasked@unasked.invalid", "name": "unasked"}]),

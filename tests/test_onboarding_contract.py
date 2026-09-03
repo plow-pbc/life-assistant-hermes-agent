@@ -69,29 +69,28 @@ def test_a_draft_records_an_answer_the_gate_would_refuse(tmp_path):
     The gate wants a calendar account and its sources; onboarding never asks
     for either, because they arrive later through Latch. Under --patch every
     answer the owner gave would be refused for a question they had not been
-    asked, and the name would reach nothing.
+    asked, and none of them would reach the file.
     """
     config = tmp_path / "config.json"
-    for answer in ('{"family": {"owner": {"name": "Mary"}}}',
+    for answer in ('{"family": {"owner": {"introduced": true}}}',
                    '{"family": {"timezone": "America/Los_Angeles"}}',
                    '{"weather": {"location": "Mountain View, California", "lat": 37.4, "lon": -122.1}}',
                    '{"sports": {"followed": []}}'):
         draft(config, answer)
     written = json.loads(config.read_text())
-    assert written["family"]["owner"]["name"] == "Mary"
+    assert written["family"]["owner"]["introduced"] is True
     assert "calendar.account is blank" in gate(written), (
         "if the gate stops refusing this, --draft has no reason to exist")
 
     with pytest.raises(SystemExit) as refusal:
         wc.main(["--patch"], env=ENV, config_path=str(config),
-                stdin=io.StringIO('{"family": {"owner": {"name": "Mary"}}}'))
+                stdin=io.StringIO('{"family": {"owner": {"introduced": true}}}'))
     assert "the gate says" in str(refusal.value)
 
 
 @pytest.mark.parametrize("payload,complaint", [
-    ('{"family": {"owner": {"name": "   "}}}', "family.owner.name is blank"),
-    ('{"family": {"owner": {"name": "[OWNER_NAME]"}}}', "placeholder"),
-    ('{"family": {"owner": {"name": 5}}}', "not valid JSON"),
+    ('{"family": {"partner": {"name": "[PARTNER_NAME]"}}}', "placeholder"),
+    ('{"calendar": {"account": 5}}', "not valid JSON"),
     ('{"calendar": {"account": "a@b.test", "sources": [{"calendar_id": "", "name": "A"}]}}',
      "calendar.sources[].calendar_id is blank"),
     ('{"calendar": {"account": "a@b.test", "sources": ['
@@ -134,13 +133,13 @@ def test_a_drafted_zone_the_container_is_not_running_is_recorded(tmp_path, capsy
 
 def test_the_stand_ins_only_fill_what_is_absent():
     """fill_unasked() is the whole boundary between the two behaviours: if it
-    overwrote a key that was present, a supplied blank name would be replaced
-    by a valid stand-in and sail through."""
-    supplied = {"family": {"owner": {"name": "   "}},
+    overwrote a key that was present, a supplied blank timezone would be
+    replaced by a valid stand-in and sail through."""
+    supplied = {"family": {"timezone": "   "},
                 "calendar_nudge": {"lookahead_virtual_minutes": -5}}
     original = json.loads(json.dumps(supplied))
     filled = wc.fill_unasked(supplied)
-    assert filled["family"]["owner"]["name"] == "   "
+    assert filled["family"]["timezone"] == "   "
     assert filled["calendar_nudge"]["lookahead_virtual_minutes"] == -5
     assert filled["calendar"]["account"]
     assert filled["calendar_nudge"]["lookahead_in_person_minutes"] > 0
@@ -152,11 +151,11 @@ def test_a_draft_starts_from_nothing_but_a_patch_does_not(tmp_path):
     refusing that -- it is how a mistyped path announces itself instead of
     silently starting a new config."""
     config = tmp_path / "config.json"
-    draft(config, '{"family": {"owner": {"name": "Mary"}}}')
+    draft(config, '{"family": {"owner": {"introduced": true}}}')
     assert config.is_file()
     with pytest.raises(SystemExit) as refusal:
         wc.main(["--patch"], env=ENV, config_path=str(tmp_path / "absent.json"),
-                stdin=io.StringIO('{"family": {"owner": {"name": "Mary"}}}'))
+                stdin=io.StringIO('{"family": {"owner": {"introduced": true}}}'))
     assert "could not read" in str(refusal.value)
 
 
@@ -178,7 +177,7 @@ def test_discovery_is_what_makes_the_config_installable(tmp_path):
     stays refused.
     """
     config = tmp_path / "config.json"
-    for answer in ('{"family": {"owner": {"name": "Mary"}}}',
+    for answer in ('{"family": {"owner": {"introduced": true}}}',
                    '{"family": {"timezone": "America/Los_Angeles"}}',
                    '{"weather": {"location": "Mountain View, California", "lat": 37.4, "lon": -122.1}}',
                    '{"sports": {"followed": []}}'):
@@ -197,14 +196,14 @@ def test_discovery_is_what_makes_the_config_installable(tmp_path):
     assert gate(written) == "", f"still refused: {gate(written)}"
     assert [s["calendar_id"] for s in written["calendar"]["sources"]] == \
         [account, "fam@group.calendar.google.test"]
-    assert written["family"]["owner"]["name"] == "Mary", "discovery clobbered an earlier answer"
+    assert written["family"]["owner"]["introduced"] is True, "discovery clobbered an earlier answer"
 
 
 def test_the_lookaheads_alone_do_not_make_it_installable(tmp_path):
     """The inverse: writing the defaults is necessary, not sufficient."""
     config = tmp_path / "config.json"
     draft(config, json.dumps({
-        "family": {"owner": {"name": "Mary"}, "timezone": "America/Los_Angeles"},
+        "family": {"owner": {"introduced": True}, "timezone": "America/Los_Angeles"},
         "calendar_nudge": {"lookahead_virtual_minutes": 30,
                            "lookahead_in_person_minutes": 60}}))
     assert "calendar.account is blank" in gate(json.loads(config.read_text()))
@@ -425,9 +424,9 @@ def test_the_keys_are_asked_in_one_order_everywhere():
 
 
 def test_no_owner_text_is_ever_composed_into_a_command():
-    """Their name, their city, and above all a calendar's display name -- text a
-    STRANGER wrote -- would otherwise be a command built out of someone else's
-    input. Every script that takes owner answers reads a file the turn staged.
+    """Their city, and above all a calendar's display name -- text a STRANGER
+    wrote -- would otherwise be a command built out of someone else's input.
+    Every script that takes owner answers reads a file the turn staged.
     """
     assert "<<" not in SKILL, "a heredoc is back in the sheet"
     for line in SKILL.splitlines():
@@ -444,10 +443,10 @@ def test_write_config_takes_the_staged_path(tmp_path):
     """The seam itself, exercised: --input is what the sheet tells the turn to
     use, so it has to read a file and refuse a missing one by name."""
     staged = tmp_path / "draft.json"
-    staged.write_text('{"family": {"owner": {"name": "Mary"}}}')
+    staged.write_text('{"family": {"owner": {"introduced": true}}}')
     config = tmp_path / "config.json"
     wc.main(["--draft", "--input", str(staged)], env=ENV, config_path=str(config))
-    assert json.loads(config.read_text())["family"]["owner"]["name"] == "Mary"
+    assert json.loads(config.read_text())["family"]["owner"]["introduced"] is True
     with pytest.raises(SystemExit) as refusal:
         wc.main(["--draft", "--input", str(tmp_path / "absent.json")],
                 env=ENV, config_path=str(config))

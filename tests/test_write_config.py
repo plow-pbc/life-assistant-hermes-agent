@@ -33,17 +33,13 @@ gate = load("ld_config_gate", "ld-shared/scripts/ld_config_gate.py").gate
 TZ = "America/Chicago"
 ENV = {"TZ": TZ}
 FULL = {
-    "owner_name": "Rowan", "owner_email": "rowan@example.test",
+    "owner_email": "rowan@example.test",
     "owner_imessage": "+15550001111", "city": "Chicago", "timezone": TZ,
     "has_mac": True, "mac_username": "rowan",
     "extra_calendar_ids": ["fam@group.calendar.google.com"],
     "people": ["Mary"], "teams": [{"abbr": "chc", "sport": "baseball", "league": "mlb"}],
     "digest_length": "short",
 }
-MINIMAL = {"owner_name": "Rowan", "owner_email": "rowan@example.test",
-           "city": "Chicago", "timezone": TZ, "has_mac": False}
-
-
 def fake_geocode(city):
     """Open-Meteo, stubbed. No test in this suite touches the network: a live
     lookup makes the suite fail on a train, and it made this one flaky."""
@@ -62,7 +58,7 @@ def live_config():
     # Built here rather than through a whole-config mode: that mode was a form,
     # and it is gone. This is the shape --patch expects to find on disk.
     return {
-        "family": {"owner": {"name": FULL["owner_name"], "imessage": FULL["owner_imessage"]},
+        "family": {"owner": {"introduced": True, "imessage": FULL["owner_imessage"]},
                    "people": list(FULL["people"]), "timezone": TZ},
         "calendar": {"account": FULL["owner_email"],
                      "sources": [{"calendar_id": FULL["owner_email"], "name": "Personal"},
@@ -110,18 +106,18 @@ def test_a_write_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):
     target.parent.mkdir(parents=True)
     target.write_text(json.dumps(live_config()))
     capsys.readouterr()
-    wc.main(["--patch"], stdin=io.StringIO('{"family": {"owner": {"name": "Ro"}}}'),
+    wc.main(["--patch"], stdin=io.StringIO('{"family": {"people": ["Ro"]}}'),
             env=ENV, config_path=str(target))
     assert "geocoded:" not in capsys.readouterr().out
 
 
 def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
     current = live_config()
-    merged = wc.apply_patch({"family": {"owner": {"name": "Ro"}}}, current, ENV)[0]
-    assert merged["family"]["owner"]["name"] == "Ro"
+    merged = wc.apply_patch({"family": {"owner": {"imessage": "+15550002222"}}}, current, ENV)[0]
+    assert merged["family"]["owner"]["imessage"] == "+15550002222"
     # Everything the owner did not restate: the sibling key inside the object
     # that was patched, and every other section.
-    assert merged["family"]["owner"]["imessage"] == FULL["owner_imessage"]
+    assert merged["family"]["owner"]["introduced"] is True
     assert merged["calendar"] == current["calendar"]
     assert merged["weather"] == current["weather"]
     assert gate(merged) == ""
@@ -217,7 +213,7 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
                                      f'CONFIG = {str(target)!r}'))
     proc = subprocess.run(
         [sys.executable, str(script), "--patch"],
-        input=json.dumps({"family": {"owner": {"name": "Ro"}}}),
+        input=json.dumps({"family": {"people": ["Ro"]}}),
         capture_output=True, text=True,
         # The copy lives outside the repo, so the shared gate and lock helper
         # it imports by relative path have to be reachable some other way.
@@ -247,7 +243,7 @@ def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypa
     monkeypatch.setattr(wc.os, "replace", boom)
     with pytest.raises(OSError):
         wc.main(["--patch"], env=ENV, config_path=str(target),
-                stdin=io.StringIO(json.dumps({"family": {"owner": {"name": "Ro"}}})))
+                stdin=io.StringIO(json.dumps({"family": {"people": ["Ro"]}})))
 
     assert target.read_bytes() == before
     # And nothing half-written left beside it for the next run to trip over.
@@ -300,11 +296,11 @@ def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch, run_concurre
         return lambda: wc.main(["--patch"], stdin=io.StringIO(json.dumps(payload)),
                                env=ENV, config_path=str(target))
 
-    assert not run_concurrently(patch({"family": {"owner": {"name": "Ro"}}}),
+    assert not run_concurrently(patch({"family": {"people": ["Ro"]}}),
                                 patch({"weekly_digest": {"length": "long"}}))
 
     written = json.loads(target.read_text())
-    assert written["family"]["owner"]["name"] == "Ro", "the name write was lost"
+    assert written["family"]["people"] == ["Ro"], "the household write was lost"
     assert written["weekly_digest"]["length"] == "long", "the digest write was lost"
     # And the rest is intact, so neither writer replaced the file with its own
     # partial view of it.
@@ -326,18 +322,18 @@ def test_two_first_drafts_race_before_the_directory_exists(tmp_path, run_concurr
         return lambda: wc.main(["--draft"], stdin=io.StringIO(json.dumps(payload)),
                                env=ENV, config_path=str(target))
 
-    assert not run_concurrently(draft({"family": {"owner": {"name": "Ro"}}}),
+    assert not run_concurrently(draft({"family": {"people": ["Ro"]}}),
                                 draft({"sports": {"followed": []}}))
 
     written = json.loads(target.read_text())
-    assert written["family"]["owner"]["name"] == "Ro", "the name draft was lost"
+    assert written["family"]["people"] == ["Ro"], "the household draft was lost"
     assert "followed" in written.get("sports", {}), "the teams draft was lost"
     assert oct(target.parent.stat().st_mode)[-3:] == "700", (
         "the directory the lock created holds a person's data")
 
 
 def test_a_staged_input_is_removed_after_a_write_and_kept_after_a_refusal(tmp_path):
-    """The staged file is the owner's own words -- a name, a city, calendar ids.
+    """The staged file is the owner's own words -- their household, a city, calendar ids.
 
     Left beside the config it is a second copy with no reader, and a later turn
     that finds a stale one can act on an answer nobody just gave. Removed only
@@ -347,10 +343,10 @@ def test_a_staged_input_is_removed_after_a_write_and_kept_after_a_refusal(tmp_pa
     target = tmp_path / "ld" / "config.json"
     staged = tmp_path / ".draft-abcd1234.json"
 
-    staged.write_text('{"family": {"owner": {"name": "Ro"}}}')
+    staged.write_text('{"family": {"people": ["Ro"]}}')
     wc.main(["--draft", "--input", str(staged)], env=ENV, config_path=str(target))
     assert not staged.exists(), "the staged answers outlived the write"
-    assert json.loads(target.read_text())["family"]["owner"]["name"] == "Ro"
+    assert json.loads(target.read_text())["family"]["people"] == ["Ro"]
 
     staged.write_text('{"wether": {"location": "Denver"}}')
     with pytest.raises(SystemExit):
@@ -384,7 +380,7 @@ def test_a_staged_input_that_cannot_be_removed_is_reported(tmp_path, monkeypatch
     non-zero so a caller cannot read the run as clean."""
     target = tmp_path / "ld" / "config.json"
     staged = tmp_path / ".draft-abcd1234.json"
-    staged.write_text('{"family": {"owner": {"name": "Ro"}}}')
+    staged.write_text('{"family": {"people": ["Ro"]}}')
 
     def refuse_remove(path):
         raise OSError(13, "Permission denied")
@@ -396,4 +392,4 @@ def test_a_staged_input_that_cannot_be_removed_is_reported(tmp_path, monkeypatch
     assert "could not remove the staged answers" in message
     assert "wrote" in message, "the caller is not told the write landed"
     # The write really did land -- this is a partial success, reported as one.
-    assert json.loads(target.read_text())["family"]["owner"]["name"] == "Ro"
+    assert json.loads(target.read_text())["family"]["people"] == ["Ro"]
