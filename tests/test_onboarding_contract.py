@@ -100,7 +100,6 @@ def test_a_draft_records_an_answer_the_gate_would_refuse(tmp_path):
      "not unique"),
     ('{"calendar_nudge": {"owner_identities": []}}', "non-empty list"),
     ('{"calendar_nudge": {"lookahead_virtual_minutes": -5}}', "positive number"),
-    ('{"family": {"timezone": "America/New_York"}}', "restart"),
     ('{"wether": {"location": "Denver"}}', "unknown config key"),
 ])
 def test_a_draft_refuses_a_value_that_was_actually_supplied(tmp_path, payload, complaint):
@@ -115,6 +114,23 @@ def test_a_draft_refuses_a_value_that_was_actually_supplied(tmp_path, payload, c
         draft(config, payload)
     assert complaint in str(refusal.value)
     assert not config.exists(), "a refused draft must leave nothing behind"
+
+
+def test_a_drafted_zone_the_container_is_not_running_is_recorded(tmp_path, capsys):
+    """The one supplied value a draft does NOT refuse, and the reason it cannot.
+
+    Onboarding asks where the household lives on a container that booted before
+    there was a config to read a zone from -- so it is running UTC, by design,
+    and every real answer disagrees with it. Refusing here made the disagreement
+    permanent: the owner could not record their zone, so the boot that would fix
+    it could never be the boot that read it. It is written, and the restart is
+    named in the same tool result.
+    """
+    config = tmp_path / "config.json"
+    draft(config, '{"family": {"timezone": "America/New_York"}}')
+    assert json.loads(config.read_text())["family"]["timezone"] == "America/New_York"
+    out = capsys.readouterr().out
+    assert "America/New_York" in out and "restart" in out
 
 
 def test_the_stand_ins_only_fill_what_is_absent():

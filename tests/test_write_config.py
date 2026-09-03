@@ -153,12 +153,48 @@ def test_a_new_city_takes_its_coordinates_with_it():
     ({"family": {"owner": {"nme": "Ro"}}}, "'family.owner.nme'"),
     ({"sports": {"followed": [{"abbr": "bos", "leage": "mlb"}]}},
      "'sports.followed[0].leage'"),
-    ({"family": {"timezone": "America/Los_Angeles"}}, "restart"),
-], ids=["section", "nested", "list-item", "timezone"])
+], ids=["section", "nested", "list-item"])
 def test_an_invalid_patch_refuses_and_names_what_is_wrong(patch, expected):
     with pytest.raises(SystemExit) as e:
         wc.apply_patch(patch, live_config(), ENV)
     assert expected in str(e.value)
+
+
+def test_a_zone_the_container_is_not_running_is_written_and_reported():
+    """The deadlock this used to be: TZ is fixed at boot FROM this file, so a
+    first boot has no config, comes up UTC, and a refusal here meant the owner
+    could never record any zone but UTC -- they answer "America/Los_Angeles"
+    and the one script that writes it declines, forever. It is written now, and
+    the disagreement is said out loud instead."""
+    merged, _, note = wc.apply_patch(
+        {"family": {"timezone": "America/Los_Angeles"}}, live_config(), {"TZ": "UTC"})
+    assert merged["family"]["timezone"] == "America/Los_Angeles"
+    assert "America/Los_Angeles" in note and "UTC" in note
+    assert "restart" in note, "the owner has to be told what makes it take effect"
+
+
+def test_a_zone_that_agrees_with_the_container_says_nothing():
+    """No note when there is nothing to say: a line about a restart on every
+    ordinary patch is a line nobody reads on the one that matters."""
+    _, _, note = wc.apply_patch({"family": {"owner": {"name": "Ro"}}}, live_config(), ENV)
+    assert note is None
+
+
+def test_the_restart_notice_reaches_the_caller_with_the_write(tmp_path, monkeypatch, capsys):
+    """Through main(), the way a turn actually sees it -- and only after the
+    write landed, so a refusal never prints a note about a zone that is not in
+    the file."""
+    monkeypatch.setattr(wc, "geocode", fake_geocode)
+    target = tmp_path / "ld" / "config.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(live_config()))
+    capsys.readouterr()
+    wc.main(["--patch"], stdin=io.StringIO('{"family": {"timezone": "America/Los_Angeles"}}'),
+            env={"TZ": "UTC"}, config_path=str(target))
+    out = capsys.readouterr().out
+    assert f"wrote {target}" in out
+    assert "restart" in out and "America/Los_Angeles" in out
+    assert json.loads(target.read_text())["family"]["timezone"] == "America/Los_Angeles"
 
 
 def test_a_patch_the_gate_would_refuse_never_reaches_the_file(tmp_path, monkeypatch):
