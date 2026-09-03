@@ -64,9 +64,10 @@ tracked tree stay identical for everyone:
 Nothing is pre-staged for anyone. There is no credential to hand over before
 bring-up; the activation exchange mints it.
 
-Latch is bound the same way: the relay credential is `DOMO_DEVICE_UID` /
-`DOMO_MCP_TOKEN` in the agent's own dotenv, minted from that owner's Mac. The
-image is shared; the Mac those values resolve to is not.
+Latch is bound the same way: the relay is the agent's own, `PLOW_MCP_URL` and
+`PLOW_AGENT_TOKEN`, resolved by first boot from the credential the host dropped
+in and published where nothing the agent runs can write. The image is shared;
+the Mac that relay resolves to is not.
 
 ## What an agent cannot reach
 
@@ -240,9 +241,11 @@ owner's Mac: `plow_read_file`, `plow_write_file`, `plow_run_command`,
 and tells the Mac who is asking; the Mac authorises each action, so the approval
 surface stays on that machine rather than here.
 
-Credentials live in the agent's own dotenv, `ld/.env`, as `DOMO_DEVICE_UID` +
-`DOMO_MCP_TOKEN`, minted from that Mac (`POST /v1/relay/agents`, which needs the
-`relay:device` scope only that machine holds). The token travels in a header,
+The credential is the agent's own: first boot asks Plow who this agent is and
+publishes the relay it is told about as `PLOW_MCP_URL`, reached with
+`PLOW_AGENT_TOKEN` — the same relay the gateway itself uses. Nothing here mints
+or holds a per-device pair, and an agent whose owner has no relay switched on
+simply has no `PLOW_MCP_URL` and stands down. The token travels in a header,
 never in the URL.
 
 **The gateway's config is not in this repo.** Model, plugins and `mcp_servers`

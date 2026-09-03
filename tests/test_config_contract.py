@@ -374,9 +374,9 @@ FEED_SERVICE = ROOT / "image" / "s6-overlay" / "s6-rc.d" / "life-calendar-feed"
 # write, so a turn cannot re-point the API base its bearer is sent to.
 AGENT_OWNED = {
     "DASHBOARD_DELIVERY", "DASHBOARD_ENDPOINT_URL", "DASHBOARD_PI_USER",
-    "DASHBOARD_TOKEN", "DOMO_DEVICE_UID", "DOMO_MCP_TOKEN",
+    "DASHBOARD_TOKEN",
 }
-AGENT_NAME_RE = re.compile(r"""["'](DOMO_[A-Z0-9_]+|DASHBOARD_[A-Z0-9_]+)["']""")
+AGENT_NAME_RE = re.compile(r"""["'](DASHBOARD_[A-Z0-9_]+)["']""")
 DOTENV_READERS = sorted(
     str(path.relative_to(ROOT))
     for path in ROOT.glob("ld-*/scripts/*.py")
@@ -458,7 +458,7 @@ def test_the_calendar_service_hands_the_producer_two_names_and_nothing_else():
 
 
 def test_the_agent_owned_names_are_read_from_the_agents_own_file():
-    """Every DOMO_/DASHBOARD_ name a producer reads comes from agent_values.
+    """Every DASHBOARD_ name a producer reads comes from agent_values.
 
     A producer left on Hermes' own dotenv would read a name nothing writes
     there and stand down for the life of the agent -- and
