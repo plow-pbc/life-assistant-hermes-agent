@@ -124,13 +124,16 @@ measured through the live door on 2026-09-01):
 
     ["plow-gog", "gmail", "search",
      "newer_than:2d is:unread -category:promotions -category:social",
-     "--max", "25", "--json", "--fields", "id,date,from,subject"]
+     "--max", "50", "--json", "--fields", "id,date,from,subject"]
 
 Byte-identical every run, for the same reason as the SQL above: Latch
 always-allow rules key on the exact argv. The window is Gmail's
 `newer_than:2d` — day granularity is the finest it has — and `is:unread` is
 the unaddressed rule for mail: a thread the owner has opened is one they have
-seen. The first run of this argv needs the owner's approval on their Mac
+seen. `--max` is per account — `plow-gog` runs gog once per connected account
+and merges newest-first — so 50 keeps two days of unread mail whole for each
+mailbox rather than dropping yesterday's bank alert behind today's newer
+mail. The first run of this argv needs the owner's approval on their Mac
 once, like every gather shape (README § Trusted group conversations, the
 approval paragraph); until then it strands on an approval card, which the
 failure rule below turns into a named failure rather than a quiet mailbox.
@@ -182,6 +185,11 @@ Ask for JSON output:
       "why_now": "<one sentence explaining contextual urgency>",
       "alert_text": "<≤115 chars, neutral voice, paraphrased — never quote message bodies verbatim>"
     }
+
+An email's `alert_text` names the event, never the figures — no amounts, no
+account or reference numbers, no full email addresses; "the mortgage payment
+bounced at Mercury" is the alert, and the numbers stay in the mail. The kiosk
+is a shared screen; `why_now` reaches only the owner and may carry them.
 
 If the LLM returns malformed JSON, empty `alert_text`, or `alert_text` over
 115 chars, retry once. If still malformed or empty, post nothing — never
