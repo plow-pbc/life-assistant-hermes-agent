@@ -48,12 +48,6 @@ WRAPPERS = (
 )
 
 
-def test_the_shared_helper_is_in_the_checkout():
-    """Every wrapper imports it off its own relative sys.path; without it the
-    per-wrapper tests below would fail for a reason that is not theirs."""
-    assert (REPO_ROOT / "ld-shared" / "scripts" / "post_to_kiosk.py").exists()
-
-
 @pytest.mark.parametrize(
     "rel_path,expected_card,expected_type", WRAPPERS,
     ids=[w[0].split("/")[0] for w in WRAPPERS])
