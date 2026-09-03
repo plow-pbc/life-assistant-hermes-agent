@@ -29,6 +29,7 @@ FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-63c8b9c107ad2f3cae64357d235a
 COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
 COPY ld-calendar-nudge/   /var/lib/hermes/skills/ld-calendar-nudge/
 COPY ld-dashboard/        /var/lib/hermes/skills/ld-dashboard/
+COPY ld-email-inbox/      /var/lib/hermes/skills/ld-email-inbox/
 COPY ld-morning-triage/   /var/lib/hermes/skills/ld-morning-triage/
 COPY ld-morning-updates/  /var/lib/hermes/skills/ld-morning-updates/
 COPY ld-setup/            /var/lib/hermes/skills/ld-setup/

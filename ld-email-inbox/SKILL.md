@@ -1,12 +1,13 @@
 ---
 name: ld-email-inbox
-description: Read the assistant's own public mailbox (elm@plow.co) on demand. Use when the owner asks about email — "did you see my email?", "what did Mark send?", "anything in your inbox?" — or refers to something they emailed or copied you on.
+description: Read the assistant's own public mailbox on demand. Use when the owner asks about email — "did you see my email?", "what did Mark send?", "anything in your inbox?" — or refers to something they emailed or copied you on.
 ---
 
 # The assistant's own mailbox
 
 The owner can reach this assistant two ways: text its phone number, or email
-its address. This sheet is the second half. It answers a question asked in
+its address. This sheet is the second half. Which address that is depends on
+which assistant this is, and the API answers it — nothing here names one. It answers a question asked in
 chat by reading the mailbox live.
 
 There is no poller, no inbox copy, and no reply-by-email. Mail arriving needs
@@ -16,7 +17,7 @@ design, and it is why nothing here stores anything.
 ## Run it
 
 ```
-python3 /opt/data/skills/ld-email-inbox/scripts/read_inbox.py --days 7
+python3 /var/lib/hermes/skills/ld-email-inbox/scripts/read_inbox.py --days 7
 ```
 
 `--days` is the lookback window (default 7). Widen it when the owner refers to
@@ -29,9 +30,9 @@ this sheet cannot widen it, and a thread with even one message the owner never
 received is withheld whole.
 
 Which mailbox is not configured anywhere. The API hands this credential the
-one email line whose persona matches this assistant's own — Elm's credential
-gets elm@plow.co — so the script asks for the list and expects exactly one. If
-it ever sees two it refuses instead of guessing.
+one email line whose persona matches this assistant's own, so the script asks
+for the list and expects exactly one. If it ever sees two it refuses instead of
+guessing.
 
 The credential is the instance's own `PLOW_AGENT_TOKEN`, already in the
 environment. Nothing needs minting or granting.

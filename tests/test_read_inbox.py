@@ -97,7 +97,7 @@ def test_the_whole_message_is_labelled_as_someone_elses_words():
     # sender-written part of the message is inside the fence.
     start = rendered.index(ri.OPEN)
     end = rendered.index(ri.CLOSE)
-    for sender_written in ("mark@example.com", "sam@odio.com", "wire the deposit"):
+    for sender_written in ("Lease renewal", "mark@example.com", "sam@odio.com", "wire the deposit"):
         assert start < rendered.index(sender_written) < end
 
 

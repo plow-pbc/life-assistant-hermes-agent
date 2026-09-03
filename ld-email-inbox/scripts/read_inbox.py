@@ -7,7 +7,7 @@ only place the mail lives.
 
 Which mailbox needs no configuring. `GET /v1/lines` returns the email line
 this credential can reach and no other -- the API matches the caller's
-assistant persona against the mailbox's, so Elm is handed elm@plow.co and
+assistant persona against the mailbox's, so each assistant is handed its own and
 nothing else. A second one in that list would mean the server's rule changed
 under us, so this refuses rather than guessing which is ours.
 
@@ -101,7 +101,7 @@ def render(thread):
     messages = thread.get("messages", [])
     # Subject lives on the message, not the thread; the first one names it.
     subject = (messages[0].get("subject") if messages else "") or "(no subject)"
-    out = [f"## {defang(subject)}", OPEN]
+    out = [OPEN, f"## {defang(subject)}"]
     for message in messages:
         out.append(f"\nFrom: {defang(message.get('from_address', '?'))}  ({defang(message.get('date', '?'))})")
         for field in ("to", "cc"):

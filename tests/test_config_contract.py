@@ -51,6 +51,25 @@ def test_no_credential_file_is_tracked():
 SKILL_DIRS = sorted(p.name for p in ROOT.glob("ld-*") if p.is_dir())
 
 
+def test_every_skill_in_the_tree_is_copied_into_the_image():
+    """A skill the Dockerfile forgets ships as an empty promise.
+
+    The COPY list is written by hand while the tree grows on its own, so the two
+    drift silently in exactly one direction: a skill is added, reviewed, merged,
+    and simply is not in the image -- every test still green, because nothing
+    else compared them. `ld-email-inbox` was omitted that way.
+
+    What counts as a skill is having a SKILL.md, the same thing the path check
+    below means by it. `ld-viewer-dev` has none: it is developer tooling that
+    matches the glob, and it is not copied because it is not a skill.
+    """
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    skills = sorted(p.parent.name for p in ROOT.glob("ld-*/SKILL.md"))
+    missing = [name for name in skills if f"COPY {name}/" not in dockerfile]
+
+    assert missing == [], f"in the tree but never copied into the image: {', '.join(missing)}"
+
+
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     """Every path a SKILL.md hands the agent, checked where the agent will use it.
 
