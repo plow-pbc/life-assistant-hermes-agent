@@ -477,10 +477,13 @@ def test_the_agent_owned_names_are_read_from_the_agents_own_file():
             f"{relative} names {sorted(named)} but does not read the agent's own file")
         assert "dotenv_values(DOTENV)" not in text, (
             f"{relative} reads an agent-owned name out of Hermes' own dotenv")
-    # Three: the calendar feed no longer reads an agent-owned name at all --
-    # its relay is the agent's own, out of the container environment -- so it
-    # drops out of this scan rather than failing it.
-    assert len(checked) >= 3, f"only {checked} were checked -- the scan stopped finding producers"
+    # Two, and both halves of that number are deliberate. The calendar feed
+    # drops out of this scan because its relay is the agent's own, read from
+    # the container environment rather than from any file; ld-payments went
+    # with the fleet. What is left is the pair that really does read
+    # agent-owned names, and the floor exists so a scan that stops finding
+    # them fails instead of passing on an empty list.
+    assert len(checked) >= 2, f"only {checked} were checked -- the scan stopped finding producers"
 
 
 def test_the_agents_own_file_lives_in_a_directory_it_owns():
