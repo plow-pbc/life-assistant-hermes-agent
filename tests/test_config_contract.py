@@ -359,10 +359,11 @@ WALL = ("ld-wall-setup", "SKILL.md")
 
 CONTRACTS = [
     # A first message answered "What can I help with?" by an assistant that
-    # runs six named things for the household.
-    (SOUL, "Six producers run on a schedule"),
+    # runs seven scheduled things for the household.
+    (SOUL, "Seven scheduled runs"),
     (SOUL, "**Morning updates**"),
     (SOUL, "**Morning triage**"),
+    (SOUL, "**Evening triage**"),
     (SOUL, "**Weekly digest**"),
     (SOUL, "**Calendar nudge**"),
     (SOUL, "**Weather**"),
@@ -379,11 +380,13 @@ CONTRACTS = [
     # claim it as work it did.
     (SOUL, "It refreshes whether or not you"),
     (SOUL, "not yours to claim you refreshed"),
-    # No mail connector is installed, so an offer to read the OWNER's mail
-    # cannot be kept -- but the assistant's own public mailbox now can be, and
-    # a prompt that denies it makes ld-email-inbox unreachable by asking.
+    # No mail connector is installed. The owner's Gmail is read only where a
+    # producer's sheet says so (the triage, through Latch's plow-gog), so an
+    # open offer to search their inbox is one nothing here can keep -- while
+    # the assistant's own public mailbox stays reachable by asking
+    # (ld-email-inbox), and a prompt denying it would make that unreachable.
     (SOUL, "Never advertise smart-home control, documents, spreadsheets, or"),
-    (SOUL, "access to the owner's Gmail"),
+    (SOUL, "The owner's Gmail is read where a producer's sheet says so"),
     (SOUL, "public mailbox on demand"),
     # Browsing is the one that cannot be flatly denied -- the Latch server does
     # expose browser tools -- so it is bounded by whether a skill asks for them,

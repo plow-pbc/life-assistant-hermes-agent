@@ -164,15 +164,17 @@ published.
 ## No connectors, and what that costs
 
 `plow-connectors` — the skill that reached this owner's Gmail, Google Calendar
-and Slack with the gateway's own `PLOW_AGENT_TOKEN` — is not installed, and
-nothing here replaces it.
+and Slack with the gateway's own `PLOW_AGENT_TOKEN` — is not installed. Only
+Slack stays out of reach: Google Calendar and Gmail are read through Latch's
+vendored `gog` and `plow-gog` on the owner's Mac instead.
 
 That is a deliberate trade. The two producers that need no account —
 `ld-weather` (NWS) and `ld-sports` (ESPN) — work immediately, as does
-`ld-morning-triage`, read from the Mac's iMessage DB through Latch, and the
-three calendar producers — `ld-morning-updates`, `ld-weekly-digest`,
+the triage — `ld-morning-triage` at 07:05 and `ld-evening-triage` at 18:00,
+iMessage and Gmail read through Latch, texted to the owner — and the three
+calendar producers — `ld-morning-updates`, `ld-weekly-digest`,
 `ld-calendar-nudge` — whose calendar reads go through Latch's vendored `gog`.
-`ld-dashboard` carries all six schedules.
+`ld-dashboard` carries all seven schedules.
 
 ## Trusted group conversations
 
@@ -202,7 +204,9 @@ the object or changing any other preference, then require an empty result from
 gog argv; manually run and approve each new 1-day, 3-day and 7-day gather shape
 once through Latch before relying on the unattended crons. The calendar strip
 adds a fourth — its `/api/calendar` curl — for the same reason: it ticks with
-nobody there to answer an approval card. `ld-wall-setup` approves it by running
+nobody there to answer an approval card. The triage's Gmail search is a
+fifth — the exact `plow-gog gmail search` argv in `ld-morning-triage/SKILL.md`
+— for the same reason. `ld-wall-setup` approves it by running
 the strip once with the owner present, and an agent already carrying
 `/var/lib/hermes/ld/setup-complete` skips that phase, so one set up before the
 strip landed needs the step once, by hand, with its owner at their Mac:
@@ -223,11 +227,11 @@ runtime/        SOUL.md: the persona and the setup rule. No config.yaml -- the
                 model, plugins and mcp_servers are the base image's
 image/          the s6 service definition for the calendar strip's schedule
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
-ld-morning-triage/  the iMessage triage producer, read through Latch
+ld-morning-triage/  the triage producer: iMessage + Gmail through Latch, 07:05 and 18:00, texted
 ld-morning-updates/ the calendar affirmation producer, gog through Latch
 ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 calendar_feed.py -- the kiosk's calendar strip, no model in it
-ld-dashboard/   the six cron schedules, all registered
+ld-dashboard/   the seven cron schedules, all registered
 ld-setup/       first-run onboarding over chat
 ld-wall-setup/  the wall, if the owner wants one: token -> Pi over Latch -> crons
 tests/          this agent's own contract; the runtime's live in plow-hermes-agent
@@ -282,7 +286,8 @@ docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
 ## Open
 
 - **Connectors are gone, not unlinked.** This agent installs no
-  `plow-connectors`, so Gmail and Slack are unreachable however linked the
-  owner's Plow account is. Google Calendar is back — through a vendored `gog`
-  behind Latch rather than a connector skill; all three calendar producers ride
-  it. See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
+  `plow-connectors`, so Slack is unreachable however linked the
+  owner's Plow account is. Google Calendar and Gmail are back — through the
+  vendored `gog` and `plow-gog` behind Latch rather than a connector skill; the
+  three calendar producers ride the first and the triage rides the second.
+  See [No connectors, and what that costs](#no-connectors-and-what-that-costs).

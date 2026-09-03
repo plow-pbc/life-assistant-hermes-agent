@@ -1036,7 +1036,7 @@ Stage this with your file tool at `/var/lib/hermes/ld/.draft-<turn>.json`:
 
 It merges onto the live file key by key, re-runs the shared gate on the
 **merged** result, and writes mode 600. It does **not** touch the crons.
-`ld-wall-setup`'s last phase registered all six jobs and nothing here is gated on a producer being
+`ld-wall-setup`'s last phase registered all seven jobs and nothing here is gated on a producer being
 configured, so a settings change has no schedule to add, and re-running the
 registration would fail the change on unrelated paused cron state. Paste its
 whole output verbatim anyway. A chat turn does not propagate an exit code.
