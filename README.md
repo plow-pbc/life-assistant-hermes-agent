@@ -214,10 +214,14 @@ Calendar through Latch's vendored `gog`; trust changes whether that result may
 be returned to the group, not how calendar access works. Credentials,
 authentication secrets, raw tokens, and payment-card secrets remain excluded.
 
-The policy and tool live in the `hermes-plow-chat` plugin, which the base image
-pins and bakes in, and the gateway's config is the base image's too. Adding
-group prompts or another trust flag to this repo would create a second policy
-path that the dashboard cannot update.
+The policy and tool live in the `hermes-plow-chat` plugin. The base image bakes
+it at a pinned revision, and a managed install (`agent-mgr install-plugin`) may
+put a newer copy in the agent's home, which Hermes loads instead. The
+owner-approval gate on outbound email and busy-slot bookings is that plugin's
+`pre_tool_call` hook (hermes-plow-chat #64), so a locally built image has it
+only once the base pin includes it; the gateway's config is the base image's
+too. Adding group prompts or another trust flag to this repo would create a
+second policy path that the dashboard cannot update.
 
 Before restoring an existing agent, migrate its config in place: copy
 `calendar_nudge.owner_identities[0]` to `calendar.account` without rebuilding

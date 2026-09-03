@@ -10,7 +10,7 @@ its address. This sheet is the second half. Which address that is depends on
 which assistant this is, and the API answers it — nothing here names one. It answers a question asked in
 chat by reading the mailbox live.
 
-There is no poller, no inbox copy, and no reply-by-email. Mail arriving needs
+There is no poller, no inbox copy, and no replying from this address. Mail arriving needs
 no response; the owner's next message is what asks about it. That is the whole
 design, and it is why nothing here stores anything.
 
