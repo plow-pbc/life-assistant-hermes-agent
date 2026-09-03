@@ -1,11 +1,11 @@
 ---
 name: ld-dashboard
-description: The life-dashboard's cron spec — the six producer schedules as reviewed data, and the idempotent registration that replays them. Use when asked to set up, re-register, inspect or repair the life dashboard crons, or after rebuilding the agent's home.
+description: The life-dashboard's cron spec — the seven producer schedules as reviewed data — six producers, the triage on two clocks — and the idempotent registration that replays them. Use when asked to set up, re-register, inspect or repair the life dashboard crons, or after rebuilding the agent's home.
 ---
 
 # Life Dashboard — the cron spec
 
-The six producer schedules, versioned. All six are registered.
+Seven rows, versioned — six producers, the triage on two clocks. All seven are registered.
 
 ## Why a skill and not a note
 
@@ -14,7 +14,7 @@ replays it on a rebuild. A rebuilt instance therefore comes up with a
 wall screen that never updates and nothing to diff against — the schedules are
 the one part of this agent's behaviour that a deploy silently drops. Keeping
 them here means "set up the life dashboard crons" replays a reviewed spec rather
-than improvising six schedules from a sentence.
+than improvising seven schedules from a sentence.
 
 ## Registering
 
@@ -47,6 +47,12 @@ a chat turn rather than an exec. Nothing for you to do about it here.)
 
 Create-if-missing, so it is safe to re-run: it reads what is already scheduled
 and creates only what is absent.
+
+Create-if-missing also means a row whose spec changed is left as it was:
+an instance that registered `ld-morning-triage` before the row carried a
+delivery target and the Gmail gather keeps the old job — prompt, skill and
+all. Remove it (`hermes cron remove <job id>`) and re-run this: the row is
+recreated from the current spec and `ld-evening-triage` registers alongside.
 
 Then verify it — see [Unattended runs](#unattended-runs), which owns both the
 host and in-container forms and what a forced run does and does not prove.
@@ -94,11 +100,12 @@ source; this table summarises it.
 | `ld-weather` | `0 6 * * *` | 3 · weather | **live** |
 | `ld-sports` | `0 6 * * *` | 5 · sports | **live** |
 | `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | **live** — Google Calendar via Latch's vendored gog |
-| `ld-morning-triage` | `5 7 * * *` | 1 · alert | **live** — iMessage through Latch |
+| `ld-morning-triage` | `5 7 * * *` | 1 · alert | **live** — iMessage + Gmail through Latch, texted to the owner |
+| `ld-evening-triage` | `0 18 * * *` | 1 · alert | **live** — the same sheet at 18:00 (skill `ld-morning-triage`), texted to the owner |
 | `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
 | `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored gog |
 
-All six rows register unconditionally. The blocked/LIVE partition machinery
+All seven rows register unconditionally. The blocked/LIVE partition machinery
 left with the last blocked row — no blocked producer is on any roadmap, and
 git history keeps the pattern if one ever loses its data source again.
 
@@ -114,22 +121,25 @@ checks only that `family.timezone` is non-blank, which a perfectly valid
 `America/Chicago` config satisfies while its cards land two hours late on a
 Los_Angeles container, silently.
 
-**The Plow Chat delivery target.** Two producers message the owner as well as
-posting a card, and which chat that is was minted by this instance's own
-activation — so it can never be a literal here, on a repo more than one person
-runs. It sits in `JOBS` as `plow_chat:${PLOW_HOME_CHANNEL}`, and
+**The Plow Chat delivery target.** Four rows message the owner as well as
+posting a card — the digest, the two triage runs and the nudge — and which
+chat that is was minted by this instance's own activation — so it can never
+be a literal here, on a repo more than one person runs. It sits in `JOBS` as
+`plow_chat:${PLOW_HOME_CHANNEL}`, and
 `resolve_deliver()` expands it from the container environment, where first boot
 published it after asking Plow which chat this agent's owner holds. Run this
 from a turn, which inherits that environment from the gateway; a bare
 `docker exec` session carries none of it. An unset or blank variable is refused
 by name — an empty target is a chat leg that silently delivers nowhere.
 
-The two producers take different delivery paths, on purpose. `--deliver`
-relays EVERY final response, so it fits `ld-weekly-digest` — weekly, always
-has content, its final response IS the digest — and its live row rides it.
-It does not fit `ld-calendar-nudge` — half-hourly with quiet no-op runs — so
-its chat leg lives in its committed `post_nudge.py` coordinator and its row's `deliver`
-is `None` (`test_only_the_digest_rides_the_native_deliver_arm` pins the
+The rows that text the owner take two delivery paths, on purpose. `--deliver`
+relays EVERY final response, so it fits a row whose every run has content:
+`ld-weekly-digest` (weekly, always a digest, its final response IS the digest)
+and the two triage rows (an alert, or the one line `No alert today.`) — their
+rows ride it. It does not fit `ld-calendar-nudge` — half-hourly with quiet
+no-op runs — so its chat leg lives in its committed `post_nudge.py`
+coordinator and its row's `deliver` is `None`
+(`test_only_always_has_content_rows_ride_the_native_deliver_arm` pins the
 divide).
 
 ## Unattended runs
