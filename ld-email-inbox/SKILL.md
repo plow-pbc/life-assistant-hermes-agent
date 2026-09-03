@@ -17,11 +17,17 @@ design, and it is why nothing here stores anything.
 ## Run it
 
 ```
-python3 /var/lib/hermes/skills/ld-email-inbox/scripts/read_inbox.py --days 7
+python3 "$HERMES_HOME/skills/ld-email-inbox/scripts/read_inbox.py" --days 7
 ```
 
 `--days` is the lookback window (default 7). Widen it when the owner refers to
 something older; there is no other knob.
+
+The path is written through `$HERMES_HOME` deliberately. `/var/lib/hermes/skills`
+is where the image puts a sheet; it is not where a running agent finds one --
+the runtime reconciles them into `$HERMES_HOME/skills`, and the image path holds
+no `ld-*` sheet by the time anyone asks. Issue #103 covers that for the sheets
+that still name it.
 
 ## What it can see
 
