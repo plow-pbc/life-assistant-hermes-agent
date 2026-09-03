@@ -1,0 +1,18 @@
+services:
+  agent:
+    build: .
+    volumes:
+      # `.host`, not the path the agent reads: a bind carries this machine's
+      # ownership in, and the image copies the file into place as root itself.
+      - ./plow-credentials:/var/lib/plow/credentials.host:ro
+      # The agent's home, kept across `up`/`down` so its sessions and setup
+      # survive. It also shadows the image, so an edit to SOUL.md or a skill
+      # is only picked up once it is gone: `docker compose down -v && docker
+      # compose up --build -d` is one edit round, and starts the agent fresh.
+      - agent-home:/var/lib/hermes
+    # The agent checkpoints its session on SIGTERM and its supervisor allows
+    # 30s for that, so Docker's own deadline has to sit outside that one.
+    stop_grace_period: 35s
+
+volumes:
+  agent-home:
