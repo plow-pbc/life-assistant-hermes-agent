@@ -57,9 +57,9 @@ on a non-zero exit.
 **Never `cat`, `echo`, or otherwise paste `/var/lib/hermes/ld/.env`,
 `/var/lib/hermes/ld/pi.env`, `/var/lib/hermes/ld/dashboard.hdr`, or any line
 containing `TOKEN` into chat.** `ld/.env` is the file you write during setup and
-it carries the wall's token and the relay pair; the scripts read it for you. The
-agent's own Plow bearer is not in any of these — it is in this process's
-environment, put there by first boot — so do not echo that either. The two `ld/` files are read with your file tool for one
+it carries the wall's token; the scripts read it for you. Neither the agent's
+own Plow bearer nor its relay is in any of these — both are in this process's
+environment, put there by first boot — so do not echo those either. The two `ld/` files are read with your file tool for one
 purpose only — to become the `content` of a `mcp__plow__plow_write_file` call — and
 their content goes nowhere else: not into a chat message, not into argv. The
 single exception is the no-Mac fallback in Phase 3, which says exactly what

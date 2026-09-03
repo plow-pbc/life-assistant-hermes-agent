@@ -157,7 +157,9 @@ they text the activation code, not one to discover afterwards.
 
 The agent's own dotenv is a different file and a smaller one: `ld/.env` holds
 what the agent records during setup — the wall's endpoint and token, the Pi's
-login, the delivery mode, the relay pair — and no `PLOW_*` name appears in it.
+login, the delivery mode — and no `PLOW_*` name appears in it. The relay is not
+in it either: that is the agent's own, out of the environment first boot
+published.
 
 ## No connectors, and what that costs
 
@@ -251,9 +253,10 @@ never in the URL.
 **The gateway's config is not in this repo.** Model, plugins and `mcp_servers`
 are the base image's seed, read from the copy in the agent's own home, and
 nothing here asserts or overrides them — changing any of them is a change to
-`plow-pbc/plow-hermes-agent`. The producers reach Latch by reading `ld/.env`
-directly, which is why they work without an `mcp_servers` entry naming those
-variables.
+`plow-pbc/plow-hermes-agent`. The producers do not go through `mcp_servers` to
+reach the wall: they read the endpoint and token out of `ld/.env` themselves,
+and the unattended one gathers through the relay first boot published. Either
+way, nothing here needs an `mcp_servers` entry naming those variables.
 
 ## Building the image
 
