@@ -103,9 +103,15 @@ is awake with Latch running. No Mac: the lines are texted to the owner to type.
 
 So the whole of bring-up is two steps in this order: activate — the owner texts
 the code from their phone, which is what writes the credentials the agent boots
-with — and then `docker compose up` with their own `TZ`. The agent's first DM
-to them is the rest of it; their reply is the onboarding conversation, not a
-third step.
+with — and then `docker compose up`. The agent's first DM to them is the rest of
+it; their reply is the onboarding conversation, not a third step.
+
+`TZ` is not one of the things you pass in. The container reads
+`family.timezone` from `ld/config.json` at boot and starts on `UTC` when there
+is none, which every first boot is — onboarding has not asked yet. Once the
+owner answers, the zone is written and takes effect on the next restart; until
+that restart the cron registration refuses, by design, rather than scheduling a
+household's cards against a zone the container is not running.
 
 `ld-shared/scripts/ld_config_gate.py <path>` is the single definition of a valid
 config: empty output is a pass, anything else is the list of what is wrong (its
