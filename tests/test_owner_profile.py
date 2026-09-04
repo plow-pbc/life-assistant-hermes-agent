@@ -56,7 +56,9 @@ def test_referrer_prints_who_invited_the_owner_or_none(api, capsys):
     _, state = api
     state["profile"]["referred_by"] = {"display_name": "Sam Odio", "provider_display_name": "Life"}
     op.main(["referrer"])
-    assert capsys.readouterr().out.strip().startswith("assistant=")
+    # Exact, not startswith: the name ("Sam Odio") must never appear at all,
+    # including appended after the assistant value.
+    assert capsys.readouterr().out.strip() == "assistant=Life"
     state["profile"]["referred_by"] = None
     op.main(["referrer"])
     assert capsys.readouterr().out.strip() == "(none)"
