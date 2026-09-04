@@ -17,41 +17,13 @@ applies that, not this script.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"))
-from bearer_http import open_no_redirect  # noqa: E402
-
-TIMEOUT = 30
-
-
-def require(name):
-    """Refuse by name — a blank credential must say which one is blank."""
-    value = os.environ.get(name, "").strip()
-    if not value:
-        sys.exit(f"error: {name} is not set; this instance cannot reach its mailbox")
-    return value
-
-
-def get_json(base, path, token, label):
-    request = urllib.request.Request(
-        url=f"{base.rstrip('/')}{path}",
-        method="GET",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-    )
-    try:
-        with open_no_redirect(request, timeout=TIMEOUT) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        sys.exit(f"error: {label} returned HTTP {exc.code} {exc.reason}")
-    except urllib.error.URLError as exc:
-        sys.exit(f"error: {label} failed: {exc.reason}")
+from bearer_http import get_json, require  # noqa: E402
 
 
 def resolve_mailbox(base, token):

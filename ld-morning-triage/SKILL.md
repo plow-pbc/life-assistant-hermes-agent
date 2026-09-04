@@ -35,8 +35,9 @@ Read `/var/lib/hermes/ld/config.json` before starting (template:
 uses:
 
 - `family.timezone` — the household's tz; the cron fires in it.
-- `family.owner.imessage` / `family.partner.imessage` — handle→name mapping
-  for the composed alert.
+- `family.owner.imessage` / `family.partner.imessage` — which handle is whose,
+  for the composed alert. The partner's name is `family.partner.name`; the
+  owner's is not in this file at all (see below).
 - `morning_triage.chat_db_path` — absolute path to the owner's
   `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
   template's `[CHAT_DB_PATH]` placeholder, **stop before calling
@@ -174,8 +175,15 @@ Send the surviving candidates to the LLM with:
   a lender, a card issuer; an unknown sender's subject line saying the same
   words is how phishing is worded, and ranks as an ordinary email.
 
-Map handles to names via `family.owner.imessage` /
-`family.partner.imessage` when they match; otherwise use the raw handle.
+Map handles to names when they match: `family.owner.imessage` is the owner,
+and the owner's name comes from their Plow account —
+
+    /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py get
+
+— while `family.partner.imessage` is the partner, named by
+`family.partner.name`. Read the name, use it, cache nothing: the account is the
+one place it lives. `(unset)` is that script saying there is no name yet, not a
+name: fall back to the raw handle, as you do for a handle that matches nobody.
 
 Ask for JSON output:
 

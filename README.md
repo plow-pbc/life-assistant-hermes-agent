@@ -117,11 +117,14 @@ Here a copy-paste can cross an **account** boundary, not just an agent one.
 ## Bring-up
 
 The agent writes its own `ld/config.json` from the owner's first DM:
-`runtime/SOUL.md` tells it that a config missing any of `family.owner.name`,
-`weather.location`, `sports.followed` or `calendar.sources` means onboarding is
-unfinished, and `ld-setup/SKILL.md` is what it runs then — a conversation, not a
-form, drafting each answer through `write_config.py` as it lands and discovering
-the calendars from the Mac through Latch once it is connected.
+`runtime/SOUL.md` tells it that a config missing any of
+`family.owner.introduced`, `weather.location`, `sports.followed` or
+`calendar.sources` means onboarding is unfinished, and `ld-setup/SKILL.md` is
+what it runs then — a conversation, not a form, drafting each answer through
+`write_config.py` as it lands and discovering the calendars from the Mac through
+Latch once it is connected. What to call the owner is not in that file: it lives
+on their Plow account, read and set through `ld-shared/scripts/owner_profile.py`,
+so the chat roster and this agent never disagree about their name.
 
 **The wall is opt-in.** Only if the owner takes that offer does the rest follow:
 `ld-wall-setup` mints the wall's token, brings the Pi up, and registers the
@@ -234,7 +237,17 @@ second policy path that the dashboard cannot update.
 Before restoring an existing agent, migrate its config in place: copy
 `calendar_nudge.owner_identities[0]` to `calendar.account` without rebuilding
 the object or changing any other preference, then require an empty result from
-`ld_config_gate.py`. The three calendar skills add that account to their exact
+`ld_config_gate.py`.
+
+The same pass takes the owner's name off the file, or this image reopens
+onboarding on a home that finished months ago: `family.owner.introduced` is the
+marker now and an old config has none. Three homes, once, by hand — stage
+`{"display_name": "<the old family.owner.name>"}` and run `owner_profile.py set
+--input <path>` where the account has no display name, set
+`family.owner.introduced` to `true`, then delete `family.owner.name` by editing
+the mode-600 file, since `--patch` merges and cannot remove a key.
+
+The three calendar skills add that account to their exact
 gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
 shape — and the triage's exact `plow-gog gmail search` argv from
 `ld-morning-triage/SKILL.md` — once through Latch before relying on the
