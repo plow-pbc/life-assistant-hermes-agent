@@ -10,11 +10,14 @@
 # tag would substitute code underneath them.
 FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-84e38bb6b7d17463eba095a9b17c96b352c57feb@sha256:fcb9ad623f460b10f852a785931aa4870fba15f056edf58a3b6502d7846a5404
 
+# This replaces the base's own SOUL.md; first boot re-asserts root ownership
+# on that file, which is what the trailing chmod answers.
+COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
+COPY LICENSE NOTICE /usr/share/doc/life-assistant/
+
 # Shipped at /opt/hermes/skills, outside every home, so a bind-mounted home
 # still receives it and an image update still reaches an uncustomised skill
 # -- both via the base runtime's reconcile into whichever home this gets.
-COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
-COPY LICENSE NOTICE /usr/share/doc/life-assistant/
 COPY ld-calendar-nudge/   /opt/hermes/skills/ld-calendar-nudge/
 COPY ld-dashboard/        /opt/hermes/skills/ld-dashboard/
 COPY ld-email-inbox/      /opt/hermes/skills/ld-email-inbox/
