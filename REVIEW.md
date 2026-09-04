@@ -29,7 +29,7 @@ there plus a pin bump, not a copy carried here.
 
 | Variant DON'T (suppress / flag-as-shape) | Variant DO (real finding) |
 |---|---|
-| Flag persona prose, a skill's wording or a schedule for being **specific to one assistant**. Being one person's assistant is this repo's whole reason to exist; generality here is the bloat, not the fix. | Flag a change that a **sibling repo owns** per [`plow-hermes-agent` README § The repos](https://github.com/plow-pbc/plow-hermes-agent#the-repos): a base fix — `plow-init`, boot, the gateway config seed — or a plugin patch, which are `plow-hermes-agent` and `hermes-plow-chat`; a hand-rolled Plow-API or Latch-relay client, which the plugin's seed skills and `latch` already own; a cron, deploy or skill-seeding mechanism, which is `agent-mgr`. The test is who else would have to change if the fact changed. |
+| Flag persona prose, a skill's wording or a schedule for being **specific to one assistant**. Being one person's assistant is this repo's whole reason to exist; generality here is the bloat, not the fix. | Flag a change that a **sibling repo owns** per [`plow-hermes-agent` README § The repos](https://github.com/plow-pbc/plow-hermes-agent#the-repos): a base fix — `plow-init`, boot, the gateway config seed — or a plugin patch, which are `plow-hermes-agent` and `hermes-plow-chat`; a hand-rolled Plow-API or Latch-relay client, which the plugin's seed skills and `latch` already own; a deploy or skill-seeding mechanism, which is `agent-mgr`. The test is who else would have to change if the fact changed. |
 
 **Update cadence:** edit when the stage changes. Product and architecture edits
 belong in `README.md`, not here.
