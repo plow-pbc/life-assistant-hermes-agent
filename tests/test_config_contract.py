@@ -427,13 +427,16 @@ CONTRACTS = [
     (SOUL, "Never advertise smart-home control, documents, spreadsheets, or"),
     (SOUL, "The owner's Gmail is read where a producer's sheet says so"),
     (SOUL, "public mailbox on demand"),
-    # Browsing is the one that cannot be flatly denied -- the Latch server does
-    # expose browser tools -- so it is bounded by whether a skill asks for them,
-    # not by naming tasks that sound webby. No skill is named here: ld-payments
-    # is the one that would use them and it is not deployable yet (README, "the
-    # instruction layer only"), so the bound is written to outlast that.
-    (SOUL, "Use it where one of your own skills calls for it"),
-    (SOUL, "What you do not have is general-purpose browsing"),
+    # Browsing cannot be flatly denied -- the Latch server does expose browser
+    # tools -- and the intro promises errands through them. So the bound is the
+    # owner's ask plus per-action approval on the Mac, never the assistant's
+    # own initiative: no unprompted lookups, no research it was not asked for.
+    (SOUL, "household errands the intro promised"),
+    (SOUL, "each action approved on the Mac"),
+    (SOUL, "What you do not have is unprompted browsing"),
+    # What it is, and how someone gets one, are the platform's facts (the
+    # plugin's prefix on every prompt), not this persona's to restate.
+    (SOUL, "arrive in the platform's own line at the top of every prompt"),
     # ld-setup Phase 3's no-Mac path texts the wall's bearer to "the owner",
     # and in a group that is everyone. Gated where it is offered and where it
     # is sent; trust does not lift it, a raw token is out of a group either way.

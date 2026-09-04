@@ -21,6 +21,14 @@ the hardened home, the s6 boot layer, and the gateway's own `config.yaml` — is
 [`plow-pbc/plow-hermes-agent`](https://github.com/plow-pbc/plow-hermes-agent).
 The `Dockerfile` here adds a persona, its skills and one background job.
 
+Which commit of this repo tenants boot is pinned in `api/cloud-agents/agents.json`
+in [`plow-pbc/plow`](https://github.com/plow-pbc/plow), whose CI builds the
+image from it. Every turn's prompt framing and the Plow tools come from the
+`plow_chat` plugin in
+[`plow-pbc/hermes-plow-chat`](https://github.com/plow-pbc/hermes-plow-chat),
+which the base image pins. The map of all of them is the base image's README,
+"The repos".
+
 ## Usage reporting
 
 This image carries a reporter that publishes this agent's token usage to the
