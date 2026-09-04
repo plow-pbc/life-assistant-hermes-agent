@@ -43,22 +43,10 @@ while :; do
   # The image only invokes it; no image-owned HTTP path can hand the broad Plow
   # bearer to the Index.
   if [ ! -s "$HERMES_HOME/.agent-index/token" ]; then
-    status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 --get \
-      --data-urlencode "agent_id=$AGENT_ID" \
-      "${AGENT_INDEX_API:-https://agent-index-server.vercel.app}/v1/agent") || status=000
-    case "$status" in
-      200) set -- ;;
-      404) set -- --name "$AGENT_ID" ;;
-      *)
-        echo "agent-index: page lookup answered $status, not registering this hour" >&2
-        /bin/sleep 3600
-        continue
-        ;;
-    esac
     /command/s6-setuidgid hermes \
       env HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
       /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
-      --register --agent "$AGENT_ID" "$@" >/dev/null || {
+      --register --agent "$AGENT_ID" >/dev/null || {
     echo "agent-index: no index key this hour, not reporting" >&2
     /bin/sleep 3600
     continue
