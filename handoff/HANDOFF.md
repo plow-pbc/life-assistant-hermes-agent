@@ -44,6 +44,18 @@ tag/digest.
 Until this is in the base image, the SKILL must NOT ship — the markers would
 reach users as literal `[[BUBBLE]]` text.
 
+**Two review findings to fix in the plugin before publishing the base image**
+(raised by the `srosro` bot on this PR; full detail in
+`handoff/PLUGIN-CHANGES.md` → "Review findings"):
+1. **[security]** Restrict `[[PHOTOS:...]]` paths to `/srv/plow-assets`
+   (`realpath` + prefix check) before opening, so a stray/injected marker cannot
+   upload an arbitrary readable file into the chat. Non-breaking; the previews
+   already live there.
+2. **[data-integrity]** Keep the `[[PHOTOS:...]]` stacking off the global
+   `MEDIA:` caption path, so ordinary `MEDIA:` batches don't lose their
+   captions / alt text (delete the `send_multiple_images` override, or thread
+   captions through — plugin owner's call).
+
 ### 2. API cap #1726 — deploy it (can run in parallel with step 1)
 `plow-pbc/plow` PR **#1726** is already **merged** (raised
 `MAX_ATTACHMENTS_PER_MESSAGE` 3 → 4), but the running API still enforces the old
@@ -67,6 +79,13 @@ Rebuild the agent image, deploy/run, text the agent, and confirm the intro
 arrives as: separate bubbles → **photo stack** → pause → "only catch…" + **bare
 Latch URL** (link preview renders, nothing trailing it) → pause →
 "what city are you in?".
+
+**Update the onboarding contract tests.** The `srosro` bot reported three
+onboarding contract tests failing because they still assert the old
+**three-image `MEDIA:`** preview format; the intro now uses one in-band
+four-photo `[[PHOTOS:...]]` marker. Update those tests to the new format as part
+of landing this (they live with the test suite that `just test` runs, not in
+this PR's tree).
 
 ---
 

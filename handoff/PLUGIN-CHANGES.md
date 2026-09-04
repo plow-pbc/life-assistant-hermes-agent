@@ -82,6 +82,45 @@ entry points).
   still in the right position, nothing silently dropped. Once cap-4 is deployed
   to `api.plow.co`, the four images collapse into the single "4 Photos" stack.
 
+## Review findings to address before landing the plugin
+
+The `srosro` review bot raised two plugin-level findings on PR #123 (the SKILL
+PR). They belong to the plugin, which lives in the base-image repo, so they are
+recorded here for the engineer who lands this patch. Address them in
+`plugins/plow_chat/__init__.py` before publishing the base image.
+
+1. **[security, blocking] Restrict `[[PHOTOS:...]]` paths to `/srv/plow-assets`.**
+   `_parse_photos_marker` currently accepts any existing absolute path and then
+   opens/uploads it, which bypasses the `MEDIA:` denylist. Because the marker is
+   in-band and could in principle be induced (prompt injection through an
+   owner's message, a calendar name, etc.), a marker like
+   `[[PHOTOS:/var/lib/hermes/ld/config.json]]` would upload owner configuration
+   into the chat. **Fix:** in `_parse_photos_marker` (and anywhere a
+   `[[PHOTOS:...]]` path is opened), `os.path.realpath()` each path and reject
+   anything whose resolved path is not under the root-owned `/srv/plow-assets`
+   directory, before opening it (~+5 LOC). This is non-breaking: every
+   onboarding preview already lives under `/srv/plow-assets`. The SKILL side is
+   already constrained to emit only those four fixed assets (see the
+   `[[PHOTOS:...]]` note in `ld-setup/SKILL.md` §2); this is the adapter-side
+   half of the same guarantee.
+
+2. **[data-integrity, blocking] The `send_multiple_images()` override drops
+   captions / `_alt` for ordinary `MEDIA:` batches.** Routing the global
+   `send_multiple_images` through `_post_photo_stack` (which is path-based and
+   posts an empty body) means ordinary `MEDIA:` sends lose their per-image
+   caption and accessibility text OUTSIDE the onboarding flow. Two ways to fix,
+   and **which one is a call for the plugin owner / head chef** (flagged, not
+   decided here):
+   - **(a)** drop the `send_multiple_images` override entirely and keep
+     `_post_photo_stack` exclusive to the in-band `[[PHOTOS:...]]` path, leaving
+     the base adapter's per-image caption behavior untouched (the bot's
+     recommendation, ~-55 LOC); or
+   - **(b)** keep the override but thread each image's caption / `_alt` through
+     `_post_photo_stack` so nothing is lost.
+   Onboarding needs only the in-band `[[PHOTOS:...]]` path, so option (a) is
+   sufficient for this feature; (b) is only worth it if a batched `MEDIA:` stack
+   with captions is independently wanted.
+
 ## Note
 The extracted stock file and the modified file differ by **+254 / −15** lines
 (patch is `handoff/plugin-changes.patch`). Everything above is additive around

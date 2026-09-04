@@ -673,6 +673,15 @@ flush left, on its own bubble line, and never inside a code fence. Put a
 so the sequence the adapter walks is: "Want to see…" → the `[[PHOTOS:…]]`
 marker → the catch.
 
+**A `[[PHOTOS:...]]` marker is ONLY ever these four fixed preview assets under
+`/srv/plow-assets`.** It is a constant, not a slot: never build one out of a
+path the model chose, an owner's message, a calendar name, or anything read off
+disk at runtime. The onboarding previews are the one and only use of this
+marker in this skill, and the paths above are the whole of it. (The adapter is
+expected to enforce the same on its side, refusing any `[[PHOTOS:...]]` path
+outside `/srv/plow-assets`, so a stray marker can never turn into a file upload.
+See `handoff/PLUGIN-CHANGES.md`.)
+
 **Four, a "4 Photos" stack.** All four ride the one marker and post as a single
 stacked message the phone renders as "4 Photos". (Until the API attachment cap
 is bumped to 4 and deployed, the adapter falls back to individual images — still
