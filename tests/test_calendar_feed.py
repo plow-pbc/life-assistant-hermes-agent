@@ -332,6 +332,9 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
     pytest.param([ready(relay_ok(EVENTS)), PENDING, PENDING], 2,
                  "calendar feed failed: relay command is still pending",
                  id="never-ready"),
+    pytest.param([ok_text(json.dumps({"status": "ready", "handle": "H1"}))], 120,
+                 "calendar feed failed: relay command ready with no result",
+                 id="ready-with-nothing"),
 ])
 def test_a_call_past_the_budget_is_polled_rather_than_stood_down(
         feed, monkeypatch, capsys, polls, deadline, printed):

@@ -89,9 +89,9 @@ CALENDAR_SUFFIX = "/api/calendar"
 LATCH_BODY_PATH = "~/Plow/ld/calendar.json"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
-# Polling a pending handle: the interval is Latch's own retry_after_ms advice,
-# and the deadline is a gather or a LAN curl that has plainly failed. Both sit
-# well inside Latch's 15-minute HANDLE_TTL_MS, so a handle never expires mid-poll.
+# Polling a pending handle. The interval is Latch's own RETRY_AFTER_MS held as
+# a constant, not read back off each envelope; the deadline is a gather or a LAN
+# curl that has plainly failed. Both sit inside its 15-minute HANDLE_TTL_MS.
 POLL_INTERVAL_S = 1
 POLL_DEADLINE_S = 120
 
@@ -411,8 +411,12 @@ def relay(url, token, name, arguments):
                                     {"handle": payload.get("handle")}))
         status = payload.get("status")
         if status == "ready":
-            # Exactly what the original call would have returned.
-            return payload.get("result")
+            # Exactly what the original call would have returned -- and a ready
+            # answer without one is a stand-down, not an AttributeError two
+            # frames later on the module's one no-traceback contract.
+            if not isinstance(payload.get("result"), dict):
+                raise FeedError("relay command ready with no result")
+            return payload["result"]
         if status != "pending":
             # denied, failed, expired, unknown -- none of them become ready.
             raise FeedError(f"relay command {status}")
