@@ -23,7 +23,7 @@ credential, a chat id or a person's data anywhere under this tree is blocking.
 Subtractive remedies outrank additive ones. The falsifiable gate here is
 **ownership**: this repo declares facts about one assistant, and a mechanism a
 second assistant would also want belongs to a sibling — the remedy is a PR
-there plus a pin bump, not a copy carried here.
+there, plus a pin bump if this repo holds one, not a copy carried here.
 
 **Repo-specific contrast pairs:**
 
