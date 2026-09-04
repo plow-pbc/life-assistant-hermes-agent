@@ -89,9 +89,8 @@ CALENDAR_SUFFIX = "/api/calendar"
 LATCH_BODY_PATH = "~/Plow/ld/calendar.json"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
-# Polling a pending handle. The interval is Latch's own RETRY_AFTER_MS held as
-# a constant, not read back off each envelope; the deadline is a gather or a LAN
-# curl that has plainly failed. Both sit inside its 15-minute HANDLE_TTL_MS.
+# Latch's own RETRY_AFTER_MS as a constant, and a deadline past which a gather
+# or a LAN curl has plainly failed. Both inside its 15-minute HANDLE_TTL_MS.
 POLL_INTERVAL_S = 1
 POLL_DEADLINE_S = 120
 
@@ -296,13 +295,19 @@ def normalize_events(events, zone):
 
 
 def _payload_of(result):
-    """The JSON payload in a tool result's one text block, or FeedError."""
+    """The JSON object in a tool result's one text block, or FeedError.
+
+    An object, not any JSONValue: every caller reads it by key.
+    """
     try:
         text = next(block["text"] for block in result["content"]
                     if block.get("type") == "text")
-        return json.loads(text)
+        payload = json.loads(text)
     except (KeyError, TypeError, ValueError, StopIteration) as exc:
         raise FeedError("malformed relay response") from exc
+    if not isinstance(payload, dict):
+        raise FeedError("malformed relay response")
+    return payload
 
 
 def _decode_command_response(payload):
@@ -402,13 +407,15 @@ def relay(url, token, name, arguments):
     yesterday's file. See packages/mcp-server/src/deferred.ts in plow-pbc/latch.
     """
     payload = _payload_of(_call(url, token, name, arguments))
+    # The FIRST envelope's, never re-read off an answer that may omit it.
+    handle = payload.get("handle")
     deadline = time.monotonic() + POLL_DEADLINE_S
     while payload.get("status") == "pending":
         if time.monotonic() > deadline:
             raise FeedError("relay command is still pending")
         time.sleep(POLL_INTERVAL_S)
         payload = _payload_of(_call(url, token, "plow_get_result",
-                                    {"handle": payload.get("handle")}))
+                                    {"handle": handle}))
         status = payload.get("status")
         if status == "ready":
             # Exactly what the original call would have returned -- and a ready

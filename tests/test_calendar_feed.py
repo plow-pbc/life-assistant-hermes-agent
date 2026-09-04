@@ -39,8 +39,8 @@ class Handler(BaseHTTPRequestHandler):
     # for the strip's whole life, so the suite pinned a framing the relay never
     # sends and the producer's every real tick failed green.
     relay_frames: ClassVar[list] = []
-    # A call past Latch's 15s CALL_BUDGET_MS answers with a pending handle
-    # instead of its result; `poll_answers` is what plow_get_result then says.
+    # A deferred call's two halves: the pending envelope the curl is handed
+    # first, and what plow_get_result then answers. See relay() on the why.
     curl_responses: ClassVar[list] = []
     poll_answers: ClassVar[list] = []
 
@@ -113,7 +113,6 @@ def relay_ok(events):
     return completed("Note: Using direct access token\n" + json.dumps(events))
 
 
-# What a call past the budget answers with instead of its result.
 PENDING = ok_text(json.dumps({"status": "pending", "handle": "H1",
                               "reason": "running", "retry_after_ms": 1000}))
 
@@ -338,13 +337,8 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
 ])
 def test_a_call_past_the_budget_is_polled_rather_than_stood_down(
         feed, monkeypatch, capsys, polls, deadline, printed):
-    """Latch hands a call past its 15s CALL_BUDGET_MS a pending handle instead
-    of the result and runs the command anyway (plow-pbc/latch
-    packages/mcp-server/src/deferred.ts). The adversarial review ahead of exec
-    spends that budget on its own -- 16s for the delivery curl, measured on the
-    live agent 2026-09-04 -- so reading the envelope as a failed command stood
-    every delivery down on a curl that then exited 0, and three stand-downs
-    trip the hour-long backoff. Both the gather and the delivery defer here.
+    """What a deferred call is, and why standing down on one was wrong, is on
+    relay()'s own docstring. Both the gather and the delivery defer here.
 
     The clock is the module's own, rebound so the server's thread keeps the
     real one, and advancing a second per reading so the deadline row gives up
@@ -362,3 +356,7 @@ def test_a_call_past_the_budget_is_polled_rather_than_stood_down(
     assert module.main(now=1_756_700_000) == 0
 
     assert capsys.readouterr().out.startswith(printed)
+    # Every poll carried the handle the first envelope minted. The double
+    # answers by queue, so nothing else here would notice a `None` going out.
+    polled = [c["arguments"]["handle"] for c in relay_calls("plow_get_result")]
+    assert polled and set(polled) == {"H1"}
