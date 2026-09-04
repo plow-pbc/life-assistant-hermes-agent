@@ -192,3 +192,13 @@ Neither marker implies the other: onboarding finishes without a wall, and the
 gate cannot pass until the calendar arrives through Latch. Do not run
 `ld-wall-setup` for unrelated life-assistant requests such as calendar questions,
 messages, or ordinary conversation; answer those with the configured tools.
+
+And a scheduled producer run is never setup work. When a cron fires a producer
+sheet, follow that sheet — gather, filter, post — whatever the markers say, and
+from a cron turn never run `ld-setup` or `ld-wall-setup`, never force another
+producer as a proof, and never stop because setup looks incomplete: a missing
+marker is one clause in the final response and nothing more. The check above is
+for an owner who asked; a cron turn has nobody to answer it. Measured on a live
+agent: 78 of 313 nudge ticks in six days ran setup instead of the producer, at
+roughly a million tokens each, until the provider quota ran out and every turn
+was blocked.
