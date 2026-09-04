@@ -8,7 +8,7 @@ disk; a turn that needs the name runs `get`.
 
   get                 print the account's display name, or "(unset)" when there is none
   set --input PATH    record the name in PATH on the account and print what was stored
-  referrer            print "referrer_name=<name> assistant=<assistant>" (key=value, not prose) or "(none)"
+  referrer            print "assistant=<assistant>" for who this owner was referred by, or "(none)"
 
 PATH holds the API's own PATCH body and nothing else, `{"display_name": "..."}`,
 staged by the turn with its FILE tool. Never argv: the name is a person's own
@@ -54,8 +54,7 @@ def main(argv=None):
         profile = request_json("GET", base, PROFILE, token, f"GET {PROFILE}")
     if args.command == "referrer":
         ref = profile.get("referred_by")
-        print(f"referrer_name={ref.get('display_name') or 'Someone'} assistant={ref['provider_display_name']}"
-              if ref else "(none)")
+        print(f"assistant={ref['provider_display_name']}" if ref else "(none)")
         return
     print(profile.get("display_name") or "(unset)")
     # Print before the cleanup so a failed remove never eats the name the turn
