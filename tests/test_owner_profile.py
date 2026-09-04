@@ -49,6 +49,21 @@ def test_get_prints_account_name_or_unset(api, capsys, display_name, expected):
     assert capsys.readouterr().out.strip() == expected
 
 
+def test_referrer_prints_who_invited_the_owner_or_none(api, capsys):
+    """Who invited them, read the same way as their own name: from the
+    account, not a copy this agent keeps. Server-controlled data only -- no
+    account name crosses into this agent's turn."""
+    _, state = api
+    state["profile"]["referred_by"] = {"display_name": "Sam Odio", "provider_display_name": "Life"}
+    op.main(["referrer"])
+    # Exact, not startswith: the name ("Sam Odio") must never appear at all,
+    # including appended after the assistant value.
+    assert capsys.readouterr().out.strip() == "assistant=Life"
+    state["profile"]["referred_by"] = None
+    op.main(["referrer"])
+    assert capsys.readouterr().out.strip() == "(none)"
+
+
 def test_set_records_exactly_what_the_owner_said(api, tmp_path, capsys):
     calls, _ = api
     staged = stage(tmp_path, '{"display_name": "Sam"}')

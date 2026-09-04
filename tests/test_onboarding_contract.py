@@ -804,6 +804,10 @@ def test_clarify_is_forbidden_during_onboarding():
 
 
 
+def test_the_opener_reads_the_referrer_before_speaking():
+    assert "owner_profile.py referrer" in ONBOARDING
+
+
 def test_the_framework_name_is_not_the_agents_name():
     """Observed: "I'm Hermes." That is the software it runs on, the way a
     person is not called Android -- and it was said on a turn where no name

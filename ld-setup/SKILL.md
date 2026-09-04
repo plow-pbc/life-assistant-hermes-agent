@@ -246,6 +246,10 @@ record of how far this got. There is no marker and no second source. The four
 keys, in order: `family.owner.introduced`, `weather.location`,
 `sports.followed`, `calendar.sources`. Present-but-empty is answered.
 
+Also run `python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py referrer` --
+who invited this owner, or `(none)`. It decides one sentence in the opener,
+below.
+
 **2 · Run the Latch status probe.** `latch_status.py`, as described above.
 `unconfigured` means there is no relay in this build at all: no tool lookup,
 nothing said about it, and the pitch and link stand.
@@ -501,6 +505,24 @@ name question is the one thing `owner_profile.py get` decides at step 1:
   call you Sam, or do you prefer Samuel?"* One sentence, no list. Whatever they
   answer, in their own words, is the name, and a different name entirely is the
   name.
+
+`referrer` decides one more thing, said in the same message as the name
+question:
+
+- `referrer` printed `assistant=<value>`: they got here because that
+  person's assistant invited them, and they were set up with the same kind
+  of assistant. Say so and ask, in the same message, one sentence: *"the
+  person who invited you set you up with the same {assistant} they have --
+  want to keep that, or would you rather I be something different?"* Keep
+  means carry on. Different means point them at the catalog, not a command
+  you can't know: other assistants are listed at aiworthusing.com/agent-index
+  -- point them there and stop, you do not know which one they will pick or
+  what starts it.
+- `(none)`: say nothing about it.
+
+A reply that answers only the assistant choice answers only that clause: it
+is never the name and never reaches `owner_profile.py set`; the name
+question is then asked alone, next turn.
 
 **Give your name, and only your name**, *if you have one.* "I'm ⟨name⟩"
 belongs in that first line, the way you would say it to someone at a door,
