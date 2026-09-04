@@ -96,6 +96,43 @@ def test_every_skill_in_the_tree_is_copied_into_the_image():
     assert missing == [], f"in the tree but never copied into the image: {', '.join(missing)}"
 
 
+def test_every_skill_lands_outside_every_home():
+    """A bind-mounted home shadows anything the image copied under it.
+
+    Docker seeds a fresh EMPTY volume from the image layer, so a `COPY` under
+    `/var/lib/hermes/skills/...` reaches an agent whose home is a volume -- it
+    never reaches one whose home is a bind mount of an existing directory, and
+    the fleet mounts every home that way. `/opt/hermes/skills` is the one root
+    outside every home: the base's own runtime reconciles it into
+    `$HERMES_HOME/skills` on boot, bind mount or volume alike, and an image
+    update still reaches a skill the agent has not customised -- which a COPY
+    under the home cannot do after first boot either.
+    """
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    for name in SKILL_DIRS:
+        assert re.search(
+            rf"^COPY\s+{re.escape(name)}/\s+/opt/hermes/skills/{re.escape(name)}/\s*$",
+            dockerfile, re.MULTILINE
+        ), f"COPY {name}/ does not land at /opt/hermes/skills/{name}/ -- a bind-mounted home would never see it"
+        assert f"/var/lib/hermes/skills/{name}" not in dockerfile, (
+            f"{name} is still copied under /var/lib/hermes/skills, which a bind-mounted home shadows"
+        )
+
+    assert "find /opt/hermes/skills" in dockerfile, (
+        "the permission-normalizing RUN block still targets the old skills root"
+    )
+    assert "find /var/lib/hermes/skills" not in dockerfile
+
+    # The unattended producer's separate, root-owned copy is deliberately a
+    # duplicate under a different root and must not move -- see the comment
+    # above it in the Dockerfile.
+    assert "COPY ld-shared/ /opt/plow/ld-shared/" in dockerfile
+
+    # The base re-asserts ownership of this one file on boot; it is not part
+    # of the skills reconcile and keeps its home destination.
+    assert "COPY runtime/SOUL.md /var/lib/hermes/SOUL.md" in dockerfile
+
+
 def test_every_skill_path_in_a_skill_md_resolves_in_the_tree():
     """Every path a SKILL.md hands the agent, checked where the agent will use it.
 

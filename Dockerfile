@@ -10,35 +10,22 @@
 # tag would substitute code underneath them.
 FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-84e38bb6b7d17463eba095a9b17c96b352c57feb@sha256:fcb9ad623f460b10f852a785931aa4870fba15f056edf58a3b6502d7846a5404
 
-# Flat, all as siblings directly under the skills root: every
-# SKILL.md names an absolute skills path and every wrapper hops ../../ld-shared
-# off its own realpath, so the three have to land as siblings.
-#
-# Copied root-owned, and that lasts exactly until the first boot: the runtime
-# reconciles its bundled skills into $HERMES_HOME/skills and chowns what it
-# seeds to uid 10000, so in a RUNNING container every directory and file below
-# is the agent's. Measured on this image: as uid 10000 a turn appends to a
-# SKILL.md it is running and renames a whole skill out of the scan path, both
-# succeeding. Do not read the root ownership here as a guarantee about runtime
-# -- it is the state of the layer, not of the agent's home.
-#
-# What does hold is /opt/hermes/skills, the base's bundled copy outside every
-# home: unwritable to uid 10000 (measured), which is why an image update still
-# reaches a skill the agent has not customised. The base ships its own SOUL.md;
-# this replaces it, and first boot re-asserts root ownership on that one file.
+# Shipped at /opt/hermes/skills, outside every home, so a bind-mounted home
+# still receives it and an image update still reaches an uncustomised skill
+# -- both via the base runtime's reconcile into whichever home this gets.
 COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
 COPY LICENSE NOTICE /usr/share/doc/life-assistant/
-COPY ld-calendar-nudge/   /var/lib/hermes/skills/ld-calendar-nudge/
-COPY ld-dashboard/        /var/lib/hermes/skills/ld-dashboard/
-COPY ld-email-inbox/      /var/lib/hermes/skills/ld-email-inbox/
-COPY ld-morning-triage/   /var/lib/hermes/skills/ld-morning-triage/
-COPY ld-morning-updates/  /var/lib/hermes/skills/ld-morning-updates/
-COPY ld-setup/            /var/lib/hermes/skills/ld-setup/
-COPY ld-shared/           /var/lib/hermes/skills/ld-shared/
-COPY ld-wall-setup/       /var/lib/hermes/skills/ld-wall-setup/
-COPY ld-sports/           /var/lib/hermes/skills/ld-sports/
-COPY ld-weather/          /var/lib/hermes/skills/ld-weather/
-COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
+COPY ld-calendar-nudge/   /opt/hermes/skills/ld-calendar-nudge/
+COPY ld-dashboard/        /opt/hermes/skills/ld-dashboard/
+COPY ld-email-inbox/      /opt/hermes/skills/ld-email-inbox/
+COPY ld-morning-triage/   /opt/hermes/skills/ld-morning-triage/
+COPY ld-morning-updates/  /opt/hermes/skills/ld-morning-updates/
+COPY ld-setup/            /opt/hermes/skills/ld-setup/
+COPY ld-shared/           /opt/hermes/skills/ld-shared/
+COPY ld-wall-setup/       /opt/hermes/skills/ld-wall-setup/
+COPY ld-sports/           /opt/hermes/skills/ld-sports/
+COPY ld-weather/          /opt/hermes/skills/ld-weather/
+COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 
 # Normalize whatever modes the checkout carried, preserving the executable bit:
 # several SKILL.md files invoke a script by bare path, so a blanket 0644 makes
@@ -48,9 +35,9 @@ COPY ld-weekly-digest/    /var/lib/hermes/skills/ld-weekly-digest/
 # the gateway's own bundled-skill install, which then scans nothing. Sticky here
 # stops a turn unlinking an entry it does NOT own; after first boot it owns every
 # skill under this root, so it does not stop the rename -- see above.
-RUN find /var/lib/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
- && find /var/lib/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
- && find /var/lib/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
+RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
+ && find /opt/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
+ && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
  && chmod 0644 /var/lib/hermes/SOUL.md
 
 # The unattended producer's own copy, outside every home and out of the agent's
