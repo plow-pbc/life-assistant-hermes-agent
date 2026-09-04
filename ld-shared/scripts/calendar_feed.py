@@ -89,6 +89,11 @@ CALENDAR_SUFFIX = "/api/calendar"
 LATCH_BODY_PATH = "~/Plow/ld/calendar.json"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
+# Latch's own RETRY_AFTER_MS as a constant. No deadline of this script's own:
+# a handle Latch has not settled within its 15-minute HANDLE_TTL_MS answers
+# `expired`, and giving up sooner would let a delivery still running on the
+# Mac land after the next tick's.
+POLL_INTERVAL_S = 1
 
 # Deliberately broad, the same trade nudge_candidates.py's redaction makes:
 # native join links use schemes other than http, and stripping an ordinary
@@ -290,23 +295,31 @@ def normalize_events(events, zone):
     return [payload for _, payload in normalized]
 
 
-def _decode_command_response(result):
-    """The command's stdout out of a plow_run_command result, or FeedError.
+def _payload_of(result):
+    """The JSON object in a tool result's one text block, or FeedError.
 
-    Every layer is checked by name — the content block, the payload status, a
-    non-zero exit_code — because each of those is a FAILED call that would
-    otherwise read as success: a failed gather decodes to zero events and
-    publishes an empty week, and a failed curl leaves a stale strip on the wall
-    while the run reports fine.
+    An object, not any JSONValue: every caller reads it by key.
     """
     try:
         text = next(block["text"] for block in result["content"]
                     if block.get("type") == "text")
         payload = json.loads(text)
-    except FeedError:
-        raise
     except (KeyError, TypeError, ValueError, StopIteration) as exc:
         raise FeedError("malformed relay response") from exc
+    if not isinstance(payload, dict):
+        raise FeedError("relay response is not a JSON object")
+    return payload
+
+
+def _decode_command_response(payload):
+    """The command's stdout out of a settled plow_run_command payload.
+
+    Every layer is checked by name — the payload status, a non-zero exit_code —
+    because each of those is a FAILED call that would otherwise read as
+    success: a failed gather decodes to zero events and publishes an empty
+    week, and a failed curl leaves a stale strip on the wall while the run
+    reports fine.
+    """
     if payload.get("status") != "completed" or payload.get("exit_code") != 0:
         raise FeedError("relay command did not complete")
     output = payload.get("output")
@@ -359,7 +372,7 @@ def envelope_from(body, content_type):
     raise FeedError("relay stream carried no response frame")
 
 
-def relay(url, token, name, arguments):
+def _call(url, token, name, arguments):
     """One MCP tools/call on the owner's Mac; returns the result object."""
     body, content_type = _post_json(url, token, {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -380,6 +393,39 @@ def relay(url, token, name, arguments):
     if result.get("isError") is True:
         raise FeedError(f"relay {name} failed")
     return result
+
+
+def relay(url, token, name, arguments):
+    """The call's own payload, polling a pending handle until it lands.
+
+    A call that outruns Latch's 15s CALL_BUDGET_MS answers with a pending
+    handle instead of its result and goes on running -- the adversarial review
+    ahead of exec spends that budget on its own, measured at 16s for the
+    delivery curl on 2026-09-04. Reading that envelope as a failed command
+    stood the strip down on a curl that then exited 0, and three stand-downs
+    trip the hour-long backoff. Polled HERE so every call is covered: a write
+    that deferred and was then denied would otherwise leave the curl shipping
+    yesterday's file. See packages/mcp-server/src/deferred.ts in plow-pbc/latch.
+    """
+    payload = _payload_of(_call(url, token, name, arguments))
+    # The FIRST envelope's, never re-read off an answer that may omit it.
+    handle = payload.get("handle")
+    while payload.get("status") == "pending":
+        time.sleep(POLL_INTERVAL_S)
+        payload = _payload_of(_call(url, token, "plow_get_result",
+                                    {"handle": handle}))
+        status = payload.get("status")
+        if status == "ready":
+            # Exactly what the original call would have returned -- and a ready
+            # answer without one is a stand-down, not an AttributeError two
+            # frames later on the module's one no-traceback contract.
+            if not isinstance(payload.get("result"), dict):
+                raise FeedError("relay command ready with no result")
+            return payload["result"]
+        if status != "pending":
+            # denied, failed, expired, unknown -- none of them become ready.
+            raise FeedError(f"relay command {status}")
+    return payload
 
 
 def gather(url, token, argv):

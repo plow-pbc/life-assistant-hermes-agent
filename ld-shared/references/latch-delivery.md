@@ -12,17 +12,26 @@ POST. It writes the exact wire body to `/var/lib/hermes/ld/outbox/card-<n>.json`
     2. mcp__plow__plow_run_command argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr -H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-<n>.json http://<pi>:5174/api/message"] network=true
     <json>
 
-Make exactly those two calls, in that order: the JSON verbatim as the
-`content` of step 1, the argv verbatim in step 2. Paths under `~/Plow`
-auto-approve on the Mac; `network=true` is required for the LAN request. The
-token never appears in the block and never should: it is in
-`~/Plow/ld/dashboard.hdr` on the Mac, written once by `ld-wall-setup`, and
-`-H @…` reads it there.
+Make those two calls, in that order and nothing else — the polls below are
+the one exception: the JSON verbatim as the `content` of step 1, the argv
+verbatim in step 2. Paths under `~/Plow` auto-approve on the Mac;
+`network=true` is required for the LAN request. The token never appears in
+the block and never should: it is in `~/Plow/ld/dashboard.hdr` on the Mac,
+written once by `ld-wall-setup`, and `-H @…` reads it there.
 
 **The run is not done until step 2 returned 2xx.** Paste both outputs
 verbatim. A successful `curl -fsS` prints the Pi's `{"ok":true}`; any other
 status prints `curl: (22) …` and the call reports a non-zero exit — say so
 and stop; do not pretend the card landed.
+
+**A `{"status":"pending","handle":…}` answer is not a result.** Either call
+outruns the Mac's 15-second budget when Latch's review ahead of exec takes
+its time; the call keeps running and hands back a handle. Poll
+`mcp__plow__plow_get_result handle=<that handle>` about once a second until
+its `status` is `ready`, and read its `result` as the answer the original
+call would have given — the write's confirmation, or the curl's exit and
+output, held to the same 2xx rule above. `denied`, `failed`, `expired` or
+`unknown` is a failed step: say so and stop.
 
 ## When the Mac is asleep or Latch is not running
 

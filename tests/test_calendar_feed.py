@@ -38,6 +38,10 @@ class Handler(BaseHTTPRequestHandler):
     # for the strip's whole life, so the suite pinned a framing the relay never
     # sends and the producer's every real tick failed green.
     relay_frames: ClassVar[list] = []
+    # A deferred call's two halves: the pending envelope the curl is handed
+    # first, and what plow_get_result then answers. See relay() on the why.
+    curl_responses: ClassVar[list] = []
+    poll_answers: ClassVar[list] = []
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -77,10 +81,16 @@ class Handler(BaseHTTPRequestHandler):
         """Stand in for the Mac, by tool and argv rather than by call order."""
         params = body["params"]
         arguments = params.get("arguments", {})
+        if params["name"] == "plow_get_result":
+            return cls.poll_answers.pop(0)
         if params["name"] == "plow_write_file":
-            return ok_text("wrote")
+            # Latch answers every tool with canonical JSON, never a bare word.
+            return ok_text(json.dumps({"path": arguments["path"],
+                                       "bytes": len(arguments["content"])}))
         if arguments.get("argv", [""])[0] == "gog":
             return cls.relay_responses.pop(0)
+        if cls.curl_responses:
+            return cls.curl_responses.pop(0)
         return completed('{"ok":true}')      # the Mac-side curl
 
     def log_message(self, *_args):
@@ -102,11 +112,30 @@ def relay_ok(events):
     return completed("Note: Using direct access token\n" + json.dumps(events))
 
 
+PENDING = ok_text(json.dumps({"status": "pending", "handle": "H1",
+                              "reason": "running", "retry_after_ms": 1000}))
+
+
+def ready(result):
+    """plow_get_result handing back exactly what the call would have returned."""
+    return ok_text(json.dumps(
+        {"status": "ready", "handle": "H1",
+         "result": json.loads(result["result"]["content"][0]["text"])}))
+
+
+# Every other terminal answer -- failed, expired and unknown are this shape too.
+DENIED = ok_text(json.dumps({"status": "denied", "handle": "H1"}))
+EXPIRED = ok_text(json.dumps({"status": "expired", "handle": "H1"}))
+
+
 def event(uid, ical, start, end, **extra):
     return {"id": uid, "iCalUID": ical, "status": "confirmed",
             "summary": f"Event {uid}",
             "start": {"dateTime": start}, "end": {"dateTime": end}, **extra}
 
+
+EVENTS = [event("a", "ical-a",
+                "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")]
 
 CONFIG = {
     "family": {"timezone": "America/Los_Angeles"},
@@ -122,6 +151,7 @@ validated = []
 def feed(tmp_path, monkeypatch):
     Handler.relay_responses, Handler.requests, Handler.redirect_paths = [], [], set()
     Handler.relay_frames = []
+    Handler.curl_responses, Handler.poll_answers = [], []
     validated.clear()
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -293,3 +323,36 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
     assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
 
 
+@pytest.mark.parametrize("polls, printed", [
+    pytest.param([ready(relay_ok(EVENTS)), ready(completed('{"ok":true}'))],
+                 "calendar feed: 1 events; shipped through the Mac", id="ready"),
+    pytest.param([ready(relay_ok(EVENTS)), DENIED],
+                 "calendar feed failed: relay command denied", id="denied"),
+    pytest.param([ready(relay_ok(EVENTS)), PENDING, PENDING, EXPIRED],
+                 "calendar feed failed: relay command expired",
+                 id="never-ready-until-latch-expires-it"),
+    pytest.param([ok_text(json.dumps({"status": "ready", "handle": "H1"}))],
+                 "calendar feed failed: relay command ready with no result",
+                 id="ready-with-nothing"),
+])
+def test_a_call_past_the_budget_is_polled_rather_than_stood_down(
+        feed, monkeypatch, capsys, polls, printed):
+    """What a deferred call is, and why standing down on one was wrong, is on
+    relay()'s own docstring. Both the gather and the delivery defer here.
+
+    Only the pause is faked: Latch's 15-minute handle TTL is the one clock,
+    and it is Latch that says `expired`.
+    """
+    module, _ = feed
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
+    Handler.relay_responses = [PENDING]
+    Handler.curl_responses = [PENDING]
+    Handler.poll_answers = polls
+
+    assert module.main(now=1_756_700_000) == 0
+
+    assert capsys.readouterr().out.startswith(printed)
+    # Every poll carried the handle the first envelope minted. The double
+    # answers by queue, so nothing else here would notice a `None` going out.
+    polled = [c["arguments"]["handle"] for c in relay_calls("plow_get_result")]
+    assert polled and set(polled) == {"H1"}
