@@ -1,6 +1,6 @@
 services:
   agent:
-    # Cold build needs the base first: docker pull "$(awk '/^FROM/{print $2;exit}' Dockerfile)"
+    # A 403 on the base is an expired login, not a missing image: docker logout public.ecr.aws
     build: .
     volumes:
       # `.host`, not the path the agent reads: a bind carries this machine's

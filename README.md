@@ -53,21 +53,35 @@ reviews.
 
 ## Run locally
 
-Building and running an agent on your own machine — the token, the `.env`, the
-compose service — lives in
-[`plow-agents`](https://github.com/plow-pbc/plow-agents), and is not restated
-here.
-
-Two things differ for this agent. `plow-agents` builds this image from source
-rather than pulling a published one — point it at this repository and let it
-build:
+`compose.yml` here builds this checkout and runs it.
+[`plow-agents`](https://github.com/plow-pbc/plow-agents) mints the credential
+the container reads, and does nothing else about running one.
 
 ```sh
-PLOW_AGENT_REPO=https://github.com/plow-pbc/life-assistant-hermes-agent.git#main \
-  docker compose up --build
+plow-agents mint ln_xxx        # in this checkout, before the first `up`
+docker compose up --build -d
 ```
 
-And **`TZ` is this agent's own, not the provisioner's**: the base image sets
+**Build fails with `403 Forbidden` on the base image?** An old `docker login`
+for `public.ecr.aws` has expired — those credentials last 12 hours, and the
+build sends the stale one instead of asking anonymously. Forget it and build
+again:
+
+```sh
+docker logout public.ecr.aws
+```
+
+The base is public and pulls anonymously; nothing here needs a registry login.
+
+| To | Run |
+| --- | --- |
+| rebuild and keep its memory | `docker compose up --build -d` |
+| start fresh — a new install, onboarding again, or any `SOUL.md` or skill edit | `docker compose down -v && docker compose up --build -d` |
+| finish | `plow-agents revoke && docker compose down -v` |
+
+The chat and its history live on Plow, and survive all three.
+
+**`TZ` is this agent's own, not the provisioner's**: the base image sets
 none, so a cont-init step here writes it at boot from `family.timezone` in
 `ld/config.json`, falling back to `UTC` before onboarding has asked anyone
 where they live. Every schedule fires in that zone — `hermes cron create` takes
@@ -321,14 +335,11 @@ was built from, and the `@sha256:` half is what the build actually resolves — 
 no tag reassignment can substitute different bytes under an existing owner. Bump
 both together when moving to a newer base.
 
-ECR Public answers `HEAD` on a digest reference with `403 Forbidden` while
-answering `GET` normally, and BuildKit resolves a `FROM` with `HEAD` — so a
-clean `docker build .` fails at metadata resolution until the digest is in the
-local store:
-
-```sh
-docker pull "$(awk '/^FROM / {print $2; exit}' Dockerfile)"
-```
+Nothing here needs a registry login: the base is public and is fetched
+anonymously. A build that fails with `403 Forbidden` on it has an expired
+`docker login` for `public.ecr.aws` in the way — those credentials last 12
+hours, and the stale one is sent in place of asking anonymously. `docker logout
+public.ecr.aws` is the whole of the fix.
 
 ## Open
 
