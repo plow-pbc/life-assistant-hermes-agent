@@ -1,0 +1,15 @@
+# The agent-index usage client, pinned.
+#
+# Not committed: plow-pbc/agent-index-client owns that file and is public now,
+# so this repo names a commit instead of carrying a copy that drifts from it.
+# The image build fetches exactly this revision and refuses anything else.
+#
+# A sha, never `main`. The same reason the Dockerfile pins its base by digest:
+# a moving reference substitutes unreviewed code under an agent that holds a
+# live credential. Bumping this is an edit somebody reviews.
+#
+# The checksum is the second half of that. A sha in a URL is only as good as
+# the host serving it, and this file is executed inside the agent.
+sha=46f258ebbbbb793e41af78ce942fe9b24110c784
+sha256=13c17f23b13f0245d605342d7c1b07786373fd97275937238f53c6dde628b888
+path=standalone/agent_index_client.py
