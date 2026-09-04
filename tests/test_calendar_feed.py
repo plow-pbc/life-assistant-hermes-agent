@@ -20,6 +20,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
@@ -38,6 +39,10 @@ class Handler(BaseHTTPRequestHandler):
     # for the strip's whole life, so the suite pinned a framing the relay never
     # sends and the producer's every real tick failed green.
     relay_frames: ClassVar[list] = []
+    # A call past Latch's 15s CALL_BUDGET_MS answers with a pending handle
+    # instead of its result; `poll_answers` is what plow_get_result then says.
+    curl_responses: ClassVar[list] = []
+    poll_answers: ClassVar[list] = []
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -77,10 +82,16 @@ class Handler(BaseHTTPRequestHandler):
         """Stand in for the Mac, by tool and argv rather than by call order."""
         params = body["params"]
         arguments = params.get("arguments", {})
+        if params["name"] == "plow_get_result":
+            return cls.poll_answers.pop(0)
         if params["name"] == "plow_write_file":
-            return ok_text("wrote")
+            # Latch answers every tool with canonical JSON, never a bare word.
+            return ok_text(json.dumps({"path": arguments["path"],
+                                       "bytes": len(arguments["content"])}))
         if arguments.get("argv", [""])[0] == "gog":
             return cls.relay_responses.pop(0)
+        if cls.curl_responses:
+            return cls.curl_responses.pop(0)
         return completed('{"ok":true}')      # the Mac-side curl
 
     def log_message(self, *_args):
@@ -102,11 +113,30 @@ def relay_ok(events):
     return completed("Note: Using direct access token\n" + json.dumps(events))
 
 
+# What a call past the budget answers with instead of its result.
+PENDING = ok_text(json.dumps({"status": "pending", "handle": "H1",
+                              "reason": "running", "retry_after_ms": 1000}))
+
+
+def ready(result):
+    """plow_get_result handing back exactly what the call would have returned."""
+    return ok_text(json.dumps(
+        {"status": "ready", "handle": "H1",
+         "result": json.loads(result["result"]["content"][0]["text"])}))
+
+
+# Every other terminal answer -- failed, expired and unknown are this shape too.
+DENIED = ok_text(json.dumps({"status": "denied", "handle": "H1"}))
+
+
 def event(uid, ical, start, end, **extra):
     return {"id": uid, "iCalUID": ical, "status": "confirmed",
             "summary": f"Event {uid}",
             "start": {"dateTime": start}, "end": {"dateTime": end}, **extra}
 
+
+EVENTS = [event("a", "ical-a",
+                "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")]
 
 CONFIG = {
     "family": {"timezone": "America/Los_Angeles"},
@@ -122,6 +152,7 @@ validated = []
 def feed(tmp_path, monkeypatch):
     Handler.relay_responses, Handler.requests, Handler.redirect_paths = [], [], set()
     Handler.relay_frames = []
+    Handler.curl_responses, Handler.poll_answers = [], []
     validated.clear()
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -293,3 +324,38 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
     assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
 
 
+@pytest.mark.parametrize("polls, deadline, printed", [
+    pytest.param([ready(relay_ok(EVENTS)), ready(completed('{"ok":true}'))], 120,
+                 "calendar feed: 1 events; shipped through the Mac", id="ready"),
+    pytest.param([ready(relay_ok(EVENTS)), DENIED], 120,
+                 "calendar feed failed: relay command denied", id="denied"),
+    pytest.param([ready(relay_ok(EVENTS)), PENDING, PENDING], 2,
+                 "calendar feed failed: relay command is still pending",
+                 id="never-ready"),
+])
+def test_a_call_past_the_budget_is_polled_rather_than_stood_down(
+        feed, monkeypatch, capsys, polls, deadline, printed):
+    """Latch hands a call past its 15s CALL_BUDGET_MS a pending handle instead
+    of the result and runs the command anyway (plow-pbc/latch
+    packages/mcp-server/src/deferred.ts). The adversarial review ahead of exec
+    spends that budget on its own -- 16s for the delivery curl, measured on the
+    live agent 2026-09-04 -- so reading the envelope as a failed command stood
+    every delivery down on a curl that then exited 0, and three stand-downs
+    trip the hour-long backoff. Both the gather and the delivery defer here.
+
+    The clock is the module's own, rebound so the server's thread keeps the
+    real one, and advancing a second per reading so the deadline row gives up
+    after a fixed number of polls rather than a timing-dependent one.
+    """
+    module, _ = feed
+    ticks = iter(range(1000))
+    monkeypatch.setattr(module, "time", SimpleNamespace(
+        monotonic=lambda: next(ticks), sleep=lambda _s: None))
+    monkeypatch.setattr(module, "POLL_DEADLINE_S", deadline)
+    Handler.relay_responses = [PENDING]
+    Handler.curl_responses = [PENDING]
+    Handler.poll_answers = polls
+
+    assert module.main(now=1_756_700_000) == 0
+
+    assert capsys.readouterr().out.startswith(printed)
