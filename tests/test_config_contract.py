@@ -123,13 +123,15 @@ def test_every_skill_lands_outside_every_home():
     )
     assert "find /var/lib/hermes/skills" not in dockerfile
 
-    # The unattended producer's separate, root-owned copy is deliberately a
-    # duplicate under a different root and must not move -- see the comment
-    # above it in the Dockerfile.
-    assert "COPY ld-shared/ /opt/plow/ld-shared/" in dockerfile
 
-    # The base re-asserts ownership of this one file on boot; it is not part
-    # of the skills reconcile and keeps its home destination.
+def test_producer_copy_and_soul_destination_are_not_merged_away():
+    """Pinned so a future DRY pass cannot merge either duplicate away.
+
+    Merging ld-shared's two copies would schedule the agent-writable one, and
+    moving SOUL.md into the skills reconcile would orphan the trailing chmod.
+    """
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    assert "COPY ld-shared/ /opt/plow/ld-shared/" in dockerfile
     assert "COPY runtime/SOUL.md /var/lib/hermes/SOUL.md" in dockerfile
 
 

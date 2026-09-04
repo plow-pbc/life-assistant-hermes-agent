@@ -35,9 +35,8 @@ COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 # them fail with Permission denied. Ownership is left as root.
 # -mindepth 1: the skills root itself is the base's, root-owned and sticky, and
 # recursing over it would reset that mode and leave the directory unwritable for
-# the gateway's own bundled-skill install, which then scans nothing. Sticky here
-# stops a turn unlinking an entry it does NOT own; after first boot it owns every
-# skill under this root, so it does not stop the rename -- see above.
+# the gateway's own bundled-skill install, which then scans nothing.
+# This root stays root-owned always; only its reconciled home copy is agent-owned.
 RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
