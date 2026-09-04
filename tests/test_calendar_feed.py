@@ -62,10 +62,11 @@ class Handler(BaseHTTPRequestHandler):
     def frame(cls, response):
         """The relay's own framing: `event:`/`data:` lines, one per frame.
 
-        `relay_frames` prepends frames ahead of the response -- the transport
-        may carry notifications, and a client that reads the first one as the
-        answer is back to standing down silently."""
-        if cls.relay_frames == ["json"]:
+        `relay_frames` is the frames to send ahead of the response, or the
+        string "json" for the plain body the transport also permits. Leading
+        frames matter: a client that reads the first one as the answer is back
+        to standing down silently."""
+        if cls.relay_frames == "json":
             return json.dumps(response).encode(), "application/json"
         frames = [*cls.relay_frames, response]
         stream = "".join(f"event: message\ndata: {json.dumps(f)}\n\n" for f in frames)
@@ -249,12 +250,29 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
     ]
 
 
-def test_latch_delivery_makes_the_two_documented_calls_itself(feed):
+@pytest.mark.parametrize("frames", [
+    pytest.param([], id="stream"),
+    pytest.param([{"jsonrpc": "2.0", "method": "notifications/message",
+                   "params": {"level": "info"}}], id="notification-first"),
+    pytest.param("json", id="plain-json"),
+])
+def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
     """Every set-up household is on DASHBOARD_DELIVERY=latch — mint_wall_token
     writes it unconditionally — so this is the path that actually runs. The two
     calls are latch-delivery.md's, in its order, made here because there is no
-    model in a feed run to make them."""
+    model in a feed run to make them.
+
+    Once per framing, because the framing is what this producer got wrong for
+    its whole life: it read the relay's event stream as a plain JSON body, and
+    this suite agreed because its double answered one. `stream` is what
+    api.plow.co actually sends; `notification-first` is the frame the transport
+    may put ahead of the response, which a client that takes frame one reads as
+    the answer and stands down on silently; `plain-json` is the body the
+    transport also permits, so the branch that reads one stays exercised. The
+    assertions below are framing-independent on purpose — what the relay wrapped
+    the envelope in must not reach anything downstream of it."""
     module, base = feed
+    Handler.relay_frames = frames
     Handler.relay_responses = [relay_ok([
         event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
 
@@ -275,43 +293,3 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed):
     assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
 
 
-
-def test_the_relay_stream_is_read_the_way_the_relay_writes_it(feed, capsys):
-    """The bug this file's double hid for the strip's whole life.
-
-    api.plow.co answers a relay POST with `content-type: text/event-stream` and
-    the envelope on a `data:` line, not with a plain JSON body. Reading it as
-    JSON raises, and this producer's contract turns a raise into one line on
-    stderr and exit 0 — so a supervised five-minute service failed every tick
-    and looked exactly like a household with no wall. Nothing was louder than
-    that anywhere: not the boot log, not the suite, which pinned the framing
-    the double invented.
-
-    A notification frame rides ahead of the response here because the transport
-    allows one, and a client that reads the first frame as the answer puts the
-    same silent stand-down back one layer down.
-    """
-    module, _ = feed
-    Handler.relay_frames = [{"jsonrpc": "2.0", "method": "notifications/message",
-                             "params": {"level": "info"}}]
-    Handler.relay_responses = [relay_ok([
-        event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
-
-    assert module.main(now=1_756_700_000) == 0
-
-    assert "shipped through the Mac" in capsys.readouterr().out
-    assert [c["name"] for c in relay_calls()] == [
-        "plow_run_command", "plow_write_file", "plow_run_command"]
-
-
-def test_a_plain_json_answer_still_parses(feed, capsys):
-    """The transport lets a server answer either way, and which one arrives is
-    the server's choice rather than ours — so the branch that reads a plain
-    body stays exercised, not just the streamed one this relay sends today."""
-    module, _ = feed
-    Handler.relay_frames = ["json"]
-    Handler.relay_responses = [relay_ok([
-        event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
-
-    assert module.main(now=1_756_700_000) == 0
-    assert "shipped through the Mac" in capsys.readouterr().out
