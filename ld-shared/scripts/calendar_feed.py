@@ -323,7 +323,7 @@ def _post_json(url, token, body, label):
                  "Accept": "application/json, text/event-stream"})
     try:
         with open_no_redirect(request, timeout=30) as response:
-            return response.read(), response.status
+            return response.read(), response.headers.get("Content-Type", "")
     except urllib.error.HTTPError as exc:
         # The code, never the body: an error body can echo the argv back.
         raise FeedError(f"{label} returned HTTP {exc.code}") from exc
@@ -331,14 +331,42 @@ def _post_json(url, token, body, label):
         raise FeedError(f"{label} request failed") from exc
 
 
+def envelope_from(body, content_type):
+    """The JSON-RPC envelope, in whichever framing the relay answered.
+
+    MCP's streamable transport lets a server answer one POST either as a plain
+    JSON body or as an event stream carrying that same envelope in a `data:`
+    line, and this endpoint answers with the stream: api.plow.co returns
+    `content-type: text/event-stream` for tools/call, measured 2026-09-03.
+    Reading that as plain JSON is why this producer stood down on every tick
+    from the day it was written -- `json.loads` on `event: message` raises, the
+    run prints one line to stderr and exits 0, and a supervised five-minute
+    service is indistinguishable from a household that has no wall.
+
+    Frames ahead of the response are skipped rather than read as it: the
+    transport may carry notifications, and only a message carrying `result` or
+    `error` answers the call. Taking the first frame would put that same silent
+    stand-down back, one layer down.
+    """
+    if "text/event-stream" not in content_type:
+        return json.loads(body)
+    for line in body.decode("utf-8", "replace").splitlines():
+        if not line.startswith("data:"):
+            continue
+        framed = json.loads(line[len("data:"):])
+        if "result" in framed or "error" in framed:
+            return framed
+    raise FeedError("relay stream carried no response frame")
+
+
 def relay(url, token, name, arguments):
     """One MCP tools/call on the owner's Mac; returns the result object."""
-    body, _ = _post_json(url, token, {
+    body, content_type = _post_json(url, token, {
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": name, "arguments": arguments},
     }, "relay")
     try:
-        envelope = json.loads(body)
+        envelope = envelope_from(body, content_type)
     except json.JSONDecodeError as exc:
         raise FeedError("relay returned malformed JSON") from exc
     if "error" in envelope:

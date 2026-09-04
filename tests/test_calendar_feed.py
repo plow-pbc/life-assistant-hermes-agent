@@ -33,6 +33,11 @@ class Handler(BaseHTTPRequestHandler):
     relay_responses: ClassVar[list] = []
     requests: ClassVar[list] = []
     redirect_paths: ClassVar[set] = set()
+    # What api.plow.co answers a relay POST with: MCP's streamable transport,
+    # not a plain JSON body (measured 2026-09-03). This double answered JSON
+    # for the strip's whole life, so the suite pinned a framing the relay never
+    # sends and the producer's every real tick failed green.
+    relay_frames: ClassVar[list] = []
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -43,13 +48,28 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Location", "http://127.0.0.1:1/stolen")
             self.end_headers()
             return
-        response = type(self).answer(body) if self.path.endswith("/mcp") else {"ok": True}
-        encoded = json.dumps(response).encode()
+        if self.path.endswith("/mcp"):
+            encoded, content_type = type(self).frame(type(self).answer(body))
+        else:
+            encoded, content_type = json.dumps({"ok": True}).encode(), "application/json"
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    @classmethod
+    def frame(cls, response):
+        """The relay's own framing: `event:`/`data:` lines, one per frame.
+
+        `relay_frames` prepends frames ahead of the response -- the transport
+        may carry notifications, and a client that reads the first one as the
+        answer is back to standing down silently."""
+        if cls.relay_frames == ["json"]:
+            return json.dumps(response).encode(), "application/json"
+        frames = [*cls.relay_frames, response]
+        stream = "".join(f"event: message\ndata: {json.dumps(f)}\n\n" for f in frames)
+        return stream.encode(), "text/event-stream"
 
     @classmethod
     def answer(cls, body):
@@ -100,6 +120,7 @@ validated = []
 @pytest.fixture
 def feed(tmp_path, monkeypatch):
     Handler.relay_responses, Handler.requests, Handler.redirect_paths = [], [], set()
+    Handler.relay_frames = []
     validated.clear()
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -253,3 +274,44 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed):
     # Nothing was POSTed from this container -- it is not on the Pi's LAN.
     assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
 
+
+
+def test_the_relay_stream_is_read_the_way_the_relay_writes_it(feed, capsys):
+    """The bug this file's double hid for the strip's whole life.
+
+    api.plow.co answers a relay POST with `content-type: text/event-stream` and
+    the envelope on a `data:` line, not with a plain JSON body. Reading it as
+    JSON raises, and this producer's contract turns a raise into one line on
+    stderr and exit 0 — so a supervised five-minute service failed every tick
+    and looked exactly like a household with no wall. Nothing was louder than
+    that anywhere: not the boot log, not the suite, which pinned the framing
+    the double invented.
+
+    A notification frame rides ahead of the response here because the transport
+    allows one, and a client that reads the first frame as the answer puts the
+    same silent stand-down back one layer down.
+    """
+    module, _ = feed
+    Handler.relay_frames = [{"jsonrpc": "2.0", "method": "notifications/message",
+                             "params": {"level": "info"}}]
+    Handler.relay_responses = [relay_ok([
+        event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
+
+    assert module.main(now=1_756_700_000) == 0
+
+    assert "shipped through the Mac" in capsys.readouterr().out
+    assert [c["name"] for c in relay_calls()] == [
+        "plow_run_command", "plow_write_file", "plow_run_command"]
+
+
+def test_a_plain_json_answer_still_parses(feed, capsys):
+    """The transport lets a server answer either way, and which one arrives is
+    the server's choice rather than ours — so the branch that reads a plain
+    body stays exercised, not just the streamed one this relay sends today."""
+    module, _ = feed
+    Handler.relay_frames = ["json"]
+    Handler.relay_responses = [relay_ok([
+        event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
+
+    assert module.main(now=1_756_700_000) == 0
+    assert "shipped through the Mac" in capsys.readouterr().out
