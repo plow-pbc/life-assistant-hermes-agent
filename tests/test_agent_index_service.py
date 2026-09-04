@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "image/s6-overlay/s6-rc.d/agent-index"
 
 
-def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0) -> str:
+def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
+                index_status: str = "200") -> str:
     """Start the real run script against a fake container environment.
 
     It is a supervised loop, so it never exits on its own: it is killed after a
@@ -29,8 +30,11 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0) -> 
     for name, value in environment.items():
         (env_dir / name).write_text(value)
 
+    curl = tmp_path / "curl"
+    curl.write_text(f"#!/bin/sh\nprintf %s {index_status}\n")
+    curl.chmod(0o755)
     script = (SERVICE / "run").read_text().replace(
-        "/run/s6/container_environment", str(env_dir))
+        "/run/s6/container_environment", str(env_dir)).replace("curl -sS", f"{curl} -sS")
     sandbox = tmp_path / "run.sh"
     sandbox.write_text(script)
     sandbox.chmod(0o755)
