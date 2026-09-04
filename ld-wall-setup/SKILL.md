@@ -315,8 +315,9 @@ registration above did not land, and forcing nothing would look like success.
 That run is its own turn: the weather producer composes the tile, and
 because the dotenv says `DASHBOARD_DELIVERY=latch` its helper prints
 `NOT DELIVERED — ship it through Latch, then paste both outputs:` followed by
-the two calls to make. That turn makes exactly those two calls, in that
-order, per `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`. Wait
+the two calls to make. That turn makes those two calls, in that order —
+polling `mcp__plow__plow_get_result` if either answers with a pending handle — per
+`/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`. Wait
 until `/opt/hermes/bin/hermes cron runs` lists that run as finished, then
 read the card back the same way the producers write it:
 

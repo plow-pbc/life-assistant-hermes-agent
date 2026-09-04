@@ -24,6 +24,15 @@ verbatim. A successful `curl -fsS` prints the Pi's `{"ok":true}`; any other
 status prints `curl: (22) …` and the call reports a non-zero exit — say so
 and stop; do not pretend the card landed.
 
+**A `{"status":"pending","handle":…}` answer is not a result.** Either call
+outruns the Mac's 15-second budget when Latch's review ahead of exec takes
+its time; the call keeps running and hands back a handle. Poll
+`mcp__plow__plow_get_result handle=<that handle>` about once a second until
+its `status` is `ready`, and read its `result` as the answer the original
+call would have given — the write's confirmation, or the curl's exit and
+output, held to the same 2xx rule above. `denied`, `failed`, `expired` or
+`unknown` is a failed step: say so and stop.
+
 ## When the Mac is asleep or Latch is not running
 
 Step 1 or step 2 fails with the relay's unreachable-device error. Do not
