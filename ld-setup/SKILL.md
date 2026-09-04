@@ -246,6 +246,10 @@ record of how far this got. There is no marker and no second source. The four
 keys, in order: `family.owner.introduced`, `weather.location`,
 `sports.followed`, `calendar.sources`. Present-but-empty is answered.
 
+Also run `python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py referrer` --
+who invited this owner, or `(none)`. It decides one sentence in the opener,
+below.
+
 **2 · Run the Latch status probe.** `latch_status.py`, as described above.
 `unconfigured` means there is no relay in this build at all: no tool lookup,
 nothing said about it, and the pitch and link stand.
@@ -501,6 +505,17 @@ name question is the one thing `owner_profile.py get` decides at step 1:
   call you Sam, or do you prefer Samuel?"* One sentence, no list. Whatever they
   answer, in their own words, is the name, and a different name entirely is the
   name.
+
+`referrer` decides one more thing, said in the same message as the name
+question:
+
+- `referrer` printed a name: they got here because that person's assistant
+  invited them, and they were set up with the same kind of assistant. Say so
+  and ask, in the same message, one sentence: *"Sam set you up with the same
+  Life assistant he has -- want to keep that, or would you rather I be
+  something different?"* Keep means carry on. Different means the "new
+  agent" flow: tell them to text **new agent** to this number, and stop.
+- `(none)`: say nothing about it.
 
 **Give your name, and only your name**, *if you have one.* "I'm ⟨name⟩"
 belongs in that first line, the way you would say it to someone at a door,
