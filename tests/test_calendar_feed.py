@@ -20,7 +20,6 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
@@ -126,6 +125,7 @@ def ready(result):
 
 # Every other terminal answer -- failed, expired and unknown are this shape too.
 DENIED = ok_text(json.dumps({"status": "denied", "handle": "H1"}))
+EXPIRED = ok_text(json.dumps({"status": "expired", "handle": "H1"}))
 
 
 def event(uid, ical, start, end, **extra):
@@ -323,32 +323,28 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
     assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
 
 
-@pytest.mark.parametrize("polls, deadline, printed", [
-    pytest.param([ready(relay_ok(EVENTS)), ready(completed('{"ok":true}'))], 120,
+@pytest.mark.parametrize("polls, printed", [
+    pytest.param([ready(relay_ok(EVENTS)), ready(completed('{"ok":true}'))],
                  "calendar feed: 1 events; shipped through the Mac", id="ready"),
-    pytest.param([ready(relay_ok(EVENTS)), DENIED], 120,
+    pytest.param([ready(relay_ok(EVENTS)), DENIED],
                  "calendar feed failed: relay command denied", id="denied"),
-    pytest.param([ready(relay_ok(EVENTS)), PENDING, PENDING], 2,
-                 "calendar feed failed: relay command is still pending",
-                 id="never-ready"),
-    pytest.param([ok_text(json.dumps({"status": "ready", "handle": "H1"}))], 120,
+    pytest.param([ready(relay_ok(EVENTS)), PENDING, PENDING, EXPIRED],
+                 "calendar feed failed: relay command expired",
+                 id="never-ready-until-latch-expires-it"),
+    pytest.param([ok_text(json.dumps({"status": "ready", "handle": "H1"}))],
                  "calendar feed failed: relay command ready with no result",
                  id="ready-with-nothing"),
 ])
 def test_a_call_past_the_budget_is_polled_rather_than_stood_down(
-        feed, monkeypatch, capsys, polls, deadline, printed):
+        feed, monkeypatch, capsys, polls, printed):
     """What a deferred call is, and why standing down on one was wrong, is on
     relay()'s own docstring. Both the gather and the delivery defer here.
 
-    The clock is the module's own, rebound so the server's thread keeps the
-    real one, and advancing a second per reading so the deadline row gives up
-    after a fixed number of polls rather than a timing-dependent one.
+    Only the pause is faked: Latch's 15-minute handle TTL is the one clock,
+    and it is Latch that says `expired`.
     """
     module, _ = feed
-    ticks = iter(range(1000))
-    monkeypatch.setattr(module, "time", SimpleNamespace(
-        monotonic=lambda: next(ticks), sleep=lambda _s: None))
-    monkeypatch.setattr(module, "POLL_DEADLINE_S", deadline)
+    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
     Handler.relay_responses = [PENDING]
     Handler.curl_responses = [PENDING]
     Handler.poll_answers = polls

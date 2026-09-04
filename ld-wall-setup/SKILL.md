@@ -38,8 +38,11 @@ directly rather than through a shell, so anything needing a redirect, a `&&`
 or a `~` is written as `["sh","-c","…"]`. Its `network` defaults to false
 and every call below that leaves the Mac passes `network=true`; its `timeout`
 is in milliseconds and defaults to 10000, and a call that exceeds it comes
-back as a job handle to poll with `mcp__plow__plow_get_output`. Paths under `~/Plow`
-auto-approve.
+back as a job handle to poll with `mcp__plow__plow_get_output`. Two handles,
+two tools: any call that outruns the Mac's own 15-second budget first answers
+`{"status":"pending","handle":…}` — settle that with `mcp__plow__plow_get_result`
+until it is `ready`, and only the `result` inside may carry the job handle
+`mcp__plow__plow_get_output` reads. Paths under `~/Plow` auto-approve.
 
 Cards refresh only while that Mac is awake with Latch running — an accepted
 cost. If a Latch call here fails because the Mac is unreachable, say "Mac
@@ -218,7 +221,8 @@ confirm it ran, re-probe; do not proceed on a refused probe.
 Once the probe succeeds, run each Pi line the same way with `network=true`
 and a `timeout` of `600000` (ten minutes — `apt-get` is slow on a Pi; a run
 this long comes back as a job handle, so poll it with `mcp__plow__plow_get_output`
-rather than waiting on the call). `<pi_line_1>` and `<pi_line_2>` are the two
+rather than waiting on the call — after settling the outer `pending` answer
+with `mcp__plow__plow_get_result`, as above). `<pi_line_1>` and `<pi_line_2>` are the two
 values Phase 2 printed, each dropped whole into one argv element:
 
     mcp__plow__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_1>"], network=true, timeout=600000)

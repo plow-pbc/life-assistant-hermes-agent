@@ -89,10 +89,11 @@ CALENDAR_SUFFIX = "/api/calendar"
 LATCH_BODY_PATH = "~/Plow/ld/calendar.json"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
-# Latch's own RETRY_AFTER_MS as a constant, and a deadline past which a gather
-# or a LAN curl has plainly failed. Both inside its 15-minute HANDLE_TTL_MS.
+# Latch's own RETRY_AFTER_MS as a constant. No deadline of this script's own:
+# a handle Latch has not settled within its 15-minute HANDLE_TTL_MS answers
+# `expired`, and giving up sooner would let a delivery still running on the
+# Mac land after the next tick's.
 POLL_INTERVAL_S = 1
-POLL_DEADLINE_S = 120
 
 # Deliberately broad, the same trade nudge_candidates.py's redaction makes:
 # native join links use schemes other than http, and stripping an ordinary
@@ -409,10 +410,7 @@ def relay(url, token, name, arguments):
     payload = _payload_of(_call(url, token, name, arguments))
     # The FIRST envelope's, never re-read off an answer that may omit it.
     handle = payload.get("handle")
-    deadline = time.monotonic() + POLL_DEADLINE_S
     while payload.get("status") == "pending":
-        if time.monotonic() > deadline:
-            raise FeedError("relay command is still pending")
         time.sleep(POLL_INTERVAL_S)
         payload = _payload_of(_call(url, token, "plow_get_result",
                                     {"handle": handle}))
