@@ -33,6 +33,11 @@ class Handler(BaseHTTPRequestHandler):
     relay_responses: ClassVar[list] = []
     requests: ClassVar[list] = []
     redirect_paths: ClassVar[set] = set()
+    # What api.plow.co answers a relay POST with: MCP's streamable transport,
+    # not a plain JSON body (measured 2026-09-03). This double answered JSON
+    # for the strip's whole life, so the suite pinned a framing the relay never
+    # sends and the producer's every real tick failed green.
+    relay_frames: ClassVar[list] = []
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -43,13 +48,29 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Location", "http://127.0.0.1:1/stolen")
             self.end_headers()
             return
-        response = type(self).answer(body) if self.path.endswith("/mcp") else {"ok": True}
-        encoded = json.dumps(response).encode()
+        if self.path.endswith("/mcp"):
+            encoded, content_type = type(self).frame(type(self).answer(body))
+        else:
+            encoded, content_type = json.dumps({"ok": True}).encode(), "application/json"
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    @classmethod
+    def frame(cls, response):
+        """The relay's own framing: `event:`/`data:` lines, one per frame.
+
+        `relay_frames` is the frames to send ahead of the response, or the
+        string "json" for the plain body the transport also permits. Leading
+        frames matter: a client that reads the first one as the answer is back
+        to standing down silently."""
+        if cls.relay_frames == "json":
+            return json.dumps(response).encode(), "application/json"
+        frames = [*cls.relay_frames, response]
+        stream = "".join(f"event: message\ndata: {json.dumps(f)}\n\n" for f in frames)
+        return stream.encode(), "text/event-stream"
 
     @classmethod
     def answer(cls, body):
@@ -100,6 +121,7 @@ validated = []
 @pytest.fixture
 def feed(tmp_path, monkeypatch):
     Handler.relay_responses, Handler.requests, Handler.redirect_paths = [], [], set()
+    Handler.relay_frames = []
     validated.clear()
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -228,12 +250,29 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
     ]
 
 
-def test_latch_delivery_makes_the_two_documented_calls_itself(feed):
+@pytest.mark.parametrize("frames", [
+    pytest.param([], id="stream"),
+    pytest.param([{"jsonrpc": "2.0", "method": "notifications/message",
+                   "params": {"level": "info"}}], id="notification-first"),
+    pytest.param("json", id="plain-json"),
+])
+def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
     """Every set-up household is on DASHBOARD_DELIVERY=latch — mint_wall_token
     writes it unconditionally — so this is the path that actually runs. The two
     calls are latch-delivery.md's, in its order, made here because there is no
-    model in a feed run to make them."""
+    model in a feed run to make them.
+
+    Once per framing, because the framing is what this producer got wrong for
+    its whole life: it read the relay's event stream as a plain JSON body, and
+    this suite agreed because its double answered one. `stream` is what
+    api.plow.co actually sends; `notification-first` is the frame the transport
+    may put ahead of the response, which a client that takes frame one reads as
+    the answer and stands down on silently; `plain-json` is the body the
+    transport also permits, so the branch that reads one stays exercised. The
+    assertions below are framing-independent on purpose — what the relay wrapped
+    the envelope in must not reach anything downstream of it."""
     module, base = feed
+    Handler.relay_frames = frames
     Handler.relay_responses = [relay_ok([
         event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
 
@@ -252,4 +291,5 @@ def test_latch_delivery_makes_the_two_documented_calls_itself(feed):
     assert "kiosk-token" not in json.dumps(Handler.requests)
     # Nothing was POSTed from this container -- it is not on the Pi's LAN.
     assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
+
 
