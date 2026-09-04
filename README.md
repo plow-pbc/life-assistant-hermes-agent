@@ -26,8 +26,41 @@ in [`plow-pbc/plow`](https://github.com/plow-pbc/plow), whose CI builds the
 image from it. Every turn's prompt framing and the Plow tools come from the
 `plow_chat` plugin in
 [`plow-pbc/hermes-plow-chat`](https://github.com/plow-pbc/hermes-plow-chat),
-which the base image pins. The map of all of them is the base image's README,
-"The repos".
+which the base image pins.
+
+## Where changes go
+
+This repo is one of several that assemble a Plow agent. The map of which repo
+owns what is in
+[`plow-hermes-agent` README § The repos](https://github.com/plow-pbc/plow-hermes-agent#the-repos);
+read it before a change that touches a neighbour. The test is **who else would
+have to change if this fact changed** — if the answer is a sibling, the change
+belongs there and this repo takes a pin bump.
+
+Not here:
+
+- Boot, `plow-init`, the hardened home and the gateway's `config.yaml` seed —
+  [`plow-hermes-agent`](https://github.com/plow-pbc/plow-hermes-agent). A base
+  bug is fixed there and arrives here as a digest bump, not patched from this
+  tree.
+- Every turn's prompt framing, the Plow tools and the seed skills —
+  [`hermes-plow-chat`](https://github.com/plow-pbc/hermes-plow-chat). A plugin
+  change is a PR there plus a base pin bump, never a patch file carried here.
+- A client for the Plow API or the Latch relay — the plugin's seed skills and
+  [`latch`](https://github.com/plow-pbc/latch), which already own those wires.
+- The container lifecycle, the deploy hook and skill seeding —
+  [`agent-mgr`](https://github.com/plow-pbc/agent-mgr) today, and
+  [`plow-agents`](https://github.com/plow-pbc/plow-agents) for running an image
+  on your own machine.
+
+Examples:
+
+- Adherence — #100 deleted this repo's copy of `runtime/config.yaml` once the
+  base's seed was confirmed to carry the same keys, −3,023 lines:
+  https://github.com/plow-pbc/life-assistant-hermes-agent/pull/100
+- Violation — #122 repairs the base's `plow-init` `harden_home()` ownership
+  race with a variant-only s6 oneshot, leaving every other agent built on that
+  base wedged: https://github.com/plow-pbc/life-assistant-hermes-agent/pull/122
 
 ## Usage reporting
 
