@@ -306,7 +306,7 @@ def _payload_of(result):
     except (KeyError, TypeError, ValueError, StopIteration) as exc:
         raise FeedError("malformed relay response") from exc
     if not isinstance(payload, dict):
-        raise FeedError("malformed relay response")
+        raise FeedError("relay response is not a JSON object")
     return payload
 
 
