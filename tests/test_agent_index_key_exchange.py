@@ -21,6 +21,7 @@ def test_bootstrap_invokes_the_pinned_client_with_the_plow_token():
     assert "PLOW_AGENT_TOKEN" in bootstrap
     assert "agent-index-client.py" in bootstrap
     assert "--register" in bootstrap
+    assert "--name" not in bootstrap, "boot must not overwrite the publisher's page name"
 
 
 def test_hourly_report_receives_only_the_stored_key():
