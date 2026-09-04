@@ -103,5 +103,5 @@ shipping as `handoff/plugin-changes.patch`.
 ## Links
 
 - **PR A — perms fix (normal):** https://github.com/plow-pbc/life-assistant-hermes-agent/pull/122
-- **PR B — onboarding SKILL (this draft PR):** _(this PR — link filled in on open)_
+- **PR B — onboarding SKILL (this draft PR):** https://github.com/plow-pbc/life-assistant-hermes-agent/pull/123
 - **plow #1726 — API attachment cap 3→4 (merged):** https://github.com/plow-pbc/plow/pull/1726
