@@ -132,6 +132,13 @@ already nudged, you have. Leave it.
 
 ## How a turn actually sends things
 
+**Every onboarding tool call is silent: no accompanying assistant prose.**
+This applies before, between, and after calls, including receipt checks,
+fallback decisions, config writes, and calendar discovery and normalization.
+Put owner-facing text only in the sequence's text items or in the ordinary
+final response. Never send an intermediate commentary message, even to explain
+why you are switching to the fallback. Keep that reasoning to yourself.
+
 **Use `plow_send_sequence` when it is in your available tools.** It sends the
 whole intro to this turn's owner DM in one call. The only argument is `items`,
 an ordered list of text (`type`, `body`), photos (`type`, `asset_ids`), and
@@ -158,31 +165,61 @@ separate memory entry can contradict both and is unnecessary bookkeeping.
 
 **Read the receipt before doing anything else.** `completed` records delivered
 item indices and message IDs. `failure` names the first unresolved index and
-its status: `rejected`, `failed`, or `delivery_unknown`. It can also include
-confirmed photo message IDs and the unresolved `photo_index`. Never blindly
-replay a sequence, including after a timeout or an ambiguous result. Check chat
-history against those IDs before sending any remaining items. If delivery is
-still uncertain, stop with `NO_REPLY`; do not resend the intro next turn just
-because its config flag is still absent. Use the delivered conversation and
-receipt to continue without repeating confirmed beats. Never show the receipt,
-JSON, tool names, or errors to the owner.
+its status. It can also include confirmed photo message IDs and an unresolved
+`photo_index`.
 
-**If the tool is absent, do not search for it or print a tool call.** Deliver
-ordinary clean text in a single final-response bubble, followed by the four
-`MEDIA:` lines in §2. Keep the greeting, gist, app, exact privacy line, preview
-lead-in, conditional catch/link, and first unanswered question in that text.
-There are no timed pauses in this fallback. Attachments land after the whole
-text, so introduce them as previews below rather than promising an in-position
-stack. Never emit JSON or transport scaffolding. This fallback is for a missing
-tool, not permission to replay after a failed sequence.
+| receipt | next delivery |
+|---|---|
+| `success: true` | Finish immediately with `NO_REPLY`, as above. |
+| `rejected` with `completed: []` and no confirmed message IDs | Nothing was sent. Deliver the ordinary text plus four `MEDIA:` previews below this turn. |
+| `failed` or `delivery_unknown`, or any confirmed delivery | Check chat history against the receipt before sending remaining items; if still uncertain, finish with `NO_REPLY`. |
+
+A missing or mis-permissioned manifest is a pre-send rejection, not a reason
+to leave the owner without an introduction. Use the same fallback as a missing
+tool; do not retry the rejected sequence or try to repair its manifest.
+Never blindly replay after a partial delivery, timeout, or ambiguous result.
+If delivery is still uncertain, do not resend the intro next turn just because
+its config flag is absent. Use the delivered conversation and receipt to
+continue without repeating confirmed beats. Never show the receipt, JSON,
+tool names, or errors to the owner.
+
+**Ordinary fallback, for an absent tool or a pre-send `rejected` receipt:**
+Deliver ordinary clean text in a single final-response bubble, followed by the
+four `MEDIA:` lines in §2. Keep the greeting, gist, app, exact privacy line,
+preview lead-in, conditional catch/link, and first unanswered question in that
+text. There are no timed pauses in this fallback. Attachments land after the
+whole text, so introduce them as previews below rather than promising an
+in-position stack. Never emit JSON or transport scaffolding. If the tool is
+absent, do not search for it or print a tool call. This fallback is not
+permission to replay a partially delivered or uncertain sequence.
 
 **Never call `clarify`.** Ask in a sentence, never a blocking menu. Every text
 body and every ordinary response must be clean owner-facing copy. No process
 notes, status words, tool names, or narration of checks and writes. Read config
 once, probe once, draft once; do not read back a successful write or re-probe.
 
+    NOT: Written. Now waiting for Mary's reply before continuing to city/teams.
+    NOT: Good, assets exist. Let me send the opener now.
+    NOT: Coordinates check out for Mountain View, California, good.
+    NOT: Onboarding complete. No further action needed right now.
+
+**The test is subject, not placement.** Every one of those is a sentence about
+the setup process: what you wrote, what you checked, which step you are on,
+whether it is finished. The owner is not a participant in that process. If a
+sentence would make no sense to someone who does not know this skill exists, it
+is not for them, wherever it sits, and it must never be one of the turn's
+bubbles.
+
+**So make your bookkeeping tool calls in silence, and let every bit of text you
+emit be copy the owner is meant to read.** The intro's bubbles, the city
+question, the close. Not a report of what you just did. A turn whose tools all
+succeeded and whose only emitted text is "name is drafted, waiting for her next
+reply" has skipped its own step: the owner got a process note instead of the
+intro, and nothing later will notice the intro never arrived. Observed exactly
+that way, twice.
+
 **A `MEDIA:` tag must be plain text on its own line, flush left, never fenced.**
-The gateway discards tags inside code fences. Only the missing-tool fallback
+The gateway discards tags inside code fences. Only the ordinary fallback
 uses these tags for previews; the sequence tool sends photos in position.
 
 **Progress still follows delivery.** Hold the introduced flag until the next
@@ -261,7 +298,7 @@ back to carry it. Then the marker is written now, in this turn, alongside the
 intro bubbles it sends and the close.
 
 **5 · Compose the one message**, using the sequence tool for the intro, or the
-ordinary response for a single question or missing-tool fallback, in this shape:
+ordinary response for a single question or ordinary fallback, in this shape:
 
 - **acknowledge what just landed**, their city back to them, their teams in
   their own words, their name if they have just given it;
@@ -588,7 +625,7 @@ tool posts all four as one stack, with individual delivery only on a definite
 stack rejection. Never construct an asset ID from the owner's words or a path.
 Follow the photos item with a four-second pause.
 
-**Missing-tool fallback only:** append these four lines after the clean
+**Ordinary fallback only (tool absent or pre-send rejection):** append these four lines after the clean
 single-bubble text, without indentation or a code fence:
 
 MEDIA:/srv/plow-assets/work-1-vault-login.png

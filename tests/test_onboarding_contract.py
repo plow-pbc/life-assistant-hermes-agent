@@ -245,7 +245,9 @@ def test_every_asset_the_sheet_sends_is_one_the_image_holds():
     manifest = json.loads((assets / "manifest.json").read_text())
     assert set(manifest) == {"version", "assets"}
     assert manifest["version"] == 1
-    assert "COPY docs/onboarding-v2/assets/ /srv/plow-assets/" in DOCKERFILE
+    baked = [line for line in DOCKERFILE.splitlines()
+             if line.startswith("COPY") and "/srv/plow-assets/" in line]
+    assert baked == ["COPY docs/onboarding-v2/assets/ /srv/plow-assets/"]
     for item in intro_items():
         if item["type"] == "photos":
             assert set(item) == {"type", "asset_ids"}
@@ -276,6 +278,22 @@ def test_the_lead_in_and_the_pictures_travel_together():
             assert set(item) == {"type", "body"}
             assert 0 < len(item["body"]) <= 4000
     assert not re.search(r"\[\[(?:BUBBLE|PHOTOS|PAUSE)", SKILL)
+
+
+def test_a_rejected_sequence_uses_media_fallback_without_replaying_partial_delivery():
+    """A pre-send refusal must still deliver the intro; an uncertain send must not replay."""
+    transport = SKILL.split("## How a turn actually sends things", 1)[1].split("## The algorithm,", 1)[0]
+    rows = [line.split("|")[1:-1] for line in transport.splitlines()
+            if line.startswith("| `")]
+    outcomes = {cells[0].strip(): cells[1].strip() for cells in rows}
+    rejected = next((action for condition, action in outcomes.items()
+                     if "`rejected`" in condition and "`completed: []`" in condition), "")
+    assert "`MEDIA:`" in rejected, "a rejected call has no delivery to suppress"
+    for status in ("failed", "delivery_unknown"):
+        action = next((action for condition, action in outcomes.items()
+                       if f"`{status}`" in condition), "")
+        assert "`NO_REPLY`" in action
+        assert "`MEDIA:`" not in action, "uncertain delivery cannot blindly use the intro fallback"
 
 
 def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
