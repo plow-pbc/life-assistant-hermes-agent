@@ -238,24 +238,19 @@ because a turn that cannot find its own shape improvises one.
 
 **1 · Read the config.** `/var/lib/hermes/ld/config.json`, once, at the top, and
 read the owner sentence in this turn's prompt -- the name is on their ACCOUNT,
-not in the file. Every owner turn states one of these two, this solo DM as
-much as anywhere else, and it is the whole answer to which name question the
+not in the file. Every owner turn states exactly one of these two, this solo DM
+as much as anywhere else, and it is the whole answer to which name question the
 opener asks:
 
 - `Your owner is <Name> [<handle>].` -- a name on the account: confirm it.
 - `Your owner [<handle>] has not given their name yet: ask once and record it
   with plow_name_contact(handle=<handle>). Never guess a name from mail,
   calendar, or memory.` -- nobody has said yet: ask for it.
-- Neither sentence at all: the plugin could not read the book at boot. Same as
-  the second form -- ask -- and read the handle from the owner row of
-  `plow_contacts()`. A `success: false` there is that same read failing twice:
-  there is no handle to give `plow_name_contact`, so whatever they answer is
-  not Learned this turn -- same as a first turn where nothing arrives. No
-  write, no intro, nothing to hold. Ask again once the book resolves.
 
-Read both off that sentence and nowhere else. The config is the only record of
-how far this got. There is no marker and no second source. The four keys, in
-order: `family.owner.introduced`,
+The handle in brackets is the same handle either way, and it is the one
+`plow_name_contact` takes at step 4. Read both off that sentence and nowhere
+else. The config is the only record of how far this got. There is no marker and
+no second source. The four keys, in order: `family.owner.introduced`,
 `weather.location`, `sports.followed`, `calendar.sources`. Present-but-empty is
 answered.
 
@@ -278,9 +273,9 @@ owner hears nothing about any of it.
 **3 · Take what this message gave you.** Their name, their city, their teams,
 their calendar picks, whatever actually arrived, judged from what they typed
 and nothing else. A routing label is not a name. **Learned** covers both
-openers: a name typed cold, and the account's name just confirmed or corrected
--- except step 1's double-failed-read case, which is never Learned. Nothing
-arrives on a first turn, so nothing is collected and nothing is written.
+openers: a name typed cold, and the account's name just confirmed or corrected.
+Nothing arrives on a first turn, so nothing is collected and nothing is
+written.
 
 **4 · Write everything you hold that is not yet in the config, NOW, before
 the message.** One draft, carrying everything held, never just the newest.
@@ -288,7 +283,7 @@ the message.** One draft, carrying everything held, never just the newest.
 The name is not part of that draft. It goes to their ACCOUNT, in the same
 turn, before the intro, in one tool call:
 
-    plow_name_contact(handle=<the handle in brackets in the owner sentence, or the owner row read in step 1 when neither sentence appeared>, display_name=<exactly what they said>)
+    plow_name_contact(handle=<the handle in brackets in the owner sentence>, display_name=<exactly what they said>)
 
 Then say that name back. Nothing is staged and nothing is written to disk: the
 account is the one place their name lives, and the next turn's owner sentence is

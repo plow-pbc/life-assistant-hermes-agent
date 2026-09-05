@@ -606,7 +606,7 @@ def test_the_relay_tool_is_named_only_where_it_exists():
     # `plow_<something>` and the next one added would otherwise slip in bare.
     for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", ONBOARDING):
         # Native adapter tools do not carry the relay MCP server prefix.
-        if hit.group() in ("plow_send_sequence", "plow_name_contact", "plow_contacts"):
+        if hit.group() in ("plow_send_sequence", "plow_name_contact"):
             continue
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
