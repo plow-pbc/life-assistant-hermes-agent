@@ -232,60 +232,64 @@ def test_no_mode_of_write_config_touches_the_crons():
 # Assets: what ships in the image
 # --------------------------------------------------------------------------
 
-def test_every_asset_the_sheet_sends_is_one_the_image_holds():
-    """A MEDIA: path the image does not carry is delivered as nothing at all --
-    no attachment, no error, and the sentence introducing it still arrives.
+def intro_items():
+    section = SKILL.split("## The intro, a sequence of bubbles in one turn", 1)[1]
+    example = re.search(r"```json\n(.*?)\n```", section, re.DOTALL)
+    assert example, "the intro must carry callable tool arguments"
+    return json.loads(example.group(1))["items"]
 
-    The directory is baked as a unit, so the contract worth testing is
-    referential: every file the sheet names must exist to be copied. Pinning the
-    directory's exact listing tested the filesystem instead, and broke whenever
-    the design changed while catching nothing a run would not.
-    """
+
+def test_every_asset_the_sheet_sends_is_one_the_image_holds():
+    """The tool's IDs must resolve through the manifest the image ships."""
     assets = ROOT / "docs/onboarding-v2/assets"
-    baked = [l for l in DOCKERFILE.splitlines()
-             if l.startswith("COPY") and "/srv/plow-assets/" in l]
-    assert baked == ["COPY docs/onboarding-v2/assets/ /srv/plow-assets/"], (
-        "the directory is copied as one unit; a per-file list drifts from it")
-    referenced = re.findall(r"^\s*MEDIA:/srv/plow-assets/(\S+)$", SKILL, re.MULTILINE)
-    assert referenced, "the sheet sends no assets at all"
-    for name in referenced:
-        assert (assets / name).is_file(), f"the sheet sends {name}, which is not in the image"
+    manifest = json.loads((assets / "manifest.json").read_text())
+    assert set(manifest) == {"version", "assets"}
+    assert manifest["version"] == 1
+    assert "COPY docs/onboarding-v2/assets/ /srv/plow-assets/" in DOCKERFILE
+    for item in intro_items():
+        if item["type"] == "photos":
+            assert set(item) == {"type", "asset_ids"}
+            for asset_id in item["asset_ids"]:
+                relative = Path(manifest["assets"][asset_id])
+                assert not relative.is_absolute() and ".." not in relative.parts
+                target = assets / relative
+                assert not target.is_symlink() and target.is_file()
+                assert target.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_the_lead_in_and_the_pictures_travel_together():
-    """The question and the images are one thing: asked with nothing behind it
-    the question is worse than not asking, and sent without it the pictures
-    arrive unexplained."""
-    live, in_comment = [], False
-    for line in ONBOARDING.splitlines():
-        if "<!--" in line:
-            in_comment = True
-        if not in_comment:
-            live.append(line)
-        if "-->" in line:
-            in_comment = False
-    live = "\n".join(live)
-    tags = [l for l in live.splitlines() if l.strip().startswith("MEDIA:/srv/plow-assets/work-")]
-    # Three, and work-3 deliberately absent: it repeated work-2's argument, and
-    # every tag is one more message on the owner's phone.
-    assert [t.strip().rsplit("/", 1)[1] for t in tags] == [
+    """The callable example preserves the stack and replaces ordinary gaps."""
+    items = intro_items()
+    assert [item["type"] for item in items] == [
+        "text", "text", "text", "text", "text", "photos", "pause",
+        "text", "text", "pause", "text"]
+    assert len(items[5]["asset_ids"]) == 4
+    assert len(set(items[5]["asset_ids"])) == 4
+    manifest = json.loads((ROOT / "docs/onboarding-v2/assets/manifest.json").read_text())
+    assert [manifest["assets"][i] for i in items[5]["asset_ids"]] == [
         "work-1-vault-login.png", "work-2-instacart-grocery.png",
-        "work-4-medical-discovery.png"]
+        "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
+    assert items[6] == items[9] == {"type": "pause", "seconds": 4}
+    assert items[8]["body"] == "https://plow.co/latch"
+    for item in items:
+        if item["type"] == "text":
+            assert set(item) == {"type", "body"}
+            assert 0 < len(item["body"]) <= 4000
+    assert not re.search(r"\[\[(?:BUBBLE|PHOTOS|PAUSE)", SKILL)
 
 
 def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
-    """Hermes drops a model-emitted MEDIA: path under its denylist without an
-    error the owner or the agent can see, and this image's whole HERMES_HOME is
-    /var/lib/hermes -- so an asset beside the skills is silently undeliverable.
-    """
-    denied = ("/etc", "/proc", "/sys", "/dev", "/root", "/boot",
-              "/var/log", "/var/lib", "/var/run")
-    assets = ("/srv/plow-assets/work-1-vault-login.png",
-              "/srv/plow-assets/work-2-instacart-grocery.png",
-              "/srv/plow-assets/work-4-medical-discovery.png")
-    for asset in assets:
-        assert f"MEDIA:{asset}" in SKILL
-        assert not any(asset.startswith(f"{d}/") for d in denied)
+    """Missing-tool fallback sends the same previews via ordinary MEDIA."""
+    manifest = json.loads((ROOT / "docs/onboarding-v2/assets/manifest.json").read_text())
+    ids = next(item["asset_ids"] for item in intro_items() if item["type"] == "photos")
+    paths = re.findall(r"^MEDIA:(/srv/plow-assets/\S+)$", SKILL, re.MULTILINE)
+    assert paths == ["/srv/plow-assets/" + manifest["assets"][i] for i in ids]
+    denied = ("/etc/", "/proc/", "/sys/", "/dev/", "/root/", "/boot/",
+              "/var/log/", "/var/lib/", "/var/run/")
+    assert all(not path.startswith(denied) for path in paths)
+    # Fenced MEDIA is discarded before the gateway scans attachments.
+    unfenced = re.sub(r"```.*?```", "", SKILL, flags=re.DOTALL)
+    assert all("MEDIA:" + path in unfenced for path in paths)
 
 
 # --------------------------------------------------------------------------
@@ -324,6 +328,10 @@ def test_silence_names_the_token_the_gateway_recognises():
     """
     soul = " ".join(SOUL.split())
     assert "Say `NO_REPLY` and nothing else" in soul
+    transport = SKILL.split("## How a turn actually sends things", 1)[1].split("## The algorithm,", 1)[0]
+    assert "`NO_REPLY`" in transport
+    assert "LAST tool call" in transport
+    assert "no further tools" in transport
 
 
 def test_a_group_gets_no_questions_and_no_writes():
@@ -579,6 +587,9 @@ def test_the_relay_tool_is_named_only_where_it_exists():
     # Every relay tool, not the two that happened to appear first: the family is
     # `plow_<something>` and the next one added would otherwise slip in bare.
     for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", ONBOARDING):
+        # Native adapter tools do not carry the relay MCP server prefix.
+        if hit.group() == "plow_send_sequence":
+            continue
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
             "that has established it exists")

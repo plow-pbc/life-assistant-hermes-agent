@@ -132,114 +132,63 @@ already nudged, you have. Leave it.
 
 ## How a turn actually sends things
 
-**A turn can deliver several bubbles, and it does so with an explicit
-delimiter you write into your own reply.** Put the sentinel `[[BUBBLE]]` on its
-own line to start a new message bubble: the gateway splits the text you send on
-that line and posts each chunk as its own separate iMessage, in order. So a
-reply that is `line one` then `[[BUBBLE]]` on its own line then `line two`
-lands as two separate bubbles on the owner's phone. A model image is still its
-own bubble, one per image. You do NOT need tool-call gaps to split bubbles
-anymore — you split them yourself, inside a single response, by placing
-`[[BUBBLE]]` on its own line between each intended line.
+**Use `plow_send_sequence` when it is in your available tools.** It sends the
+whole intro to this turn's owner DM in one call. The only argument is `items`,
+an ordered list of text (`type`, `body`), photos (`type`, `asset_ids`), and
+pause (`type`, `seconds`) objects. No destination and no file paths. Use the
+four fixed asset IDs below. The tool validates the whole request before sending.
 
-**This is how the intro is delivered: as a sequence of separate bubbles inside
-ONE turn.** When the owner's name is learned, you deliver the WHOLE intro this
-turn, as several short bubbles separated by `[[BUBBLE]]` lines, arriving one
-after another, and you do NOT wait for the owner to reply between them. Then you
-continue into the city question. The full bubble sequence is spelled out in "The
-intro, a sequence of bubbles in one turn" below. Cramming every idea into one
-run-on paragraph lands as a wall of text; splitting it into human-sized bubbles
-with `[[BUBBLE]]` lines is the point.
+Ordinary deliveries have a one-second gap. A four-second pause after the
+photos and another after the download link replace that ordinary gap; do not
+add pauses between the other bubbles. Keep all the beats and the next question
+in the SAME call. Do all reads and bookkeeping silently before it.
 
-**A `[[PAUSE]]` line inserts a real pause, not a bubble.** Same family as
-`[[BUBBLE]]` and `[[PHOTOS:...]]`: put the sentinel `[[PAUSE]]` on its own
-line, between `[[BUBBLE]]` boundaries, and the adapter sleeps a few seconds
-there and emits NOTHING for it — no bubble, no text the owner sees. It exists
-so the intro arrives in human-like chunks instead of bombarding every bubble at
-once: the owner gets a beat to read/look before the next chunk lands. The
-adapter already inserts a small typing delay between consecutive bubbles on its
-own, so you never add `[[PAUSE]]` for ordinary pacing. Use it ONLY at the two
-deliberate chunk breaks the intro calls for (after the photo previews, and
-after the download link). It is never a place to hide a process note.
+**The sequence call is the LAST tool call of a successful intro turn.** Finish
+all account writes and drafts before calling it. On `success: true`, return
+exactly `NO_REPLY` immediately: no further tools, no memory write, no commentary,
+and no acknowledgement. The tool already delivered the copy and question.
+The gateway sends intermediate assistant text too, even text beside a tool
+call; suppressing the final response cannot retract an earlier process note.
+The only assistant text after a successful receipt is the exact `NO_REPLY`
+token, which the gateway suppresses. Do not describe silence in words.
 
-**Every bubble that goes out must be clean, owner-facing copy, and nothing
-else.** This is the hard rule the old single-message ban existed to protect, and
-it holds with full force now that a turn deliberately emits several bubbles: the
-freedom to emit multiple bubbles is a freedom to emit multiple *intended lines
-of the intro*, never a license to let a process note escape as its own bubble.
-NEVER emit process notes, tool names, status words, or between-step narration.
-Any such note becomes owner-facing text, and if you put a `[[BUBBLE]]` line
-around it, its own bubble on someone's phone — exactly the leak this section is
-here to stop. Multi-bubble makes the discipline more important, not less: every
-`[[BUBBLE]]` line you write is a bubble boundary, so every chunk between them
-had better be a line the owner is meant to read.
+**Never put onboarding progress in the memory tool.** The config is its only
+persistent progress record; the chat already holds the delivered intro. A
+separate memory entry can contradict both and is unnecessary bookkeeping.
 
-**Never call `clarify`.** It is the tool behind the ❓ rows and it blocks the
-turn until the owner picks something. Reaching for it is what a model does
-when it cannot find the mechanism it wants. It has arrived as a menu asking
-the owner to name the assistant, as a menu asking how messages should be sent,
-and as `❓ placeholder`, the entire first thing this agent ever said to
-someone. Nothing here is worth a menu. Ask in a sentence, or pick the sensible
-default.
+**Read the receipt before doing anything else.** `completed` records delivered
+item indices and message IDs. `failure` names the first unresolved index and
+its status: `rejected`, `failed`, or `delivery_unknown`. It can also include
+confirmed photo message IDs and the unresolved `photo_index`. Never blindly
+replay a sequence, including after a timeout or an ambiguous result. Check chat
+history against those IDs before sending any remaining items. If delivery is
+still uncertain, stop with `NO_REPLY`; do not resend the intro next turn just
+because its config flag is still absent. Use the delivered conversation and
+receipt to continue without repeating confirmed beats. Never show the receipt,
+JSON, tool names, or errors to the owner.
 
-**Every chunk you separate with a `[[BUBBLE]]` line is delivered as its own
-bubble.** The intro rides on this mechanism when the copy is clean, and it is a
-leak when it is not: any owner-facing text you emit reaches a real person, so
-never let a process note become one of the chunks.
+**If the tool is absent, do not search for it or print a tool call.** Deliver
+ordinary clean text in a single final-response bubble, followed by the four
+`MEDIA:` lines in §2. Keep the greeting, gist, app, exact privacy line, preview
+lead-in, conditional catch/link, and first unanswered question in that text.
+There are no timed pauses in this fallback. Attachments land after the whole
+text, so introduce them as previews below rather than promising an in-position
+stack. Never emit JSON or transport scaffolding. This fallback is for a missing
+tool, not permission to replay after a failed sequence.
 
-    NOT: Written. Now waiting for Mary's reply before continuing to city/teams.
-    NOT: Good, assets exist. Let me send the opener now.
-    NOT: Coordinates check out for Mountain View, California, good.
-    NOT: Onboarding complete. No further action needed right now.
+**Never call `clarify`.** Ask in a sentence, never a blocking menu. Every text
+body and every ordinary response must be clean owner-facing copy. No process
+notes, status words, tool names, or narration of checks and writes. Read config
+once, probe once, draft once; do not read back a successful write or re-probe.
 
-**The test is subject, not placement.** Every one of those is a sentence about
-the setup process: what you wrote, what you checked, which step you are on,
-whether it is finished. The owner is not a participant in that process. If a
-sentence would make no sense to someone who does not know this skill exists, it
-is not for them, wherever it sits, and it must never be one of the turn's
-bubbles.
+**A `MEDIA:` tag must be plain text on its own line, flush left, never fenced.**
+The gateway discards tags inside code fences. Only the missing-tool fallback
+uses these tags for previews; the sequence tool sends photos in position.
 
-**Make as few tool calls as the step needs.** Read the config once at
-the top, probe once, draft once. The intro's own bubbles are deliberate copy and
-are welcome; what must never appear in your reply — with or without a
-`[[BUBBLE]]` line around it — is a note to yourself. Do not read a file back to
-confirm a write that already reported its result, and do not re-probe something
-you probed this turn.
-
-**So make your bookkeeping tool calls in silence, and let every bit of text you
-emit be copy the owner is meant to read.** The intro's bubbles, the city
-question, the close. Not a report of what you just did. A turn whose tools all
-succeeded and whose only emitted text is "name is drafted, waiting for her next
-reply" has skipped its own step: the owner got a process note instead of the
-intro, and nothing later will notice the intro never arrived. Observed exactly
-that way, twice.
-
-**Never tell the owner about your own machinery.** Which tools this build has,
-what a skill expected and could not find, least of all as a question they are
-asked to decide.
-
-**A `MEDIA:` tag must be plain text on its own line, flush left.** The gateway
-blanks fenced code blocks before scanning for tags, always, so a tag inside
-triple backticks is dropped: no attachment, no error, and the sentence
-introducing it still arrives. That is how four images went missing from a
-message that read correctly. A `MEDIA:` attachment is delivered after the whole
-text of the turn, batched to the end, so it never lands in the middle of a
-bubble sequence. The onboarding previews therefore do NOT use `MEDIA:`; they use
-the in-band `[[PHOTOS:...]]` marker (see §2), which the adapter posts in place
-so the photos land right after the lead-in bubble. Keep any real `MEDIA:` tag on
-its own line, flush left, never inside a code fence.
-
-**Which is why a write is sometimes held back one turn.** Two things have to
-be true at once and they pull opposite ways. A turn must not end on anything
-after its last tool call (whatever it ends on is delivered, and every trailing
-note this conversation has leaked was a turn reaching for a way to finish), and
-progress must not be recorded before the owner has seen the one-time message
-that progress will make a later turn skip.
-
-Writing first satisfies the first and breaks the second: a crash in the gap
-leaves the intro marked as sent on file and the bubbles never sent. Writing last
-satisfies the second and breaks the first. So neither, and the way out is not
-a schedule of turns but one rule about when a hold is safe, below.
+**Progress still follows delivery.** Hold the introduced flag until the next
+turn as described below, so a crash before sending cannot silently skip the
+intro. The receipt and chat history distinguish a partial delivery from an
+intro that never started; they are not a second progress file.
 
 ## The algorithm, every owner turn, the same five steps
 
@@ -311,7 +260,8 @@ That one deferral lapses when the turn asks nothing, because nothing is coming
 back to carry it. Then the marker is written now, in this turn, alongside the
 intro bubbles it sends and the close.
 
-**5 · Compose the one message**, delivered as the turn's bubbles in this shape:
+**5 · Compose the one message**, using the sequence tool for the intro, or the
+ordinary response for a single question or missing-tool fallback, in this shape:
 
 - **acknowledge what just landed**, their city back to them, their teams in
   their own words, their name if they have just given it;
@@ -430,119 +380,94 @@ that resolves it, in plain words.
 
 ## The intro, a sequence of bubbles in one turn
 
-*The introduction is not one run-on paragraph, and it is not paced across turns
-either. It is a short sequence of SEPARATE BUBBLES, all delivered in the ONE turn
-where the name is learned, arriving one after another without waiting for the
-owner to reply between them. You split them yourself with the sentinel: put
-`[[BUBBLE]]` on its own line between each beat below, and the gateway posts each
-beat as its own iMessage. Each image is still its own bubble. So you write these
-lines and tags in order this turn, separated by `[[BUBBLE]]` lines, and they
-land as human-sized texts on a phone rather than a wall of text. Each bubble is
-one or two short lines. Then you continue straight into the city question.*
+Send the whole intro in the turn the owner's name is learned, without waiting
+between beats. Greet them by their stored name, adding your own only if one was
+provided for this deployment. Never invent an agent name. The beats are:
+greeting → gist → app → exact privacy line → preview lead-in → four-photo
+stack → four-second reading pause → catch and offer to help → bare Latch URL
+→ four-second reading pause → first unanswered question.
 
-The bubbles, in order, on the turn the name is learned — put `[[BUBBLE]]` on its
-own line between each one:
+This is the tool argument shape for an owner whose city is still unanswered
+and whose calendar listing did not succeed. Substitute their name and phrase
+the copy in your voice, except the locked privacy line. This JSON is tool
+input, never a chat response:
 
-1. **The greeting.** *"Hey {name}! I'm {agent-name}."* The agent name is the
-   per-deployment name injected for this build. If none was given to you, greet
-   them by name without one and carry on, exactly as the no-invent-name rule in
-   §1 says. Never present the framework's name as yours.
-2. **The gist.** *"Here's the thing. Most AI can talk. I actually do things to
-   keep your household on track: book the dentist, reorder the dog food before
-   you run out, chase down the refund that's been pending for a month."* "Here's
-   the thing", not "Here's the short version".
-3. **The app.** *"The doing happens through an app on your Mac. That's what lets
-   me act on your actual accounts instead of just talking about it."*
-4. **Privacy** (the locked line, not in your own words, see §2):
+```json
+{
+  "items": [
+    {
+      "type": "text",
+      "body": "Hey {name}!"
+    },
+    {
+      "type": "text",
+      "body": "Here's the thing. Most AI can talk. I actually do things to keep your household on track: book the dentist, reorder the dog food before you run out, chase down the refund that's been pending for a month."
+    },
+    {
+      "type": "text",
+      "body": "The doing happens through an app on your Mac. That's what lets me act on your actual accounts instead of just talking about it."
+    },
+    {
+      "type": "text",
+      "body": "The app on your Mac is where your accounts live: your logins stay in a vault there that I can use but never see, and you set the boundaries I work inside."
+    },
+    {
+      "type": "text",
+      "body": "Want to see the kind of thing I mean?"
+    },
+    {
+      "type": "photos",
+      "asset_ids": [
+        "preview_1",
+        "preview_2",
+        "preview_3",
+        "preview_4"
+      ]
+    },
+    {
+      "type": "pause",
+      "seconds": 4
+    },
+    {
+      "type": "text",
+      "body": "Only catch: I'm not on your Mac yet, so right now I'm flying blind. Can't see your calendar, can't see your inbox, nothing. Let's fix that. Grab it below, and just ask if you get stuck along the way. Happy to help."
+    },
+    {
+      "type": "text",
+      "body": "https://plow.co/latch"
+    },
+    {
+      "type": "pause",
+      "seconds": 4
+    },
+    {
+      "type": "text",
+      "body": "While you get the app set up, what city are you in?"
+    }
+  ]
+}
+```
 
-       The app on your Mac is where your accounts live: your logins stay in a
-       vault there that I can use but never see, and you set the boundaries I
-       work inside.
+**A successful calendar listing removes the catch, URL, and pause after the
+URL.** Keep the photo reading pause and the rest of the intro; continue with
+§5's calendar question when appropriate. A failed or refused listing, or an
+unconfigured relay, leaves the catch and link in place.
 
-5. **The lead-in.** *"Want to see the kind of thing I mean?"*
-6. **The four previews**, as ONE `[[PHOTOS:...]]` marker on its own bubble
-   (its own line, between `[[BUBBLE]]` boundaries), flush left. The single
-   marker, listing `work-1` through `work-4` pipe-separated, is given verbatim
-   in §2 below. Emit it exactly as written there, never inside a code fence.
-   It sits right AFTER the "Want to see the kind of thing I mean?" bubble and
-   BEFORE the pause (step 6a), so the photos land in that position.
-6a. **The pause.** A single `[[PAUSE]]` marker on its own line, between
-   `[[BUBBLE]]` boundaries, right AFTER the `[[PHOTOS:...]]` bubble. It ends
-   chunk 1 and gives them a beat to actually look at the four previews before
-   the next chunk arrives. The adapter sleeps on it and emits nothing — it is
-   NOT copy the owner sees. See "How a turn actually sends things" for the
-   `[[PAUSE]]` mechanism.
-7. **The catch, with the offer to help folded in.** *"Only catch: I'm not on
-   your Mac yet, so right now I'm flying blind. Can't see your calendar, can't
-   see your inbox, nothing. Let's fix that. Grab it below, and just ask if you
-   get stuck along the way. Happy to help."* The offer to help lives inside this
-   catch bubble, before the link, so nothing trails after the link.
-8. **The download link**, bare on its own line so the phone renders a link
-   preview, with nothing after it. It is the LAST bubble of chunk 2, so nothing
-   trails it to break the preview:
+**Replace the final city question when it is already answered.** Use the first
+missing key in step 5's order: teams, then calendars if a listing succeeded,
+then the appropriate close if there is nothing to ask. Never re-ask stored
+answers, including an empty teams list. Keep that question or close inside
+the same tool call. If the intro already included the catch and link, the close
+must not repeat the install pitch or URL.
 
-       https://plow.co/latch
+**On resume, `family.owner.introduced` present means no intro at all.** Ask
+only the first unanswered question. If the flag was deferred but the previous
+turn's intro is visible in history, draft the flag with the new answers and
+continue; do not send the intro again. A partial receipt needs the delivery
+check described above, never an automatic restart from the greeting.
 
-8a. **The pause.** A single `[[PAUSE]]` marker on its own line, between
-   `[[BUBBLE]]` boundaries, right AFTER the link. It ends chunk 2 and
-   gives them a beat before you turn to setup. As with step 6a, the adapter
-   sleeps on it and emits nothing.
-
-Then the config collection begins: the city and timezone question, then teams
-and sports, then calendars once Latch is connected, one question per turn as §3
-and §5 describe. The city question comes THIS same turn, after bubble 9 (or
-after the privacy previews, where the catch and link are dropped, see below).
-
-**All of these bubbles go on the one turn the name is learned.** Do not wait for
-a reply between them, and do not spread them across turns. `family.owner.introduced`
-in the config means the intro has already been sent, and nothing records which
-bubbles went, deliberately, because a second record of progress is the bug this
-file exists without. Re-introducing yourself to someone who has talked to you for a
-week is the worse error, and the one an owner notices.
-
-**Bubbles 7 and 8 are gated on Latch status.** Where a listing came back this
-turn, drop the catch and the download link entirely: bubbles 7 and 8, the
-flying-blind line and the URL, and the offer to help with the install. It is
-already done, and sending it anyway asks someone to install what they installed.
-Where the call failed, was refused, or was never made (unconfigured), the catch
-and link stand exactly as written.
-
-**Emit clean copy only, never a note about emitting it.** Each `[[BUBBLE]]`
-line separates one intro beat from the next; what belongs between them is the
-next intro line, never "sending the previews now" or "waiting to continue". The
-multi-bubble freedom is a freedom to emit the intro's own lines, and nothing
-else. A turn may still make tool calls between beats (the account write, a
-draft or a probe), but those run in silence and never become a bubble: only a
-`[[BUBBLE]]` line starts one.
-
-**The exact shape of the reply** (the same `[[BUBBLE]]` line separates every
-beat through the city question; the two `[[PAUSE]]` markers below are the ONLY
-two in the intro — one right after the `[[PHOTOS:...]]` bubble, one right after
-the download link — and each sits on its own line between `[[BUBBLE]]`
-boundaries):
-
-    Hey Mary! I'm Ada.
-    [[BUBBLE]]
-    Here's the thing. Most AI can talk. I actually do things to keep your
-    household on track: book the dentist, reorder the dog food before you run
-    out, chase down the refund that's been pending for a month.
-    [[BUBBLE]]
-    The doing happens through an app on your Mac. …
-    [[BUBBLE]]
-    Want to see the kind of thing I mean?
-    [[BUBBLE]]
-    [[PHOTOS:…work-1|…work-2|…work-3|…work-4]]
-    [[BUBBLE]]
-    [[PAUSE]]
-    [[BUBBLE]]
-    Only catch: I'm not on your Mac yet, so right now I'm flying blind. … Grab
-    it below, and just ask if you get stuck along the way. Happy to help.
-    [[BUBBLE]]
-    https://plow.co/latch
-    [[BUBBLE]]
-    [[PAUSE]]
-    [[BUBBLE]]
-    While you get the app set up … what city are you in?
+After the successful call, immediately return `NO_REPLY`; no more tool calls
+or assistant commentary. The question has already been delivered.
 
 ### 1 · Opener
 
@@ -655,37 +580,21 @@ which tells someone their data never leaves their house at the exact moment
 they are deciding whether to trust you with it. Do not soften the line,
 extend it, or reassure past it.
 
-**Bubble: the lead-in, then the previews.** Show them, because a claim about
-what you do is worth less than four pictures of you doing it. The one line
-"Want to see the kind of thing I mean?" as its own bubble, then a SINGLE
-photo-stack marker as the very next bubble (its own `[[BUBBLE]]` segment), on
-one line, flush left, listing all four images pipe-separated in this order:
+**Bubble: the lead-in, then the previews.** Send "Want to see the kind of thing
+I mean?" as a text item followed immediately by one photos item with
+`asset_ids` equal to `["preview_1", "preview_2", "preview_3", "preview_4"]`.
+These resolve through the root-owned `/srv/plow-assets/manifest.json`. The
+tool posts all four as one stack, with individual delivery only on a definite
+stack rejection. Never construct an asset ID from the owner's words or a path.
+Follow the photos item with a four-second pause.
 
-    [[PHOTOS:/srv/plow-assets/work-1-vault-login.png|/srv/plow-assets/work-2-instacart-grocery.png|/srv/plow-assets/work-3-amazon-shopping.png|/srv/plow-assets/work-4-medical-discovery.png]]
+**Missing-tool fallback only:** append these four lines after the clean
+single-bubble text, without indentation or a code fence:
 
-This is NOT a `MEDIA:` tag. It is an in-band marker the Plow chat adapter reads
-directly: because the gateway does not recognize or strip it (it strips only
-`MEDIA:` tags), the marker reaches the adapter IN POSITION, so the photos land
-exactly here — right after "Want to see the kind of thing I mean?" and before
-the catch — instead of being batched to the end of the turn. Emit it verbatim,
-flush left, on its own bubble line, and never inside a code fence. Put a
-`[[BUBBLE]]` line before it (after the lead-in) and after it (before the catch)
-so the sequence the adapter walks is: "Want to see…" → the `[[PHOTOS:…]]`
-marker → the catch.
-
-**A `[[PHOTOS:...]]` marker is ONLY ever these four fixed preview assets under
-`/srv/plow-assets`.** It is a constant, not a slot: never build one out of a
-path the model chose, an owner's message, a calendar name, or anything read off
-disk at runtime. The onboarding previews are the one and only use of this
-marker in this skill, and the paths above are the whole of it. (The adapter is
-expected to enforce the same on its side, refusing any `[[PHOTOS:...]]` path
-outside `/srv/plow-assets`, so a stray marker can never turn into a file upload.
-See `handoff/PLUGIN-CHANGES.md`.)
-
-**Four, a "4 Photos" stack.** All four ride the one marker and post as a single
-stacked message the phone renders as "4 Photos". (Until the API attachment cap
-is bumped to 4 and deployed, the adapter falls back to individual images — still
-in this same position, right after the lead-in.)
+MEDIA:/srv/plow-assets/work-1-vault-login.png
+MEDIA:/srv/plow-assets/work-2-instacart-grocery.png
+MEDIA:/srv/plow-assets/work-3-amazon-shopping.png
+MEDIA:/srv/plow-assets/work-4-medical-discovery.png
 
 The order is the argument: the vault login is the privacy line made concrete,
 then two ordinary errands (grocery, then the Amazon shopping one), then the
@@ -706,10 +615,10 @@ of chunk 2:
     https://plow.co/latch
 
 **Nothing comes in the link's bubble but the URL, and nothing follows the link
-bubble but the `[[PAUSE]]`.** No trailing question, no sign-off, no separate
+bubble but the four-second pause item.** No trailing question, no sign-off, no separate
 reassurance bubble after it, or the phone will not render the link preview. The
 offer to help lives in the catch bubble above, before the link, not after it.
-Then the single `[[PAUSE]]` that ends chunk 2 comes right after the link, and the
+Then the four-second pause comes right after the link, and the
 turn continues into the city question, per §3 and step 5.
 
 **Where a listing came back this turn, the catch and the link are omitted**,
