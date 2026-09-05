@@ -176,13 +176,21 @@ Send the surviving candidates to the LLM with:
   words is how phishing is worded, and ranks as an ordinary email.
 
 Map handles to names when they match: `family.owner.imessage` is the owner,
-and the owner's name comes from their Plow account — the line marked
-`(your owner)` in this turn's roster block, which reads
-`Name [handle] (your owner)` — while `family.partner.imessage` is the partner,
-named by `family.partner.name`. Read the name, use it, cache nothing: the
-account is the one place it lives. A bare handle standing where the name goes is
-the roster saying there is no name yet, not a name: fall back to the raw handle,
-as you do for a handle that matches nobody.
+and the owner's name comes from their Plow account. This run is a cron turn, so
+nothing states it for you — no owner has sent a message and there is no chat
+prompt above this one. Read the book instead:
+
+    plow_contacts()
+
+No arguments. It returns the owner's contacts as a JSON list, the owner's own
+row first, each row shaped
+`{"provider_key": "<handle>", "display_name": "<name>|null", "relationship": null, "role": "owner"}`
+— take `display_name` from the row whose `role` is `owner`. Meanwhile
+`family.partner.imessage` is the partner, named by `family.partner.name`. Read
+the name, use it, cache nothing: the account is the one place it lives. No such
+row, or a `display_name` of `null`, is the book saying there is no name yet, not
+a name: fall back to the raw handle, as you do for a handle that matches
+nobody.
 
 Ask for JSON output:
 

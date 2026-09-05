@@ -26,6 +26,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = (ROOT / "ld-setup" / "SKILL.md").read_text()
 WALL = (ROOT / "ld-wall-setup" / "SKILL.md").read_text()
+TRIAGE = (ROOT / "ld-morning-triage" / "SKILL.md").read_text()
 SOUL = (ROOT / "runtime" / "SOUL.md").read_text()
 DOCKERFILE = (ROOT / "Dockerfile").read_text()
 # The whole sheet is onboarding now: the wall moved to its own skill, and the
@@ -836,15 +837,23 @@ def test_the_opener_reads_the_referrer_before_speaking():
     assert "Your owner was invited by" in ONBOARDING
 
 
-def test_the_owners_name_is_the_rosters_and_the_profile_client_is_gone():
-    """A Plow API client belongs to the chat plugin, not to a variant.
+def test_the_owners_name_is_stated_on_owner_turns_and_read_from_the_book_on_cron():
+    """A Plow API client belongs to the chat plugin, not to a variant -- but a
+    roster is a GROUP's, and onboarding runs in a solo DM that has none.
 
-    Each verb this repo's own client carried has a home there now: `get` is the
-    owner's roster row, `set` is the `plow_name_contact` tool, and `referrer` is
-    the sentence the plugin adds to an owner turn. A sheet still naming the
-    deleted script sends the turn to a path that no longer exists.
+    Each verb this repo's own client carried has a home there now. `get` is the
+    owner sentence the plugin states on every owner turn, solo DM included: one
+    of `Your owner is <Name> [<handle>].` or the form saying they have not given
+    their name yet. `set` is the `plow_name_contact` tool that sentence's handle
+    addresses, and `referrer` is the sentence beside it. A Hermes-cron turn
+    carries no plugin prompt at all, so the triage reads the owner's book with
+    `plow_contacts` instead. A sheet still naming the deleted script sends the
+    turn to a path that no longer exists.
     """
+    assert "Your owner is" in ONBOARDING
+    assert "has not given their name yet" in ONBOARDING
     assert "plow_name_contact" in ONBOARDING
+    assert "plow_contacts" in TRIAGE
     for sheet in sorted(ROOT.glob("*/SKILL.md")) + [ROOT / "README.md"]:
         assert "owner_profile" not in sheet.read_text(), (
             f"{sheet.relative_to(ROOT)} still names the deleted profile client")
