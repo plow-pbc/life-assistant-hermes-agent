@@ -249,9 +249,9 @@ opener asks:
 - Neither sentence at all: the plugin could not read the book at boot. Same as
   the second form -- ask -- and read the handle from the owner row of
   `plow_contacts()`. A `success: false` there is that same read failing twice:
-  there is no handle to give `plow_name_contact`, so step 4 writes nothing for
-  the name this turn. Ask anyway; nothing is lost -- the next turn's owner
-  sentence, once the book resolves, asks again.
+  there is no handle to give `plow_name_contact`, so whatever they answer is
+  not Learned this turn -- same as a first turn where nothing arrives. No
+  write, no intro, nothing to hold. Ask again once the book resolves.
 
 Read both off that sentence and nowhere else. The config is the only record of
 how far this got. There is no marker and no second source. The four keys, in
