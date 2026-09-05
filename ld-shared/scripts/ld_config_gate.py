@@ -28,12 +28,10 @@ proof still holds):
     `2>/dev/null || echo "not valid JSON"`, collapsing both into that one line.
 
 The owner's NAME is deliberately not among them: it lives on their Plow
-account (users.display_name, stated by the chat plugin on every owner turn,
-read with plow_contacts on a cron turn that has no prompt, and written by the
-plugin's plow_name_contact tool),
-so a copy in this file would be a second answer to the same question. What
-onboarding records here is family.owner.introduced, and the gate does not
-require it either -- a household mid-interview is not a broken config.
+account (users.display_name), so a copy in this file would be a second answer
+to the same question. What onboarding records here is family.owner.introduced,
+and the gate does not require it either -- a household mid-interview is not a
+broken config.
 
 The eight checks, matching the (updated) jq filter exactly:
   1. family.timezone must contain a non-whitespace char    (jq: (.family.timezone // "") | test("\\S"))

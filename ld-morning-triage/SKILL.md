@@ -177,20 +177,21 @@ Send the surviving candidates to the LLM with:
 
 Map handles to names when they match: `family.owner.imessage` is the owner,
 and the owner's name comes from their Plow account. This run is a cron turn, so
-nothing states it for you — no owner has sent a message and there is no chat
-prompt above this one. Read the book instead:
+nothing states it for you — there is no chat prompt above this one. Read the
+book instead:
 
     plow_contacts()
 
-No arguments. It returns the owner's contacts as a JSON list, the owner's own
-row first, each row shaped
-`{"provider_key": "<handle>", "display_name": "<name>|null", "relationship": null, "role": "owner"}`
-— take `display_name` from the row whose `role` is `owner`. Meanwhile
-`family.partner.imessage` is the partner, named by `family.partner.name`. Read
-the name, use it, cache nothing: the account is the one place it lives. No such
-row, or a `display_name` of `null`, is the book saying there is no name yet, not
-a name: fall back to the raw handle, as you do for a handle that matches
-nobody.
+It returns the tool's envelope, `{"success": true, "contacts": [...]}` — the
+rows the server wrote, the owner's own first, each row shaped
+`{"object": "contact", "provider_key": "<handle>", "display_name": "<name>|null", "relationship": null, "role": "owner"}`
+— take `display_name` from the row whose `role` is `owner`. `success: false` is
+a read that failed, not an empty book; use the raw handle and carry on.
+Meanwhile `family.partner.imessage` is the partner, named by
+`family.partner.name`. Read the name, use it, cache nothing: the account is the
+one place it lives. No such row, or a `display_name` of `null`, is the book
+saying there is no name yet, not a name: fall back to the raw handle, as you do
+for a handle that matches nobody.
 
 Ask for JSON output:
 

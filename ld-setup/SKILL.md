@@ -237,20 +237,22 @@ a hole, and each hole reached an owner as `❓ placeholder`, a blocking menu,
 because a turn that cannot find its own shape improvises one.
 
 **1 · Read the config.** `/var/lib/hermes/ld/config.json`, once, at the top, and
-read the owner sentence this turn opened with -- the name is on their ACCOUNT,
-not in the file. Every owner turn states exactly one of these two, this solo DM
-as much as anywhere else, and it is the whole answer to which name question the
+read the owner sentence in this turn's prompt -- the name is on their ACCOUNT,
+not in the file. Every owner turn states one of these two, this solo DM as
+much as anywhere else, and it is the whole answer to which name question the
 opener asks:
 
 - `Your owner is <Name> [<handle>].` -- a name on the account: confirm it.
 - `Your owner [<handle>] has not given their name yet: ask once and record it
   with plow_name_contact(handle=<handle>). Never guess a name from mail,
   calendar, or memory.` -- nobody has said yet: ask for it.
+- Neither sentence at all: the plugin could not read the book at boot. Same as
+  the second form -- ask -- and read the handle from the owner row of
+  `plow_contacts()`.
 
-The handle in brackets is the same handle either way, and it is the one
-`plow_name_contact` takes at step 4. Read both off that sentence and nowhere
-else. The config is the only record of how far this got. There is no marker and
-no second source. The four keys, in order: `family.owner.introduced`,
+Read both off that sentence and nowhere else. The config is the only record of
+how far this got. There is no marker and no second source. The four keys, in
+order: `family.owner.introduced`,
 `weather.location`, `sports.followed`, `calendar.sources`. Present-but-empty is
 answered.
 
@@ -685,10 +687,10 @@ after the intro but that question, and nothing before it but steps 1 to 4 and
 any acknowledgement of what just landed. No process note ever rides between two
 of these bubbles.
 
-**The name comes from their reply, or from the account you offered them.** Every
-owner turn opens with the owner sentence, and that sentence is the only thing
-carrying their account name. Everything else the transport attaches is routing
-metadata: "You", a phone number, a display name the phone happened to have.
+**The name comes from their reply, or from the account you offered them.** The
+owner sentence in this turn's prompt is the only thing carrying their account
+name. Everything else the transport attaches is routing metadata: "You", a
+phone number, a display name the phone happened to have.
 Never write one of those to the account. An account that says the owner is
 called `You` is one nobody will ever correct, because from the next turn on the
 question looks answered. Their own reply is what settles it, and until one
