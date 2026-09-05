@@ -248,7 +248,9 @@ opener asks:
   calendar, or memory.` -- nobody has said yet: ask for it.
 - Neither sentence at all: the plugin could not read the book at boot. Same as
   the second form -- ask -- and read the handle from the owner row of
-  `plow_contacts()`.
+  `plow_contacts()`. A `success: false` there is that same read failing twice:
+  ask anyway, but hold the write for a turn where the sentence or the book
+  resolves -- there is no handle to give `plow_name_contact` yet.
 
 Read both off that sentence and nowhere else. The config is the only record of
 how far this got. There is no marker and no second source. The four keys, in
@@ -285,7 +287,7 @@ the message.** One draft, carrying everything held, never just the newest.
 The name is not part of that draft. It goes to their ACCOUNT, in the same
 turn, before the intro, in one tool call:
 
-    plow_name_contact(handle=<the handle in brackets in the owner sentence>, display_name=<exactly what they said>)
+    plow_name_contact(handle=<the handle in brackets in the owner sentence, or the owner row read in step 1 when neither sentence appeared>, display_name=<exactly what they said>)
 
 Then say that name back. Nothing is staged and nothing is written to disk: the
 account is the one place their name lives, and the next turn's owner sentence is
