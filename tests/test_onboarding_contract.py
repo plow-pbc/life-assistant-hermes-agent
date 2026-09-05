@@ -26,6 +26,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = (ROOT / "ld-setup" / "SKILL.md").read_text()
 WALL = (ROOT / "ld-wall-setup" / "SKILL.md").read_text()
+TRIAGE = (ROOT / "ld-morning-triage" / "SKILL.md").read_text()
 SOUL = (ROOT / "runtime" / "SOUL.md").read_text()
 DOCKERFILE = (ROOT / "Dockerfile").read_text()
 # The whole sheet is onboarding now: the wall moved to its own skill, and the
@@ -460,8 +461,7 @@ def test_no_owner_text_is_ever_composed_into_a_command():
         # that merely names a script.
         if not line.startswith("    ") or line.strip().startswith("|"):
             continue
-        if any(script in line for script in
-               ("write_config.py", "mint_wall_token.py", "owner_profile.py set")):
+        if any(script in line for script in ("write_config.py", "mint_wall_token.py")):
             assert "--input" in line, f"not staged: {line.strip()}"
 
 
@@ -606,7 +606,7 @@ def test_the_relay_tool_is_named_only_where_it_exists():
     # `plow_<something>` and the next one added would otherwise slip in bare.
     for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", ONBOARDING):
         # Native adapter tools do not carry the relay MCP server prefix.
-        if hit.group() == "plow_send_sequence":
+        if hit.group() in ("plow_send_sequence", "plow_name_contact"):
             continue
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
@@ -834,7 +834,29 @@ def test_clarify_is_forbidden_during_onboarding():
 
 
 def test_the_opener_reads_the_referrer_before_speaking():
-    assert "owner_profile.py referrer" in ONBOARDING
+    assert "Your owner was invited by" in ONBOARDING
+
+
+def test_the_owners_name_is_stated_on_owner_turns_and_read_from_the_book_on_cron():
+    """A Plow API client belongs to the chat plugin, not to a variant -- but a
+    roster is a GROUP's, and onboarding runs in a solo DM that has none.
+
+    Each verb this repo's own client carried has a home there now. `get` is the
+    owner sentence the plugin states on every owner turn, solo DM included: one
+    of `Your owner is <Name> [<handle>].` or the form saying they have not given
+    their name yet. `set` is the `plow_name_contact` tool that sentence's handle
+    addresses, and `referrer` is the sentence beside it. A Hermes-cron turn
+    carries no plugin prompt at all, so the triage reads the owner's book with
+    `plow_contacts` instead. A sheet still naming the deleted script sends the
+    turn to a path that no longer exists.
+    """
+    assert "Your owner is" in ONBOARDING
+    assert "has not given their name yet" in ONBOARDING
+    assert "plow_name_contact" in ONBOARDING
+    assert "plow_contacts" in TRIAGE
+    for sheet in sorted(ROOT.glob("*/SKILL.md")) + [ROOT / "README.md"]:
+        assert "owner_profile" not in sheet.read_text(), (
+            f"{sheet.relative_to(ROOT)} still names the deleted profile client")
 
 
 def test_the_framework_name_is_not_the_agents_name():
