@@ -460,8 +460,7 @@ def test_no_owner_text_is_ever_composed_into_a_command():
         # that merely names a script.
         if not line.startswith("    ") or line.strip().startswith("|"):
             continue
-        if any(script in line for script in
-               ("write_config.py", "mint_wall_token.py", "owner_profile.py set")):
+        if any(script in line for script in ("write_config.py", "mint_wall_token.py")):
             assert "--input" in line, f"not staged: {line.strip()}"
 
 
@@ -606,7 +605,7 @@ def test_the_relay_tool_is_named_only_where_it_exists():
     # `plow_<something>` and the next one added would otherwise slip in bare.
     for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", ONBOARDING):
         # Native adapter tools do not carry the relay MCP server prefix.
-        if hit.group() == "plow_send_sequence":
+        if hit.group() in ("plow_send_sequence", "plow_name_contact"):
             continue
         assert hit.start() > configured, (
             f"onboarding names a relay tool at {hit.start()}, before the branch "
@@ -834,7 +833,21 @@ def test_clarify_is_forbidden_during_onboarding():
 
 
 def test_the_opener_reads_the_referrer_before_speaking():
-    assert "owner_profile.py referrer" in ONBOARDING
+    assert "Your owner was invited by" in ONBOARDING
+
+
+def test_the_owners_name_is_the_rosters_and_the_profile_client_is_gone():
+    """A Plow API client belongs to the chat plugin, not to a variant.
+
+    Each verb this repo's own client carried has a home there now: `get` is the
+    owner's roster row, `set` is the `plow_name_contact` tool, and `referrer` is
+    the sentence the plugin adds to an owner turn. A sheet still naming the
+    deleted script sends the turn to a path that no longer exists.
+    """
+    assert "plow_name_contact" in ONBOARDING
+    for sheet in sorted(ROOT.glob("*/SKILL.md")) + [ROOT / "README.md"]:
+        assert "owner_profile" not in sheet.read_text(), (
+            f"{sheet.relative_to(ROOT)} still names the deleted profile client")
 
 
 def test_the_framework_name_is_not_the_agents_name():

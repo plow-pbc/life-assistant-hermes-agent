@@ -237,16 +237,18 @@ a hole, and each hole reached an owner as `❓ placeholder`, a blocking menu,
 because a turn that cannot find its own shape improvises one.
 
 **1 · Read the config.** `/var/lib/hermes/ld/config.json`, once, at the top, and
-run `python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py get` --
-the name is on their ACCOUNT, not in the file.
-`(unset)` means ask for it; a name means confirm it. The config is the only
-record of how far this got. There is no marker and no second source. The four
+read the owner's line in the roster block this turn opened with -- the name is
+on their ACCOUNT, not in the file. Their line is the one marked `(your owner)`,
+and it reads `Name [handle] (your owner)`. A bare handle standing where the name
+goes, `+1555… [+1555…] (your owner)`, means nobody has said yet: ask for it. A
+name means confirm it. The config is the only record of how far this got. There
+is no marker and no second source. The four
 keys, in order: `family.owner.introduced`, `weather.location`,
 `sports.followed`, `calendar.sources`. Present-but-empty is answered.
 
-Also run `python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py referrer` --
-who invited this owner, or `(none)`. It decides one sentence in the opener,
-below.
+The same block says who invited this owner, in one sentence -- `Your owner was
+invited by <name> (<their assistant>).` -- and says nothing at all when nobody
+did. It decides one sentence in the opener, below.
 
 **2 · Run the Latch status probe.** `latch_status.py`, as described above.
 `unconfigured` means there is no relay in this build at all: no tool lookup,
@@ -271,16 +273,13 @@ written.
 the message.** One draft, carrying everything held, never just the newest.
 
 The name is not part of that draft. It goes to their ACCOUNT, in the same
-turn, before the intro. Stage it with your file tool at
-`/var/lib/hermes/ld/.name-<turn>.json`, the way you stage everything they said:
+turn, before the intro, in one tool call:
 
-    {"display_name": "<exactly what they said>"}
+    plow_name_contact(handle=<the handle in brackets on their roster line>, display_name=<exactly what they said>)
 
-    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set --input /var/lib/hermes/ld/.name-<turn>.json
-
-Its printed line is the name as stored; say that name back. The script removes
-the staged file once it has written through, so their name is left in one place
-only. What the draft carries in its stead is
+Then say that name back. Nothing is staged and nothing is written to disk: the
+account is the one place their name lives, and the next turn's roster line is
+where you read it. What the draft carries in its stead is
 `{"family": {"owner": {"introduced": true}}}` -- that the intro went out, and
 nothing about what they are called.
 
@@ -515,31 +514,31 @@ says.*
 
 One message, and it holds two things in this order: one warm line that they
 showed up (one line, not a greeting card), then the name. No attachment. Which
-name question is the one thing `owner_profile.py get` decides at step 1:
+name question is the one thing their roster line decides at step 1:
 
-- `(unset)`: ask it cold -- `What should I call you?`
+- a bare handle where the name goes: ask it cold -- `What should I call you?`
 - a name on the account, say `Samuel Odio`: offer the name they would say at a
   door, the first name and its natural short form where one exists -- *"May I
   call you Sam, or do you prefer Samuel?"* One sentence, no list. Whatever they
   answer, in their own words, is the name, and a different name entirely is the
   name.
 
-`referrer` decides one more thing, said in the same message as the name
-question:
+The referrer sentence decides one more thing, said in the same message as the
+name question:
 
-- `referrer` printed `assistant=<value>`: they got here because that
-  person's assistant invited them, and they were set up with the same kind
-  of assistant. Say so and ask, in the same message, one sentence: *"the
-  person who invited you set you up with the same {assistant} they have --
-  want to keep that, or would you rather I be something different?"* Keep
+- `Your owner was invited by <name> (<their assistant>).`: they got here
+  because that person's assistant invited them, and they were set up with the
+  same kind of assistant. Say so and ask, in the same message, one sentence:
+  *"the person who invited you set you up with the same {assistant} they have
+  -- want to keep that, or would you rather I be something different?"* Keep
   means carry on. Different means point them at the catalog, not a command
   you can't know: other assistants are listed at aiworthusing.com/agent-index
   -- point them there and stop, you do not know which one they will pick or
   what starts it.
-- `(none)`: say nothing about it.
+- no such sentence: say nothing about it.
 
 A reply that answers only the assistant choice answers only that clause: it
-is never the name and never reaches `owner_profile.py set`; the name
+is never the name and never reaches `plow_name_contact`; the name
 question is then asked alone, next turn.
 
 **Give your name, and only your name**, *if you have one.* "I'm ⟨name⟩"
@@ -678,12 +677,14 @@ any acknowledgement of what just landed. No process note ever rides between two
 of these bubbles.
 
 **The name comes from their reply, or from the account you offered them.** Every
-turn arrives with a roster preamble naming the chat's participants: "You", a
-phone number, a display name the phone happened to have. That is routing
-metadata, not an answer. An account that says the owner is called `You` is one
-nobody will ever correct, because from the next turn on the question looks
-answered. Their own reply is what settles it, and until one arrives the name
-question is still owed, however many labels are in front of you.
+turn arrives with a roster block naming the chat's participants, and only the
+owner's own line -- the one marked `(your owner)` -- carries their account name.
+The rest is routing metadata: "You", a phone number, a display name the phone
+happened to have. Never write one of those to the account. An account that says
+the owner is called `You` is one nobody will ever correct, because from the next
+turn on the question looks answered. Their own reply is what settles it, and
+until one arrives the name question is still owed, however many labels are in
+front of you.
 
 From here on the turn-top probe is what opens §5, the moment a listing comes
 back, whether that is thirty seconds later or next week, and whether or not
@@ -1093,14 +1094,12 @@ nobody is currently restating, their teams, their extra calendars, their
 triage exclusions, silently, because a config missing those still passes the
 gate.
 
-A new name is not a config change; it lives on their account. Stage it with
-your file tool at `/var/lib/hermes/ld/.name-<turn>.json`:
+A new name is not a config change; it lives on their account. One tool call
+records it, addressed by the handle in brackets on their roster line:
 
-    {"display_name": "<what they said>"}
+    plow_name_contact(handle=<their handle>, display_name=<what they said>)
 
-    python3 /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py set --input /var/lib/hermes/ld/.name-<turn>.json
-
-and you say back the name it printed. Everything else is a patch.
+and you say back the name you recorded. Everything else is a patch.
 
 Use the patch mode instead. It is `--patch`, not the `--draft` onboarding uses.
 By now the config should be gate-valid, and a change that would break it is a

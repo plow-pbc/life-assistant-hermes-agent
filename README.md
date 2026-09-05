@@ -156,8 +156,9 @@ The agent writes its own `ld/config.json` from the owner's first DM:
 what it runs then — a conversation, not a form, drafting each answer through
 `write_config.py` as it lands and discovering the calendars from the Mac through
 Latch once it is connected. What to call the owner is not in that file: it lives
-on their Plow account, read and set through `ld-shared/scripts/owner_profile.py`,
-so the chat roster and this agent never disagree about their name.
+on their Plow account, read from the roster the chat plugin puts at the top of
+every turn and written with that plugin's `plow_name_contact` tool, so the chat
+roster and this agent never disagree about their name.
 
 **The wall is opt-in.** Only if the owner takes that offer does the rest follow:
 `ld-wall-setup` mints the wall's token, brings the Pi up, and registers the
@@ -274,11 +275,11 @@ the object or changing any other preference, then require an empty result from
 
 The same pass takes the owner's name off the file, or this image reopens
 onboarding on a home that finished months ago: `family.owner.introduced` is the
-marker now and an old config has none. Three homes, once, by hand — stage
-`{"display_name": "<the old family.owner.name>"}` and run `owner_profile.py set
---input <path>` where the account has no display name, set
-`family.owner.introduced` to `true`, then delete `family.owner.name` by editing
-the mode-600 file, since `--patch` merges and cannot remove a key.
+marker now and an old config has none. Three homes, once, by hand — where the
+account has no display name, name the owner with `plow_name_contact` from their
+own DM (or `plow profile set` from the CLI) using the old `family.owner.name`,
+set `family.owner.introduced` to `true`, then delete `family.owner.name` by
+editing the mode-600 file, since `--patch` merges and cannot remove a key.
 
 The three calendar skills add that account to their exact
 gog argv; manually run and approve each new 1-day, 3-day and 7-day gather

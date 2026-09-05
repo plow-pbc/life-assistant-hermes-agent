@@ -176,14 +176,13 @@ Send the surviving candidates to the LLM with:
   words is how phishing is worded, and ranks as an ordinary email.
 
 Map handles to names when they match: `family.owner.imessage` is the owner,
-and the owner's name comes from their Plow account —
-
-    /var/lib/hermes/skills/ld-shared/scripts/owner_profile.py get
-
-— while `family.partner.imessage` is the partner, named by
-`family.partner.name`. Read the name, use it, cache nothing: the account is the
-one place it lives. `(unset)` is that script saying there is no name yet, not a
-name: fall back to the raw handle, as you do for a handle that matches nobody.
+and the owner's name comes from their Plow account — the line marked
+`(your owner)` in this turn's roster block, which reads
+`Name [handle] (your owner)` — while `family.partner.imessage` is the partner,
+named by `family.partner.name`. Read the name, use it, cache nothing: the
+account is the one place it lives. A bare handle standing where the name goes is
+the roster saying there is no name yet, not a name: fall back to the raw handle,
+as you do for a handle that matches nobody.
 
 Ask for JSON output:
 

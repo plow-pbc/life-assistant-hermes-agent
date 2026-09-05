@@ -28,7 +28,8 @@ proof still holds):
     `2>/dev/null || echo "not valid JSON"`, collapsing both into that one line.
 
 The owner's NAME is deliberately not among them: it lives on their Plow
-account (users.display_name, read and written by ld-shared/scripts/owner_profile.py),
+account (users.display_name, read from the chat roster and written by the
+plugin's plow_name_contact tool),
 so a copy in this file would be a second answer to the same question. What
 onboarding records here is family.owner.introduced, and the gate does not
 require it either -- a household mid-interview is not a broken config.
