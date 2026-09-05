@@ -278,9 +278,9 @@ owner hears nothing about any of it.
 **3 · Take what this message gave you.** Their name, their city, their teams,
 their calendar picks, whatever actually arrived, judged from what they typed
 and nothing else. A routing label is not a name. **Learned** covers both
-openers: a name typed cold, and the account's name just confirmed or corrected.
-Nothing arrives on a first turn, so nothing is collected and nothing is
-written.
+openers: a name typed cold, and the account's name just confirmed or corrected
+-- except step 1's double-failed-read case, which is never Learned. Nothing
+arrives on a first turn, so nothing is collected and nothing is written.
 
 **4 · Write everything you hold that is not yet in the config, NOW, before
 the message.** One draft, carrying everything held, never just the newest.
