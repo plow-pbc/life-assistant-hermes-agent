@@ -38,41 +38,28 @@ if [ -z "$AGENT_ID" ]; then
   exec sleep 86400
 fi
 
-# Whether this install is already registered, asked of the client, because the
-# client is the only thing that knows. It owns where this install's state lives
-# -- one file under the home named above, or the key file the layout that
-# shipped left behind -- it owns which of those still counts, and it MOVES them.
-# This gate used to test $HERMES_HOME/.agent-index/token, a path the pinned
-# client only ever DELETES once its own state file holds the key: the test was
-# true forever, so every tenant re-registered on the hour and minted a fresh key
-# each time. A second copy of the client's layout, written in shell, is a copy
-# that can disagree with it -- and this one did, silently, in every tenant. So
-# there is no path here.
-#
-# By exit code, because there are three answers and not two:
-#
-#   0  registered -- report, do not register
-#   3  not registered -- register, then report
-#   *  the client declined to say: state it could not READ, or a pin bump that
-#      moved load_state, which lands loudly here rather than quietly
-#      re-registering. Stand off for the hour.
-#
-# Only 3 registers. Reading "cannot tell" as "not registered" mints a second
-# install over a state file that is merely unreadable this minute, stranding the
-# usage the first one published -- the exact split the client keeps its install
-# id and key in ONE file to prevent.
-registered() {
-  /command/s6-setuidgid hermes \
-    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" \
-    /opt/hermes/.venv/bin/python3 -c 'import runpy, sys
-sys.exit(0 if runpy.run_path("/opt/plow/agent-index-client.py")["load_state"]().get("key") else 3)'
-}
-
 while :; do
   # The pinned client owns assertion exchange, aik_ format and atomic storage.
   # The image only invokes it; no image-owned HTTP path can hand the broad Plow
   # bearer to the Index.
-  registered
+  # Registered already? The client owns that question. Where this install's
+  # state lives is its business, and it MOVES it -- this gate used to test
+  # $HERMES_HOME/.agent-index/token, a path the client only ever DELETES once
+  # its own state file holds the key. The test was true forever, so every tenant
+  # re-registered on the hour and minted a fresh key each time.
+  #
+  #   0  registered      3  not registered      2  state is there, unreadable
+  #
+  # 2 is not 3, and this must not collapse them: registering over state the
+  # client could not read mints against a new install id and strands the usage
+  # this install has already published. That hour is skipped instead. The
+  # contract and why it has three answers are in the client's README.
+  #
+  # stdout is dropped -- it says the same thing every hour. stderr is not: on 2
+  # it carries the client's account of WHICH file it could not read.
+  /command/s6-setuidgid hermes \
+    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
+    /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py status >/dev/null
   case $? in
     0) ;;
     3)
@@ -86,9 +73,8 @@ while :; do
       }
       ;;
     *)
-      echo "agent-index: the client could not say whether this install is registered" >&2
-      echo "(reason above); standing off rather than registering over state it could" >&2
-      echo "not read, which would strand the usage this install has published." >&2
+      echo "agent-index: the client could not read this install's state (above);" >&2
+      echo "standing off rather than registering over it." >&2
       /bin/sleep 3600
       continue
       ;;

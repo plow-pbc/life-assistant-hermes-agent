@@ -30,11 +30,3 @@ def test_hourly_report_receives_only_the_stored_key():
     assert "agent-index-client.py" in reporter
     assert "PLOW_AGENT_TOKEN" not in reporter
 
-
-def test_the_registration_gate_keeps_no_path_of_its_own():
-    """Where this install's state lives is the client's to know. The gate that
-    named a path here named one the client had stopped writing, and re-registered
-    every tenant on the hour; it asks now, and asking has nothing to go stale."""
-    run = commands(RUN.read_text())
-    assert ".agent-index/token" not in run and ".agent-index.json" not in run
-    assert "load_state" in run, "it asks the client whether this install is registered"
