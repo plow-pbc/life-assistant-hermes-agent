@@ -17,7 +17,7 @@ def test_image_has_no_bespoke_key_exchanger():
 
 def test_bootstrap_invokes_the_pinned_client_with_the_plow_token():
     run = commands(RUN.read_text())
-    bootstrap = run.split('if [ ! -s "$HERMES_HOME/.agent-index/token" ]')[1].split("fi", 1)[0]
+    bootstrap = run.split("\n    3)\n", 1)[1].split("\n      ;;", 1)[0]
     assert "PLOW_AGENT_TOKEN" in bootstrap
     assert "agent-index-client.py" in bootstrap
     assert "--register" in bootstrap
@@ -26,6 +26,7 @@ def test_bootstrap_invokes_the_pinned_client_with_the_plow_token():
 
 def test_hourly_report_receives_only_the_stored_key():
     run = commands(RUN.read_text())
-    reporter = run.split("\n  fi\n", 1)[1].split("/bin/sleep 3600", 1)[0]
+    reporter = run.split("\n  esac\n", 1)[1].split("/bin/sleep 3600", 1)[0]
     assert "agent-index-client.py" in reporter
     assert "PLOW_AGENT_TOKEN" not in reporter
+

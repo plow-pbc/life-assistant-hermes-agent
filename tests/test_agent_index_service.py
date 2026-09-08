@@ -10,19 +10,44 @@ thing worth knowing about a boot service.
 """
 import os
 import subprocess
+import sys
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "image/s6-overlay/s6-rc.d/agent-index"
 
 
-def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0) -> str:
+# A stand-in for the pinned client, answering the two things the run script
+# asks of it: `status`, whose EXIT CODE is the whole answer, and everything
+# else, which it records the argv of. What the script did is then a file, not a
+# guess from the output of a program that is not there.
+STUB_CLIENT = """
+import sys
+
+if sys.argv[1:2] == ["status"]:
+    sys.exit({status})
+
+with open({record!r}, "a") as record:
+    record.write(" ".join(sys.argv[1:]) + "\\n")
+"""
+
+
+def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
+                status: int | None = None) -> str:
     """Start the real run script against a fake container environment.
 
     It is a supervised loop, so it never exits on its own: it is killed after a
     moment and judged on what it did. /command and /opt are not there, so the
     client invocation fails -- which is the point, it proves the script reached
     the invocation with the values it was given.
+
+    Given `status` -- what the stub client's `status` command exits with -- the
+    three absolute paths this image guarantees are pointed at the sandbox
+    instead, so the script's OWN branching runs against a client that answers.
+    That is the only way to see what it does on the second hour, which is where
+    the registration gate is either right or minting a key an hour forever.
     """
     env_dir = tmp_path / "run/s6/container_environment"
     env_dir.mkdir(parents=True)
@@ -31,6 +56,16 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0) -> 
 
     script = (SERVICE / "run").read_text().replace(
         "/run/s6/container_environment", str(env_dir))
+    if status is not None:
+        home = tmp_path / "hermes"
+        home.mkdir()
+        client = tmp_path / "client.py"
+        client.write_text(STUB_CLIENT.format(status=status, record=str(tmp_path / "invoked")))
+        script = (script
+                  .replace("/var/lib/hermes", str(home))
+                  .replace("/command/s6-setuidgid hermes", "")
+                  .replace("/opt/hermes/.venv/bin/python3", sys.executable)
+                  .replace("/opt/plow/agent-index-client.py", str(client)))
     sandbox = tmp_path / "run.sh"
     sandbox.write_text(script)
     sandbox.chmod(0o755)
@@ -93,3 +128,36 @@ def test_neither_deleted_layout_comes_back():
     nothing. The image carries the client instead."""
     assert not (ROOT / "compose.override.yml").exists()
     assert not (ROOT / "docker/s6-rc.d").exists()
+
+
+def invocations(tmp_path) -> list[str]:
+    """Every way the client was invoked in that run, in order."""
+    record = tmp_path / "invoked"
+    return record.read_text().splitlines() if record.exists() else []
+
+
+@pytest.mark.parametrize(("status", "invoked"), [
+    # 0 -- registered, so the hour is a report and nothing else. This is the row
+    # the script this replaces got wrong: it tested a path the client only ever
+    # DELETES, so it was true on every pass and every tenant minted a fresh key
+    # on the hour.
+    (0, [""]),
+    # 3 -- not registered, and a gate that never registers is a tenant with no
+    # page: register once, then report with what that stored.
+    (3, ["--register --agent life", ""]),
+])
+def test_it_registers_exactly_when_the_client_says_this_install_is_not(tmp_path, status, invoked):
+    """What the script DID with the client, read off the argv the stub recorded."""
+    run_service(tmp_path, {"PLOW_AGENT_TOKEN": "plow_atokenshapedthing",
+                           "AGENT_ID": "life"}, status=status)
+    assert invocations(tmp_path) == invoked
+
+
+def test_state_the_client_cannot_read_touches_the_index_not_at_all(tmp_path):
+    """2 is not 3. State the client could not READ is not state to register
+    over: minting against a new install id strands every row the old one
+    published. So the hour is skipped entirely -- no registration, no report."""
+    said = run_service(tmp_path, {"PLOW_AGENT_TOKEN": "plow_atokenshapedthing",
+                                  "AGENT_ID": "life"}, status=2)
+    assert invocations(tmp_path) == [], "it touched the Index on a state it cannot read"
+    assert "could not read this install's state" in said
