@@ -122,6 +122,14 @@ def test_every_skill_lands_outside_every_home():
         "the permission-normalizing RUN block still targets the old skills root"
     )
     assert "find /var/lib/hermes/skills" not in dockerfile
+    # The base's reconcile discovers bundled skills by globbing SKILL.md
+    # (hermes tools/skills_sync.py), so a directory without one lands at
+    # /opt/hermes/skills and never reaches a bind-mounted home -- ld-shared
+    # shipped that way for a week while every producer failed on its import.
+    for name in SKILL_DIRS:
+        assert (ROOT / name / "SKILL.md").is_file(), (
+            f"{name} has no SKILL.md, so the boot reconcile never seeds it into the home"
+        )
 
 
 def test_producer_copy_and_soul_destination_are_not_merged_away():
