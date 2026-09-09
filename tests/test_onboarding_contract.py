@@ -818,10 +818,6 @@ def test_the_choices_are_sent_from_the_producers_offer():
         assert superseded not in choices, superseded
     # Odd names still ship -- the block is text, and sending it is showing it.
     assert "shown as TEXT" in choices or "It is TEXT" in choices
-    # The producer is the only thing that counts rows and walks the groups;
-    # tests/test_calendar_discovery.py holds it to that.
-    source = (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text()
-    assert 'snapshot["offer"] = _offer(' in source
 
 
 def test_the_sheet_and_the_service_agree_on_staleness():
