@@ -770,10 +770,48 @@ def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     assert "mcp__plow__" not in ONBOARDING
     assert "calendar-listing-<turn>" not in ONBOARDING
     commands = re.findall(r"^    python3 (.+)$", ONBOARDING, re.MULTILINE)
-    discovery = [command for command in commands if "calendar_discovery.py" in command]
-    assert discovery == ["/var/lib/hermes/skills/ld-setup/scripts/calendar_discovery.py"]
-    assert not any("latch_status.py" in command or "calendar_list.py" in command
-                   for command in commands)
+    # Not even the discovery script: its snapshot is read as a file now, so no
+    # onboarding turn spends a command -- or an approval prompt -- on a read.
+    assert not any("calendar_discovery.py" in command or "latch_status.py" in command
+                   or "calendar_list.py" in command for command in commands)
+
+
+def test_the_snapshot_is_read_as_a_file_never_as_a_command():
+    """A command needs approval; an approval prompt inside the intro loses it.
+
+    Observed: the intro's snapshot read went out as execute_code wrapping the
+    script, hit the gateway's approval prompt, and the turn took the unknown
+    branch -- sending an install link to an owner whose Latch was connected and
+    whose choices were ready.
+    """
+    # No onboarding turn runs the discovery script at all, under any tool.
+    assert "calendar_discovery.py" not in ONBOARDING.split("### 5 ·")[0]
+    choices = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    flowed = " ".join(choices.split())
+    assert "/var/lib/hermes/ld/calendar-discovery.json" in flowed
+    assert "Read it as a file. Never through `execute_code`, `terminal`, or the script." in flowed
+    # The one surviving mention of the script says it is the operator's, not
+    # this turn's -- it must not read as an instruction to run it.
+    script = flowed[flowed.index("Running `calendar_discovery.py`"):]
+    assert "an operator's shell, never this turn" in script[:220]
+    # The intro's read is the one that was lost, so it names the file too.
+    intro = ONBOARDING[:ONBOARDING.index("### 5 ·")]
+    assert "/var/lib/hermes/ld/calendar-discovery.json" in " ".join(intro.split())
+
+
+def test_the_sheet_and_the_service_agree_on_staleness():
+    """Chat reads the snapshot itself, so the file must carry its own expiry.
+
+    Two definitions of "stale" that can drift is one too many: the service
+    stamps `fresh_until`, and the sheet is only allowed to compare it to now.
+    """
+    source = (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text()
+    assert 'snapshot["fresh_until"] = now + MAX_AGE_SECONDS' in source
+    flowed = " ".join(SKILL.split())
+    assert "`fresh_until` in the FUTURE -- use `status` as it stands" in flowed
+    assert "`fresh_until` in the past, no file, or anything unparseable -- UNKNOWN" in flowed
+    # A stopped state outranks the clock in both places.
+    assert "`status: needs_account` -- stopped, whatever its age" in flowed
 
 
 def test_a_stored_setting_change_can_reach_the_skill():

@@ -70,7 +70,9 @@ IS the unanswered question.
 **Greeting and name come before calendar work.** On the opener, read only
 config and supplied conversation. Say hello and settle their name first.
 During the intro, read §5's local snapshot once before choosing the download
-branch. This is a non-blocking local read: never contact the relay or wait.
+branch -- with your file tool, straight off
+`/var/lib/hermes/ld/calendar-discovery.json`, never through a command. This is
+a non-blocking local read: never contact the relay or wait.
 A fresh `ready` snapshot proves Latch has supplied choices, so omit the catch,
 install link and its pause. Unknown or stale keeps the conditional wording.
 
@@ -845,9 +847,25 @@ and never gets it, and that is a finished install.
 
 **The model only shows choices and records the owner's picks.** On a turn
 after the intro was delivered, while `calendar.sources` is absent (or the owner
-explicitly asks to change them), read the background snapshot:
+explicitly asks to change them), read the background snapshot with your FILE
+TOOL, as a plain file:
 
-    python3 /var/lib/hermes/skills/ld-setup/scripts/calendar_discovery.py
+    /var/lib/hermes/ld/calendar-discovery.json
+
+**Read it as a file. Never through `execute_code`, `terminal`, or the script.**
+A command has to clear the gateway's approval prompt, and a prompt inside the
+intro stops the read from finishing before the branch below is chosen -- the
+turn then takes the unknown branch and sends an install link to an owner whose
+Latch is already connected. Observed exactly there. A file read has no prompt
+and cannot block. Running `calendar_discovery.py` with no argument prints the
+same thing, and that is an operator's shell, never this turn.
+
+It is JSON, and it decides three ways:
+
+- `status: needs_account` -- stopped, whatever its age. Always honoured.
+- otherwise, `fresh_until` in the FUTURE -- use `status` as it stands.
+- `fresh_until` in the past, no file, or anything unparseable -- UNKNOWN, which
+  reads as `pending`. Never as proof that Latch is disconnected.
 
 This is a local read, with no relay call or wait. `status: ready` includes
 `accounts`: one group per connected account, each with its authenticated

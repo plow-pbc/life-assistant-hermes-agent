@@ -177,6 +177,10 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     if requested and snapshot["status"] == "pending":
         snapshot["requested"] = True
     snapshot["checked_at"] = now
+    # The snapshot carries its own expiry so the reader never has to know the
+    # refresh cadence: chat reads this file directly, and comparing one
+    # timestamp to now is a judgement a turn can make without arithmetic.
+    snapshot["fresh_until"] = now + MAX_AGE_SECONDS
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     name = None
@@ -193,7 +197,12 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
 
 
 def read_snapshot(path=CACHE, *, now=None):
-    """Stopped states remain visible; expired choices are not proof of disconnection."""
+    """The operator's read, for a shell. Chat reads the file itself.
+
+    Stopped states remain visible; expired choices are not proof of
+    disconnection. This is the same rule §5 of the sheet states in words, and
+    `test_the_sheet_and_the_service_agree_on_staleness` holds the two together.
+    """
     try:
         snapshot = _load(path)
         if snapshot.get("status") == "needs_account":
@@ -218,6 +227,9 @@ def main(argv=None):
         return 0
     if argv:
         raise SystemExit("usage: calendar_discovery.py [--refresh]")
+    # No argument is an operator at a shell asking what the service thinks.
+    # The agent never runs this: it reads the snapshot file with its file tool,
+    # which needs no command approval and cannot block a turn.
     json.dump(read_snapshot(), sys.stdout)
     print()
     return 0

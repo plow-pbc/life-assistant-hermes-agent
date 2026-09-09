@@ -82,6 +82,7 @@ def test_failed_refresh_invalidates_prior_choices_without_leaking_output(
     discovery.refresh(cache, now=4600)
     assert discovery.read_snapshot(cache, now=4601) == {
         "status": "pending", "checked_at": 4600, "attempts": 1,
+        "fresh_until": 4600 + discovery.MAX_AGE_SECONDS,
         "retry_at": 4900, "reason": "Calendar discovery is temporarily unavailable."}
     assert "PRIVATE" not in cache.read_text() + capsys.readouterr().out
 
