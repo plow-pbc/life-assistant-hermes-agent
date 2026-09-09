@@ -902,8 +902,12 @@ and let the persisted retry schedule retry. `needs_account` is stopped: use
 the account-resolution explanation above, never the waiting-for-timer close.
 
 **Asking for fresh choices, when the owner wants to change calendars.** Their
-selections are stored, so the service is no longer refreshing and the snapshot
-above will read `pending`. Ask for one run by creating the empty request file:
+selections are stored, so the service is no longer refreshing -- and the
+snapshot on disk is the OLD `ready` one, which keeps reading `ready` until the
+requested run replaces it. It is not proof of anything fresh. Create the
+request FIRST, note the `checked_at` you can see, and treat the listing as the
+re-listed one only once `checked_at` has moved. Ask for the run by creating the
+empty request file:
 
     touch /var/lib/hermes/ld/calendar-discovery.request
 
@@ -973,7 +977,9 @@ others, and the producer does not flag it.
 
 **No calendar ids in the message.** They are machine addresses, and a wall of
 `c0ffee0000000000000000000@group.calendar.example.test` on someone's phone is
-noise they never asked for. `offer` does not carry them and you do not add
+noise they never asked for. That id is invented, like every example here: a
+real one identifies a real person's calendar and does not belong in a public
+repository. `offer` does not carry them and you do not add
 them.
 
 **Resolve a pick by name, in the snapshot, when you write.** The owner answers

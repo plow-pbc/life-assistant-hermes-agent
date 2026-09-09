@@ -842,6 +842,11 @@ def test_clearing_a_stopped_snapshot_also_asks_for_a_rebuild():
     # No prose may promise a deadline the backoff path cannot keep.
     assert "keeps until the requested run lands" in readme
     assert "stays queued until that retry comes due" in " ".join(SKILL.split())
+    # The old ready snapshot survives the request, so it must not be read as
+    # the answer to it.
+    flowed_skill = " ".join(SKILL.split())
+    assert "keeps reading `ready` until the requested run replaces it" in flowed_skill
+    assert "only once `checked_at` has moved" in flowed_skill
     assert "picks it up within five minutes" not in " ".join(SKILL.split())
     assert "ask to see the list again" in " ".join(
         (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text().split())

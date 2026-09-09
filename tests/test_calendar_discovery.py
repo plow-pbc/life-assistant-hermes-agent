@@ -34,6 +34,12 @@ def accounts():
         {"account": "owner@example.test", "is_default": True}], "degraded": []}
 
 
+def owed(request):
+    """Is a run still owed? Either an unclaimed request or a claim in flight."""
+    from pathlib import Path as _P
+    return _P(request).exists() or _P(str(request) + ".claimed").exists()
+
+
 def completed(rows=LISTING):
     return {"status": "completed", "exit_code": 0,
             "output": "Note: direct access\n" + json.dumps(rows)}
@@ -278,7 +284,7 @@ def test_ready_choices_persist_until_something_asks(tmp_path, monkeypatch, conne
     request.write_text("")
     discovery.refresh(cache, now=1_000_000, request=request)
     assert len(calls) == 4
-    assert not request.exists()
+    assert not owed(request)
 
     # Spent: quiet again.
     discovery.refresh(cache, now=2_000_000, request=request)
@@ -319,7 +325,7 @@ def test_an_owed_run_survives_until_it_lands(tmp_path, monkeypatch, connected, s
         assert calls == [], "the backoff still holds"
     else:
         assert json.loads(cache.read_text())["status"] == "pending"
-    assert request.exists(), "the run is still owed"
+    assert owed(request), "the run is still owed"
 
     def relay(*args):
         calls.append(args)
@@ -330,7 +336,7 @@ def test_an_owed_run_survives_until_it_lands(tmp_path, monkeypatch, connected, s
     due = json.loads(cache.read_text()).get("retry_at", 1000)
     discovery.refresh(cache, now=due, request=request)
     assert discovery.read_snapshot(cache, now=due + 1)["status"] == "ready"
-    assert not request.exists(), "arriving discharges it"
+    assert not owed(request), "arriving discharges it"
 
     # Discharged: the stored selection closes the gate again.
     before = len(calls)
@@ -354,7 +360,7 @@ def test_a_failed_write_does_not_swallow_the_request(tmp_path, monkeypatch, conn
     monkeypatch.setattr(discovery, "_store", broken)
     with pytest.raises(OSError):
         discovery.refresh(cache, now=1000, request=request)
-    assert request.exists(), "nothing landed, so nothing is discharged"
+    assert owed(request), "nothing landed, so nothing is discharged"
 
 
 def test_a_request_made_mid_run_is_not_discharged_by_it(
@@ -375,7 +381,34 @@ def test_a_request_made_mid_run_is_not_discharged_by_it(
     monkeypatch.setattr(discovery, "relay", relay)
     discovery.refresh(cache, now=1000, request=request)
     assert json.loads(cache.read_text())["status"] == "ready"
-    assert request.exists(), "the newer ask is still owed"
+    assert request.exists(), "the newer ask sits untouched at the original path"
+
+
+def test_a_request_racing_the_discharge_is_not_deleted(tmp_path, monkeypatch, connected):
+    """The owner touching the file during the write must not lose their ask.
+
+    Checking the file and then unlinking it cannot promise this: the touch can
+    land between the two calls. Claiming it by rename can -- after the rename
+    the new request is a different file at the original path.
+    """
+    cache = tmp_path / "choices.json"
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    request = tmp_path / "discovery.request"
+    request.write_text("")
+    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
+    monkeypatch.setattr(discovery, "relay", lambda *a: accounts()
+                        if a[-1]["argv"] == ["plow-gog", "accounts"] else completed())
+    real_store = discovery._store
+
+    def store_then_race(path, snapshot):
+        real_store(path, snapshot)
+        # The owner asks again in the instant between the store and the unlink.
+        request.write_text("")
+    monkeypatch.setattr(discovery, "_store", store_then_race)
+    discovery.refresh(cache, now=1000, request=request)
+    assert json.loads(cache.read_text())["status"] == "ready"
+    assert request.exists(), "the racing ask survived the discharge"
 
 
 def test_a_stopped_state_keeps_the_request_for_the_operator(
@@ -396,7 +429,7 @@ def test_a_stopped_state_keeps_the_request_for_the_operator(
     monkeypatch.setattr(discovery, "relay",
                         lambda *a: pytest.fail("stopped worker retried"))
     discovery.refresh(cache, now=2000, request=request)
-    assert request.exists(), "kept for after the operator clears the snapshot"
+    assert owed(request), "kept for after the operator clears the snapshot"
 
 
 def test_a_ready_snapshot_without_an_offer_is_refreshed(tmp_path, monkeypatch, connected):

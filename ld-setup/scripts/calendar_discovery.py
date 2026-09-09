@@ -155,17 +155,23 @@ def _discover(credentials):
     return snapshot
 
 
-def _identity(request):
-    """Which request file this is, or None if there is none.
+def _claim(request):
+    """Move the request aside, atomically, and say whether one is owed.
 
-    A request is answered by the run that claimed it, so the run has to be able
-    to tell the file it saw from one the owner made while it was working.
+    Renaming is the claim: after it, a request the owner makes while this run
+    is working is a NEW file at the original path, and nothing this run does
+    can delete it. Checking the file and then unlinking it could not promise
+    that -- the owner can always touch it between the two calls.
+
+    A claim left by an earlier run that never landed still counts: that run
+    owed the owner a listing and did not deliver it.
     """
+    claimed = Path(str(request) + ".claimed")
     try:
-        info = Path(request).stat()
+        os.replace(request, claimed)
+        return claimed
     except OSError:
-        return None
-    return (info.st_ino, info.st_mtime_ns)
+        return claimed if claimed.exists() else None
 
 
 def _store(path, snapshot):
@@ -200,7 +206,7 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # The file IS the owed run. It outlives every tick that fails to discharge
     # it, so nothing has to remember separately that a run is owed -- and
     # remembering it separately is what both bugs here were.
-    claim = _identity(request)
+    claim = _claim(request)
     requested = claim is not None
     # An onboarded household costs no relay call and no audit entry: once the
     # owner has chosen calendars there is nothing left to discover on a timer.
@@ -244,13 +250,13 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     if snapshot["status"] != "ready":
         snapshot["fresh_until"] = now + MAX_AGE_SECONDS
     _store(path, snapshot)
-    # Discharge only after the result is safely on disk, and only the request
-    # this run claimed. A store that raises leaves the marker, so the owner's
-    # ask survives a failed write; a request made WHILE this run was in flight
-    # is a different file and is left for the next tick. Backing off is not
-    # arriving either -- the marker stays and the next due tick tries again.
-    if snapshot["status"] != "pending" and claim == _identity(request):
-        request.unlink(missing_ok=True)
+    # Discharge only after the result is safely on disk, and only what this run
+    # claimed. A store that raises leaves the claim, so the owner's ask survives
+    # a failed write; a request made WHILE this run was in flight sits at the
+    # original path untouched and is answered by the next tick. Backing off is
+    # not arriving either -- the claim stays and the next due tick tries again.
+    if snapshot["status"] != "pending" and claim is not None:
+        claim.unlink(missing_ok=True)
 
 
 def read_snapshot(path=CACHE, *, now=None):
