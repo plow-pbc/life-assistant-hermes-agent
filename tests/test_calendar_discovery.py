@@ -338,6 +338,46 @@ def test_an_owed_run_survives_until_it_lands(tmp_path, monkeypatch, connected, s
     assert len(calls) == before
 
 
+def test_a_failed_write_does_not_swallow_the_request(tmp_path, monkeypatch, connected):
+    """The ask outlives a snapshot that never made it to disk."""
+    cache = tmp_path / "choices.json"
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    request = tmp_path / "discovery.request"
+    request.write_text("")
+    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
+    monkeypatch.setattr(discovery, "relay", lambda *a: accounts()
+                        if a[-1]["argv"] == ["plow-gog", "accounts"] else completed())
+
+    def broken(path, snapshot):
+        raise OSError("disk full")
+    monkeypatch.setattr(discovery, "_store", broken)
+    with pytest.raises(OSError):
+        discovery.refresh(cache, now=1000, request=request)
+    assert request.exists(), "nothing landed, so nothing is discharged"
+
+
+def test_a_request_made_mid_run_is_not_discharged_by_it(
+        tmp_path, monkeypatch, connected):
+    """"Show me again" during a run is answered by the next run, not eaten."""
+    cache = tmp_path / "choices.json"
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    request = tmp_path / "discovery.request"
+    request.write_text("")
+    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
+
+    def relay(*args):
+        # The owner asks again while this run is still talking to the relay.
+        request.unlink(missing_ok=True)
+        request.write_text("later")
+        return accounts() if args[-1]["argv"] == ["plow-gog", "accounts"] else completed()
+    monkeypatch.setattr(discovery, "relay", relay)
+    discovery.refresh(cache, now=1000, request=request)
+    assert json.loads(cache.read_text())["status"] == "ready"
+    assert request.exists(), "the newer ask is still owed"
+
+
 def test_a_stopped_state_keeps_the_request_for_the_operator(
         tmp_path, monkeypatch, connected):
     """A request cannot reopen `needs_account`, and is not thrown away either.

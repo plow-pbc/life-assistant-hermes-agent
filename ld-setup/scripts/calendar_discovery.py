@@ -155,6 +155,19 @@ def _discover(credentials):
     return snapshot
 
 
+def _identity(request):
+    """Which request file this is, or None if there is none.
+
+    A request is answered by the run that claimed it, so the run has to be able
+    to tell the file it saw from one the owner made while it was working.
+    """
+    try:
+        info = Path(request).stat()
+    except OSError:
+        return None
+    return (info.st_ino, info.st_mtime_ns)
+
+
 def _store(path, snapshot):
     """Replace the snapshot atomically; a queued reader never sees a partial."""
     path = Path(path)
@@ -187,7 +200,8 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # The file IS the owed run. It outlives every tick that fails to discharge
     # it, so nothing has to remember separately that a run is owed -- and
     # remembering it separately is what both bugs here were.
-    requested = request.exists()
+    claim = _identity(request)
+    requested = claim is not None
     # An onboarded household costs no relay call and no audit entry: once the
     # owner has chosen calendars there is nothing left to discover on a timer.
     # Changing them is the one thing that still needs fresh choices, and it
@@ -222,11 +236,6 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
         snapshot = {"status": "pending", "attempts": attempts,
                     "reason": "Calendar discovery is temporarily unavailable.",
                     "retry_at": now + min(300 * 2 ** (attempts - 1), 3600)}
-    # The run is discharged only by arriving somewhere: ready choices, or a
-    # stopped state an operator has to clear. Backing off is not arriving, so
-    # the request stays and the next due tick tries again.
-    if snapshot["status"] != "pending":
-        request.unlink(missing_ok=True)
     snapshot["checked_at"] = now
     # Only a snapshot that is not yet ready carries an expiry, and it carries
     # its own so the reader never has to know a cadence: comparing one
@@ -235,6 +244,13 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     if snapshot["status"] != "ready":
         snapshot["fresh_until"] = now + MAX_AGE_SECONDS
     _store(path, snapshot)
+    # Discharge only after the result is safely on disk, and only the request
+    # this run claimed. A store that raises leaves the marker, so the owner's
+    # ask survives a failed write; a request made WHILE this run was in flight
+    # is a different file and is left for the next tick. Backing off is not
+    # arriving either -- the marker stays and the next due tick tries again.
+    if snapshot["status"] != "pending" and claim == _identity(request):
+        request.unlink(missing_ok=True)
 
 
 def read_snapshot(path=CACHE, *, now=None):

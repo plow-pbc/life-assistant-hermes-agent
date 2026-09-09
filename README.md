@@ -310,7 +310,8 @@ until it has choices, then stops -- ready choices are never replaced on a
 timer, so an onboarded household costs no relay call and an owner still
 choosing answers about the list they were shown. Changing calendars later
 asks for one run by touching `/var/lib/hermes/ld/calendar-discovery.request`,
-which the service consumes on its next tick. A listing that fails for one
+which the service keeps until the requested run lands -- the next tick when it
+is idle, or when the backoff comes due if it is retrying a failure. A listing that fails for one
 account is reported beside the accounts that answered, never instead of them,
 and stays that way: a ready snapshot is not retried on a timer, so re-listing
 that account takes another request.

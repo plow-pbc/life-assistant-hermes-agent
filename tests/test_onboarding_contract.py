@@ -839,6 +839,10 @@ def test_clearing_a_stopped_snapshot_also_asks_for_a_rebuild():
     assert "only when no account answered" in readme
     # A degraded account is not quietly promised a retry that cannot happen.
     assert "re-listing that account takes another request" in readme
+    # No prose may promise a deadline the backoff path cannot keep.
+    assert "keeps until the requested run lands" in readme
+    assert "stays queued until that retry comes due" in " ".join(SKILL.split())
+    assert "picks it up within five minutes" not in " ".join(SKILL.split())
     assert "ask to see the list again" in " ".join(
         (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text().split())
     assert "stays `ready` and names the refused one under `degraded`" in readme

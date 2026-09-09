@@ -907,9 +907,12 @@ above will read `pending`. Ask for one run by creating the empty request file:
 
     touch /var/lib/hermes/ld/calendar-discovery.request
 
-That is the whole protocol -- nothing reads what is in it. The service picks it
-up within five minutes and replaces the snapshot, so ask once, say you are
-fetching their calendars, and read the snapshot again on a later turn. While
+That is the whole protocol -- nothing reads what is in it. The service takes it
+on its next tick, usually within five minutes; if discovery is already backing
+off from a failure it stays queued until that retry comes due, which can be up
+to an hour. Either way the request is kept until the run it asked for actually
+lands. So ask once, tell them you are fetching their calendars without naming
+a time, and read the snapshot again on a later turn. While
 `calendar.sources` is still absent, only create it if the owner asks to see
 their calendars again -- or if the snapshot names a `degraded` account they
 want retried. Ready choices are never re-listed on a timer, so a request is
