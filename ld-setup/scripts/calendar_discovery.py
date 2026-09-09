@@ -27,7 +27,7 @@ ARGV = ["gog", "calendar", "calendars", "--json", "--results-only"]
 
 def refresh(path=CACHE, *, now=None):
     """Publish only normalized choices, never raw command output or errors."""
-    snapshot = {"status": "unavailable"}
+    snapshot = {"status": "pending"}
     credentials, _ = relay_config()
     if credentials:
         try:
@@ -53,11 +53,11 @@ def refresh(path=CACHE, *, now=None):
 
 
 def read_snapshot(path=CACHE, *, now=None):
-    """No cache or an expired cache is unknown, never proof of disconnection."""
+    """Anything short of usable choices is pending, not proof of disconnection."""
     try:
         snapshot = json.loads(Path(path).read_text())
         age = (time.time() if now is None else now) - snapshot["checked_at"]
-        if 0 <= age <= MAX_AGE_SECONDS and snapshot["status"] in ("ready", "unavailable"):
+        if 0 <= age <= MAX_AGE_SECONDS and snapshot["status"] in ("ready", "pending"):
             return snapshot
     except (OSError, ValueError, KeyError, TypeError):
         pass

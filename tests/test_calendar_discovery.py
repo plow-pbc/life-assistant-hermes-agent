@@ -72,7 +72,7 @@ def test_failed_refresh_invalidates_prior_choices_without_leaking_output(
     monkeypatch.setattr(discovery, "relay", lambda *args: result)
     discovery.refresh(cache, now=1010)
     assert discovery.read_snapshot(cache, now=1011) == {
-        "status": "unavailable", "checked_at": 1010}
+        "status": "pending", "checked_at": 1010}
     assert "PRIVATE" not in cache.read_text() + capsys.readouterr().out
 
 
@@ -82,7 +82,7 @@ def test_no_relay_configuration_makes_no_network_call(tmp_path, monkeypatch):
     monkeypatch.setattr(discovery, "relay", lambda *args: pytest.fail("relay called"))
     cache = tmp_path / "choices.json"
     discovery.refresh(cache, now=1000)
-    assert discovery.read_snapshot(cache, now=1000)["status"] == "unavailable"
+    assert discovery.read_snapshot(cache, now=1000)["status"] == "pending"
 
 
 @pytest.mark.parametrize("content", [None, "{", "null", "[]",

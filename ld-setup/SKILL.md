@@ -833,7 +833,7 @@ explicitly asks to change them), read the background snapshot:
 
 This is a local read, with no relay call or wait. `status: ready` includes
 `account`, `candidates`, and `calendars` with `id`, `display`, and `accessRole`.
-`pending` or `unavailable` means no usable choices yet; continue the conversation
+`pending` means no usable choices yet; continue the conversation
 and let the next background tick retry. Never call the refresh mode, run a
 status probe, fetch raw listings, stage them with a file tool or execute_code,
 normalize them yourself, or clean up discovery files. The service does all of
