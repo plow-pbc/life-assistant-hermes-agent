@@ -69,6 +69,34 @@ def _command(credentials, argv):
     return payload
 
 
+def _offer(groups, degraded):
+    """The choices as one block to send verbatim.
+
+    Two live runs lost a calendar between the snapshot and the message -- one
+    row dropped, one name shortened. Transcribing eleven rows and counting them
+    is not work worth asking a turn to redo: it is the same list every time, so
+    it is rendered once, here, and the sheet only has to send it.
+
+    Display names stay untrusted text. They are shown, never interpolated into
+    a command, and that rule does not change by their arriving pre-rendered.
+    """
+    total = sum(len(group["calendars"]) for group in groups)
+    lines = [f"{total} calendar{'' if total == 1 else 's'} "
+             f"across {len(groups)} account{'' if len(groups) == 1 else 's'}:"]
+    for group in groups:
+        lines.append("")
+        lines.append(f"{group['account']}")
+        if not group["calendars"]:
+            lines.append("- (no calendars on this account)")
+        for calendar in group["calendars"]:
+            lines.append(f"- {calendar['display']} ({calendar['accessRole']}) "
+                         f"[{calendar['id']}]")
+    for entry in degraded:
+        lines.append("")
+        lines.append(f"{entry['account']} -- {entry['reason']}")
+    return "\n".join(lines)
+
+
 def _discover(credentials):
     # The accounts verb is structured data, not a subprocess stdout envelope.
     payload = _command(credentials, ["plow-gog", "accounts"])
@@ -118,6 +146,7 @@ def _discover(credentials):
              "reason": _reconnect([name]) if is_reauth and isinstance(name, str)
              else "Temporarily unavailable; discovery keeps trying."}
             for name, is_reauth in problems]
+    snapshot["offer"] = _offer(groups, snapshot.get("degraded", []))
     return snapshot
 
 

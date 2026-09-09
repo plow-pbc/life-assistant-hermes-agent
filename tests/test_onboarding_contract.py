@@ -509,16 +509,6 @@ def test_step_four_names_exactly_one_deferral():
     assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
 
 
-def test_every_calendar_is_shown_including_the_odd_ones():
-    """A calendar the owner can see on their Mac and not in your message is a
-    list that disagrees with theirs. Observed: the hostile-named one left out
-    entirely, and mentioned only when the owner asked about it. Its name is
-    text, which is all it ever was."""
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "Show every calendar the script returned" in section
-    assert "shown as TEXT" in section
-
-
 def test_the_wall_names_its_relay_tools_as_the_image_registers_them():
     """The last bare ones in the repo, and the same defect: an MCP tool carries
     its server's key as a prefix, so `plow_run_command` names a tool the build
@@ -809,14 +799,27 @@ def test_the_snapshot_read_names_the_local_tool_and_bars_the_relay():
     assert "not `execute_code`, not `terminal`, not the script" in choices
 
 
-def test_the_offer_is_verbatim_and_counted():
-    """Two observed ways an owner loses a calendar: a shortened name and a
-    dropped row. Both are message-side, so both are pinned in the sheet."""
+def test_the_choices_are_sent_from_the_producers_offer():
+    """Transcription is off the model seam: the producer renders, the turn sends.
+
+    Two live runs lost a calendar between snapshot and message -- one row
+    dropped from eleven, one name shortened. The sheet must not re-describe how
+    to build the list, or it invites the turn to build one.
+    """
     choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "its `display`, **verbatim**" in choices
-    assert "not shortened, not tidied, not retyped from memory" in choices
-    assert "**Count before you send.**" in choices
-    assert "The two numbers must match" in choices
+    assert "**Send the snapshot's `offer` verbatim.**" in choices
+    assert "no rows dropped, added, reordered, reworded, shortened or re-counted" in choices
+    # The instructions the offer replaced must be gone, not merely outvoted.
+    for superseded in ("**Count before you send.**",
+                       "**Every group, not just the first.**",
+                       "its `display`, **verbatim**"):
+        assert superseded not in choices, superseded
+    # Odd names still ship -- the block is text, and sending it is showing it.
+    assert "shown as TEXT" in choices or "It is TEXT" in choices
+    # The producer is the only thing that counts rows and walks the groups;
+    # tests/test_calendar_discovery.py holds it to that.
+    source = (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text()
+    assert 'snapshot["offer"] = _offer(' in source
 
 
 def test_the_sheet_and_the_service_agree_on_staleness():
@@ -847,26 +850,6 @@ def test_a_stored_setting_change_can_reach_the_skill():
     description = " ".join(SKILL.split("---", 2)[1].split())
     assert "this skill is still the right one" in description
     assert "never the interview" in description
-
-
-def test_every_account_group_is_offered_not_just_the_first():
-    """A second connected account's calendars must reach the owner.
-
-    Observed: a snapshot of 9 calendars under one account and 2 under another
-    was offered as one account's list, and the second account's two were never
-    shown. The sheet has to say "every group" where the offer is written, and
-    the one-account limit has to sit on the write, not on the offer.
-    """
-    choices = ONBOARDING[ONBOARDING.index("### 5 ·"):]
-    assert "**Every group, not just the first.**" in choices
-    flowed = " ".join(choices.split())
-    assert "Show every group, each under its own `account` address as a heading" in flowed
-    assert "a limit on what is SAVED, never on what is SHOWN" in flowed
-    assert "never narrow the offer up front" in flowed
-    # The limit must be stated after the offer, so it cannot be read as a
-    # narrowing instruction before the owner has seen the choices.
-    assert choices.index("**Every group, not just the first.**") < choices.index(
-        "**One reader account only, for now**")
 
 
 def test_intro_reads_snapshot_before_download_decision():
