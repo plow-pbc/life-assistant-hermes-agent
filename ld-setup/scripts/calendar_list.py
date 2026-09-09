@@ -74,7 +74,7 @@ def normalize(entries, *, account=None):
     """{account, candidates, calendars} from plow-gog's calendar list."""
     if not isinstance(entries, list):
         raise GatherError("calendar listing is not a list")
-    calendars = []
+    calendars, owned_by = [], set()
     for entry in entries:
         if not isinstance(entry, dict):
             raise GatherError("calendar listing holds a non-object entry")
@@ -88,9 +88,20 @@ def normalize(entries, *, account=None):
                    or unwrap_external(entry.get("summary"))
                    or cid)
         role = str(entry.get("accessRole") or "")
+        # Only owner-role rows vote: a calendar someone shared in carries THEIR
+        # address in dataOwner, and counting it would make a stranger's account
+        # an identity in this owner's config. The authenticated address is one
+        # identity; an owner with several addresses owns calendars under each,
+        # and the nudge needs all of them to recognise them in a meeting.
+        if role == "owner":
+            owner_of = entry.get("dataOwner")
+            if isinstance(owner_of, str) and owner_of.strip():
+                owned_by.add(owner_of)
         calendars.append({"id": cid, "display": str(display), "accessRole": role})
+    if account:
+        owned_by.add(account)
     return {"account": account,
-            "candidates": [account] if account else [],
+            "candidates": sorted(owned_by),
             "calendars": calendars}
 
 

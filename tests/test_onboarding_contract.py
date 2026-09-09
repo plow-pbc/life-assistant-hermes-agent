@@ -853,8 +853,8 @@ def test_the_sheet_and_the_service_agree_on_staleness():
     # ...and the service must not stamp an expiry on them either.
     assert 'if snapshot["status"] != "ready":' in source
     # A pick that does not match exactly one calendar is re-offered, not guessed.
-    assert "does not match exactly one `display`" in flowed
-    assert "Send the current `offer` again" in flowed
+    assert "matches two rows" in flowed and "ask which number they mean" in flowed
+    assert "send the current `offer` again" in flowed
 
 
 def test_a_stored_setting_change_can_reach_the_skill():

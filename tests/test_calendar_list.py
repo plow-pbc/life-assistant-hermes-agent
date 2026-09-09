@@ -77,7 +77,26 @@ def test_the_display_is_the_owners_rename():
 def test_account_is_only_supplied_by_caller(account):
     result = cl.normalize(LISTING, account=account)
     assert result["account"] == account
-    assert result["candidates"] == ([account] if account else [])
+
+
+def test_candidates_carry_every_address_the_owner_owns_a_calendar_under():
+    """An owner with two addresses is one person the nudge has to recognise.
+
+    `owner_identities` is built from `candidates`, and nudge_candidates.py
+    matches a meeting's organizer and attendees against it. With only the
+    authentication address there, a meeting inviting the owner's other address
+    reads as one they are not in, and the nudge is dropped without a word.
+    Only owner-role rows vote: a shared calendar's `dataOwner` is a stranger.
+    """
+    listing = LISTING + [
+        {"id": "work@example.test", "summary": "Work", "accessRole": "owner",
+         "dataOwner": "work@example.test"},
+    ]
+    result = cl.normalize(listing, account="mary@example.test")
+    assert result["candidates"] == ["mary@example.test", "work@example.test"]
+    assert "someone@else.test" not in result["candidates"], "a shared calendar's owner"
+    # The authenticated address is a candidate even when it owns nothing.
+    assert cl.normalize([], account="solo@example.test")["candidates"] == ["solo@example.test"]
 
 
 def test_empty_listing_is_valid_for_an_authenticated_account():

@@ -82,19 +82,28 @@ def _offer(groups, degraded):
     `accounts` groups in this same snapshot, which stops being refreshed once
     calendars are chosen and so is still the list the owner was shown.
 
+    Each row is numbered instead, counting across the whole offer rather than
+    per account. Two calendars can share a display name -- an owner with the
+    same calendar name on two accounts, or two shares of one name -- and a
+    name is then not a choice anybody can make. The number is, and it costs
+    one token per row rather than a forty-character address.
+
     Display names stay untrusted text. They are shown, never interpolated into
     a command, and that rule does not change by their arriving pre-rendered.
     """
     total = sum(len(group["calendars"]) for group in groups)
     lines = [f"{total} calendar{'' if total == 1 else 's'} "
              f"across {len(groups)} account{'' if len(groups) == 1 else 's'}:"]
+    ordinal = 0
     for group in groups:
         lines.append("")
         lines.append(f"{group['account']}")
         if not group["calendars"]:
             lines.append("- (no calendars on this account)")
         for calendar in group["calendars"]:
-            lines.append(f"- {calendar['display']} ({calendar['accessRole']})")
+            ordinal += 1
+            lines.append(f"{ordinal}. {calendar['display']} "
+                         f"({calendar['accessRole']})")
     for entry in degraded:
         lines.append("")
         lines.append(f"{entry['account']} -- {entry['reason']}")
