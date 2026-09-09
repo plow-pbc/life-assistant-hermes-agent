@@ -465,22 +465,19 @@ input, never a chat response:
     },
     {
       "type": "text",
-      "body": "Want to knock out a few quick things so I can tailor this to you?"
-    },
-    {
-      "type": "text",
-      "body": "First up, what city are you in?"
+      "body": "Want to knock out a few quick things so I can tailor this to you? First up, what city are you in?"
     }
   ]
 }
 ```
 
-**The intro ends on a soft check-in and then the first question, as TWO
-separate text items, never a cold jump into the question.** The check-in gives
-the questions a reason before they start; the question is always its own bubble
-after it. Use the same check-in whether or not they already connected Latch:
-“Want to knock out a few quick things so I can tailor this to you?” Then ask
-the first unanswered question. Both are items in the same sequence call.
+**The intro ends on a soft check-in and the first question together in ONE
+text item, never a cold jump into the question.** The check-in gives the
+question a reason before it lands, so keep them in the same bubble rather than
+splitting them across two. Use the same check-in whether or not they already
+connected Latch, and follow it with the first unanswered question in the same
+item: “Want to knock out a few quick things so I can tailor this to you? First
+up, what city are you in?” It is one item in the sequence call.
 
 **If `calendar.sources` is already in the config, or the owner already said
 Latch is connected, omit the catch, link and its pause.** `calendar.sources` is

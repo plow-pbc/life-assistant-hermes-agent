@@ -263,11 +263,11 @@ def test_the_lead_in_and_the_pictures_travel_together():
     items = intro_items()
     assert [item["type"] for item in items] == [
         "text", "text", "text", "text", "text", "photos", "pause",
-        "text", "text", "pause", "text", "text"]
-    # The intro eases in with a soft check-in, then the question as its own item,
-    # never a cold jump from the link into the question.
-    assert "knock out" in items[-2]["body"]
-    assert items[-1]["body"] == "First up, what city are you in?"
+        "text", "text", "pause", "text"]
+    # The intro eases in with a soft check-in and the first question together in
+    # ONE item, never a cold jump into the question.
+    assert "knock out" in items[-1]["body"]
+    assert "First up, what city are you in?" in items[-1]["body"]
     assert len(items[5]["asset_ids"]) == 4
     assert len(set(items[5]["asset_ids"])) == 4
     manifest = json.loads((ROOT / "docs/onboarding-v2/assets/manifest.json").read_text())
