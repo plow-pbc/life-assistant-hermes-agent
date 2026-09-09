@@ -306,9 +306,13 @@ approving it.
 
 The separate calendar discovery service enumerates `plow-gog accounts` and
 lists choices under each authenticated account. It starts at boot, refreshes
-ready choices hourly, and stops when calendar selections are stored. Transient
-failures persist a five-minute-to-one-hour backoff; account-required refusals
-stay visible as `needs_account` without timer retries. Resolve the account
+ready choices hourly, and stops when calendar selections are stored -- an
+onboarded household costs no relay call on a timer. Changing calendars later
+asks for one run by touching `/var/lib/hermes/ld/calendar-discovery.request`,
+which the service consumes on its next tick. A listing that fails for one
+account is reported beside the accounts that answered, never instead of them.
+Transient failures persist a five-minute-to-one-hour backoff; account-required
+refusals stay visible as `needs_account` without timer retries. Resolve the account
 problem before an operator removes `/var/lib/hermes/ld/calendar-discovery.json`
 to resume discovery. The event feed keeps its own five-minute cadence.
 

@@ -44,10 +44,6 @@ def _reconnect(names):
 class NeedsAccount(Exception):
     """An account refusal needs intervention, not another timer attempt."""
 
-    def __init__(self, reason=REFUSAL_REASON):
-        super().__init__(reason)
-        self.reason = reason
-
 
 def _load(path):
     try:
@@ -69,7 +65,7 @@ def _command(credentials, argv):
         "an --account entry is not a connected account.",
         "that account cannot be used right now:",
     )):
-        raise NeedsAccount
+        raise NeedsAccount(REFUSAL_REASON)
     return payload
 
 
@@ -81,37 +77,46 @@ def _discover(credentials):
     if (payload.get("status") != "completed" or not isinstance(accounts, list)
             or not isinstance(degraded, list) or not (accounts or degraded)):
         raise FeedError("accounts unavailable")
-    # One sick account never hides the healthy ones. A degraded entry is
-    # reported beside the choices it is missing from, so the owner sees the
-    # calendars they do have and is still told what is wrong with the rest.
-    reauth = sorted({entry.get("account") for entry in degraded
-                     if isinstance(entry, dict)
-                     and entry.get("reason") == "needs_reauth"
-                     and isinstance(entry.get("account"), str)})
-    if not accounts:
-        # Nothing healthy to offer: a revoked token is the owner's to fix and
-        # stops discovery, while anything else can come back on its own.
-        if reauth and len(reauth) == len(degraded):
-            raise NeedsAccount(_reconnect(reauth))
-        raise FeedError("no usable accounts")
+    problems = [(entry.get("account"), entry.get("reason") == "needs_reauth")
+                for entry in degraded if isinstance(entry, dict)]
     groups, seen = [], set()
     for entry in accounts:
         account = entry.get("account") if isinstance(entry, dict) else None
         if not isinstance(account, str) or not account.strip() or account in seen:
+            # The accounts response itself is malformed, which is not one
+            # account's problem to be demoted into: nothing here is trustworthy.
             raise FeedError("invalid account listing")
         seen.add(account)
-        output = _decode_command_response(_command(
-            credentials, [*ARGV, "--account", account]))
-        groups.append({**normalize(extract_array(output), account=account),
+        # One account's listing failing is that account's problem. Healthy
+        # groups already gathered are not thrown away for it -- the owner gets
+        # the calendars that answered, and the reason the rest did not.
+        try:
+            output = _decode_command_response(_command(
+                credentials, [*ARGV, "--account", account]))
+            calendars = normalize(extract_array(output), account=account)
+        except NeedsAccount:
+            problems.append((account, True))
+            continue
+        except (FeedError, GatherError, ValueError):
+            problems.append((account, False))
+            continue
+        groups.append({**calendars,
                        "is_default": entry.get("is_default") is True})
+    if not groups:
+        # Nothing to offer: a revoked token is the owner's to fix and stops
+        # discovery, while anything else can come back on its own.
+        reauth = sorted({name for name, is_reauth in problems
+                         if is_reauth and isinstance(name, str)})
+        if reauth and len(reauth) == len(problems):
+            raise NeedsAccount(_reconnect(reauth))
+        raise FeedError("no usable accounts")
     snapshot = {"status": "ready", "accounts": groups}
-    if degraded:
+    if problems:
         snapshot["degraded"] = [
-            {"account": entry.get("account"),
-             "reason": _reconnect([entry["account"]])
-             if entry.get("reason") == "needs_reauth" and isinstance(entry.get("account"), str)
+            {"account": name,
+             "reason": _reconnect([name]) if is_reauth and isinstance(name, str)
              else "Temporarily unavailable; discovery keeps trying."}
-            for entry in degraded if isinstance(entry, dict)]
+            for name, is_reauth in problems]
     return snapshot
 
 
@@ -154,7 +159,7 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
         snapshot = _discover(credentials)
         snapshot["retry_at"] = now + READY_INTERVAL
     except NeedsAccount as exc:
-        snapshot = {"status": "needs_account", "reason": exc.reason}
+        snapshot = {"status": "needs_account", "reason": str(exc)}
     except (FeedError, GatherError, OSError, ValueError):
         attempts = previous.get("attempts", 0)
         attempts = min(attempts, 4) + 1 if isinstance(attempts, int) and attempts >= 0 else 1
