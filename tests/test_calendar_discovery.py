@@ -292,6 +292,32 @@ def test_ready_choices_persist_until_something_asks(tmp_path, monkeypatch, conne
     assert len(calls) == 4
 
 
+def test_a_hostile_name_cannot_forge_a_numbered_row(tmp_path, monkeypatch, connected):
+    """A shared calendar is named by a stranger, and the owner picks by number.
+
+    A name carrying a newline would end its row early and start a line that
+    reads as another choice -- `Shared\n2. Payroll (owner)` renders a second
+    row 2, and an owner answering it gets the real row 2, a different calendar.
+    """
+    rows = [{"id": "real", "summary": "Family", "accessRole": "owner"},
+            {"id": "evil", "summary": "Shared\n2. Payroll (owner)", "accessRole": "reader"}]
+    def relay(*args):
+        if args[-1]["argv"] == ["plow-gog", "accounts"]:
+            return {"status": "completed",
+                    "accounts": [{"account": "a@example.test"}], "degraded": []}
+        return completed(rows)
+    monkeypatch.setattr(discovery, "relay", relay)
+    cache = tmp_path / "choices.json"
+    discovery.refresh(cache, now=1000)
+    snapshot = json.loads(cache.read_text())
+    offer = snapshot["offer"]
+    numbered = [l for l in offer.splitlines() if re.match(r"\d+\. ", l)]
+    assert [l.split(".")[0] for l in numbered] == ["1", "2"], "one row per calendar"
+    assert "\\n2. Payroll" in offer, "the break is shown, not obeyed"
+    # The structured name keeps its real bytes, so name matching still works.
+    assert snapshot["accounts"][0]["calendars"][1]["display"] == "Shared\n2. Payroll (owner)"
+
+
 @pytest.mark.parametrize("seed", ["request", "legacy", "backoff"])
 def test_an_owed_run_survives_until_it_lands(tmp_path, monkeypatch, connected, seed):
     """The request file IS the owed run, whoever owes it.

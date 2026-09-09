@@ -68,6 +68,19 @@ def _command(credentials, argv):
     return payload
 
 
+def _flat(display):
+    """One line, whatever the name's author wrote.
+
+    A display name is written by whoever owns the calendar, and a shared one is
+    written by a stranger. A newline in it would end the row early and start a
+    line the owner reads as another choice -- `Shared\n2. Payroll (owner)`
+    renders a second row 2, and answering it picks the real row 2 instead.
+    The characters are shown, not dropped: the owner still sees the whole name.
+    """
+    return (str(display).replace("\r\n", "\\n").replace("\n", "\\n")
+            .replace("\r", "\\n"))
+
+
 def _offer(groups, degraded):
     """The choices as one block to send verbatim.
 
@@ -90,6 +103,9 @@ def _offer(groups, degraded):
 
     Display names stay untrusted text. They are shown, never interpolated into
     a command, and that rule does not change by their arriving pre-rendered.
+    A row is one line: `_flat` keeps a name from forging another one. The
+    structured `display` under `accounts` is untouched, so matching a name the
+    owner types still works against what the calendar is really called.
     """
     total = sum(len(group["calendars"]) for group in groups)
     lines = [f"{total} calendar{'' if total == 1 else 's'} "
@@ -102,7 +118,7 @@ def _offer(groups, degraded):
             lines.append("- (no calendars on this account)")
         for calendar in group["calendars"]:
             ordinal += 1
-            lines.append(f"{ordinal}. {calendar['display']} "
+            lines.append(f"{ordinal}. {_flat(calendar['display'])} "
                          f"({calendar['accessRole']})")
     for entry in degraded:
         lines.append("")

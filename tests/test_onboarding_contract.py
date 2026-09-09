@@ -854,6 +854,10 @@ def test_the_sheet_and_the_service_agree_on_staleness():
     assert 'if snapshot["status"] != "ready":' in source
     # A pick that does not match exactly one calendar is re-offered, not guessed.
     assert "matches two rows" in flowed and "ask which number they mean" in flowed
+    # The numbered offer is the one carve-out from the no-numbered-questions
+    # rule, and the sheet must say so where that rule is stated.
+    assert "The one exception is §5's calendar `offer`" in flowed
+    assert "cannot forge a numbered choice" in flowed
     assert "send the current `offer` again" in flowed
 
 
