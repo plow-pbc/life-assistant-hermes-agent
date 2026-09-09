@@ -76,18 +76,20 @@ install link and its pause. Unknown or stale keeps the conditional wording.
 
 **Calendar discovery belongs to the background service.** It starts at boot,
 retries transient failures with persisted backoff from five minutes up to one
-hour, refreshes ready choices hourly, and stops when `calendar.sources` is
-present (including an empty selection). The calendar strip still gathers and
+hour, and refreshes ready choices hourly. Storing `calendar.sources` does not
+stop it: changing calendars is a supported request, and it needs fresh choices
+to answer. Only `needs_account` stops it. The calendar strip still gathers and
 posts events every five minutes on its separate schedule.
 
 After the intro, while `calendar.sources` is absent, read the local snapshot
 at most once per turn using §5's reader. Never ask whether they installed
 Latch or run discovery yourself. Continue city and teams without waiting.
 A missing or stale snapshot is not proof of disconnection. `needs_account`
-is stopped, not pending: explain that discovery needs a connected account
-chosen and will not retry automatically. Ask them to resolve the account in
-Latch; an operator must explicitly clear the stopped snapshot after resolving
-it. Do not promise a timer retry or silently remove that state.
+is stopped, not pending: it will not retry automatically. Its `reason` says
+what to do -- choose a connected account, or reconnect a named one whose access
+Google revoked -- so put that in your own words rather than inventing a remedy.
+An operator must explicitly clear the stopped snapshot after they resolve it.
+Do not promise a timer retry or silently remove that state.
 
 **One nudge, later, at most.** The link goes out once, in the download beat, where it belongs.
 After that, mention it again at most once more in the whole conversation, and
@@ -223,7 +225,8 @@ The handle in brackets is the same handle either way, and it is the one
 else. The config is the only record of how far this got. There is no marker and
 no second source. The four keys, in order: `family.owner.introduced`,
 `weather.location`, `sports.followed`, `calendar.sources`. Present-but-empty is
-answered.
+answered -- except `calendar.sources`, which the install gate requires to hold
+at least one source, so an empty array is still unanswered.
 
 One more sentence may stand beside it -- `Your owner was invited by <name>
 (<their assistant>).` -- who invited this owner, and nothing at all when nobody

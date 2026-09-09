@@ -225,10 +225,18 @@ def test_backoff_survives_restart_and_is_capped(tmp_path, monkeypatch, connected
         now = state["retry_at"]
 
 
-@pytest.mark.parametrize("sources", [[], [{"calendar_id": "shared"}]])
-def test_ready_hourly_and_selected_stops(tmp_path, monkeypatch, connected, sources):
+def test_ready_refreshes_hourly_and_keeps_going_after_a_selection(
+        tmp_path, monkeypatch, connected):
+    """Choosing calendars is not the end: changing them needs fresh choices.
+
+    A stopped refresh would let the snapshot age past MAX_AGE_SECONDS, and the
+    supported "change my calendars" flow would then read `pending` forever.
+    """
     cache = tmp_path / "choices.json"
+    # Discovery does not consult the household config at all; pointing it at one
+    # that already holds a selection is how this test proves that.
     config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
     monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
     calls = []
     def relay(*args):
@@ -243,6 +251,31 @@ def test_ready_hourly_and_selected_stops(tmp_path, monkeypatch, connected, sourc
     assert discovery.read_snapshot(cache, now=4599)["status"] == "ready"
     discovery.refresh(cache, now=4600)
     assert len(calls) == 4
-    config.write_text(json.dumps({"calendar": {"sources": sources}}))
     discovery.refresh(cache, now=8200)
-    assert len(calls) == 4
+    assert len(calls) == 6
+    assert discovery.read_snapshot(cache, now=8201)["status"] == "ready"
+
+
+@pytest.mark.parametrize("reason, status", [
+    ("needs_reauth", "needs_account"),
+    ("gog exited 1", "pending"),
+])
+def test_partial_degradation_separates_reconnect_from_backoff(
+        tmp_path, monkeypatch, connected, reason, status):
+    """One healthy and one revoked account must not wait on a timer forever."""
+    def relay(*args):
+        if args[-1]["argv"] == ["plow-gog", "accounts"]:
+            return {"status": "completed",
+                    "accounts": [{"account": "ok@example.test", "is_default": True}],
+                    "degraded": [{"account": "revoked@example.test", "reason": reason}]}
+        return completed()
+    monkeypatch.setattr(discovery, "relay", relay)
+    cache = tmp_path / "choices.json"
+    discovery.refresh(cache, now=1000)
+    state = json.loads(cache.read_text())
+    assert state["status"] == status
+    if status == "needs_account":
+        assert "revoked@example.test" in state["reason"]
+        assert "reconnect" in state["reason"].lower()
+    else:
+        assert state["retry_at"] > 1000

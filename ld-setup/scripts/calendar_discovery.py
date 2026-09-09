@@ -17,17 +17,22 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from calendar_list import GatherError, extract_array, normalize  # noqa: E402
 from calendar_feed import (  # noqa: E402
-    CONFIG_FILE, FeedError, _decode_command_response, relay, relay_config,
+    FeedError, _decode_command_response, relay, relay_config,
 )
 
 CACHE = Path("/var/lib/hermes/ld/calendar-discovery.json")
 MAX_AGE_SECONDS = 3900
 READY_INTERVAL = 3600
 ARGV = ["plow-gog", "calendar", "calendars", "--json", "--results-only"]
+REFUSAL_REASON = "Choose a connected Google account before retrying discovery."
 
 
 class NeedsAccount(Exception):
     """An account refusal needs intervention, not another timer attempt."""
+
+    def __init__(self, reason=REFUSAL_REASON):
+        super().__init__(reason)
+        self.reason = reason
 
 
 def _load(path):
@@ -53,9 +58,23 @@ def _discover(credentials):
     # The accounts verb is structured data, not a subprocess stdout envelope.
     payload = _command(credentials, ["plow-gog", "accounts"])
     accounts = payload.get("accounts")
+    degraded = payload.get("degraded")
     if (payload.get("status") != "completed" or not isinstance(accounts, list)
-            or not accounts or payload.get("degraded") != []):
+            or not accounts or not isinstance(degraded, list)):
         raise FeedError("accounts unavailable")
+    # A revoked refresh token is the owner's to fix, not a timer's: an owner
+    # with one healthy and one revoked account would otherwise back off forever
+    # without ever being told to reconnect. Every other degradation reason is
+    # something that can come back on its own, so it keeps the retry schedule.
+    reauth = sorted({entry.get("account") for entry in degraded
+                     if isinstance(entry, dict)
+                     and entry.get("reason") == "needs_reauth"
+                     and isinstance(entry.get("account"), str)})
+    if reauth:
+        raise NeedsAccount("Reconnect " + ", ".join(reauth)
+                           + " in Latch; discovery will not retry until then.")
+    if degraded:
+        raise FeedError("accounts partially unavailable")
     groups, seen = [], set()
     for entry in accounts:
         account = entry.get("account") if isinstance(entry, dict) else None
@@ -72,9 +91,9 @@ def _discover(credentials):
 def refresh(path=CACHE, *, now=None):
     """Refresh only when due; persist scheduling across process restarts."""
     now = time.time() if now is None else now
-    calendar = _load(CONFIG_FILE).get("calendar", {})
-    if isinstance(calendar, dict) and "sources" in calendar:
-        return
+    # Refreshing does not stop once sources are stored: changing calendars is a
+    # supported flow, and a snapshot left to expire would answer that request
+    # with `pending` forever.
     previous = _load(path)
     if previous.get("status") == "needs_account":
         return
@@ -87,9 +106,8 @@ def refresh(path=CACHE, *, now=None):
             raise FeedError("relay unavailable")
         snapshot = _discover(credentials)
         snapshot["retry_at"] = now + READY_INTERVAL
-    except NeedsAccount:
-        snapshot = {"status": "needs_account",
-                    "reason": "Choose a connected Google account before retrying discovery."}
+    except NeedsAccount as exc:
+        snapshot = {"status": "needs_account", "reason": exc.reason}
     except (FeedError, GatherError, OSError, ValueError):
         attempts = previous.get("attempts", 0)
         attempts = min(attempts, 4) + 1 if isinstance(attempts, int) and attempts >= 0 else 1
