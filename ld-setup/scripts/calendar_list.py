@@ -48,9 +48,9 @@ the markers said so, and dropping them drops the label, not the risk. Which is
 why the rule below is unconditional rather than something the markers relax.
 
 `display` is a display string and nothing else. It comes off calendars other
-people own, so it is attacker-controlled text: it may be shown to the owner in
-the pick message, and it must never reach a shell command or the config. Only
-`id` is written anywhere durable.
+people own, so it is attacker-controlled text: it may be cached by the background discovery service and shown to the owner
+in the pick message, but it must never reach a shell command or the household
+config. Only `id` is stored in calendar.sources.
 """
 from __future__ import annotations
 

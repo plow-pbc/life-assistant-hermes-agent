@@ -57,6 +57,7 @@ RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
 # runs by hand during setup, and taking that away would take the skill with it.
 # Only the SCHEDULE points here.
 COPY ld-shared/ /opt/plow/ld-shared/
+COPY ld-setup/scripts/calendar_discovery.py ld-setup/scripts/calendar_list.py /opt/plow/ld-setup/scripts/
 RUN chown -R root:root /opt/plow \
  && find /opt/plow -type d -exec chmod 0755 {} + \
  && find /opt/plow -type f -exec chmod 0644 {} +

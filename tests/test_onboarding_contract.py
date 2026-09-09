@@ -35,8 +35,6 @@ ONBOARDING = SKILL[SKILL.index("## Onboarding"):]
 TRIGGER = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].split())
 
 WALL_MARKER = "/var/lib/hermes/ld/setup-complete"
-# The one call Latch permits, byte for byte as the skill must emit it.
-DISCOVERY_ARGV = 'argv=["gog", "calendar", "calendars", "--json", "--results-only"]'
 # The tool as the image REGISTERS it. An MCP tool carries its server's key as a
 # prefix, so a sheet naming the bare suffix names a tool that is not there: one
 # calendar turn spent twenty-one API calls on tool_search and answered the owner
@@ -404,7 +402,7 @@ def test_the_wall_marker_stays_the_walls_own():
 # --------------------------------------------------------------------------
 
 ALGORITHM = ONBOARDING[ONBOARDING.index("## The algorithm"):ONBOARDING.index("### 1 ·")]
-STEPS = ["**1 · Read the config.**", "**2 · Run the Latch status probe.**",
+STEPS = ["**1 · Read the config.**", "**2 · Check what was delivered.**",
          "**3 · Take what this message gave you.**", "**4 · Write everything you hold",
          "**5 · Compose the one message**"]
 
@@ -499,50 +497,6 @@ def test_the_identities_are_the_union_not_the_account_alone():
         assert "candidate" in template
 
 
-def test_the_listing_file_is_written_only_where_a_listing_exists():
-    """A write attempted before there is anything to write does not fail
-    quietly: a failed write_file is reported in a footer appended to the turn's
-    FINAL RESPONSE, and that response is a message to the owner."""
-    # Structural: the path is named in §5 and nowhere before it, so no earlier
-    # turn has anything to write it from -- and it is per-turn, like the drafts,
-    # because two turns sharing one staging name is one file each overwrites.
-    assert "calendar-listing-<turn>.txt" in ONBOARDING[ONBOARDING.index("### 5 ·"):]
-    assert "calendar-listing" not in ONBOARDING[:ONBOARDING.index("### 5 ·")]
-    # Every staged path in the sheet, per-turn or not. The placeholder is part
-    # of the name, so the character class has to admit `<` and `>` -- without
-    # them this matched nothing and the loop below asserted about an empty
-    # list. `.txt` as well as `.json`: the listing is staged raw, so its name
-    # cannot claim JSON -- see test_the_staged_listing_is_never_named_json.
-    staged = re.findall(
-        r"/var/lib/hermes/ld/\.?[a-z<>-]*(?:draft|wall|listing)[a-z<>-]*\.(?:json|txt)",
-        SKILL)
-    assert staged, "no staged path found in the sheet -- this regex has gone stale"
-    for path in staged:
-        assert "<turn>" in path, f"a staging path is shared between turns: {path}"
-
-
-def test_the_connected_branch_turns_on_the_listing_not_on_the_probe():
-    """`configured` says a relay is registered. It does not say a Mac answered.
-
-    Read as the same thing, an owner whose Mac is asleep is handed the branch for
-    an owner whose Mac is up: no install link, and a calendar question about
-    calendars nobody could read. The probe decides whether to ATTEMPT the call;
-    only a listing that came back decides what the message says.
-    """
-    algorithm = " ".join(
-        ONBOARDING[ONBOARDING.index("**2 · Run the Latch status probe"):
-                   ONBOARDING.index("### 1 ·")].split())
-    assert "permission to attempt the listing call, and nothing more" in algorithm
-    assert "CONNECTED is a listing that came back" in algorithm
-
-    # Nowhere may `configured` alone gate the connected copy.
-    for marker in ("the pitch-and-link\n  paragraph is the only part dropped",
-                   "the catch and the link are omitted"):
-        window = ONBOARDING[max(0, ONBOARDING.index(marker) - 260):ONBOARDING.index(marker) + 60]
-        assert "listing" in window.lower() and "CAME BACK" in window.upper(), (
-            f"the connected branch at {marker!r} is gated on the probe, not the listing")
-
-
 def test_step_four_names_exactly_one_deferral():
     """Structural, because the count is the contract.
 
@@ -553,18 +507,6 @@ def test_step_four_names_exactly_one_deferral():
     """
     step4 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[3]):ALGORITHM.index(STEPS[4])].split())
     assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
-
-
-def test_the_listing_reaches_disk_through_the_file_tool_alone():
-    """Anything that runs code to place the file needs approval, and the
-    approval card is delivered into the owner's chat -- script body, reason and
-    all. Measured: a turn base64'd the listing through `execute_code` and the
-    owner got `⚠️ Dangerous command requires approval:` while connecting their
-    calendar. The file tool takes the content directly and asks nobody.
-    """
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "ONLY the file tool" in section
-    assert "execute_code" in section, "the alternative the turn actually reached for"
 
 
 def test_every_calendar_is_shown_including_the_odd_ones():
@@ -588,44 +530,6 @@ def test_the_wall_names_its_relay_tools_as_the_image_registers_them():
             f"the wall names a relay tool without its prefix: "
             f"{WALL[hit.start():hit.start() + 30]!r}")
     assert RELAY_TOOL in WALL, "the wall stopped naming the relay at all"
-
-
-def test_the_relay_tool_is_named_only_where_it_exists():
-    """The sheet must not name a tool the build may not have.
-
-    Whether a relay tool is registered is a property of the image -- config.yaml
-    either holds the server or it does not -- and a model told to call one that
-    is absent does not conclude "not connected". It searches, searches again
-    under another name, and narrates the hunt. All three reached a real owner in
-    one turn: "There's no Latch-specific tool search hit for ... let me check if
-    those exist under a different name", a `clarify` call, and the sheet's own
-    rule quoted back at her.
-
-    So the turn-top probe is a terminal command, which every build has, and the
-    relay's tool is named only after it has answered `configured`.
-    """
-    configured = ONBOARDING.index("**`configured` means")
-    assert "latch_status.py" in ONBOARDING[:configured], "the probe must come first"
-    # Every relay tool, not the two that happened to appear first: the family is
-    # `plow_<something>` and the next one added would otherwise slip in bare.
-    for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", ONBOARDING):
-        # Native adapter tools do not carry the relay MCP server prefix.
-        if hit.group() in ("plow_send_sequence", "plow_name_contact"):
-            continue
-        assert hit.start() > configured, (
-            f"onboarding names a relay tool at {hit.start()}, before the branch "
-            "that has established it exists")
-        # And named as registered, prefix and all: the bare suffix is a tool the
-        # build does not have, which sends the turn hunting for it.
-        raise AssertionError(
-            f"a relay tool is named without its server prefix: "
-            f"{ONBOARDING[hit.start():hit.start() + 30]!r}")
-    assert RELAY_TOOL in ONBOARDING[configured:]
-    # The unconfigured branch reaches no tool of any kind: structural, since
-    # the branch's whole job is that nothing is called from it.
-    unconfigured = ONBOARDING[ONBOARDING.index("**`unconfigured`"):configured]
-    assert "plow_run_command" not in unconfigured
-    assert "argv=" not in unconfigured
 
 
 def test_the_scripts_print_relay_tools_qualified_too():
@@ -684,18 +588,6 @@ def test_the_status_probe_needs_only_the_standard_library():
     assert not re.search(r"yaml\.(safe_)?load", body), "PyYAML is being called"
 
 
-def test_discovery_is_one_argv_and_never_auth_list():
-    """Latch allows Gmail and Calendar subcommands and nothing else, measured
-    against a real relay: `gog auth list` is refused under every binary name,
-    so a flow that starts by enumerating accounts dead-ends on a Mac that is
-    working correctly, and reads as "no calendars" rather than "wrong command".
-    """
-    # Twice, byte-identical: the turn-top probe and the section that reads it.
-    # The probe IS the listing, so a connected turn already holds what it needs.
-    assert ONBOARDING.count(DISCOVERY_ARGV) == 2
-    assert not re.search(r'argv=\[[^]]*"auth"', SKILL)
-
-
 def test_no_display_name_is_persisted_or_shelled():
     """A calendar's display name is written by whoever owns it.
 
@@ -725,30 +617,6 @@ def test_a_source_without_a_name_still_passes_the_gate():
 
 
 
-
-
-def test_the_listing_is_normalised_by_a_script_not_by_eye():
-    """gog prints a note line before the array, a large result arrives as a
-    persisted envelope, and the account is the primary entry rather than
-    dataOwner. Each is a silent wrong answer if a model does it by hand."""
-    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
-    assert "calendar_list.py" in section
-    assert (ROOT / "ld-setup/scripts/calendar_list.py").is_file()
-
-
-def test_the_staged_listing_is_never_named_json():
-    """The listing is not JSON, so a `.json` name is a file tool that refuses.
-
-    gog's `Note:` line comes before the array. A file tool that validates by
-    extension rejects the write, the script never gets a path to read, and the
-    turn falls back to the one thing this step exists to prevent -- reading the
-    calendars by eye. On the run that found this the owner got their calendar
-    names recited from a listing no script had ever parsed.
-    """
-    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
-    staged = re.findall(r"calendar-listing-<turn>\.(\w+)", section)
-    assert staged, "the sheet no longer names the staged listing file"
-    assert set(staged) == {"txt"}, f"staged listing named .{set(staged) - {'txt'}}"
 
 
 # ids= keeps the whole sheet out of the test id -- the parameter is a file.
@@ -895,3 +763,14 @@ def test_the_wall_token_handoff_is_dm_only():
     handoff = " ".join(wall[:wall.index("date -u +%FT%TZ > /var/lib/hermes/ld/pi-brought-up")].split())
     assert "in the owner's own one-to-one thread and nowhere else*, and never in a group" in handoff
     assert handoff.index("one-to-one thread and nowhere else") < handoff.index("text the owner, verbatim")
+
+
+def test_onboarding_has_no_foreground_calendar_transport_or_staging():
+    """A preconnected Mac must not put listing/staging tools before hello."""
+    assert "mcp__plow__" not in ONBOARDING
+    assert "calendar-listing-<turn>" not in ONBOARDING
+    commands = re.findall(r"^    python3 (.+)$", ONBOARDING, re.MULTILINE)
+    discovery = [command for command in commands if "calendar_discovery.py" in command]
+    assert discovery == ["/var/lib/hermes/skills/ld-setup/scripts/calendar_discovery.py"]
+    assert not any("latch_status.py" in command or "calendar_list.py" in command
+                   for command in commands)
