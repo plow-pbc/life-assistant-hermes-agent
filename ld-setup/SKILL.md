@@ -550,7 +550,7 @@ greeting card, and no self-introduction:
 `Your owner was invited by <name> (<their assistant>).`, add a second bubble
 that names who invited them and offers the same kind of assistant, using their
 actual name: *"Also, looks like <name>'s invite set you up with the same kind of
-assistant she has, want to keep that, or would you rather I be something
+assistant they have, want to keep that, or would you rather I be something
 different?"* Keep means carry on. Different means point them at the catalog, not
 a command you can't know: other assistants are listed at
 aiworthusing.com/agent-index. Point them there and stop; you do not know which
