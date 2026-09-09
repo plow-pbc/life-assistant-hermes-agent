@@ -909,9 +909,12 @@ above will read `pending`. Ask for one run by creating the empty request file:
 
 That is the whole protocol -- nothing reads what is in it. The service picks it
 up within five minutes and replaces the snapshot, so ask once, say you are
-fetching their calendars, and read the snapshot again on a later turn. Never
-create it while `calendar.sources` is still absent: discovery is already
-refreshing on its own then, and a request buys nothing. A `needs_account`
+fetching their calendars, and read the snapshot again on a later turn. While
+`calendar.sources` is still absent, only create it if the owner asks to see
+their calendars again -- or if the snapshot names a `degraded` account they
+want retried. Ready choices are never re-listed on a timer, so a request is
+the only thing that retries that account; do not create one merely because
+you are waiting. A `needs_account`
 snapshot is not reopened by a request either -- that account has to be resolved
 first, and an operator clears the state. A request made while it is stopped is
 kept, not discarded, so it is already there when they do.

@@ -418,7 +418,8 @@ def test_the_offer_renders_every_group_and_counts_them(tmp_path, monkeypatch, co
                 if l.startswith("- ") and "(no calendars" not in l]) == 2
 
 
-TRANSIENT = "Temporarily unavailable; discovery keeps trying."
+TRANSIENT = ("Could not be listed this time; ask to see the list again "
+             "to retry it.")
 
 
 @pytest.mark.parametrize("healthy, degraded, listing_fails, status, groups, reported", [

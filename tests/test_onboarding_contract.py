@@ -837,6 +837,10 @@ def test_clearing_a_stopped_snapshot_also_asks_for_a_rebuild():
     # And the README must not promise a blanket needs_account for refusals a
     # healthy sibling account survives.
     assert "only when no account answered" in readme
+    # A degraded account is not quietly promised a retry that cannot happen.
+    assert "re-listing that account takes another request" in readme
+    assert "ask to see the list again" in " ".join(
+        (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text().split())
     assert "stays `ready` and names the refused one under `degraded`" in readme
 
 

@@ -311,7 +311,9 @@ timer, so an onboarded household costs no relay call and an owner still
 choosing answers about the list they were shown. Changing calendars later
 asks for one run by touching `/var/lib/hermes/ld/calendar-discovery.request`,
 which the service consumes on its next tick. A listing that fails for one
-account is reported beside the accounts that answered, never instead of them.
+account is reported beside the accounts that answered, never instead of them,
+and stays that way: a ready snapshot is not retried on a timer, so re-listing
+that account takes another request.
 Transient failures persist a five-minute-to-one-hour backoff. An
 account-required refusal stops discovery as `needs_account`, without timer
 retries, only when no account answered; where another account is healthy the

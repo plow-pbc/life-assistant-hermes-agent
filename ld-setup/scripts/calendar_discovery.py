@@ -148,7 +148,8 @@ def _discover(credentials):
         snapshot["degraded"] = [
             {"account": name,
              "reason": _reconnect([name]) if is_reauth and isinstance(name, str)
-             else "Temporarily unavailable; discovery keeps trying."}
+             else "Could not be listed this time; ask to see the list again "
+                  "to retry it."}
             for name, is_reauth in problems]
     snapshot["offer"] = _offer(groups, snapshot.get("degraded", []))
     return snapshot
