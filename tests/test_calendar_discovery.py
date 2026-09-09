@@ -321,6 +321,71 @@ def test_a_requested_run_is_owed_until_it_lands(tmp_path, monkeypatch, connected
     assert len(calls) == before
 
 
+def test_a_request_taken_during_backoff_is_written_down(tmp_path, monkeypatch, connected):
+    """The tick that spends the request file may not be the one that runs.
+
+    Backoff sends this tick home before anything runs, and the file is already
+    gone -- so the ask has to be persisted there, or stored sources close the
+    gate on every later tick and the owner waits forever.
+    """
+    cache = tmp_path / "choices.json"
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    request = tmp_path / "discovery.request"
+    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
+    calls = []
+    monkeypatch.setattr(discovery, "relay",
+                        lambda *a: calls.append(a) or {"status": "error"})
+    # A first failure with no request pending puts the service in backoff.
+    cache.write_text(json.dumps({"status": "pending", "attempts": 1, "checked_at": 900,
+                                 "fresh_until": 900 + discovery.MAX_AGE_SECONDS,
+                                 "retry_at": 1200}))
+    request.write_text("")
+    discovery.refresh(cache, now=1000, request=request)
+    assert calls == [], "backoff still holds"
+    assert not request.exists(), "the file was spent by this tick"
+    assert json.loads(cache.read_text())["requested"] is True
+
+    def relay(*args):
+        calls.append(args)
+        if args[-1]["argv"] == ["plow-gog", "accounts"]:
+            return {"status": "completed", "accounts": [{"account": "a@example.test"}], "degraded": []}
+        return completed()
+    monkeypatch.setattr(discovery, "relay", relay)
+    discovery.refresh(cache, now=1200, request=request)
+    assert len(calls) == 2, "the remembered ask reopened the gate"
+    assert json.loads(cache.read_text())["status"] == "ready"
+
+
+def test_a_snapshot_without_fresh_until_is_refreshed(tmp_path, monkeypatch, connected):
+    """An upgrade must not leave a connected owner reading as unknown.
+
+    A snapshot written before `fresh_until` existed cannot be judged by the
+    reader, and stored sources would otherwise stop it ever being replaced.
+    """
+    cache = tmp_path / "choices.json"
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
+    cache.write_text(json.dumps({"status": "ready", "accounts": [], "checked_at": 900,
+                                 "retry_at": 1_000_000}))
+    calls = []
+    def relay(*args):
+        calls.append(args)
+        if args[-1]["argv"] == ["plow-gog", "accounts"]:
+            return {"status": "completed", "accounts": [{"account": "a@example.test"}], "degraded": []}
+        return completed()
+    monkeypatch.setattr(discovery, "relay", relay)
+    discovery.refresh(cache, now=1000, request=tmp_path / "absent.request")
+    state = json.loads(cache.read_text())
+    assert state["fresh_until"] == 1000 + discovery.MAX_AGE_SECONDS
+    assert discovery.read_snapshot(cache, now=1001)["status"] == "ready"
+    # Replaced once, then the stored selection closes the gate again.
+    before = len(calls)
+    discovery.refresh(cache, now=1_000_000, request=tmp_path / "absent.request")
+    assert len(calls) == before
+
+
 def test_a_request_overrides_backoff_but_not_a_stopped_state(
         tmp_path, monkeypatch, connected):
     cache = tmp_path / "choices.json"

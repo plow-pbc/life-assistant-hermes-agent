@@ -134,6 +134,23 @@ def _take_request(request):
         return False
 
 
+def _store(path, snapshot):
+    """Replace the snapshot atomically; a queued reader never sees a partial."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    name = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent,
+                                         prefix=".calendar-discovery-",
+                                         delete=False) as staged:
+            name = staged.name
+            json.dump(snapshot, staged)
+        os.replace(name, path)
+    finally:
+        if name is not None:
+            Path(name).unlink(missing_ok=True)
+
+
 def refresh(path=CACHE, *, now=None, request=REQUEST):
     """Refresh only when due; persist scheduling across process restarts."""
     now = time.time() if now is None else now
@@ -148,15 +165,25 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # owner has chosen calendars there is nothing left to discover on a timer.
     # Changing them is the one thing that still needs fresh choices, and it
     # arrives as a request rather than as an hourly poll of every tenant.
+    # A snapshot written before `fresh_until` existed cannot be judged by the
+    # reader, which would call a connected owner unknown and offer them the
+    # install link. One refresh replaces it, so treat it as due.
+    legacy = bool(previous) and "fresh_until" not in previous
     calendar = _load(CONFIG_FILE).get("calendar", {})
-    if not requested and isinstance(calendar, dict) and "sources" in calendar:
+    if not (requested or legacy) and isinstance(calendar, dict) and "sources" in calendar:
         return
     # A stopped state is the operator's to clear, not a request's: the account
     # it names still needs resolving before another attempt can succeed.
     if previous.get("status") == "needs_account":
         return
-    retry_at = previous.get("retry_at", 0)
+    retry_at = 0 if legacy else previous.get("retry_at", 0)
     if isinstance(retry_at, (int, float)) and now < retry_at:
+        # The request file was spent by this tick. If the backoff sends us home
+        # before anything ran, the ask has to be written down first, or stored
+        # sources close the gate on every later tick and the owner waits for a
+        # run nobody remembers was asked for.
+        if requested and previous.get("requested") is not True:
+            _store(path, {**previous, "requested": True})
         return
     credentials, _ = relay_config()
     try:
@@ -181,19 +208,7 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # refresh cadence: chat reads this file directly, and comparing one
     # timestamp to now is a judgement a turn can make without arithmetic.
     snapshot["fresh_until"] = now + MAX_AGE_SECONDS
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    name = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent,
-                                         prefix=".calendar-discovery-",
-                                         delete=False) as staged:
-            name = staged.name
-            json.dump(snapshot, staged)
-        os.replace(name, path)
-    finally:
-        if name is not None:
-            Path(name).unlink(missing_ok=True)
+    _store(path, snapshot)
 
 
 def read_snapshot(path=CACHE, *, now=None):
@@ -207,10 +222,11 @@ def read_snapshot(path=CACHE, *, now=None):
         snapshot = _load(path)
         if snapshot.get("status") == "needs_account":
             return snapshot
-        age = (time.time() if now is None else now) - snapshot["checked_at"]
         if snapshot.get("status") == "ready" and not isinstance(snapshot.get("accounts"), list):
             return {"status": "pending"}
-        if 0 <= age <= MAX_AGE_SECONDS and snapshot["status"] in ("ready", "pending"):
+        # `fresh_until` is the only freshness authority, here and in the sheet.
+        if ((time.time() if now is None else now) <= snapshot["fresh_until"]
+                and snapshot["status"] in ("ready", "pending")):
             return snapshot
     except (OSError, ValueError, KeyError, TypeError):
         pass

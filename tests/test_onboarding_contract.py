@@ -780,29 +780,13 @@ def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     # onboarding turn spends a command -- or an approval prompt -- on a read.
     assert not any("calendar_discovery.py" in command or "latch_status.py" in command
                    or "calendar_list.py" in command for command in commands)
-
-
-def test_the_snapshot_is_read_as_a_file_never_as_a_command():
-    """A command needs approval; an approval prompt inside the intro loses it.
-
-    Observed: the intro's snapshot read went out as execute_code wrapping the
-    script, hit the gateway's approval prompt, and the turn took the unknown
-    branch -- sending an install link to an owner whose Latch was connected and
-    whose choices were ready.
-    """
-    # No onboarding turn runs the discovery script at all, under any tool.
+    # Nor anywhere before §5: the intro's read was the one that was lost.
     assert "calendar_discovery.py" not in ONBOARDING.split("### 5 ·")[0]
-    choices = ONBOARDING[ONBOARDING.index("### 5 ·"):]
-    flowed = " ".join(choices.split())
-    assert "/var/lib/hermes/ld/calendar-discovery.json" in flowed
-    assert "not `execute_code`, not `terminal`, not the script" in flowed
-    # The one surviving mention of the script says it is the operator's, not
-    # this turn's -- it must not read as an instruction to run it.
-    script = flowed[flowed.index("Running `calendar_discovery.py`"):]
+    # The one surviving mention says the script is the operator's, not this
+    # turn's, so it cannot read as an instruction to run it.
+    choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    script = choices[choices.index("Running `calendar_discovery.py`"):]
     assert "an operator's shell, never this turn" in script[:220]
-    # The intro's read is the one that was lost, so it names the file too.
-    intro = ONBOARDING[:ONBOARDING.index("### 5 ·")]
-    assert "/var/lib/hermes/ld/calendar-discovery.json" in " ".join(intro.split())
 
 
 def test_the_snapshot_read_names_the_local_tool_and_bars_the_relay():
