@@ -48,10 +48,10 @@ Not here:
   change is a PR there plus a base pin bump, never a patch file carried here.
 - A client for the Plow API or the Latch relay — the plugin's seed skills and
   [`latch`](https://github.com/plow-pbc/latch), which already own those wires.
-- The container lifecycle, the deploy hook and skill seeding —
-  [`agent-mgr`](https://github.com/plow-pbc/agent-mgr) today, and
-  [`plow-agents`](https://github.com/plow-pbc/plow-agents) for running an image
-  on your own machine.
+- Fleet container lifecycle, the deploy hook and skill seeding —
+  [`agent-mgr`](https://github.com/plow-pbc/agent-mgr). For local development,
+  this repo owns `compose.yml` and Docker Compose manages the container;
+  [`plow-agents`](https://github.com/plow-pbc/plow-agents) manages credentials.
 
 Examples:
 
@@ -88,31 +88,36 @@ reviews.
 
 `compose.yml` here builds this checkout and runs it.
 [`plow-agents`](https://github.com/plow-pbc/plow-agents) mints the credential
-the container reads, and does nothing else about running one.
+the container reads; Docker Compose manages its lifecycle.
 
 ```sh
-plow-agents mint ln_xxx        # in this checkout, before the first `up`
+export PATH="/path/to/plow-agents/bin:$PATH"
+cd /path/to/life-assistant-hermes-agent
+plow-agents login             # once on this machine; text the printed activation phrase
+plow-agents lines
+plow-agents mint ln_xxx       # choose a free line from `lines`, before the first `up`
 docker compose up --build -d
 ```
 
-**Build fails with `403 Forbidden` on the base image?** An old `docker login`
-for `public.ecr.aws` has expired — those credentials last 12 hours, and the
-build sends the stale one instead of asking anonymously. Forget it and build
-again:
-
-```sh
-docker logout public.ecr.aws
-```
-
-The base is public and pulls anonymously; nothing here needs a registry login.
+If the account has no assistant line, run `plow-agents login --new-line`, then
+`plow-agents lines` again before minting. For base-image pull failures, see
+[Building the image](#building-the-image).
 
 | To | Run |
 | --- | --- |
-| rebuild and keep its memory | `docker compose up --build -d` |
-| start fresh — a new install, onboarding again, or any `SOUL.md` or skill edit | `docker compose down -v && docker compose up --build -d` |
+| rebuild after skill edits and keep its memory | `docker compose up --build -d` |
+| reset local state — onboarding again or load a changed `runtime/SOUL.md` | `docker compose down -v && docker compose up --build -d` |
 | finish | `plow-agents revoke && docker compose down -v` |
 
-The chat and its history live on Plow, and survive all three.
+On rebuild and restart, the base runtime reconciles bundled skills from
+`/opt/hermes/skills` into the home volume, updating skills the agent has not
+customised. Skill edits do not require deleting the volume. `runtime/SOUL.md`
+is still seeded directly into the home, so an existing volume shadows image
+changes to it.
+
+**`down -v` deletes local agent memory, sessions, and setup.** Use it only for
+an intentional reset, including loading a changed `runtime/SOUL.md` this way.
+The chat and its history live on Plow and survive these local operations.
 
 **`TZ` is this agent's own, not the provisioner's**: the base image sets
 none, so a cont-init step here writes it at boot from `family.timezone` in
@@ -378,11 +383,19 @@ was built from, and the `@sha256:` half is what the build actually resolves — 
 no tag reassignment can substitute different bytes under an existing owner. Bump
 both together when moving to a newer base.
 
-Nothing here needs a registry login: the base is public and is fetched
-anonymously. A build that fails with `403 Forbidden` on it has an expired
-`docker login` for `public.ecr.aws` in the way — those credentials last 12
-hours, and the stale one is sent in place of asking anonymously. `docker logout
-public.ecr.aws` is the whole of the fix.
+The base is public and supports anonymous pulls. A `403 Forbidden` alone does
+not establish why a pull failed. If Docker reports an expired authorization
+token after a previous login to `public.ecr.aws`,
+[AWS recommends logging out](https://docs.aws.amazon.com/AmazonECR/latest/public/public-troubleshooting.html)
+to retry anonymously:
+
+```sh
+docker logout public.ecr.aws
+docker compose up --build -d
+```
+
+If the failure persists, inspect the full error and verify access to the pinned
+image reference; logging out is not a guaranteed fix for every `403`.
 
 ## Open
 
