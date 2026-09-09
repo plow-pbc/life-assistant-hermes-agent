@@ -256,20 +256,44 @@ def test_ready_refreshes_hourly_and_keeps_going_after_a_selection(
     assert discovery.read_snapshot(cache, now=8201)["status"] == "ready"
 
 
-@pytest.mark.parametrize("reason, status", [
-    ("needs_reauth", "needs_account"),
-    ("gog exited 1", "pending"),
-])
-def test_partial_degradation_separates_reconnect_from_backoff(
-        tmp_path, monkeypatch, connected, reason, status):
-    """One healthy and one revoked account must not wait on a timer forever."""
+def degraded_accounts(healthy, degraded):
+    return {"status": "completed", "accounts": healthy, "degraded": degraded}
+
+
+@pytest.mark.parametrize("reason", ["needs_reauth", "gog exited 1"])
+def test_one_sick_account_never_hides_the_healthy_ones(
+        tmp_path, monkeypatch, connected, reason):
+    """Healthy calendars are served whatever is wrong with a sibling account."""
     def relay(*args):
         if args[-1]["argv"] == ["plow-gog", "accounts"]:
-            return {"status": "completed",
-                    "accounts": [{"account": "ok@example.test", "is_default": True}],
-                    "degraded": [{"account": "revoked@example.test", "reason": reason}]}
+            return degraded_accounts(
+                [{"account": "ok@example.test", "is_default": True}],
+                [{"account": "revoked@example.test", "reason": reason}])
         return completed()
     monkeypatch.setattr(discovery, "relay", relay)
+    cache = tmp_path / "choices.json"
+    discovery.refresh(cache, now=1000)
+    state = discovery.read_snapshot(cache, now=1001)
+    assert state["status"] == "ready"
+    assert [g["account"] for g in state["accounts"]] == ["ok@example.test"]
+    assert state["degraded"] == [{
+        "account": "revoked@example.test",
+        "reason": discovery._reconnect(["revoked@example.test"])
+        if reason == "needs_reauth"
+        else "Temporarily unavailable; discovery keeps trying."}]
+    # The relay's own wording never reaches the snapshot.
+    assert "gog exited 1" not in cache.read_text()
+
+
+@pytest.mark.parametrize("degraded, status", [
+    ([{"account": "revoked@example.test", "reason": "needs_reauth"}], "needs_account"),
+    ([{"account": "flaky@example.test", "reason": "gog exited 1"}], "pending"),
+])
+def test_no_healthy_account_stops_only_for_reconnect(
+        tmp_path, monkeypatch, connected, degraded, status):
+    """With nothing to offer, a revoked token stops; anything else backs off."""
+    monkeypatch.setattr(discovery, "relay",
+                        lambda *args: degraded_accounts([], degraded))
     cache = tmp_path / "choices.json"
     discovery.refresh(cache, now=1000)
     state = json.loads(cache.read_text())
@@ -279,3 +303,26 @@ def test_partial_degradation_separates_reconnect_from_backoff(
         assert "reconnect" in state["reason"].lower()
     else:
         assert state["retry_at"] > 1000
+
+
+def test_ready_snapshot_outlives_its_own_refresh_cycle():
+    """A refresh landing a tick late must not read `pending` in between.
+
+    The service ticks every 300s, so a refresh due at READY_INTERVAL can land
+    up to two ticks after the previous one before anything is wrong.
+    """
+    assert discovery.MAX_AGE_SECONDS >= discovery.READY_INTERVAL + 2 * 300
+
+
+@pytest.mark.parametrize("refusal", [
+    "an --account entry is not a connected account. Connected: PRIVATE",
+    "that account cannot be used right now: needs_reauth. Re-connect it in Plow",
+])
+def test_sibling_latch_refusals_stop_discovery(
+        tmp_path, monkeypatch, connected, refusal):
+    monkeypatch.setattr(discovery, "relay",
+                        lambda *args: {"status": "error", "error": refusal})
+    cache = tmp_path / "choices.json"
+    discovery.refresh(cache, now=1000)
+    assert json.loads(cache.read_text())["status"] == "needs_account"
+    assert "PRIVATE" not in cache.read_text()

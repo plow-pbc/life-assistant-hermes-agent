@@ -88,8 +88,11 @@ A missing or stale snapshot is not proof of disconnection. `needs_account`
 is stopped, not pending: it will not retry automatically. Its `reason` says
 what to do -- choose a connected account, or reconnect a named one whose access
 Google revoked -- so put that in your own words rather than inventing a remedy.
-An operator must explicitly clear the stopped snapshot after they resolve it.
-Do not promise a timer retry or silently remove that state.
+An operator must explicitly clear the stopped snapshot after they resolve it
+-- it is `/var/lib/hermes/ld/calendar-discovery.json`, cleared with
+`rm /var/lib/hermes/ld/calendar-discovery.json`, and the service rebuilds it on
+its next tick. That is an operator's command, not yours: never run it, and
+never promise a timer retry or silently remove that state.
 
 **One nudge, later, at most.** The link goes out once, in the download beat, where it belongs.
 After that, mention it again at most once more in the whole conversation, and
@@ -848,6 +851,11 @@ This is a local read, with no relay call or wait. `status: ready` includes
 `accounts`: groups with authenticated `account`, `is_default`, `candidates`,
 and `calendars` with `id`, `display`, and `accessRole`. Empty calendar arrays
 mean that account has no calendars; missing selections alone never mean that.
+A `ready` snapshot may also carry `degraded`: accounts whose calendars are
+missing from this listing, each with its own `reason`. Offer everything under
+`accounts` as usual and mention the degraded ones in passing -- one sick
+account never withholds the healthy ones, and its `reason` is already written
+for the owner, so relay it rather than inventing a remedy.
 `pending` means no usable choices yet; continue the conversation
 and let the persisted retry schedule retry. `needs_account` is stopped: use
 the account-resolution explanation above, never the waiting-for-timer close. Never call the refresh mode, run a

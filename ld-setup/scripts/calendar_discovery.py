@@ -21,10 +21,20 @@ from calendar_feed import (  # noqa: E402
 )
 
 CACHE = Path("/var/lib/hermes/ld/calendar-discovery.json")
-MAX_AGE_SECONDS = 3900
+# A ready snapshot must outlive its own refresh cycle: READY_INTERVAL plus the
+# service's 300s tick, twice, so a refresh landing a tick late never makes a
+# healthy tenant read `pending`. 3900 left exactly zero margin.
+MAX_AGE_SECONDS = 4200
 READY_INTERVAL = 3600
 ARGV = ["plow-gog", "calendar", "calendars", "--json", "--results-only"]
 REFUSAL_REASON = "Choose a connected Google account before retrying discovery."
+
+
+def _reconnect(names):
+    """Reconnect wording, never a relay error string: those can carry addresses
+    the owner did not ask us to repeat back."""
+    return ("Reconnect " + ", ".join(names)
+            + " in Latch; discovery will not retry that account until then.")
 
 
 class NeedsAccount(Exception):
@@ -49,6 +59,11 @@ def _command(credentials, argv):
     if isinstance(error, str) and error.startswith((
         "this command runs on one account: pass --account <email>",
         "that --account is not a connected account.",
+        # deviceAgent.ts's two sibling refusals: the multi-account form of the
+        # line above, and a named account Plow can no longer mint for. Both are
+        # the owner's to resolve, so neither is worth another timer attempt.
+        "an --account entry is not a connected account.",
+        "that account cannot be used right now:",
     )):
         raise NeedsAccount
     return payload
@@ -60,21 +75,21 @@ def _discover(credentials):
     accounts = payload.get("accounts")
     degraded = payload.get("degraded")
     if (payload.get("status") != "completed" or not isinstance(accounts, list)
-            or not accounts or not isinstance(degraded, list)):
+            or not isinstance(degraded, list) or not (accounts or degraded)):
         raise FeedError("accounts unavailable")
-    # A revoked refresh token is the owner's to fix, not a timer's: an owner
-    # with one healthy and one revoked account would otherwise back off forever
-    # without ever being told to reconnect. Every other degradation reason is
-    # something that can come back on its own, so it keeps the retry schedule.
+    # One sick account never hides the healthy ones. A degraded entry is
+    # reported beside the choices it is missing from, so the owner sees the
+    # calendars they do have and is still told what is wrong with the rest.
     reauth = sorted({entry.get("account") for entry in degraded
                      if isinstance(entry, dict)
                      and entry.get("reason") == "needs_reauth"
                      and isinstance(entry.get("account"), str)})
-    if reauth:
-        raise NeedsAccount("Reconnect " + ", ".join(reauth)
-                           + " in Latch; discovery will not retry until then.")
-    if degraded:
-        raise FeedError("accounts partially unavailable")
+    if not accounts:
+        # Nothing healthy to offer: a revoked token is the owner's to fix and
+        # stops discovery, while anything else can come back on its own.
+        if reauth and len(reauth) == len(degraded):
+            raise NeedsAccount(_reconnect(reauth))
+        raise FeedError("no usable accounts")
     groups, seen = [], set()
     for entry in accounts:
         account = entry.get("account") if isinstance(entry, dict) else None
@@ -85,7 +100,15 @@ def _discover(credentials):
             credentials, [*ARGV, "--account", account]))
         groups.append({**normalize(extract_array(output), account=account),
                        "is_default": entry.get("is_default") is True})
-    return {"status": "ready", "accounts": groups}
+    snapshot = {"status": "ready", "accounts": groups}
+    if degraded:
+        snapshot["degraded"] = [
+            {"account": entry.get("account"),
+             "reason": _reconnect([entry["account"]])
+             if entry.get("reason") == "needs_reauth" and isinstance(entry.get("account"), str)
+             else "Temporarily unavailable; discovery keeps trying."}
+            for entry in degraded if isinstance(entry, dict)]
+    return snapshot
 
 
 def refresh(path=CACHE, *, now=None):
