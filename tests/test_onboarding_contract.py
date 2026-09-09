@@ -793,4 +793,4 @@ def test_all_command_callers_use_plow_gog():
     for path in ROOT.rglob('*'):
         if path.suffix not in ('.py', '.md') or '.git' in path.parts or 'docs' in path.parts:
             continue
-        assert not re.search(r'["\x27]gog["\x27]', path.read_text()), path
+        assert not re.search(r'(["\x27])gog\1', path.read_text()), path
