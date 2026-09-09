@@ -68,17 +68,43 @@ def _command(credentials, argv):
     return payload
 
 
+# Every boundary `str.splitlines()` recognises, which is the widest set any
+# renderer downstream might treat as a break: CR, LF, CRLF, vertical tab, form
+# feed, the file/group/record separators, NEL, and the Unicode line and
+# paragraph separators.
+_BREAKS = {ord(c) for c in "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"}
+
+
 def _flat(display):
     """One line, whatever the name's author wrote.
 
     A display name is written by whoever owns the calendar, and a shared one is
-    written by a stranger. A newline in it would end the row early and start a
-    line the owner reads as another choice -- `Shared\n2. Payroll (owner)`
-    renders a second row 2, and answering it picks the real row 2 instead.
-    The characters are shown, not dropped: the owner still sees the whole name.
+    written by a stranger. A break in it would end the row early and start a
+    line the owner reads as another choice -- a name like
+    `Shared<break>2. Payroll (owner)` renders a second row 2, and answering it
+    picks the real row 2 instead. Escaping only CR and LF was not enough: half
+    a dozen other characters split a line, and one of them is one character's
+    difference from the attack.
+
+    The characters are shown as `\\n`, not dropped: the owner still sees the
+    whole name, and an odd one still looks odd.
     """
-    return (str(display).replace("\r\n", "\\n").replace("\n", "\\n")
-            .replace("\r", "\\n"))
+    text = str(display)
+    if not any(ord(c) in _BREAKS for c in text):
+        return text
+    # Normalise CRLF first so a pair does not become two escapes.
+    out = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if ord(char) in _BREAKS:
+            if char == "\r" and text[index + 1:index + 2] == "\n":
+                index += 1
+            out.append("\\n")
+        else:
+            out.append(char)
+        index += 1
+    return "".join(out)
 
 
 def _offer(groups, degraded):

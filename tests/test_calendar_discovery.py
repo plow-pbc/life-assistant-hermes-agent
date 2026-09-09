@@ -292,15 +292,26 @@ def test_ready_choices_persist_until_something_asks(tmp_path, monkeypatch, conne
     assert len(calls) == 4
 
 
-def test_a_hostile_name_cannot_forge_a_numbered_row(tmp_path, monkeypatch, connected):
+# Every boundary str.splitlines() honours. A renderer downstream may treat any
+# of them as a break, so the offer has to assume all of them do.
+BREAKS = ["\r", "\n", "\r\n", "\v", "\f", "\x1c", "\x1d", "\x1e",
+          "\x85", "\u2028", "\u2029"]
+
+
+@pytest.mark.parametrize("brk", BREAKS, ids=[hex(ord(b[0])) for b in BREAKS])
+def test_a_hostile_name_cannot_forge_a_numbered_row(
+        tmp_path, monkeypatch, connected, brk):
     """A shared calendar is named by a stranger, and the owner picks by number.
 
-    A name carrying a newline would end its row early and start a line that
-    reads as another choice -- `Shared\n2. Payroll (owner)` renders a second
-    row 2, and an owner answering it gets the real row 2, a different calendar.
+    A name carrying a line break would end its row early and start a line that
+    reads as another choice -- `Shared<break>2. Payroll (owner)` renders a
+    second row 2, and an owner answering it gets the real row 2, a different
+    calendar. Escaping only CR and LF left six other characters that split a
+    line, any one of which is the same attack.
     """
     rows = [{"id": "real", "summary": "Family", "accessRole": "owner"},
-            {"id": "evil", "summary": "Shared\n2. Payroll (owner)", "accessRole": "reader"}]
+            {"id": "evil", "summary": "Shared" + brk + "2. Payroll (owner)",
+             "accessRole": "reader"}]
     def relay(*args):
         if args[-1]["argv"] == ["plow-gog", "accounts"]:
             return {"status": "completed",
@@ -314,8 +325,10 @@ def test_a_hostile_name_cannot_forge_a_numbered_row(tmp_path, monkeypatch, conne
     numbered = [l for l in offer.splitlines() if re.match(r"\d+\. ", l)]
     assert [l.split(".")[0] for l in numbered] == ["1", "2"], "one row per calendar"
     assert "\\n2. Payroll" in offer, "the break is shown, not obeyed"
+    assert len(offer.splitlines()) == 5, "one line per row, whatever the name"
     # The structured name keeps its real bytes, so name matching still works.
-    assert snapshot["accounts"][0]["calendars"][1]["display"] == "Shared\n2. Payroll (owner)"
+    assert snapshot["accounts"][0]["calendars"][1]["display"] == (
+        "Shared" + brk + "2. Payroll (owner)")
 
 
 @pytest.mark.parametrize("seed", ["request", "legacy", "backoff"])
