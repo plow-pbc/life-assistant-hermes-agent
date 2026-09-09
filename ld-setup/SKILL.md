@@ -76,10 +76,12 @@ install link and its pause. Unknown or stale keeps the conditional wording.
 
 **Calendar discovery belongs to the background service.** It starts at boot,
 retries transient failures with persisted backoff from five minutes up to one
-hour, and refreshes ready choices hourly. Storing `calendar.sources` does not
-stop it: changing calendars is a supported request, and it needs fresh choices
-to answer. Only `needs_account` stops it. The calendar strip still gathers and
-posts events every five minutes on its separate schedule.
+hour, and refreshes ready choices hourly while they are still needed. Once
+`calendar.sources` is stored it stops: an onboarded household costs no relay
+call and no audit entry on a timer. `needs_account` stops it too. Changing
+calendars later is the one thing that still needs fresh choices, and it is
+asked for rather than polled -- see the refresh request below. The calendar
+strip still gathers and posts events every five minutes on its own schedule.
 
 After the intro, while `calendar.sources` is absent, read the local snapshot
 at most once per turn using §5's reader. Never ask whether they installed
@@ -858,7 +860,23 @@ account never withholds the healthy ones, and its `reason` is already written
 for the owner, so relay it rather than inventing a remedy.
 `pending` means no usable choices yet; continue the conversation
 and let the persisted retry schedule retry. `needs_account` is stopped: use
-the account-resolution explanation above, never the waiting-for-timer close. Never call the refresh mode, run a
+the account-resolution explanation above, never the waiting-for-timer close.
+
+**Asking for fresh choices, when the owner wants to change calendars.** Their
+selections are stored, so the service is no longer refreshing and the snapshot
+above will read `pending`. Ask for one run by creating the empty request file:
+
+    touch /var/lib/hermes/ld/calendar-discovery.request
+
+That is the whole protocol -- nothing reads what is in it. The service picks it
+up within five minutes and replaces the snapshot, so ask once, say you are
+fetching their calendars, and read the snapshot again on a later turn. Never
+create it while `calendar.sources` is still absent: discovery is already
+refreshing on its own then, and a request buys nothing. A `needs_account`
+snapshot is not reopened by a request either -- that account has to be resolved
+first, and an operator clears the state.
+
+Beyond that one file: never call the refresh mode, run a
 status probe, fetch raw listings, stage them with a file tool or execute_code,
 normalize them yourself, or clean up discovery files. The service does all of
 that. The existing calendar feed handles events after selections are stored;
@@ -992,6 +1010,13 @@ at all) builds the config from a full answer set, so it resets every answer
 nobody is currently restating, their teams, their extra calendars, their
 triage exclusions, silently, because a config missing those still passes the
 gate.
+
+A calendar change needs choices before it needs a patch, and the service
+stopped refreshing when their selections were stored. Ask for one run with §5's
+request file, tell them you are fetching their calendars, and read the snapshot
+on a later turn -- then patch `calendar.sources` from what they pick. Do not
+patch it from memory of the last listing: calendars they have since removed
+would come back.
 
 A new name is not a config change; it lives on their account. One tool call
 records it, addressed by the handle in brackets in this turn's owner sentence:

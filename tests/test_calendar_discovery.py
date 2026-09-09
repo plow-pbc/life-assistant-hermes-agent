@@ -225,18 +225,17 @@ def test_backoff_survives_restart_and_is_capped(tmp_path, monkeypatch, connected
         now = state["retry_at"]
 
 
-def test_ready_refreshes_hourly_and_keeps_going_after_a_selection(
+def test_ready_hourly_until_selected_then_only_on_request(
         tmp_path, monkeypatch, connected):
-    """Choosing calendars is not the end: changing them needs fresh choices.
+    """Onboarded households cost nothing on the timer, but can still change.
 
-    A stopped refresh would let the snapshot age past MAX_AGE_SECONDS, and the
-    supported "change my calendars" flow would then read `pending` forever.
+    Hourly while choices are still needed; silent once calendars are selected;
+    one refresh -- and a fresh snapshot -- when the sheet asks for one.
     """
     cache = tmp_path / "choices.json"
-    # Discovery does not consult the household config at all; pointing it at one
-    # that already holds a selection is how this test proves that.
     config = tmp_path / "config.json"
-    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    config.write_text(json.dumps({"calendar": {}}))
+    request = tmp_path / "discovery.request"
     monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
     calls = []
     def relay(*args):
@@ -245,15 +244,57 @@ def test_ready_refreshes_hourly_and_keeps_going_after_a_selection(
             return {"status": "completed", "accounts": [{"account": "a@example.test", "is_default": True}], "degraded": []}
         return completed()
     monkeypatch.setattr(discovery, "relay", relay)
-    discovery.refresh(cache, now=1000)
-    discovery.refresh(cache, now=4599)
+    discovery.refresh(cache, now=1000, request=request)
+    discovery.refresh(cache, now=4599, request=request)
     assert len(calls) == 2
     assert discovery.read_snapshot(cache, now=4599)["status"] == "ready"
-    discovery.refresh(cache, now=4600)
+    discovery.refresh(cache, now=4600, request=request)
     assert len(calls) == 4
-    discovery.refresh(cache, now=8200)
+
+    # Selected: the timer stops calling the relay at all.
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    for tick in range(8200, 30000, 300):
+        discovery.refresh(cache, now=tick, request=request)
+    assert len(calls) == 4
+    assert discovery.read_snapshot(cache, now=30000)["status"] == "pending"
+
+    # "Change my calendars": one request, one refresh, choices again.
+    request.write_text("")
+    discovery.refresh(cache, now=30000, request=request)
     assert len(calls) == 6
-    assert discovery.read_snapshot(cache, now=8201)["status"] == "ready"
+    assert not request.exists()
+    assert discovery.read_snapshot(cache, now=30001)["status"] == "ready"
+
+    # The request is spent; the timer goes quiet again.
+    discovery.refresh(cache, now=33700, request=request)
+    assert len(calls) == 6
+
+
+def test_a_request_overrides_backoff_but_not_a_stopped_state(
+        tmp_path, monkeypatch, connected):
+    cache = tmp_path / "choices.json"
+    request = tmp_path / "discovery.request"
+    calls = []
+    monkeypatch.setattr(discovery, "relay",
+                        lambda *a: calls.append(a) or {"status": "error"})
+    discovery.refresh(cache, now=1000, request=request)
+    assert json.loads(cache.read_text())["retry_at"] == 1300
+    discovery.refresh(cache, now=1001, request=request)
+    assert len(calls) == 1
+    request.write_text("")
+    discovery.refresh(cache, now=1001, request=request)
+    assert len(calls) == 2
+
+    # A stopped state names an account the owner must resolve first; asking
+    # again cannot help, so the request does not reopen it.
+    monkeypatch.setattr(discovery, "relay", lambda *a: {
+        "status": "error", "error": "that --account is not a connected account."})
+    discovery.refresh(cache, now=2000, request=request)
+    assert json.loads(cache.read_text())["status"] == "needs_account"
+    request.write_text("")
+    monkeypatch.setattr(discovery, "relay",
+                        lambda *a: pytest.fail("stopped worker retried"))
+    discovery.refresh(cache, now=3000, request=request)
 
 
 def degraded_accounts(healthy, degraded):

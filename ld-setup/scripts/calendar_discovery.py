@@ -17,10 +17,14 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from calendar_list import GatherError, extract_array, normalize  # noqa: E402
 from calendar_feed import (  # noqa: E402
-    FeedError, _decode_command_response, relay, relay_config,
+    CONFIG_FILE, FeedError, _decode_command_response, relay, relay_config,
 )
 
 CACHE = Path("/var/lib/hermes/ld/calendar-discovery.json")
+# The sheet's only way to ask for choices out of band. An empty file is the
+# whole protocol: the service consumes it on its next tick, so nothing here
+# parses owner-writable content.
+REQUEST = Path("/var/lib/hermes/ld/calendar-discovery.request")
 # A ready snapshot must outlive its own refresh cycle: READY_INTERVAL plus the
 # service's 300s tick, twice, so a refresh landing a tick late never makes a
 # healthy tenant read `pending`. 3900 left exactly zero margin.
@@ -111,17 +115,37 @@ def _discover(credentials):
     return snapshot
 
 
-def refresh(path=CACHE, *, now=None):
+def _take_request(request):
+    """True once per request file, which is consumed before anything runs.
+
+    Consuming first means a refresh that dies partway cannot leave the file
+    behind for the next tick to retry forever.
+    """
+    try:
+        Path(request).unlink()
+        return True
+    except OSError:
+        return False
+
+
+def refresh(path=CACHE, *, now=None, request=REQUEST):
     """Refresh only when due; persist scheduling across process restarts."""
     now = time.time() if now is None else now
-    # Refreshing does not stop once sources are stored: changing calendars is a
-    # supported flow, and a snapshot left to expire would answer that request
-    # with `pending` forever.
+    requested = _take_request(request)
+    # An onboarded household costs no relay call and no audit entry: once the
+    # owner has chosen calendars there is nothing left to discover on a timer.
+    # Changing them is the one thing that still needs fresh choices, and it
+    # arrives as a request rather than as an hourly poll of every tenant.
+    calendar = _load(CONFIG_FILE).get("calendar", {})
+    if not requested and isinstance(calendar, dict) and "sources" in calendar:
+        return
     previous = _load(path)
+    # A stopped state is the operator's to clear, not a request's: the account
+    # it names still needs resolving before another attempt can succeed.
     if previous.get("status") == "needs_account":
         return
     retry_at = previous.get("retry_at", 0)
-    if isinstance(retry_at, (int, float)) and now < retry_at:
+    if not requested and isinstance(retry_at, (int, float)) and now < retry_at:
         return
     credentials, _ = relay_config()
     try:
