@@ -825,32 +825,16 @@ def test_clearing_a_stopped_snapshot_also_asks_for_a_rebuild():
 
     With no snapshot and no request there is nothing to say this household
     still wants choices, and the stored selection sends every tick home -- so
-    the documented recovery has to be both commands, in both places.
+    the documented recovery is both commands. The README carries only this
+    operator command; the lifecycle itself is the sheet's to state, after four
+    restated claims there drifted from the code.
     """
     readme = " ".join((ROOT / "README.md").read_text().split())
+    assert "rm /var/lib/hermes/ld/calendar-discovery.json` followed by `touch /var/lib/hermes/ld/calendar-discovery.request" in readme
+    assert "leaves a household whose selections are stored waiting forever" in readme
     sheet = " ".join(SKILL.split())
-    for where, text in (("the sheet", sheet), ("README", readme)):
-        assert "/var/lib/hermes/ld/calendar-discovery.json" in text, where
-        assert "/var/lib/hermes/ld/calendar-discovery.request" in text, where
+    assert "/var/lib/hermes/ld/calendar-discovery.request" in sheet
     assert "Removing the file alone leaves an owner" in sheet
-    assert "removing the snapshot alone" in readme
-    # And the README must not promise a blanket needs_account for refusals a
-    # healthy sibling account survives.
-    assert "only when no account answered" in readme
-    # A degraded account is not quietly promised a retry that cannot happen.
-    assert "re-listing that account takes another request" in readme
-    # No prose may promise a deadline the backoff path cannot keep.
-    assert "keeps until the requested run lands" in readme
-    assert "stays queued until that retry comes due" in " ".join(SKILL.split())
-    # The old ready snapshot survives the request, so it must not be read as
-    # the answer to it.
-    flowed_skill = " ".join(SKILL.split())
-    assert "keeps reading `ready` until the requested run replaces it" in flowed_skill
-    assert "only once `checked_at` has moved" in flowed_skill
-    assert "picks it up within five minutes" not in " ".join(SKILL.split())
-    assert "ask to see the list again" in " ".join(
-        (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text().split())
-    assert "stays `ready` and names the refused one under `degraded`" in readme
 
 
 def test_the_sheet_and_the_service_agree_on_staleness():

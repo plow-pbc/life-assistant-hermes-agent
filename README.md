@@ -305,24 +305,20 @@ cannot drift from what the service actually ticks — which is the whole point o
 approving it.
 
 The separate calendar discovery service enumerates `plow-gog accounts` and
-lists choices under each authenticated account. It starts at boot, refreshes
-until it has choices, then stops -- ready choices are never replaced on a
-timer, so an onboarded household costs no relay call and an owner still
-choosing answers about the list they were shown. Changing calendars later
-asks for one run by touching `/var/lib/hermes/ld/calendar-discovery.request`,
-which the service keeps until the requested run lands -- the next tick when it
-is idle, or when the backoff comes due if it is retrying a failure. A listing that fails for one
-account is reported beside the accounts that answered, never instead of them,
-and stays that way: a ready snapshot is not retried on a timer, so re-listing
-that account takes another request.
-Transient failures persist a five-minute-to-one-hour backoff. An
-account-required refusal stops discovery as `needs_account`, without timer
-retries, only when no account answered; where another account is healthy the
-snapshot stays `ready` and names the refused one under `degraded`, and nothing
-retries it until the next request. Resolve the account problem, then an
-operator removes `/var/lib/hermes/ld/calendar-discovery.json` AND touches
-`/var/lib/hermes/ld/calendar-discovery.request` -- removing the snapshot alone
-leaves a household whose selections are stored waiting forever. The event feed keeps its own five-minute cadence.
+lists each account's calendars into `/var/lib/hermes/ld/calendar-discovery.json`,
+which onboarding reads as a plain file. Its lifecycle -- when it refreshes,
+when it stops, what a degraded account means -- is stated once, in
+`ld-setup/SKILL.md` §5, and implemented in `ld-setup/scripts/calendar_discovery.py`.
+Restating it here produced four claims that had drifted from the code by the
+time anyone checked, so this paragraph does not.
+
+Operator recovery, the one thing not in the sheet's own voice: to restart
+discovery after resolving an account problem, remove the snapshot AND ask for
+a run -- `rm /var/lib/hermes/ld/calendar-discovery.json` followed by
+`touch /var/lib/hermes/ld/calendar-discovery.request`. Removing the snapshot
+alone leaves a household whose selections are stored waiting forever.
+
+The event feed keeps its own five-minute cadence.
 
 Onboarding reads this local snapshot once during the intro to decide whether
 to omit the install link, and again after sports before offering calendar

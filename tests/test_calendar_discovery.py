@@ -363,9 +363,15 @@ def test_a_failed_write_does_not_swallow_the_request(tmp_path, monkeypatch, conn
     assert owed(request), "nothing landed, so nothing is discharged"
 
 
-def test_a_request_made_mid_run_is_not_discharged_by_it(
-        tmp_path, monkeypatch, connected):
-    """"Show me again" during a run is answered by the next run, not eaten."""
+@pytest.mark.parametrize("race_at", ["relay", "store"])
+def test_a_request_made_during_a_run_survives_it(tmp_path, monkeypatch, connected, race_at):
+    """"Show me again", said mid-run, is answered by the next run.
+
+    Two places the owner can touch the file while a run is in flight: while it
+    is talking to the relay, and in the instant between the store and the
+    discharge. Claiming by rename covers both -- after the rename their request
+    is a new file at the original path that this run cannot reach.
+    """
     cache = tmp_path / "choices.json"
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
@@ -374,41 +380,20 @@ def test_a_request_made_mid_run_is_not_discharged_by_it(
     monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
 
     def relay(*args):
-        # The owner asks again while this run is still talking to the relay.
-        request.unlink(missing_ok=True)
-        request.write_text("later")
+        if race_at == "relay":
+            request.write_text("later")
         return accounts() if args[-1]["argv"] == ["plow-gog", "accounts"] else completed()
     monkeypatch.setattr(discovery, "relay", relay)
+    real_store = discovery._store
+    def store(path, snapshot):
+        real_store(path, snapshot)
+        if race_at == "store":
+            request.write_text("later")
+    monkeypatch.setattr(discovery, "_store", store)
+
     discovery.refresh(cache, now=1000, request=request)
     assert json.loads(cache.read_text())["status"] == "ready"
     assert request.exists(), "the newer ask sits untouched at the original path"
-
-
-def test_a_request_racing_the_discharge_is_not_deleted(tmp_path, monkeypatch, connected):
-    """The owner touching the file during the write must not lose their ask.
-
-    Checking the file and then unlinking it cannot promise this: the touch can
-    land between the two calls. Claiming it by rename can -- after the rename
-    the new request is a different file at the original path.
-    """
-    cache = tmp_path / "choices.json"
-    config = tmp_path / "config.json"
-    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
-    request = tmp_path / "discovery.request"
-    request.write_text("")
-    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
-    monkeypatch.setattr(discovery, "relay", lambda *a: accounts()
-                        if a[-1]["argv"] == ["plow-gog", "accounts"] else completed())
-    real_store = discovery._store
-
-    def store_then_race(path, snapshot):
-        real_store(path, snapshot)
-        # The owner asks again in the instant between the store and the unlink.
-        request.write_text("")
-    monkeypatch.setattr(discovery, "_store", store_then_race)
-    discovery.refresh(cache, now=1000, request=request)
-    assert json.loads(cache.read_text())["status"] == "ready"
-    assert request.exists(), "the racing ask survived the discharge"
 
 
 def test_a_stopped_state_keeps_the_request_for_the_operator(
