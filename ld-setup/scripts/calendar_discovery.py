@@ -154,19 +154,6 @@ def _discover(credentials):
     return snapshot
 
 
-def _take_request(request):
-    """True once per request file, which is consumed before anything runs.
-
-    Consuming first means a refresh that dies partway cannot leave the file
-    behind for the next tick to retry forever.
-    """
-    try:
-        Path(request).unlink()
-        return True
-    except OSError:
-        return False
-
-
 def _store(path, snapshot):
     """Replace the snapshot atomically; a queued reader never sees a partial."""
     path = Path(path)
@@ -188,22 +175,24 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     """Refresh only when due; persist scheduling across process restarts."""
     now = time.time() if now is None else now
     previous = _load(path)
-    # A request outlives the tick that took it. One transient failure on a
-    # requested run would otherwise strand the owner: the retry is due, but the
-    # selection gate below sends the tick home before it can happen, and the
-    # request file is already spent. So the run stays owed until it succeeds or
-    # stops, and only then is the selection gate allowed to close again.
-    requested = _take_request(request) or previous.get("requested") is True
+    request = Path(request)
+    # A ready snapshot written before `offer` existed cannot be sent by the
+    # sheet, which would leave a connected owner looking unknown and take the
+    # install-link branch. It needs a run, which is the same thing an owner
+    # asks for, so it asks for it the same way rather than through a second
+    # channel of its own.
+    if previous.get("status") == "ready" and "offer" not in previous:
+        request.touch()
+    # The file IS the owed run. It outlives every tick that fails to discharge
+    # it, so nothing has to remember separately that a run is owed -- and
+    # remembering it separately is what both bugs here were.
+    requested = request.exists()
     # An onboarded household costs no relay call and no audit entry: once the
     # owner has chosen calendars there is nothing left to discover on a timer.
     # Changing them is the one thing that still needs fresh choices, and it
     # arrives as a request rather than as an hourly poll of every tenant.
-    # A ready snapshot written before `offer` existed cannot be sent by the
-    # sheet, which would leave a connected owner looking unknown and take the
-    # install-link branch. One refresh replaces it, so treat it as due.
-    legacy = previous.get("status") == "ready" and "offer" not in previous
     calendar = _load(CONFIG_FILE).get("calendar", {})
-    if not (requested or legacy) and isinstance(calendar, dict) and "sources" in calendar:
+    if not requested and isinstance(calendar, dict) and "sources" in calendar:
         return
     # A stopped state is the operator's to clear, not a request's: the account
     # it names still needs resolving before another attempt can succeed.
@@ -213,16 +202,11 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # -- nobody is waiting on a newer list -- and it costs the one guarantee the
     # pick turn needs: that the calendars the owner is answering about are still
     # the calendars on disk. Only an explicit request re-lists them.
-    if previous.get("status") == "ready" and not (requested or legacy):
+    if previous.get("status") == "ready" and not requested:
         return
-    retry_at = 0 if legacy else previous.get("retry_at", 0)
+    # A ready snapshot has no backoff to respect; only a failing one does.
+    retry_at = 0 if previous.get("status") == "ready" else previous.get("retry_at", 0)
     if isinstance(retry_at, (int, float)) and now < retry_at:
-        # The request file was spent by this tick. If the backoff sends us home
-        # before anything ran, the ask has to be written down first, or stored
-        # sources close the gate on every later tick and the owner waits for a
-        # run nobody remembers was asked for.
-        if requested and previous.get("requested") is not True:
-            _store(path, {**previous, "requested": True})
         return
     credentials, _ = relay_config()
     try:
@@ -237,13 +221,11 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
         snapshot = {"status": "pending", "attempts": attempts,
                     "reason": "Calendar discovery is temporarily unavailable.",
                     "retry_at": now + min(300 * 2 ** (attempts - 1), 3600)}
-    # An owed run is carried on the snapshot until the run it asked for
-    # actually lands; backing off is not landing. A legacy snapshot owes one
-    # too: it is only recognisable as legacy once, and a transient failure on
-    # that attempt would otherwise replace it with a `pending` the stored-source
-    # gate never lets the retry reach.
-    if (requested or legacy) and snapshot["status"] == "pending":
-        snapshot["requested"] = True
+    # The run is discharged only by arriving somewhere: ready choices, or a
+    # stopped state an operator has to clear. Backing off is not arriving, so
+    # the request stays and the next due tick tries again.
+    if snapshot["status"] != "pending":
+        request.unlink(missing_ok=True)
     snapshot["checked_at"] = now
     # Only a snapshot that is not yet ready carries an expiry, and it carries
     # its own so the reader never has to know a cadence: comparing one

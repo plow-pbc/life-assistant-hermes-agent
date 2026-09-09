@@ -85,7 +85,7 @@ def test_failed_refresh_invalidates_prior_choices_without_leaking_output(
     discovery.refresh(cache, now=4600, request=request)
     assert discovery.read_snapshot(cache, now=4601) == {
         "status": "pending", "checked_at": 4600, "attempts": 1,
-        "fresh_until": 4600 + discovery.MAX_AGE_SECONDS, "requested": True,
+        "fresh_until": 4600 + discovery.MAX_AGE_SECONDS,
         "retry_at": 4900, "reason": "Calendar discovery is temporarily unavailable."}
     assert "PRIVATE" not in cache.read_text() + capsys.readouterr().out
 
@@ -285,28 +285,41 @@ def test_ready_choices_persist_until_something_asks(tmp_path, monkeypatch, conne
     assert len(calls) == 4
 
 
-def test_a_requested_run_is_owed_until_it_lands(tmp_path, monkeypatch, connected):
-    """A transient failure on a requested run must not strand the owner.
+@pytest.mark.parametrize("seed", ["request", "legacy", "backoff"])
+def test_an_owed_run_survives_until_it_lands(tmp_path, monkeypatch, connected, seed):
+    """The request file IS the owed run, whoever owes it.
 
-    The request file is spent by the tick that took it, and the owner has
-    already been told their calendars are coming, so the run stays owed across
-    the selection gate until it succeeds.
+    An owner asking to re-list, a pre-upgrade snapshot that must be replaced,
+    and a request arriving mid-backoff are the same obligation. It is recorded
+    in one place -- the file's existence -- and discharged only by arriving at
+    ready or needs_account, so a transient failure cannot lose it behind the
+    stored-sources gate.
     """
     cache = tmp_path / "choices.json"
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
     request = tmp_path / "discovery.request"
     monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
+    if seed == "legacy":
+        # A ready snapshot from before `offer` existed: unsendable, so due.
+        cache.write_text(json.dumps({"status": "ready", "accounts": [], "checked_at": 900}))
+    elif seed == "backoff":
+        cache.write_text(json.dumps({"status": "pending", "attempts": 1, "checked_at": 900,
+                                     "fresh_until": 900 + discovery.MAX_AGE_SECONDS,
+                                     "retry_at": 1200}))
+        request.write_text("")
+    else:
+        request.write_text("")
+
     calls = []
     monkeypatch.setattr(discovery, "relay",
                         lambda *a: calls.append(a) or {"status": "error"})
-    request.write_text("")
     discovery.refresh(cache, now=1000, request=request)
-    state = json.loads(cache.read_text())
-    assert state["status"] == "pending" and state["requested"] is True
-    # Selected sources no longer send the tick home while a run is owed.
-    discovery.refresh(cache, now=state["retry_at"], request=request)
-    assert len(calls) == 2
+    if seed == "backoff":
+        assert calls == [], "the backoff still holds"
+    else:
+        assert json.loads(cache.read_text())["status"] == "pending"
+    assert request.exists(), "the run is still owed"
 
     def relay(*args):
         calls.append(args)
@@ -314,85 +327,36 @@ def test_a_requested_run_is_owed_until_it_lands(tmp_path, monkeypatch, connected
             return {"status": "completed", "accounts": [{"account": "a@example.test"}], "degraded": []}
         return completed()
     monkeypatch.setattr(discovery, "relay", relay)
-    state = json.loads(cache.read_text())
-    discovery.refresh(cache, now=state["retry_at"], request=request)
-    assert discovery.read_snapshot(cache, now=state["retry_at"] + 1)["status"] == "ready"
-    assert "requested" not in json.loads(cache.read_text())
-    # Owed no longer: the timer goes quiet again.
+    due = json.loads(cache.read_text()).get("retry_at", 1000)
+    discovery.refresh(cache, now=due, request=request)
+    assert discovery.read_snapshot(cache, now=due + 1)["status"] == "ready"
+    assert not request.exists(), "arriving discharges it"
+
+    # Discharged: the stored selection closes the gate again.
     before = len(calls)
-    discovery.refresh(cache, now=state["retry_at"] + 4000, request=request)
+    discovery.refresh(cache, now=due + 1_000_000, request=request)
     assert len(calls) == before
 
 
-def test_a_failed_legacy_refresh_keeps_its_retry(tmp_path, monkeypatch, connected):
-    """The legacy migration gets exactly one chance to recognise itself.
+def test_a_stopped_state_keeps_the_request_for_the_operator(
+        tmp_path, monkeypatch, connected):
+    """A request cannot reopen `needs_account`, and is not thrown away either.
 
-    A snapshot is legacy only while it lacks `fresh_until`. If the refresh it
-    triggers fails transiently, the replacement has `fresh_until` and is no
-    longer legacy -- so without an owed flag the stored-source gate turns the
-    promised retry away and the connected owner stays pending forever.
+    The documented recovery is to remove the snapshot and touch the request, so
+    a request that arrives while stopped is exactly what the operator would
+    have had to make anyway.
     """
     cache = tmp_path / "choices.json"
-    config = tmp_path / "config.json"
-    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
-    absent = tmp_path / "absent.request"
-    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
-    cache.write_text(json.dumps({"status": "ready", "accounts": [], "checked_at": 900}))
-    calls = []
-    monkeypatch.setattr(discovery, "relay",
-                        lambda *a: calls.append(a) or {"status": "error"})
-    discovery.refresh(cache, now=1000, request=absent)
-    state = json.loads(cache.read_text())
-    assert state["status"] == "pending" and len(calls) == 1
-    assert state["requested"] is True, "the migration still owes a run"
-
-    def relay(*args):
-        calls.append(args)
-        if args[-1]["argv"] == ["plow-gog", "accounts"]:
-            return {"status": "completed", "accounts": [{"account": "a@example.test"}], "degraded": []}
-        return completed()
-    monkeypatch.setattr(discovery, "relay", relay)
-    discovery.refresh(cache, now=state["retry_at"], request=absent)
-    assert discovery.read_snapshot(cache, now=state["retry_at"] + 1)["status"] == "ready"
-    before = len(calls)
-    discovery.refresh(cache, now=1_000_000, request=absent)
-    assert len(calls) == before, "owed no longer; the gate closes again"
-
-
-def test_a_request_taken_during_backoff_is_written_down(tmp_path, monkeypatch, connected):
-    """The tick that spends the request file may not be the one that runs.
-
-    Backoff sends this tick home before anything runs, and the file is already
-    gone -- so the ask has to be persisted there, or stored sources close the
-    gate on every later tick and the owner waits forever.
-    """
-    cache = tmp_path / "choices.json"
-    config = tmp_path / "config.json"
-    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
     request = tmp_path / "discovery.request"
-    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
-    calls = []
-    monkeypatch.setattr(discovery, "relay",
-                        lambda *a: calls.append(a) or {"status": "error"})
-    # A first failure with no request pending puts the service in backoff.
-    cache.write_text(json.dumps({"status": "pending", "attempts": 1, "checked_at": 900,
-                                 "fresh_until": 900 + discovery.MAX_AGE_SECONDS,
-                                 "retry_at": 1200}))
-    request.write_text("")
+    monkeypatch.setattr(discovery, "relay", lambda *a: {
+        "status": "error", "error": "that --account is not a connected account."})
     discovery.refresh(cache, now=1000, request=request)
-    assert calls == [], "backoff still holds"
-    assert not request.exists(), "the file was spent by this tick"
-    assert json.loads(cache.read_text())["requested"] is True
-
-    def relay(*args):
-        calls.append(args)
-        if args[-1]["argv"] == ["plow-gog", "accounts"]:
-            return {"status": "completed", "accounts": [{"account": "a@example.test"}], "degraded": []}
-        return completed()
-    monkeypatch.setattr(discovery, "relay", relay)
-    discovery.refresh(cache, now=1200, request=request)
-    assert len(calls) == 2, "the remembered ask reopened the gate"
-    assert json.loads(cache.read_text())["status"] == "ready"
+    assert json.loads(cache.read_text())["status"] == "needs_account"
+    request.write_text("")
+    monkeypatch.setattr(discovery, "relay",
+                        lambda *a: pytest.fail("stopped worker retried"))
+    discovery.refresh(cache, now=2000, request=request)
+    assert request.exists(), "kept for after the operator clears the snapshot"
 
 
 def test_a_ready_snapshot_without_an_offer_is_refreshed(tmp_path, monkeypatch, connected):
@@ -422,37 +386,6 @@ def test_a_ready_snapshot_without_an_offer_is_refreshed(tmp_path, monkeypatch, c
     before = len(calls)
     discovery.refresh(cache, now=1_000_000, request=tmp_path / "absent.request")
     assert len(calls) == before
-
-
-def test_a_request_overrides_backoff_but_not_a_stopped_state(
-        tmp_path, monkeypatch, connected):
-    cache = tmp_path / "choices.json"
-    request = tmp_path / "discovery.request"
-    calls = []
-    monkeypatch.setattr(discovery, "relay",
-                        lambda *a: calls.append(a) or {"status": "error"})
-    discovery.refresh(cache, now=1000, request=request)
-    assert json.loads(cache.read_text())["retry_at"] == 1300
-    discovery.refresh(cache, now=1001, request=request)
-    assert len(calls) == 1
-    request.write_text("")
-    # A request does not jump the backoff clock; it only reopens the gate the
-    # stored selection would otherwise close.
-    discovery.refresh(cache, now=1001, request=request)
-    assert len(calls) == 1
-    discovery.refresh(cache, now=1300, request=request)
-    assert len(calls) == 2
-
-    # A stopped state names an account the owner must resolve first; asking
-    # again cannot help, so the request does not reopen it.
-    monkeypatch.setattr(discovery, "relay", lambda *a: {
-        "status": "error", "error": "that --account is not a connected account."})
-    discovery.refresh(cache, now=2000, request=request)
-    assert json.loads(cache.read_text())["status"] == "needs_account"
-    request.write_text("")
-    monkeypatch.setattr(discovery, "relay",
-                        lambda *a: pytest.fail("stopped worker retried"))
-    discovery.refresh(cache, now=3000, request=request)
 
 
 def test_the_offer_renders_every_group_and_counts_them(tmp_path, monkeypatch, connected):

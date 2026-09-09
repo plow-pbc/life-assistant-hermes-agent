@@ -913,7 +913,8 @@ fetching their calendars, and read the snapshot again on a later turn. Never
 create it while `calendar.sources` is still absent: discovery is already
 refreshing on its own then, and a request buys nothing. A `needs_account`
 snapshot is not reopened by a request either -- that account has to be resolved
-first, and an operator clears the state.
+first, and an operator clears the state. A request made while it is stopped is
+kept, not discarded, so it is already there when they do.
 
 Beyond that one file: never call the refresh mode, run a
 status probe, fetch raw listings, stage them with a file tool or execute_code,
