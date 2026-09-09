@@ -807,7 +807,9 @@ def test_the_choices_are_sent_from_the_producers_offer():
     to build the list, or it invites the turn to build one.
     """
     choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "**Send the snapshot's `offer` verbatim.**" in choices
+    assert "**Send the snapshot's `offer` rows verbatim.**" in choices
+    assert "**No calendar ids in the message.**" in choices
+    assert "Resolve a pick by name" in choices
     assert "no rows dropped, added, reordered, reworded, shortened or re-counted" in choices
     # The instructions the offer replaced must be gone, not merely outvoted.
     for superseded in ("**Count before you send.**",

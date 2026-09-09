@@ -77,6 +77,12 @@ def _offer(groups, degraded):
     is not work worth asking a turn to redo: it is the same list every time, so
     it is rendered once, here, and the sheet only has to send it.
 
+    No calendar ids: they are machine addresses, and a wall of
+    `c0ffee0000000000000000000@group.calendar.example.test` on an owner's phone
+    is noise they never asked for. A pick resolves by name against the
+    `accounts` groups in this same snapshot, which stops being refreshed once
+    calendars are chosen and so is still the list the owner was shown.
+
     Display names stay untrusted text. They are shown, never interpolated into
     a command, and that rule does not change by their arriving pre-rendered.
     """
@@ -89,8 +95,7 @@ def _offer(groups, degraded):
         if not group["calendars"]:
             lines.append("- (no calendars on this account)")
         for calendar in group["calendars"]:
-            lines.append(f"- {calendar['display']} ({calendar['accessRole']}) "
-                         f"[{calendar['id']}]")
+            lines.append(f"- {calendar['display']} ({calendar['accessRole']})")
     for entry in degraded:
         lines.append("")
         lines.append(f"{entry['account']} -- {entry['reason']}")
