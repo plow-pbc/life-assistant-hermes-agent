@@ -946,8 +946,11 @@ missing. Any account under `degraded` is named too, with its `reason`.
 
 Then show them what is there and let them choose. Display each by
 its `display`, **verbatim** -- the exact string in the snapshot, not shortened,
-not tidied, not retyped from memory. `123 Example Street, Springfield` is that
-calendar's name; "Example Street" is a different one as far as the owner can tell.
+not tidied, not retyped from memory. A calendar named for a street address --
+`123 Example Street, Springfield` -- is that calendar's whole name; "Example
+Street" is a different one as far as the owner can tell. Names in this sheet
+are invented for the example: never paste a real one out of a live snapshot or
+transcript, which is somebody's address book.
 The script already picked `summaryOverride` over `summary`, so
 that choice is made and not yours to redo, and say its `accessRole`
 (`owner` / `reader`) so a read-only share is not mistaken for theirs. Do not
