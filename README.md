@@ -304,6 +304,12 @@ The image's own path rather than this checkout's, and run as `hermes`, so this
 cannot drift from what the service actually ticks — which is the whole point of
 approving it.
 
+The calendar service also refreshes normalized calendar choices at boot and
+every five minutes, before the event feed's config and wall checks. Onboarding
+reads this local snapshot after the greeting and intro; it never fetches or
+stages a listing. Missing or expired choices do not delay a chat reply. The
+owner chooses calendars in chat, and the event feed uses the saved selections.
+
 ## Layout
 
 ```
