@@ -233,9 +233,12 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
         snapshot = {"status": "pending", "attempts": attempts,
                     "reason": "Calendar discovery is temporarily unavailable.",
                     "retry_at": now + min(300 * 2 ** (attempts - 1), 3600)}
-    # An owed request is carried on the snapshot until the run it asked for
-    # actually lands; backing off is not landing.
-    if requested and snapshot["status"] == "pending":
+    # An owed run is carried on the snapshot until the run it asked for
+    # actually lands; backing off is not landing. A legacy snapshot owes one
+    # too: it is only recognisable as legacy once, and a transient failure on
+    # that attempt would otherwise replace it with a `pending` the stored-source
+    # gate never lets the retry reach.
+    if (requested or legacy) and snapshot["status"] == "pending":
         snapshot["requested"] = True
     snapshot["checked_at"] = now
     # The snapshot carries its own expiry so the reader never has to know the

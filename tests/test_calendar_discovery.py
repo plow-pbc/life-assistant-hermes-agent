@@ -321,6 +321,41 @@ def test_a_requested_run_is_owed_until_it_lands(tmp_path, monkeypatch, connected
     assert len(calls) == before
 
 
+def test_a_failed_legacy_refresh_keeps_its_retry(tmp_path, monkeypatch, connected):
+    """The legacy migration gets exactly one chance to recognise itself.
+
+    A snapshot is legacy only while it lacks `fresh_until`. If the refresh it
+    triggers fails transiently, the replacement has `fresh_until` and is no
+    longer legacy -- so without an owed flag the stored-source gate turns the
+    promised retry away and the connected owner stays pending forever.
+    """
+    cache = tmp_path / "choices.json"
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
+    absent = tmp_path / "absent.request"
+    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
+    cache.write_text(json.dumps({"status": "ready", "accounts": [], "checked_at": 900}))
+    calls = []
+    monkeypatch.setattr(discovery, "relay",
+                        lambda *a: calls.append(a) or {"status": "error"})
+    discovery.refresh(cache, now=1000, request=absent)
+    state = json.loads(cache.read_text())
+    assert state["status"] == "pending" and len(calls) == 1
+    assert state["requested"] is True, "the migration still owes a run"
+
+    def relay(*args):
+        calls.append(args)
+        if args[-1]["argv"] == ["plow-gog", "accounts"]:
+            return {"status": "completed", "accounts": [{"account": "a@example.test"}], "degraded": []}
+        return completed()
+    monkeypatch.setattr(discovery, "relay", relay)
+    discovery.refresh(cache, now=state["retry_at"], request=absent)
+    assert discovery.read_snapshot(cache, now=state["retry_at"] + 1)["status"] == "ready"
+    before = len(calls)
+    discovery.refresh(cache, now=1_000_000, request=absent)
+    assert len(calls) == before, "owed no longer; the gate closes again"
+
+
 def test_a_request_taken_during_backoff_is_written_down(tmp_path, monkeypatch, connected):
     """The tick that spends the request file may not be the one that runs.
 
