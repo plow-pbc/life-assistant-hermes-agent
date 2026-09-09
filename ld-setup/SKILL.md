@@ -93,11 +93,18 @@ A missing or stale snapshot is not proof of disconnection. `needs_account`
 is stopped, not pending: it will not retry automatically. Its `reason` says
 what to do -- choose a connected account, or reconnect a named one whose access
 Google revoked -- so put that in your own words rather than inventing a remedy.
-An operator must explicitly clear the stopped snapshot after they resolve it
--- it is `/var/lib/hermes/ld/calendar-discovery.json`, cleared with
-`rm /var/lib/hermes/ld/calendar-discovery.json`, and the service rebuilds it on
-its next tick. That is an operator's command, not yours: never run it, and
-never promise a timer retry or silently remove that state.
+An operator must explicitly clear the stopped snapshot after they resolve it,
+and clearing it takes BOTH commands:
+
+    rm /var/lib/hermes/ld/calendar-discovery.json
+    touch /var/lib/hermes/ld/calendar-discovery.request
+
+Removing the file alone leaves an owner whose calendars are already stored
+waiting forever: with no snapshot and no request there is nothing to tell the
+service this household still wants one, and the stored selection sends every
+tick home. The request is what asks for the rebuild. Both are an operator's
+commands, not yours: never run them, and never promise a timer retry or
+silently remove that state.
 
 **One nudge, later, at most.** The link goes out once, in the download beat, where it belongs.
 After that, mention it again at most once more in the whole conversation, and

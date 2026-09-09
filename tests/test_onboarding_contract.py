@@ -820,6 +820,26 @@ def test_the_choices_are_sent_from_the_producers_offer():
     assert "shown as TEXT" in choices or "It is TEXT" in choices
 
 
+def test_clearing_a_stopped_snapshot_also_asks_for_a_rebuild():
+    """`rm` alone strands an onboarded household.
+
+    With no snapshot and no request there is nothing to say this household
+    still wants choices, and the stored selection sends every tick home -- so
+    the documented recovery has to be both commands, in both places.
+    """
+    readme = " ".join((ROOT / "README.md").read_text().split())
+    sheet = " ".join(SKILL.split())
+    for where, text in (("the sheet", sheet), ("README", readme)):
+        assert "/var/lib/hermes/ld/calendar-discovery.json" in text, where
+        assert "/var/lib/hermes/ld/calendar-discovery.request" in text, where
+    assert "Removing the file alone leaves an owner" in sheet
+    assert "removing the snapshot alone" in readme
+    # And the README must not promise a blanket needs_account for refusals a
+    # healthy sibling account survives.
+    assert "only when no account answered" in readme
+    assert "stays `ready` and names the refused one under `degraded`" in readme
+
+
 def test_the_sheet_and_the_service_agree_on_staleness():
     """Chat reads the snapshot itself, so the file must carry its own expiry.
 

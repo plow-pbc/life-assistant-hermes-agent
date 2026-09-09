@@ -312,10 +312,14 @@ choosing answers about the list they were shown. Changing calendars later
 asks for one run by touching `/var/lib/hermes/ld/calendar-discovery.request`,
 which the service consumes on its next tick. A listing that fails for one
 account is reported beside the accounts that answered, never instead of them.
-Transient failures persist a five-minute-to-one-hour backoff; account-required
-refusals stay visible as `needs_account` without timer retries. Resolve the account
-problem before an operator removes `/var/lib/hermes/ld/calendar-discovery.json`
-to resume discovery. The event feed keeps its own five-minute cadence.
+Transient failures persist a five-minute-to-one-hour backoff. An
+account-required refusal stops discovery as `needs_account`, without timer
+retries, only when no account answered; where another account is healthy the
+snapshot stays `ready` and names the refused one under `degraded`, and nothing
+retries it until the next request. Resolve the account problem, then an
+operator removes `/var/lib/hermes/ld/calendar-discovery.json` AND touches
+`/var/lib/hermes/ld/calendar-discovery.request` -- removing the snapshot alone
+leaves a household whose selections are stored waiting forever. The event feed keeps its own five-minute cadence.
 
 Onboarding reads this local snapshot once during the intro to decide whether
 to omit the install link, and again after sports before offering calendar
