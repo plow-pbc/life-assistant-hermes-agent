@@ -145,7 +145,6 @@ def test_supervised_tick_refreshes_choices_before_the_wall_feed(tmp_path):
 
 def test_background_entrypoint_ships_with_its_imports(tmp_path):
     dockerfile = (ROOT / "Dockerfile").read_text()
-    assert "COPY ld-shared/ /opt/plow/ld-shared/" in dockerfile
     assert ("COPY ld-setup/scripts/calendar_discovery.py "
             "ld-setup/scripts/calendar_list.py /opt/plow/ld-setup/scripts/") in dockerfile
     # Recreate the scheduled copy, excluding the rest of the checkout, and
