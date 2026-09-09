@@ -1,0 +1,20 @@
+#!/bin/sh
+# Discovery owns its persisted retry schedule; this loop only checks when due.
+set -eu
+
+PATH=/command:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+# Read only the root-owned relay values before dropping to the agent UID.
+# Never source the agent-writable dotenv into the service environment.
+PLOW_MCP_URL=$(cat /run/s6/container_environment/PLOW_MCP_URL 2>/dev/null || true)
+PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)
+export PLOW_MCP_URL PLOW_AGENT_TOKEN
+
+while :; do
+  /command/s6-setuidgid hermes \
+    /opt/hermes/.venv/bin/python3 \
+    /opt/plow/ld-setup/scripts/calendar_discovery.py --refresh \
+    || echo "calendar discovery: refresh exited non-zero; retrying at the next tick" >&2
+  /bin/sleep 300
+done

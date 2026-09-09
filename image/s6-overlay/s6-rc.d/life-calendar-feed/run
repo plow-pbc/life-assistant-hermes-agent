@@ -57,12 +57,6 @@ while :; do
   # one is root-owned. The home copy belongs to uid 10000 in a running
   # container, so scheduling it would run whatever a turn last wrote there,
   # unattended, with the relay credential and the household's calendar.
-  # Discovery must run before the feed's config and wall gates: new owners
-  # need choices before either exists. Chat only reads its local snapshot.
-  /command/s6-setuidgid hermes \
-    /opt/hermes/.venv/bin/python3 \
-    /opt/plow/ld-setup/scripts/calendar_discovery.py --refresh \
-    || echo "calendar discovery: refresh exited non-zero; retrying at the next tick" >&2
   /command/s6-setuidgid hermes \
     /opt/hermes/.venv/bin/python3 \
     /opt/plow/ld-shared/scripts/calendar_feed.py \

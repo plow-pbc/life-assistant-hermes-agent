@@ -483,7 +483,7 @@ def test_write_config_takes_the_staged_path(tmp_path):
 
 
 def test_the_identities_are_the_union_not_the_account_alone():
-    """calendar.account is the one identity gog authenticates as; the nudge asks
+    """calendar.account is the one identity plow-gog authenticates as; the nudge asks
     whether the OWNER was in a meeting. An owner whose calendars carry two of
     their addresses is absent from every event read through the other one --
     a nudge that works and never fires."""
@@ -774,3 +774,23 @@ def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     assert discovery == ["/var/lib/hermes/skills/ld-setup/scripts/calendar_discovery.py"]
     assert not any("latch_status.py" in command or "calendar_list.py" in command
                    for command in commands)
+
+
+def test_intro_reads_snapshot_before_download_decision():
+    assert "During the intro, read §5's local snapshot once" in ONBOARDING
+    assert "fresh `ready` snapshot" in ONBOARDING
+    assert "including the\nlocal reader" not in ONBOARDING
+
+
+def test_sports_requires_snapshot_before_waiting_close():
+    sports = ONBOARDING[ONBOARDING.index('### 3 ·'):ONBOARDING.index('### 5 ·')]
+    assert "read §5's local snapshot before choosing" in sports
+    assert "Missing selections do not mean missing calendars" in sports
+
+
+def test_all_command_callers_use_plow_gog():
+    import re
+    for path in ROOT.rglob('*'):
+        if path.suffix not in ('.py', '.md') or '.git' in path.parts or 'docs' in path.parts:
+            continue
+        assert not re.search(r'["\x27]gog["\x27]', path.read_text()), path

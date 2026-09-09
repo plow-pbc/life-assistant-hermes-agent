@@ -1,6 +1,6 @@
 ---
 name: ld-morning-updates
-description: Compose and post the life-dashboard kiosk's morning message — a short daily affirmation, posted at 7am, drawing lightly on the day's calendar events read through Plow Latch's vendored gog. Use when the scheduled morning-updates cron fires, when the user asks to run or test the morning affirmation now, or when the user wants to set up the daily kiosk affirmation.
+description: Compose and post the life-dashboard kiosk's morning message — a short daily affirmation, posted at 7am, drawing lightly on the day's calendar events read through Plow Latch's vendored plow-gog. Use when the scheduled morning-updates cron fires, when the user asks to run or test the morning affirmation now, or when the user wants to set up the daily kiosk affirmation.
 ---
 
 # Life Dashboard — Morning Updates
@@ -24,7 +24,7 @@ the Hermes data mount.)
 Once per morning:
 
 1. Gather read-only context: the next three days of calendar events, in one
-   `mcp__plow__plow_run_command` call to the vendored `gog` CLI.
+   `mcp__plow__plow_run_command` call to the vendored `plow-gog` CLI.
 2. Compose a short affirmation.
 3. Post it to the kiosk with `scripts/post_message.py`.
 
@@ -44,7 +44,7 @@ comma-join the sources' `calendar_id` values, then call `mcp__plow__plow_run_com
 EXACTLY this argv, substituting only those config-supplied values (which never
 vary between runs):
 
-    ["gog", "calendar", "events", "list", "--account=<calendar.account>",
+    ["plow-gog", "calendar", "events", "list", "--account=<calendar.account>",
      "--calendars=<comma-joined calendar_ids>",
      "--days=3", "--json", "--results-only", "--sort=start", "--max=250"]
 
@@ -53,16 +53,16 @@ Latch always-allow rules key on the exact argv, so a computed date anywhere
 in it would make every morning's argv novel and strand the 07:00 run on an
 approval card nobody answers (plow-pbc/latch#181). The relative window lives
 in the flag instead — `--days=3` is today through two days out, computed by
-gog in local time, so the same bytes ask the right question every morning.
+plow-gog in local time, so the same bytes ask the right question every morning.
 `--max=250` matters: a small default page silently truncates events for a
 busy household with multiple connected sources across a multi-day lookahead.
 
 One call covers every source — the `--calendars` list is the merge, read
-under the one `calendar.account` Latch's gog is authenticated as. Each source
+under the one `calendar.account` Latch's plow-gog is authenticated as. Each source
 is just a `calendar_id` (there is no per-source account key): the id
 is a calendar's whole address and must be the globally-unique form (the
 `...@group.calendar.google.com` / email ids), visible to that account.
-Onboarding writes the ids gog itself returned, so the account's own calendar
+Onboarding writes the ids plow-gog itself returned, so the account's own calendar
 appears under its address (`ada@example.com`) like any other — the shared gate
 (`ld_config_gate.py`) refuses blank or duplicate ids. Including the shared
 calendars (the household's "Family Calendar" etc.) is the whole point —

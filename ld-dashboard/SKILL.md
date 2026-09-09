@@ -99,11 +99,11 @@ source; this table summarises it.
 |---|---|---|---|
 | `ld-weather` | `0 6 * * *` | 3 · weather | **live** |
 | `ld-sports` | `0 6 * * *` | 5 · sports | **live** |
-| `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | **live** — Google Calendar via Latch's vendored gog |
+| `ld-morning-updates` | `0 7 * * *` | 2 · affirmation | **live** — Google Calendar via Latch's vendored plow-gog |
 | `ld-morning-triage` | `5 7 * * *` | 1 · alert | **live** — iMessage + Gmail through Latch, texted to the owner |
 | `ld-evening-triage` | `0 18 * * *` | 1 · alert | **live** — the same sheet at 18:00 (skill `ld-morning-triage`), texted to the owner |
-| `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored gog |
-| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored gog |
+| `ld-weekly-digest` | `0 17 * * 0` | 4 · digest | **live** — Google Calendar via Latch's vendored plow-gog |
+| `ld-calendar-nudge` | `20,50 * * * *` | 1 · alert | **live** — Google Calendar via Latch's vendored plow-gog |
 
 All seven rows register unconditionally. The blocked/LIVE partition machinery
 left with the last blocked row — no blocked producer is on any roadmap, and

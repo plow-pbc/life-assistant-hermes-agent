@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """nudge_candidates.py — filter + compose the calendar gather for ld-calendar-nudge.
 
-Reads the fixed gog `calendar events list --json --results-only` output from
+Reads the fixed plow-gog `calendar events list --json --results-only` output from
 its gather-file argument, deleting the file as it goes, applies the nudge
 rules — privacy prepass, per-event filter, dedupe — and writes every
 composed ≤115-char reminder, earliest first, STRAIGHT to the ONE fixed
@@ -28,7 +28,7 @@ output — both are stripped here so marker soup never reaches the kiosk.
 
 Exit 2 on malformed input rather than skipping rows: a half-parsed window is
 indistinguishable from a quiet one on both surfaces, so it must fail loudly.
-That includes a nonzero envelope exit_code — gog fails the WHOLE gather on
+That includes a nonzero envelope exit_code — plow-gog fails the WHOLE gather on
 one unrecognized calendar name (measured: exit 2), and a failed gather must
 never read as a no-nudge run.
 """
@@ -144,7 +144,7 @@ def main(argv=None, now=None) -> int:
     could widen the windows or the identity set). Both are pinned."""
     parser = argparse.ArgumentParser()
     parser.add_argument("gather",
-                        help="gather file (raw gog --json --results-only "
+                        help="gather file (raw plow-gog --json --results-only "
                              "output, or the persisted plow_run_command "
                              "result envelope)")
     args = parser.parse_args(argv)
@@ -195,7 +195,7 @@ def main(argv=None, now=None) -> int:
     try:
         events = json.loads(raw[match.start():])
     except json.JSONDecodeError as e:
-        print(f"malformed gog json: {e}", file=sys.stderr)
+        print(f"malformed plow-gog json: {e}", file=sys.stderr)
         return 2
 
     now = int(time.time()) if now is None else now
