@@ -254,14 +254,14 @@ published.
 `plow-connectors` — the skill that reached this owner's Gmail, Google Calendar
 and Slack with the gateway's own `PLOW_AGENT_TOKEN` — is not installed. Only
 Slack stays out of reach: Google Calendar and Gmail are read through Latch's
-vendored `gog` and `plow-gog` on the owner's Mac instead.
+vendored `plow-gog` on the owner's Mac instead.
 
 That is a deliberate trade. The two producers that need no account —
 `ld-weather` (NWS) and `ld-sports` (ESPN) — work immediately, as does
 the triage — `ld-morning-triage` at 07:05 and `ld-evening-triage` at 18:00,
 iMessage and Gmail read through Latch, texted to the owner — and the three
 calendar producers — `ld-morning-updates`, `ld-weekly-digest`,
-`ld-calendar-nudge` — whose calendar reads go through Latch's vendored `gog`.
+`ld-calendar-nudge` — whose calendar reads go through Latch's vendored `plow-gog`.
 `ld-dashboard` carries all seven schedules.
 
 ## Trusted group conversations
@@ -276,7 +276,7 @@ In an untrusted group, the assistant keeps owner material out of the thread. In
 a trusted group, every participant may ask it to use its normal tools and
 connected accounts, and requested results are answered where everyone can see
 them. For this life assistant, “What's on the schedule today?” reaches Google
-Calendar through Latch's vendored `gog`; trust changes whether that result may
+Calendar through Latch's vendored `plow-gog`; trust changes whether that result may
 be returned to the group, not how calendar access works. Credentials,
 authentication secrets, raw tokens, and payment-card secrets remain excluded.
 
@@ -304,7 +304,7 @@ the old `family.owner.name`, set `family.owner.introduced` to `true`, then delet
 cannot remove a key.
 
 The three calendar skills add that account to their exact
-gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
+plow-gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
 shape — and the triage's exact `plow-gog gmail search` argv from
 `ld-morning-triage/SKILL.md` — once through Latch before relying on the
 unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
@@ -323,11 +323,27 @@ The image's own path rather than this checkout's, and run as `hermes`, so this
 cannot drift from what the service actually ticks — which is the whole point of
 approving it.
 
-The calendar service also refreshes normalized calendar choices at boot and
-every five minutes, before the event feed's config and wall checks. Onboarding
-reads this local snapshot after the greeting and intro; it never fetches or
-stages a listing. Missing or expired choices do not delay a chat reply. The
-owner chooses calendars in chat, and the event feed uses the saved selections.
+The separate calendar discovery service enumerates `plow-gog accounts` and
+lists each account's calendars into `/var/lib/hermes/ld/calendar-discovery.json`,
+which onboarding reads as a plain file. Its lifecycle -- when it refreshes,
+when it stops, what a degraded account means -- is stated once, in
+`ld-setup/SKILL.md` §5, and implemented in `ld-setup/scripts/calendar_discovery.py`.
+Restating it here produced four claims that had drifted from the code by the
+time anyone checked, so this paragraph does not.
+
+Operator recovery, the one thing not in the sheet's own voice: to restart
+discovery after resolving an account problem, remove the snapshot AND ask for
+a run -- `rm /var/lib/hermes/ld/calendar-discovery.json` followed by
+`touch /var/lib/hermes/ld/calendar-discovery.request`. Removing the snapshot
+alone leaves a household whose selections are stored waiting forever.
+
+The event feed keeps its own five-minute cadence.
+
+Onboarding reads this local snapshot once during the intro to decide whether
+to omit the install link, and again after sports before offering calendar
+choices or a waiting close. Unknown choices never delay a reply or prove that
+Latch is disconnected. The owner chooses calendars from one account in chat;
+the event feed uses that saved reader account and its selections.
 
 ## Layout
 
@@ -337,7 +353,7 @@ runtime/        SOUL.md: the persona and the setup rule. No config.yaml -- the
 image/          the s6 service definition for the calendar strip's schedule
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the triage producer: iMessage + Gmail through Latch, 07:05 and 18:00, texted
-ld-morning-updates/ the calendar affirmation producer, gog through Latch
+ld-morning-updates/ the calendar affirmation producer, plow-gog through Latch
 ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 calendar_feed.py -- the kiosk's calendar strip, no model in it
 ld-dashboard/   the seven cron schedules, all registered
@@ -402,7 +418,7 @@ image reference; logging out is not a guaranteed fix for every `403`.
 - **Connectors are gone, not unlinked.** This agent installs no
   `plow-connectors`, so Slack is unreachable however linked the
   owner's Plow account is. Google Calendar and Gmail are back — through the
-  vendored `gog` and `plow-gog` behind Latch rather than a connector skill; the
+  vendored `plow-gog` behind Latch rather than a connector skill; the
   three calendar producers ride the first and the triage rides the second.
   See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
 

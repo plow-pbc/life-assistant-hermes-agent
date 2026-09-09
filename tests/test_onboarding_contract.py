@@ -483,7 +483,7 @@ def test_write_config_takes_the_staged_path(tmp_path):
 
 
 def test_the_identities_are_the_union_not_the_account_alone():
-    """calendar.account is the one identity gog authenticates as; the nudge asks
+    """calendar.account is the one identity plow-gog authenticates as; the nudge asks
     whether the OWNER was in a meeting. An owner whose calendars carry two of
     their addresses is absent from every event read through the other one --
     a nudge that works and never fires."""
@@ -507,16 +507,6 @@ def test_step_four_names_exactly_one_deferral():
     """
     step4 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[3]):ALGORITHM.index(STEPS[4])].split())
     assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
-
-
-def test_every_calendar_is_shown_including_the_odd_ones():
-    """A calendar the owner can see on their Mac and not in your message is a
-    list that disagrees with theirs. Observed: the hostile-named one left out
-    entirely, and mentioned only when the owner asked about it. Its name is
-    text, which is all it ever was."""
-    section = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "Show every calendar the script returned" in section
-    assert "shown as TEXT" in section
 
 
 def test_the_wall_names_its_relay_tools_as_the_image_registers_them():
@@ -767,10 +757,140 @@ def test_the_wall_token_handoff_is_dm_only():
 
 def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     """A preconnected Mac must not put listing/staging tools before hello."""
-    assert "mcp__plow__" not in ONBOARDING
+    # The relay tools may be NAMED, but only to forbid them: the discovery
+    # snapshot lives on this server and the Latch prompt otherwise sends every
+    # path-shaped read to the Mac.
+    for paragraph in ONBOARDING.split("\n\n"):
+        if "mcp__plow__" in paragraph or "plow_read_file" in paragraph:
+            flowed = " ".join(paragraph.split())
+            assert re.search(r"\b[Nn](ot|ever)\b", flowed), flowed
     assert "calendar-listing-<turn>" not in ONBOARDING
     commands = re.findall(r"^    python3 (.+)$", ONBOARDING, re.MULTILINE)
-    discovery = [command for command in commands if "calendar_discovery.py" in command]
-    assert discovery == ["/var/lib/hermes/skills/ld-setup/scripts/calendar_discovery.py"]
-    assert not any("latch_status.py" in command or "calendar_list.py" in command
-                   for command in commands)
+    # Not even the discovery script: its snapshot is read as a file now, so no
+    # onboarding turn spends a command -- or an approval prompt -- on a read.
+    assert not any("calendar_discovery.py" in command or "latch_status.py" in command
+                   or "calendar_list.py" in command for command in commands)
+    # Nor anywhere before §5: the intro's read was the one that was lost.
+    assert "calendar_discovery.py" not in ONBOARDING.split("### 5 ·")[0]
+    # The one surviving mention says the script is the operator's, not this
+    # turn's, so it cannot read as an instruction to run it.
+    choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    script = choices[choices.index("Running `calendar_discovery.py`"):]
+    assert "an operator's shell, never this turn" in script[:220]
+
+
+def test_the_snapshot_read_names_the_local_tool_and_bars_the_relay():
+    """The Latch prompt tells the model the owner's world is on the Mac.
+
+    That standing instruction is right everywhere except this path: the
+    snapshot is written by a service on this server and does not exist on the
+    Mac. Observed: `mcp__plow__plow_read_file` answered not_found for it and
+    the turn sent an install link to a connected owner. So the sheet has to
+    name the local tool and bar the relay ones by name, in both places that
+    read it.
+    """
+    for where in (ONBOARDING[:ONBOARDING.index("### 5 ·")],
+                  ONBOARDING[ONBOARDING.index("### 5 ·"):]):
+        flowed = " ".join(where.split())
+        assert 'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")' in flowed
+        assert "never `plow_read_file`" in flowed or "Not `plow_read_file`" in flowed
+    choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "not any `plow_`/`mcp__plow__` tool" in choices
+    assert "not `execute_code`, not `terminal`, not the script" in choices
+
+
+def test_the_choices_are_sent_from_the_producers_offer():
+    """Transcription is off the model seam: the producer renders, the turn sends.
+
+    Two live runs lost a calendar between snapshot and message -- one row
+    dropped from eleven, one name shortened. The sheet must not re-describe how
+    to build the list, or it invites the turn to build one.
+    """
+    choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "**Send the snapshot's `offer` rows verbatim.**" in choices
+    assert "**No calendar ids in the message.**" in choices
+    assert "Resolve a pick by name" in choices
+    assert "no rows dropped, added, reordered, reworded, shortened or re-counted" in choices
+    # The instructions the offer replaced must be gone, not merely outvoted.
+    for superseded in ("**Count before you send.**",
+                       "**Every group, not just the first.**",
+                       "its `display`, **verbatim**"):
+        assert superseded not in choices, superseded
+    # Odd names still ship -- the block is text, and sending it is showing it.
+    assert "shown as TEXT" in choices or "It is TEXT" in choices
+
+
+def test_clearing_a_stopped_snapshot_also_asks_for_a_rebuild():
+    """`rm` alone strands an onboarded household.
+
+    With no snapshot and no request there is nothing to say this household
+    still wants choices, and the stored selection sends every tick home -- so
+    the documented recovery is both commands. The README carries only this
+    operator command; the lifecycle itself is the sheet's to state, after four
+    restated claims there drifted from the code.
+    """
+    readme = " ".join((ROOT / "README.md").read_text().split())
+    assert "rm /var/lib/hermes/ld/calendar-discovery.json` followed by `touch /var/lib/hermes/ld/calendar-discovery.request" in readme
+    assert "leaves a household whose selections are stored waiting forever" in readme
+    sheet = " ".join(SKILL.split())
+    assert "/var/lib/hermes/ld/calendar-discovery.request" in sheet
+    assert "Removing the file alone leaves an owner" in sheet
+
+
+def test_the_sheet_and_the_service_agree_on_staleness():
+    """Chat reads the snapshot itself, so the file must carry its own expiry.
+
+    Two definitions of "stale" that can drift is one too many: the service
+    stamps `fresh_until`, and the sheet is only allowed to compare it to now.
+    """
+    source = (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text()
+    assert 'snapshot["fresh_until"] = now + MAX_AGE_SECONDS' in source
+    flowed = " ".join(SKILL.split())
+    # Ready choices have no clock at all -- nothing replaces them on a timer.
+    assert "Ready choices do NOT expire" in flowed
+    assert "`pending` while its `fresh_until` is in the future" in flowed
+    assert "`status: needs_account` -- stopped. Always honoured." in flowed
+    # ...and the service must not stamp an expiry on them either.
+    assert 'if snapshot["status"] != "ready":' in source
+    # A pick that does not match exactly one calendar is re-offered, not guessed.
+    assert "matches two rows" in flowed and "ask which number they mean" in flowed
+    # The numbered offer is the one carve-out from the no-numbered-questions
+    # rule, and the sheet must say so where that rule is stated.
+    assert "The one exception is §5's calendar `offer`" in flowed
+    assert "cannot forge a numbered choice" in flowed
+    assert "send the current `offer` again" in flowed
+
+
+def test_a_stored_setting_change_can_reach_the_skill():
+    """The change flow has to be reachable, or the request file is never made.
+
+    SOUL.md sent a finished install home ("ask them nothing") while the sheet's
+    own description forbade the skill for exactly that case, so "Changing one
+    setting later" -- and the calendar refresh request inside it -- could not
+    run at all.
+    """
+    soul = " ".join(SOUL.split())
+    assert "run `ld-setup` and follow ONLY its \"Changing one setting later\" section" in soul
+    description = " ".join(SKILL.split("---", 2)[1].split())
+    assert "this skill is still the right one" in description
+    assert "never the interview" in description
+
+
+def test_intro_reads_snapshot_before_download_decision():
+    assert "During the intro, read §5's local snapshot once" in ONBOARDING
+    assert "fresh `ready` snapshot" in ONBOARDING
+    assert "including the\nlocal reader" not in ONBOARDING
+
+
+def test_sports_requires_snapshot_before_waiting_close():
+    sports = ONBOARDING[ONBOARDING.index('### 3 ·'):ONBOARDING.index('### 5 ·')]
+    assert "read §5's local snapshot before choosing" in sports
+    assert "Missing selections do not mean missing calendars" in sports
+
+
+def test_all_command_callers_use_plow_gog():
+    import re
+    for path in ROOT.rglob('*'):
+        if path.suffix not in ('.py', '.md') or '.git' in path.parts or 'docs' in path.parts:
+            continue
+        assert not re.search(r'(["\x27])gog\1', path.read_text()), path

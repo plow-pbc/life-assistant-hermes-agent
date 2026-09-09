@@ -1,6 +1,6 @@
 ---
 name: ld-calendar-nudge
-description: Post a short meeting reminder to the life-dashboard kiosk and message the owner over Plow Chat when a meeting with other attendees is starting soon — 30 min lookahead for virtual meetings, 60 min for in-person, read through Plow Latch's vendored gog. Use when the scheduled half-hourly nudge cron fires, or when the user asks to run or test the calendar nudge once now.
+description: Post a short meeting reminder to the life-dashboard kiosk and message the owner over Plow Chat when a meeting with other attendees is starting soon — 30 min lookahead for virtual meetings, 60 min for in-person, read through Plow Latch's vendored plow-gog. Use when the scheduled half-hourly nudge cron fires, or when the user asks to run or test the calendar nudge once now.
 ---
 
 # Life Dashboard — Calendar Nudge
@@ -32,7 +32,7 @@ comma-join the sources' `calendar_id` values, then call `mcp__plow__plow_run_com
 EXACTLY this argv, substituting only those config-supplied values (which never
 vary between runs):
 
-    ["gog", "calendar", "events", "list", "--account=<calendar.account>",
+    ["plow-gog", "calendar", "events", "list", "--account=<calendar.account>",
      "--calendars=<comma-joined calendar_ids>",
      "--from=now", "--days=1", "--json", "--results-only", "--sort=start",
      "--max=50"]
@@ -78,7 +78,7 @@ see, write, or relay reminder content: stdout is only
 
 If it exits non-zero, the gather or its consumption FAILED — surface the
 error in the final response so the owner sees it; a failed gather must never
-read as a quiet no-meetings run (gog fails the whole gather on one bad
+read as a quiet no-meetings run (plow-gog fails the whole gather on one bad
 calendar name — measured, exit 2).
 
 If `qualifying` is 0 — **do nothing**. Skip both legs; emit a one-line "no

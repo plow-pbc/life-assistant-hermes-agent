@@ -1,10 +1,10 @@
 """The calendar listing, normalised deterministically instead of by eye.
 
-Every case here is a shape gog actually returns, and each one has a silent
+Every case here is a shape plow-gog actually returns, and each one has a silent
 wrong answer if a model parses it in prose: the preamble makes the output
 invalid JSON, a large result arrives as an envelope naming a file, and the
-account is the primary entry rather than dataOwner -- which varies across
-calendars shared into an account.
+authenticated account must be supplied separately from calendar IDs and
+dataOwner, which vary across calendars shared into an account.
 """
 import importlib.util
 import json
@@ -47,13 +47,13 @@ def gather(tmp_path, text):
     # The output is not JSON: a parse of the whole string fails on a WORKING
     # call, and a turn that reads that as "no calendars" tells the owner the
     # wrong thing.
-    ("inline, with gog's preamble", PREAMBLE + json.dumps(LISTING)),
+    ("inline, with plow-gog's preamble", PREAMBLE + json.dumps(LISTING)),
     # A large result comes back wrapped, naming a file rather than the text.
     ("a persisted envelope", json.dumps({"result": json.dumps(
         {"exit_code": 0, "output": PREAMBLE + json.dumps(LISTING)})})),
 ])
 def test_both_delivery_shapes_reach_the_same_answer(tmp_path, label, payload):
-    result = cl.normalize(cl.extract_array(cl.read_gather(gather(tmp_path, payload))))
+    result = cl.normalize(cl.extract_array(cl.read_gather(gather(tmp_path, payload))), account="mary@example.test")
     assert result["account"] == "mary@example.test"
     assert [c["id"] for c in result["calendars"]] == [
         "mary@example.test", "fam@group.calendar.google.test"]
@@ -73,59 +73,38 @@ def test_the_display_is_the_owners_rename():
     assert [c["display"] for c in result["calendars"]] == ["mary@example.test", "Ours"]
 
 
-@pytest.mark.parametrize("label,flagged,owned_by,expected", [
-    # 1. The clearest signal, and the only one seen live.
-    ("one flagged primary", ["mary@example.test"], {"mary@example.test"}, "mary@example.test"),
-    ("flag wins over a disagreeing owner set",
-     ["mary@example.test"], {"mary@example.test", "other@example.test"}, "mary@example.test"),
-    # 2. No flag, but every owner-role calendar names the same owner.
-    ("no flag, one owner", [], {"mary@example.test"}, "mary@example.test"),
-    # 3. Nothing decides it -- ask, never guess.
-    ("no flag, several owners", [], {"a@example.test", "b@example.test"}, None),
-    ("no flag, no owner rows", [], set(), None),
-    ("two different primaries", ["a@example.test", "b@example.test"], {"a@example.test"}, None),
-])
-def test_the_account_is_derived_or_left_for_the_owner(label, flagged, owned_by, expected):
-    """An account guessed wrong is not a visible failure: it is written to
-    calendar.account, every producer authenticates as that identity, and the
-    reads come back thin for reasons nobody traces back here. `primary: true`
-    was seen on ONE Mac, so its absence is a case, not an error."""
-    assert cl.derive_account(flagged, owned_by) == expected
-
-
-@pytest.mark.parametrize("label,entries,account,candidates", [
-    # A calendar shared into the account carries THEIR address in dataOwner.
-    ("a share never votes",
-     [{"id": "mary@example.test", "summary": "Mine", "accessRole": "owner",
-       "dataOwner": "mary@example.test"},
-      {"id": "team@group.calendar.google.test", "summary": "Team",
-       "accessRole": "reader", "dataOwner": "someone@else.test"}],
-     "mary@example.test", ["mary@example.test"]),
-    ("no signal at all",
-     [{"id": "a@example.test", "summary": "A", "accessRole": "reader"},
-      {"id": "b@example.test", "summary": "B", "accessRole": "reader"}],
-     None, []),
-    ("two owner-role addresses decide nothing",
-     [{"id": "a@example.test", "summary": "Mine", "accessRole": "owner",
-       "dataOwner": "b@example.test"},
-      {"id": "c@example.test", "summary": "Also mine", "accessRole": "owner",
-       "dataOwner": "a@example.test"}],
-     None, ["a@example.test", "b@example.test"]),
-    ("a flagged primary", LISTING, "mary@example.test", ["mary@example.test"]),
-])
-def test_the_account_and_its_candidates(label, entries, account, candidates):
-    """An account guessed wrong is not a visible failure: it is written to
-    calendar.account, every producer authenticates as that identity, and the
-    reads come back thin for reasons nobody traces back here. So it is derived
-    or left null -- and either way the addresses that voted come back, because
-    "ask the owner" is only answerable with them in the question."""
-    result = cl.normalize(entries)
+@pytest.mark.parametrize("account", [None, "actual@example.test"])
+def test_account_is_only_supplied_by_caller(account):
+    result = cl.normalize(LISTING, account=account)
     assert result["account"] == account
-    assert result["candidates"] == candidates
+
+
+def test_candidates_carry_every_address_the_owner_owns_a_calendar_under():
+    """An owner with two addresses is one person the nudge has to recognise.
+
+    `owner_identities` is built from `candidates`, and nudge_candidates.py
+    matches a meeting's organizer and attendees against it. With only the
+    authentication address there, a meeting inviting the owner's other address
+    reads as one they are not in, and the nudge is dropped without a word.
+    Only owner-role rows vote: a shared calendar's `dataOwner` is a stranger.
+    """
+    listing = LISTING + [
+        {"id": "work@example.test", "summary": "Work", "accessRole": "owner",
+         "dataOwner": "work@example.test"},
+    ]
+    result = cl.normalize(listing, account="mary@example.test")
+    assert result["candidates"] == ["mary@example.test", "work@example.test"]
+    assert "someone@else.test" not in result["candidates"], "a shared calendar's owner"
+    # The authenticated address is a candidate even when it owns nothing.
+    assert cl.normalize([], account="solo@example.test")["candidates"] == ["solo@example.test"]
+
+
+def test_empty_listing_is_valid_for_an_authenticated_account():
+    assert cl.normalize([], account="actual@example.test") == {
+        "account": "actual@example.test", "candidates": ["actual@example.test"], "calendars": []}
 
 
 @pytest.mark.parametrize("label,entries", [
-    ("nothing to choose from", []),
     ("a calendar with no id", [{"summary": "No id"}]),
     ("a blank id", [{"id": "   ", "primary": True}]),
     ("not a list", "not a list"),
@@ -143,7 +122,7 @@ def test_a_listing_with_no_array_refuses():
 
 # --- the runtime's untrusted-content fence ----------------------------------
 #
-# Real gog output does not hand over a bare name. gog fences what it fetched
+# Real plow-gog output does not hand over a bare name. plow-gog fences what it fetched
 # from Google, so `summary` is a five-line block with the name inside. Every
 # case here is a shape one real listing actually carried (notes/runs,
 # REAL-LATCH): nine calendars, every summary fenced, `summaryOverride` bare
@@ -185,7 +164,7 @@ def wrapped(body, marker_id="61db0ed3cfa72b07"):
 ])
 def test_the_display_name_is_the_one_the_owner_would_recognise(label, entry, expected):
     result = cl.normalize([dict(entry, id="a@b.test", primary=True,
-                                accessRole="owner", dataOwner="a@b.test")])
+                                accessRole="owner", dataOwner="a@b.test")], account="a@b.test")
     assert result["calendars"][0]["display"] == expected
     # Whatever the name did, it stays out of everything durable.
     assert result["calendars"][0]["id"] == "a@b.test"

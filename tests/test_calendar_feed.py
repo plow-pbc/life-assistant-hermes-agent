@@ -87,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
             # Latch answers every tool with canonical JSON, never a bare word.
             return ok_text(json.dumps({"path": arguments["path"],
                                        "bytes": len(arguments["content"])}))
-        if arguments.get("argv", [""])[0] == "gog":
+        if arguments.get("argv", [""])[0] == "plow-gog":
             return cls.relay_responses.pop(0)
         if cls.curl_responses:
             return cls.curl_responses.pop(0)
@@ -108,7 +108,7 @@ def completed(output):
 
 
 def relay_ok(events):
-    """A successful gog gather, behind Latch's preamble line."""
+    """A successful plow-gog gather, behind Latch's preamble line."""
     return completed("Note: Using direct access token\n" + json.dumps(events))
 
 
@@ -250,7 +250,7 @@ def test_the_relay_bearer_is_never_forwarded_through_a_redirect(feed, capsys):
 
 def test_the_strip_is_ordered_by_when_things_start(feed):
     feed, base = feed
-    """gog sorts within one calendar; the merged result is in whatever order
+    """plow-gog sorts within one calendar; the merged result is in whatever order
     the calendars came back. An unsorted strip is wrong in a way that reads as
     a rendering bug, so it survives on the wall."""
     Handler.relay_responses = [relay_ok([
@@ -274,7 +274,7 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
     # unit) is what used to skip this and hand the bearer to an injected host.
     assert validated == [f"{base}/api/message"]
     assert relay_calls("plow_run_command")[0]["arguments"]["argv"] == [
-        "gog", "calendar", "events", "list",
+        "plow-gog", "calendar", "events", "list",
         "--account=ada@example.com", "--calendars=ada@example.com",
         "--days=7", "--json", "--results-only", "--sort=start", "--max=250",
     ]

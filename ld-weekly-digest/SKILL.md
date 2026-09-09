@@ -1,6 +1,6 @@
 ---
 name: ld-weekly-digest
-description: Build a concise weekly calendar digest for the life-dashboard household from live calendar data read through Plow Latch's vendored gog, post it to the kiosk as card 4, and return it in chat. Length/shape follows the optional `weekly_digest.length` preference (defaults to a full by-day view). Use when the user asks for a weekly digest, wants a sample digest from real calendars, or wants the scheduled digest run.
+description: Build a concise weekly calendar digest for the life-dashboard household from live calendar data read through Plow Latch's vendored plow-gog, post it to the kiosk as card 4, and return it in chat. Length/shape follows the optional `weekly_digest.length` preference (defaults to a full by-day view). Use when the user asks for a weekly digest, wants a sample digest from real calendars, or wants the scheduled digest run.
 ---
 
 # Life Dashboard — Weekly Digest
@@ -13,7 +13,7 @@ this skill never self-registers.
 **Read `/var/lib/hermes/ld/config.json` before starting** — the shared
 life-dashboard config. This digest uses two sections:
 
-- `calendar` — the `account` gog reads as and the `sources` list to fetch from
+- `calendar` — the `account` plow-gog reads as and the `sources` list to fetch from
   (each source is a `calendar_id`; that one identity reads them all).
 - `weekly_digest` — `length` (free-form length/shape preference, same idea
   as `morning_triage.ranking_instructions`; empty = the full layout) and the
@@ -51,7 +51,7 @@ comma-join the sources' `calendar_id` values, then fetch the main window with
 ONE `mcp__plow__plow_run_command` call — EXACTLY this argv, substituting only those
 config-supplied values (which never vary between runs):
 
-    ["gog", "calendar", "events", "list", "--account=<calendar.account>",
+    ["plow-gog", "calendar", "events", "list", "--account=<calendar.account>",
      "--calendars=<comma-joined calendar_ids>",
      "--days=7", "--json", "--results-only", "--sort=start", "--max=250"]
 
@@ -60,7 +60,7 @@ load-bearing: Latch always-allow rules key on the exact argv, so a computed
 date anywhere in it would make every Sunday's argv novel and strand the run
 on an approval card nobody answers (plow-pbc/latch#181). The relative window
 lives in the flag instead — `--days=7` is the rolling next 7 days, computed
-by gog in local time. `--max=250` matters: a small default page silently
+by plow-gog in local time. `--max=250` matters: a small default page silently
 truncates a week's worth of events for a busy household with multiple
 sources.
 

@@ -2,7 +2,7 @@
 """calendar_feed.py — publish the kiosk's calendar strip, with no model in it.
 
 The kiosk's five cards are composed by producers a model drives. The calendar
-strip is not: it is a straight translation of what gog returns into the
+strip is not: it is a straight translation of what plow-gog returns into the
 viewer's `/api/calendar` contract, so there is nothing for a model to add and
 every turn it would cost is a turn that can go wrong on private calendar text.
 This script is the whole producer — gather, filter, normalize, POST.
@@ -107,7 +107,7 @@ class FeedError(Exception):
 
 
 def redact(value):
-    """Strip gog's markers and every URI-shaped token; collapse whitespace.
+    """Strip plow-gog's markers and every URI-shaped token; collapse whitespace.
 
     Newlines included: the strip is a one-row-per-event contract, so a title
     carrying a newline could otherwise spoof a row.
@@ -165,7 +165,7 @@ def decode_events(raw):
     try:
         events = json.loads(raw[match.start():])
     except json.JSONDecodeError as exc:
-        raise FeedError("malformed gog json") from exc
+        raise FeedError("malformed plow-gog json") from exc
     if not isinstance(events, list):
         raise FeedError("gather payload is not an array")
     return events
@@ -244,7 +244,7 @@ def read_config():
 def command_argv(account, calendar_ids):
     """The one fixed gather argv — see the module docstring on always-allow."""
     return [
-        "gog", "calendar", "events", "list",
+        "plow-gog", "calendar", "events", "list",
         f"--account={account}",
         f"--calendars={','.join(calendar_ids)}",
         f"--days={WINDOW_DAYS}", "--json", "--results-only",
@@ -253,7 +253,7 @@ def command_argv(account, calendar_ids):
 
 
 def normalize_events(events, zone):
-    """gog's event shape as the viewer's contract, earliest first."""
+    """plow-gog's event shape as the viewer's contract, earliest first."""
     try:
         local = ZoneInfo(zone)
         normalized = []
