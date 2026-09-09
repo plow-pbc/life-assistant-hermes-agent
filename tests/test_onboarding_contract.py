@@ -767,7 +767,13 @@ def test_the_wall_token_handoff_is_dm_only():
 
 def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     """A preconnected Mac must not put listing/staging tools before hello."""
-    assert "mcp__plow__" not in ONBOARDING
+    # The relay tools may be NAMED, but only to forbid them: the discovery
+    # snapshot lives on this server and the Latch prompt otherwise sends every
+    # path-shaped read to the Mac.
+    for paragraph in ONBOARDING.split("\n\n"):
+        if "mcp__plow__" in paragraph or "plow_read_file" in paragraph:
+            flowed = " ".join(paragraph.split())
+            assert re.search(r"\b[Nn](ot|ever)\b", flowed), flowed
     assert "calendar-listing-<turn>" not in ONBOARDING
     commands = re.findall(r"^    python3 (.+)$", ONBOARDING, re.MULTILINE)
     # Not even the discovery script: its snapshot is read as a file now, so no
@@ -789,7 +795,7 @@ def test_the_snapshot_is_read_as_a_file_never_as_a_command():
     choices = ONBOARDING[ONBOARDING.index("### 5 ·"):]
     flowed = " ".join(choices.split())
     assert "/var/lib/hermes/ld/calendar-discovery.json" in flowed
-    assert "Read it as a file. Never through `execute_code`, `terminal`, or the script." in flowed
+    assert "not `execute_code`, not `terminal`, not the script" in flowed
     # The one surviving mention of the script says it is the operator's, not
     # this turn's -- it must not read as an instruction to run it.
     script = flowed[flowed.index("Running `calendar_discovery.py`"):]
@@ -797,6 +803,36 @@ def test_the_snapshot_is_read_as_a_file_never_as_a_command():
     # The intro's read is the one that was lost, so it names the file too.
     intro = ONBOARDING[:ONBOARDING.index("### 5 ·")]
     assert "/var/lib/hermes/ld/calendar-discovery.json" in " ".join(intro.split())
+
+
+def test_the_snapshot_read_names_the_local_tool_and_bars_the_relay():
+    """The Latch prompt tells the model the owner's world is on the Mac.
+
+    That standing instruction is right everywhere except this path: the
+    snapshot is written by a service on this server and does not exist on the
+    Mac. Observed: `mcp__plow__plow_read_file` answered not_found for it and
+    the turn sent an install link to a connected owner. So the sheet has to
+    name the local tool and bar the relay ones by name, in both places that
+    read it.
+    """
+    for where in (ONBOARDING[:ONBOARDING.index("### 5 ·")],
+                  ONBOARDING[ONBOARDING.index("### 5 ·"):]):
+        flowed = " ".join(where.split())
+        assert 'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")' in flowed
+        assert "never `plow_read_file`" in flowed or "Not `plow_read_file`" in flowed
+    choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "not any `plow_`/`mcp__plow__` tool" in choices
+    assert "not `execute_code`, not `terminal`, not the script" in choices
+
+
+def test_the_offer_is_verbatim_and_counted():
+    """Two observed ways an owner loses a calendar: a shortened name and a
+    dropped row. Both are message-side, so both are pinned in the sheet."""
+    choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
+    assert "its `display`, **verbatim**" in choices
+    assert "not shortened, not tidied, not retyped from memory" in choices
+    assert "**Count before you send.**" in choices
+    assert "The two numbers must match" in choices
 
 
 def test_the_sheet_and_the_service_agree_on_staleness():
