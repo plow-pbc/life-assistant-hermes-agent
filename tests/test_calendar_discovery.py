@@ -76,13 +76,16 @@ def test_background_discovery_needs_no_household_config_or_wall(tmp_path, monkey
 def test_failed_refresh_invalidates_prior_choices_without_leaking_output(
         tmp_path, monkeypatch, connected, result, capsys):
     cache = tmp_path / "choices.json"
+    request = tmp_path / "discovery.request"
     monkeypatch.setattr(discovery, "relay", lambda *args: accounts() if args[-1]["argv"] == ["plow-gog", "accounts"] else completed())
-    discovery.refresh(cache, now=1000)
+    discovery.refresh(cache, now=1000, request=request)
     monkeypatch.setattr(discovery, "relay", lambda *args: result)
-    discovery.refresh(cache, now=4600)
+    # Ready choices are only re-listed on request, so that is what fails here.
+    request.write_text("")
+    discovery.refresh(cache, now=4600, request=request)
     assert discovery.read_snapshot(cache, now=4601) == {
         "status": "pending", "checked_at": 4600, "attempts": 1,
-        "fresh_until": 4600 + discovery.MAX_AGE_SECONDS,
+        "fresh_until": 4600 + discovery.MAX_AGE_SECONDS, "requested": True,
         "retry_at": 4900, "reason": "Calendar discovery is temporarily unavailable."}
     assert "PRIVATE" not in cache.read_text() + capsys.readouterr().out
 
@@ -122,7 +125,9 @@ def test_queued_reader_does_not_wait_or_see_partial_refresh(tmp_path, monkeypatc
         return accounts() if args[-1]["argv"] == ["plow-gog", "accounts"] else completed(list(reversed(LISTING)))
 
     monkeypatch.setattr(discovery, "relay", slow_relay)
-    worker = threading.Thread(target=discovery.refresh, args=(cache,), kwargs={"now": 4600})
+    (tmp_path / "relist.request").write_text("")
+    worker = threading.Thread(target=discovery.refresh, args=(cache,),
+                              kwargs={"now": 4600, "request": tmp_path / "relist.request"})
     worker.start()
     try:
         assert started.wait(2)
@@ -237,12 +242,13 @@ def test_backoff_survives_restart_and_is_capped(tmp_path, monkeypatch, connected
         now = state["retry_at"]
 
 
-def test_ready_hourly_until_selected_then_only_on_request(
-        tmp_path, monkeypatch, connected):
-    """Onboarded households cost nothing on the timer, but can still change.
+def test_ready_choices_persist_until_something_asks(tmp_path, monkeypatch, connected):
+    """Nothing on a timer replaces a ready snapshot.
 
-    Hourly while choices are still needed; silent once calendars are selected;
-    one refresh -- and a fresh snapshot -- when the sheet asks for one.
+    An onboarded household costs no relay call, and -- the reason this matters
+    for correctness rather than cost -- the calendars an owner is answering
+    about are still the calendars on disk when they answer, however long they
+    take. Only an explicit request re-lists them.
     """
     cache = tmp_path / "choices.json"
     config = tmp_path / "config.json"
@@ -253,33 +259,30 @@ def test_ready_hourly_until_selected_then_only_on_request(
     def relay(*args):
         calls.append(args)
         if args[-1]["argv"] == ["plow-gog", "accounts"]:
-            return {"status": "completed", "accounts": [{"account": "a@example.test", "is_default": True}], "degraded": []}
+            return {"status": "completed", "accounts": [{"account": "a@example.test"}], "degraded": []}
         return completed()
     monkeypatch.setattr(discovery, "relay", relay)
     discovery.refresh(cache, now=1000, request=request)
-    discovery.refresh(cache, now=4599, request=request)
     assert len(calls) == 2
-    assert discovery.read_snapshot(cache, now=4599)["status"] == "ready"
-    discovery.refresh(cache, now=4600, request=request)
-    assert len(calls) == 4
+    first = cache.read_text()
 
-    # Selected: the timer stops calling the relay at all.
-    config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
-    for tick in range(8200, 30000, 300):
+    # Still choosing -- sources absent -- for 73 ticks, over six hours: silent.
+    for tick in range(1300, 1300 + 73 * 300, 300):
         discovery.refresh(cache, now=tick, request=request)
-    assert len(calls) == 4
-    assert discovery.read_snapshot(cache, now=30000)["status"] == "pending"
+    assert len(calls) == 2
+    assert cache.read_text() == first, "the offered list is byte-identical"
+    assert discovery.read_snapshot(cache, now=1_000_000)["status"] == "ready", \
+        "ready choices do not expire"
 
-    # "Change my calendars": one request, one refresh, choices again.
+    # "Show me my calendars again" -- one request, one refresh.
     request.write_text("")
-    discovery.refresh(cache, now=30000, request=request)
-    assert len(calls) == 6
+    discovery.refresh(cache, now=1_000_000, request=request)
+    assert len(calls) == 4
     assert not request.exists()
-    assert discovery.read_snapshot(cache, now=30001)["status"] == "ready"
 
-    # The request is spent; the timer goes quiet again.
-    discovery.refresh(cache, now=33700, request=request)
-    assert len(calls) == 6
+    # Spent: quiet again.
+    discovery.refresh(cache, now=2_000_000, request=request)
+    assert len(calls) == 4
 
 
 def test_a_requested_run_is_owed_until_it_lands(tmp_path, monkeypatch, connected):
@@ -392,18 +395,18 @@ def test_a_request_taken_during_backoff_is_written_down(tmp_path, monkeypatch, c
     assert json.loads(cache.read_text())["status"] == "ready"
 
 
-def test_a_snapshot_without_fresh_until_is_refreshed(tmp_path, monkeypatch, connected):
-    """An upgrade must not leave a connected owner reading as unknown.
+def test_a_ready_snapshot_without_an_offer_is_refreshed(tmp_path, monkeypatch, connected):
+    """An upgrade must not leave a connected owner with an unsendable list.
 
-    A snapshot written before `fresh_until` existed cannot be judged by the
-    reader, and stored sources would otherwise stop it ever being replaced.
+    A ready snapshot written before `offer` existed has nothing for the sheet
+    to send, and stored sources would otherwise stop it ever being replaced.
     """
     cache = tmp_path / "choices.json"
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"calendar": {"sources": [{"calendar_id": "shared"}]}}))
     monkeypatch.setattr(discovery, "CONFIG_FILE", str(config), raising=False)
     cache.write_text(json.dumps({"status": "ready", "accounts": [], "checked_at": 900,
-                                 "retry_at": 1_000_000}))
+                                 "fresh_until": 1_000_000}))
     calls = []
     def relay(*args):
         calls.append(args)
@@ -413,7 +416,7 @@ def test_a_snapshot_without_fresh_until_is_refreshed(tmp_path, monkeypatch, conn
     monkeypatch.setattr(discovery, "relay", relay)
     discovery.refresh(cache, now=1000, request=tmp_path / "absent.request")
     state = json.loads(cache.read_text())
-    assert state["fresh_until"] == 1000 + discovery.MAX_AGE_SECONDS
+    assert "offer" in state and "fresh_until" not in state
     assert discovery.read_snapshot(cache, now=1001)["status"] == "ready"
     # Replaced once, then the stored selection closes the gate again.
     before = len(calls)
@@ -526,14 +529,5 @@ def test_degraded_account_outcomes(tmp_path, monkeypatch, connected, healthy,
         for n, r in reported]
     # The relay's own wording never reaches the snapshot.
     assert "gog exited 1" not in cache.read_text() and "boom" not in cache.read_text()
-
-
-def test_ready_snapshot_outlives_its_own_refresh_cycle():
-    """A refresh landing a tick late must not read `pending` in between.
-
-    The service ticks every 300s, so a refresh due at READY_INTERVAL can land
-    up to two ticks after the previous one before anything is wrong.
-    """
-    assert discovery.MAX_AGE_SECONDS >= discovery.READY_INTERVAL + 2 * 300
 
 

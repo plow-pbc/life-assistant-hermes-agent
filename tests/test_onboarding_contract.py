@@ -829,10 +829,15 @@ def test_the_sheet_and_the_service_agree_on_staleness():
     source = (ROOT / "ld-setup" / "scripts" / "calendar_discovery.py").read_text()
     assert 'snapshot["fresh_until"] = now + MAX_AGE_SECONDS' in source
     flowed = " ".join(SKILL.split())
-    assert "`fresh_until` in the FUTURE -- use `status` as it stands" in flowed
-    assert "`fresh_until` in the past, no file, or anything unparseable -- UNKNOWN" in flowed
-    # A stopped state outranks the clock in both places.
-    assert "`status: needs_account` -- stopped, whatever its age" in flowed
+    # Ready choices have no clock at all -- nothing replaces them on a timer.
+    assert "Ready choices do NOT expire" in flowed
+    assert "`pending` while its `fresh_until` is in the future" in flowed
+    assert "`status: needs_account` -- stopped. Always honoured." in flowed
+    # ...and the service must not stamp an expiry on them either.
+    assert 'if snapshot["status"] != "ready":' in source
+    # A pick that does not match exactly one calendar is re-offered, not guessed.
+    assert "does not match exactly one `display`" in flowed
+    assert "Send the current `offer` again" in flowed
 
 
 def test_a_stored_setting_change_can_reach_the_skill():

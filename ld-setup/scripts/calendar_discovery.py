@@ -25,11 +25,10 @@ CACHE = Path("/var/lib/hermes/ld/calendar-discovery.json")
 # whole protocol: the service consumes it on its next tick, so nothing here
 # parses owner-writable content.
 REQUEST = Path("/var/lib/hermes/ld/calendar-discovery.request")
-# A ready snapshot must outlive its own refresh cycle: READY_INTERVAL plus the
-# service's 300s tick, twice, so a refresh landing a tick late never makes a
-# healthy tenant read `pending`. 3900 left exactly zero margin.
+# How long a snapshot that is NOT yet ready may be believed. Ready choices do
+# not expire at all -- nothing on a timer replaces them -- so this governs the
+# pending and pre-upgrade cases only.
 MAX_AGE_SECONDS = 4200
-READY_INTERVAL = 3600
 ARGV = ["plow-gog", "calendar", "calendars", "--json", "--results-only"]
 REFUSAL_REASON = "Choose a connected Google account before retrying discovery."
 
@@ -199,16 +198,22 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # owner has chosen calendars there is nothing left to discover on a timer.
     # Changing them is the one thing that still needs fresh choices, and it
     # arrives as a request rather than as an hourly poll of every tenant.
-    # A snapshot written before `fresh_until` existed cannot be judged by the
-    # reader, which would call a connected owner unknown and offer them the
-    # install link. One refresh replaces it, so treat it as due.
-    legacy = bool(previous) and "fresh_until" not in previous
+    # A ready snapshot written before `offer` existed cannot be sent by the
+    # sheet, which would leave a connected owner looking unknown and take the
+    # install-link branch. One refresh replaces it, so treat it as due.
+    legacy = previous.get("status") == "ready" and "offer" not in previous
     calendar = _load(CONFIG_FILE).get("calendar", {})
     if not (requested or legacy) and isinstance(calendar, dict) and "sources" in calendar:
         return
     # A stopped state is the operator's to clear, not a request's: the account
     # it names still needs resolving before another attempt can succeed.
     if previous.get("status") == "needs_account":
+        return
+    # Once choices are ready they stay put. A timer replacing them buys nothing
+    # -- nobody is waiting on a newer list -- and it costs the one guarantee the
+    # pick turn needs: that the calendars the owner is answering about are still
+    # the calendars on disk. Only an explicit request re-lists them.
+    if previous.get("status") == "ready" and not (requested or legacy):
         return
     retry_at = 0 if legacy else previous.get("retry_at", 0)
     if isinstance(retry_at, (int, float)) and now < retry_at:
@@ -224,7 +229,6 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
         if not credentials:
             raise FeedError("relay unavailable")
         snapshot = _discover(credentials)
-        snapshot["retry_at"] = now + READY_INTERVAL
     except NeedsAccount as exc:
         snapshot = {"status": "needs_account", "reason": str(exc)}
     except (FeedError, GatherError, OSError, ValueError):
@@ -241,10 +245,12 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     if (requested or legacy) and snapshot["status"] == "pending":
         snapshot["requested"] = True
     snapshot["checked_at"] = now
-    # The snapshot carries its own expiry so the reader never has to know the
-    # refresh cadence: chat reads this file directly, and comparing one
+    # Only a snapshot that is not yet ready carries an expiry, and it carries
+    # its own so the reader never has to know a cadence: comparing one
     # timestamp to now is a judgement a turn can make without arithmetic.
-    snapshot["fresh_until"] = now + MAX_AGE_SECONDS
+    # Ready choices do not expire -- they are replaced on request, or not.
+    if snapshot["status"] != "ready":
+        snapshot["fresh_until"] = now + MAX_AGE_SECONDS
     _store(path, snapshot)
 
 
@@ -259,11 +265,12 @@ def read_snapshot(path=CACHE, *, now=None):
         snapshot = _load(path)
         if snapshot.get("status") == "needs_account":
             return snapshot
-        if snapshot.get("status") == "ready" and not isinstance(snapshot.get("accounts"), list):
-            return {"status": "pending"}
+        if snapshot.get("status") == "ready":
+            # Ready choices do not expire; they are only replaced on request.
+            return snapshot if isinstance(snapshot.get("accounts"), list) else {"status": "pending"}
         # `fresh_until` is the only freshness authority, here and in the sheet.
         if ((time.time() if now is None else now) <= snapshot["fresh_until"]
-                and snapshot["status"] in ("ready", "pending")):
+                and snapshot["status"] == "pending"):
             return snapshot
     except (OSError, ValueError, KeyError, TypeError):
         pass

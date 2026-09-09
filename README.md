@@ -306,8 +306,9 @@ approving it.
 
 The separate calendar discovery service enumerates `plow-gog accounts` and
 lists choices under each authenticated account. It starts at boot, refreshes
-ready choices hourly, and stops when calendar selections are stored -- an
-onboarded household costs no relay call on a timer. Changing calendars later
+until it has choices, then stops -- ready choices are never replaced on a
+timer, so an onboarded household costs no relay call and an owner still
+choosing answers about the list they were shown. Changing calendars later
 asks for one run by touching `/var/lib/hermes/ld/calendar-discovery.request`,
 which the service consumes on its next tick. A listing that fails for one
 account is reported beside the accounts that answered, never instead of them.
