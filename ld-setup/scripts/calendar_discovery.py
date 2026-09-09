@@ -100,8 +100,9 @@ def _discover(credentials):
         except (FeedError, GatherError, ValueError):
             problems.append((account, False))
             continue
-        groups.append({**calendars,
-                       "is_default": entry.get("is_default") is True})
+        # No `is_default`: nothing consumed it, and a group flagged as the
+        # default invited the sheet to offer that account's calendars alone.
+        groups.append(calendars)
     if not groups:
         # Nothing to offer: a revoked token is the owner's to fix and stops
         # discovery, while anything else can come back on its own.
@@ -136,7 +137,13 @@ def _take_request(request):
 def refresh(path=CACHE, *, now=None, request=REQUEST):
     """Refresh only when due; persist scheduling across process restarts."""
     now = time.time() if now is None else now
-    requested = _take_request(request)
+    previous = _load(path)
+    # A request outlives the tick that took it. One transient failure on a
+    # requested run would otherwise strand the owner: the retry is due, but the
+    # selection gate below sends the tick home before it can happen, and the
+    # request file is already spent. So the run stays owed until it succeeds or
+    # stops, and only then is the selection gate allowed to close again.
+    requested = _take_request(request) or previous.get("requested") is True
     # An onboarded household costs no relay call and no audit entry: once the
     # owner has chosen calendars there is nothing left to discover on a timer.
     # Changing them is the one thing that still needs fresh choices, and it
@@ -144,13 +151,12 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     calendar = _load(CONFIG_FILE).get("calendar", {})
     if not requested and isinstance(calendar, dict) and "sources" in calendar:
         return
-    previous = _load(path)
     # A stopped state is the operator's to clear, not a request's: the account
     # it names still needs resolving before another attempt can succeed.
     if previous.get("status") == "needs_account":
         return
     retry_at = previous.get("retry_at", 0)
-    if not requested and isinstance(retry_at, (int, float)) and now < retry_at:
+    if isinstance(retry_at, (int, float)) and now < retry_at:
         return
     credentials, _ = relay_config()
     try:
@@ -166,6 +172,10 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
         snapshot = {"status": "pending", "attempts": attempts,
                     "reason": "Calendar discovery is temporarily unavailable.",
                     "retry_at": now + min(300 * 2 ** (attempts - 1), 3600)}
+    # An owed request is carried on the snapshot until the run it asked for
+    # actually lands; backing off is not landing.
+    if requested and snapshot["status"] == "pending":
+        snapshot["requested"] = True
     snapshot["checked_at"] = now
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

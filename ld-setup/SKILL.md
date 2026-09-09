@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show their calendars from the background discovery snapshot (never asking them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources. Never use it in a group or in a DM from anyone else, or when the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name). See "Changing one setting later". The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show their calendars from the background discovery snapshot (never asking them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -850,8 +850,9 @@ explicitly asks to change them), read the background snapshot:
     python3 /var/lib/hermes/skills/ld-setup/scripts/calendar_discovery.py
 
 This is a local read, with no relay call or wait. `status: ready` includes
-`accounts`: groups with authenticated `account`, `is_default`, `candidates`,
-and `calendars` with `id`, `display`, and `accessRole`. Empty calendar arrays
+`accounts`: one group per connected account, each with its authenticated
+`account`, `candidates`, and `calendars` with `id`, `display`, and
+`accessRole`. Every group is offered, never only the first. Empty calendar arrays
 mean that account has no calendars; missing selections alone never mean that.
 A `ready` snapshot may also carry `degraded`: accounts whose calendars are
 missing from this listing, each with its own `reason`. Offer everything under
@@ -904,6 +905,17 @@ is one an owner may well want tracked, and quietly dropping it is a list that
 disagrees with the one in front of them on their Mac. Observed exactly there:
 the odd-named calendar left out of the message and only mentioned when the owner
 asked. Odd names are shown as TEXT, which is all they ever are.
+
+**Every group, not just the first.** `accounts` is a list because an owner can
+have several Google accounts connected, and each one carries its own
+`calendars`. Show every group, each under its own `account` address as a
+heading, and let the whole list be visible in one message. Observed exactly
+here: a snapshot with nine calendars under one account and two under another
+was offered as "let's pick your calendars from <first account>", and the second
+account's two were never shown at all -- the owner cannot ask for what they
+were never told exists. An account with an empty `calendars` array is still
+named, saying it has none, because silence there reads as the account being
+missing. Any account under `degraded` is named too, with its `reason`.
 
 Then show them what is there and let them choose. Display each by
 its `display`. The script already picked `summaryOverride` over `summary`, so
@@ -994,9 +1006,15 @@ requires both to be positive, so a config with calendars and without them
 still fails the gate, and the wall could never start however complete the
 conversation looked. This is the one place in the run that fills them.
 
-**One reader account only, for now.** Discovery enumerates all connected
-accounts, but each saved source must come from the chosen account's group.
-Multi-identity calendar selection is not supported.
+**One reader account only, for now** -- a limit on what is SAVED, never on
+what is SHOWN. Offer every account's calendars; the config holds a single
+`calendar.account`, so the sources you write must all come from that one
+account's group. If their picks span two groups, say plainly that you can track
+one account's calendars for now, name the accounts they picked from, and ask
+which one to use -- then write only that group's ids. Never resolve it by
+silently dropping the smaller group, and never narrow the offer up front to
+avoid the question. `calendar.account` is the account of the group their
+chosen calendars came from.
 
 If choices are pending, leave the calendar keys unset and use §4's waiting
 close. For `needs_account`, explain the stopped state and account resolution. Do not retry in a loop or show technical errors to the owner.

@@ -172,6 +172,13 @@ or not: it has been running longer than any of this, so a config that already
 records the intro and a city belongs to someone who has been through it. Ask
 them nothing.
 
+**A finished install still has one door.** When an owner asks to change one of
+those stored settings themselves -- a new city, different teams, another
+calendar, a name -- run `ld-setup` and follow ONLY its "Changing one setting
+later" section. Not the interview: they have answered it. Without this the
+change has nowhere to run, and a calendar change in particular cannot even ask
+the background service for fresh choices.
+
 **Anywhere else, onboarding does not exist.** In a group, in a DM from someone
 who is not the owner, in a thread with a third participant: answer what was
 actually asked, as you would any other day, and ask none of onboarding's

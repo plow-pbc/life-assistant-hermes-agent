@@ -776,6 +776,41 @@ def test_onboarding_has_no_foreground_calendar_transport_or_staging():
                    for command in commands)
 
 
+def test_a_stored_setting_change_can_reach_the_skill():
+    """The change flow has to be reachable, or the request file is never made.
+
+    SOUL.md sent a finished install home ("ask them nothing") while the sheet's
+    own description forbade the skill for exactly that case, so "Changing one
+    setting later" -- and the calendar refresh request inside it -- could not
+    run at all.
+    """
+    soul = " ".join(SOUL.split())
+    assert "run `ld-setup` and follow ONLY its \"Changing one setting later\" section" in soul
+    description = " ".join(SKILL.split("---", 2)[1].split())
+    assert "this skill is still the right one" in description
+    assert "never the interview" in description
+
+
+def test_every_account_group_is_offered_not_just_the_first():
+    """A second connected account's calendars must reach the owner.
+
+    Observed: a snapshot of 9 calendars under one account and 2 under another
+    was offered as one account's list, and the second account's two were never
+    shown. The sheet has to say "every group" where the offer is written, and
+    the one-account limit has to sit on the write, not on the offer.
+    """
+    choices = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    assert "**Every group, not just the first.**" in choices
+    flowed = " ".join(choices.split())
+    assert "Show every group, each under its own `account` address as a heading" in flowed
+    assert "a limit on what is SAVED, never on what is SHOWN" in flowed
+    assert "never narrow the offer up front" in flowed
+    # The limit must be stated after the offer, so it cannot be read as a
+    # narrowing instruction before the owner has seen the choices.
+    assert choices.index("**Every group, not just the first.**") < choices.index(
+        "**One reader account only, for now**")
+
+
 def test_intro_reads_snapshot_before_download_decision():
     assert "During the intro, read §5's local snapshot once" in ONBOARDING
     assert "fresh `ready` snapshot" in ONBOARDING
