@@ -164,11 +164,12 @@ missing from it:
 - `weather.location`
 - `sports.followed` — present and empty counts as answered; "none" is a real
   answer
-- `calendar.sources` — this one stays missing until Latch is connected, which
-  is what keeps a Mac set up next week reachable at all
+- `calendar.sources` — absent or empty is unanswered; only a non-empty list
+  of selected calendars counts as answered
 
-All four present is a finished install, whether this agent has met them before
-or not: it has been running longer than any of this, so a config that already
+All four answered, including a non-empty `calendar.sources` list, is a finished
+install, whether this agent has met them before or not: it has been running
+longer than any of this, so a config that already
 records the intro and a city belongs to someone who has been through it. Ask
 them nothing.
 

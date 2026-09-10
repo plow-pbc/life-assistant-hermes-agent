@@ -74,6 +74,29 @@ def test_background_discovery_needs_no_household_config_or_wall(tmp_path, monkey
     assert list(cache.parent.iterdir()) == [cache]
 
 
+@pytest.mark.parametrize("sources,expected_calls", [([], 2), ([{"calendar_id": "shared"}], 0)])
+@pytest.mark.parametrize("pending", [False, True])
+def test_only_nonempty_selections_stop_background_discovery(
+        tmp_path, monkeypatch, connected, sources, expected_calls, pending):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"calendar": {"sources": sources}}))
+    monkeypatch.setattr(discovery, "CONFIG_FILE", str(config))
+    cache = tmp_path / "choices.json"
+    if pending:
+        cache.write_text(json.dumps({"status": "pending", "retry_at": 900}))
+    calls = []
+
+    def relay(*args):
+        calls.append(args)
+        return accounts() if args[-1]["argv"] == ["plow-gog", "accounts"] else completed()
+
+    monkeypatch.setattr(discovery, "relay", relay)
+    discovery.refresh(cache, now=1000, request=tmp_path / "discovery.request")
+    assert len(calls) == expected_calls
+    if not sources:
+        assert discovery.read_snapshot(cache, now=1001)["status"] == "ready"
+
+
 @pytest.mark.parametrize("result", [
     {"status": "completed", "exit_code": 1, "output": "PRIVATE ERROR"},
     {"status": "denied"},
@@ -562,5 +585,4 @@ def test_degraded_account_outcomes(tmp_path, monkeypatch, connected, healthy,
         for n, r in reported]
     # The relay's own wording never reaches the snapshot.
     assert "gog exited 1" not in cache.read_text() and "boom" not in cache.read_text()
-
 

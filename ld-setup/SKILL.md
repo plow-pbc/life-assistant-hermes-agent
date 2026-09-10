@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show their calendars from the background discovery snapshot (never asking them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -25,15 +25,17 @@ owner who never wants a screen gets the first and never the second.
 This is a conversation, not a form. **`/var/lib/hermes/ld/config.json` is the only
 record of how far it got.** Read it first, every time, and continue from the
 first key missing: `family.owner.introduced`, `weather.location`,
-`sports.followed`, `calendar.sources`. The test for each is whether the KEY is
-there. A
+`sports.followed`, `calendar.sources`. Calendar selections are answered only by
+a non-empty list; absent or empty `calendar.sources` is unanswered everywhere
+in this skill, including download decisions and completion. For the other
+keys, the test is whether the KEY is there. A
 present-but-empty `sports.followed` is answered, not unasked. "None" is a
 real answer and drafting `[]` is how it is recorded.
 
 Name and city alone are NOT "done". An owner who gave both and then stopped is
 resumed at teams, not congratulated. There is no marker, so nothing but the
 config can say this finished, and it says so only when all four keys are
-there.
+answered.
 
 It runs only where that conversation belongs: **a solo one-to-one DM with the owner.** Three things
 have to be true of the turn before any of this starts, and the chat platform
@@ -76,7 +78,7 @@ retries transient failures with backoff from five minutes up to one hour, and
 stops at `ready` or `needs_account`. Ready choices stay fixed until a refresh
 request; the calendar event feed runs separately every five minutes.
 
-After the intro, while `calendar.sources` is absent, read the local snapshot
+After the intro, while `calendar.sources` is absent or empty, read the local snapshot
 at most once per turn using §5's reader. Never ask whether they installed
 Latch or run discovery yourself. Continue city and teams without waiting.
 A missing or stale snapshot is not proof of disconnection. `needs_account`
@@ -107,7 +109,7 @@ Put owner-facing copy only in sequence text items or the final response,
 including when falling back. Never narrate reads, writes or receipt checks.
 
 **Use `plow_send_sequence` when it is in your available tools.** It sends the
-whole intro to this turn's owner DM in one call. The only argument is `items`,
+opener or the whole intro to this turn's owner DM in one call. The only argument is `items`,
 an ordered list of text (`type`, `body`), photos (`type`, `asset_ids`), and
 pause (`type`, `seconds`) objects. No destination and no file paths. Use the
 four fixed asset IDs below. The tool validates the whole request before sending.
@@ -117,11 +119,22 @@ photos and another after the download link replace that ordinary gap; do not
 add pauses between the other bubbles. Keep all the beats and the next question
 in the SAME call. Do all reads and bookkeeping silently before it.
 
-**The sequence call is the LAST tool call of a successful intro turn.** Finish
+**The sequence call is the LAST tool call of a successful opener or intro turn.** Finish
 reads, account writes and drafts first. On `success: true`, return exactly
 `NO_REPLY`: no further tools, memory writes, commentary or acknowledgement.
 Intermediate assistant text also reaches the owner; final silence cannot
 retract it. The config is the only persistent onboarding progress record.
+
+**Match the receipt to the sequence's actual items, not merely its success.**
+The opener asks the name and optionally the referrer question; the intro has
+its own gist, app, privacy, previews and remaining beats. These are different
+deliveries even though both use the same tool. Only a complete intro can make
+`family.owner.introduced` true, with step 4's deferral. An opener never can.
+
+| sequence | evidence of delivered intro | ordinary fallback |
+|---|---|---|
+| opener (§1) | no | same opener text; no attachments |
+| intro (§2) | only when every intro beat is confirmed | same intro text plus four `MEDIA:` previews |
 
 **Read the receipt before doing anything else.** `completed` records delivered
 item indices and message IDs. `failure` names the first unresolved index and
@@ -131,7 +144,7 @@ its status. It can also include confirmed photo message IDs and an unresolved
 | receipt | next delivery |
 |---|---|
 | `success: true` | Finish immediately with `NO_REPLY`, as above. |
-| `rejected` with `completed: []` and no confirmed message IDs | Nothing was sent. Deliver the ordinary text plus four `MEDIA:` previews below this turn. |
+| `rejected` with `completed: []` and no confirmed message IDs | Nothing was sent. Use the matching fallback above: opener text only, or intro text plus four `MEDIA:` previews. |
 | `failed` or `delivery_unknown`, or any confirmed delivery | Check chat history against the receipt before sending remaining items; if still uncertain, finish with `NO_REPLY`. |
 
 A pre-send rejection, including an unusable manifest, uses the fallback;
@@ -141,8 +154,9 @@ beats, including on later turns when the introduced flag is absent.
 Never show receipts, JSON, tool names or errors to the owner.
 
 **Ordinary fallback, for an absent tool or a pre-send `rejected` receipt:**
-Send the same intro copy and first unanswered question in one final-response
-bubble, followed by §2's four `MEDIA:` previews. No timed pauses. Introduce
+For the opener, send only its same text in one ordinary message, with no
+attachments. For the intro, send its same copy and first unanswered question
+in one final-response bubble, followed by §2's four `MEDIA:` previews. No timed pauses. Introduce
 previews as below, since attachments follow the whole text. Never emit JSON,
 search for an absent tool, or use fallback to replay uncertain delivery.
 
@@ -218,7 +232,7 @@ Reuse this read throughout the turn. Never contact the relay or wait.
 
 **2 · Check what was delivered.** Use supplied history and the sequence
 receipt to check which beats already went out. Reuse step 1's intro snapshot;
-on later turns with sources absent, use §5's local reader. Never wait.
+on later turns with sources absent or empty, use §5's local reader. Never wait.
 
 **A queued follow-up is an answer to what the owner had seen when they sent
 it.** It may have arrived while the intro was still typing, before the city
@@ -229,11 +243,13 @@ still counts even if its question had not landed. If ambiguous, acknowledge it
 and ask the first unanswered question in plain words. Do not infer an answer
 from the question that happens to be last in history now.
 
-A queued reply does not restart the intro. A successful sequence receipt or
-its complete delivered history establishes delivery even when the introduced
-flag was deferred. Draft that flag with any new answers and continue. If the
-sequence was partial or its delivery is uncertain, use the receipt rules above;
-never mark an incomplete intro delivered or replay confirmed bubbles.
+A queued reply never turns an opener receipt into evidence of a delivered
+intro. If the owner answers the name question during the opener, settle their
+name and send the intro; do not draft `family.owner.introduced` from the opener.
+Only a receipt confirming all intro beats, or the complete delivered intro in
+history, establishes that deferred flag. Draft it with new answers on the
+following turn. If the intro was partial or uncertain, use the receipt rules;
+never mark it complete or replay confirmed bubbles.
 
 **3 · Take what this message gave you.** Their name, their city, their teams,
 their calendar picks, whatever actually arrived, judged from what they typed
@@ -458,9 +474,9 @@ connected Latch, and follow it with the first unanswered question in the same
 item: “Want to knock out a few quick things so I can tailor this to you? First
 up, what city are you in?” It is one item in the sequence call.
 
-**If `calendar.sources` is already in the config, or the snapshot is fresh and ready, or the owner already said
+**If `calendar.sources` is a non-empty list, or the snapshot is fresh and ready, or the owner already said
 Latch is connected, omit the catch, link and its pause.** `calendar.sources` is
-only ever written from a real calendar snapshot, so its presence is standing
+only answered by picks from a real calendar snapshot, so a non-empty list is standing
 proof Latch is connected. Otherwise phrase the catch conditionally: “If you have
 not connected Latch yet, grab it below and connect your calendar.” Do not claim
 to have checked. Keep the photo pause and the rest of the intro. Never delay the
@@ -505,7 +521,7 @@ reads as one who forgot they had already met.
 not the intro turn, but it still sends more than one bubble, so use the same
 sequence tool §2 uses: bubble 1 is one `text` item, and when this owner was
 referred, bubble 2 is a second `text` item. With no referrer, the opener is
-just bubble 1, a single `text` item. If the sequence tool is absent, fall back
+just bubble 1, a single `text` item. If the sequence tool is absent or rejected before any delivery, fall back
 to one ordinary message carrying the same lines. No attachment.
 
 **Bubble 1: a warm hello, then the name question.** One warm line that they
@@ -641,8 +657,7 @@ then two ordinary errands (grocery, then the Amazon shopping one), then the
 medical one. Small and everyday first, trusted with more by the last. "Want to
 see the kind of thing I mean?" is a question you do not wait for an answer to.
 
-**Bubble: the conditional catch, then the link.** Unless `calendar.sources` is
-already in the config, the snapshot is fresh and ready, or the owner already
+**Bubble: the conditional catch, then the link.** Unless `calendar.sources` is a non-empty list, the snapshot is fresh and ready, or the owner already
 said Latch is connected, offer it
 without asserting it is missing: “If you have
 not connected Latch yet, grab it below and connect your calendar. Happy to help
@@ -652,11 +667,10 @@ alone so the phone renders its preview:
     https://plow.co/latch
 
 Nothing shares that URL bubble. Follow it with the four-second pause, then
-the soft check-in and first unanswered question. If `calendar.sources` is
-already stored, the snapshot is fresh and ready, or the owner said it is
+the soft check-in and first unanswered question. If `calendar.sources` is a non-empty list, the snapshot is fresh and ready, or the owner said it is
 connected, omit this catch, link and pause. Use only the one local snapshot
 read during the intro; never a relay probe. `calendar.sources` is only ever
-written from a real calendar snapshot, so its presence is standing proof Latch
+answered by picks from a real calendar snapshot, so a non-empty list is standing proof Latch
 is connected.
 
 All of these bubbles go on the one turn the name is learned, in order, and the
@@ -763,8 +777,8 @@ onboarding needs. Whether the teams answer finishes the conversation is step
 5's to say and not this section's: after saving sports, read §5's local snapshot before choosing
 the calendar question or waiting close (reuse this turn's read if already done).
 Missing selections do not mean missing calendars. With `calendar.sources`
-absent and ready choices, show the calendars immediately as the next question. If choices are not
-ready, use §4's waiting close. With calendars stored and all other keys present,
+absent or empty and ready choices, show the calendars immediately as the next question. If choices are not
+ready, use §4's waiting close. With non-empty calendar selections and all other keys present,
 use §4's completed close.
 
 Do not ask for their email, their calendars, or their Mac username. Those
@@ -788,7 +802,7 @@ have already connected Latch, text me again later.” Offer the install
 link only if it has not already gone out or their message warrants the one
 later nudge. Never wait, poll, or fetch calendars in this turn.
 
-If instead the calendars are already connected and stored, there is nothing left
+If instead the stored calendar selections are non-empty, there is nothing left
 to finish, so tell them they are set and offer the wall as the optional extra it
 is. If they want a physical display in the kitchen, the build is at
 `https://github.com/plow-pbc/life-dashboard`. They set the Pi up and send back
@@ -803,7 +817,7 @@ and never gets it, and that is a finished install.
 ### 5 · Calendars, once Latch is connected
 
 **The model only shows choices and records the owner's picks.** On a turn
-after the intro was delivered, while `calendar.sources` is absent (or the owner
+after the intro was delivered, while `calendar.sources` is absent or empty (or the owner
 explicitly asks to change them), read the background snapshot with the
 `read_file` tool:
 
@@ -844,7 +858,7 @@ hour). It stays queued until that run lands. Tell them you are fetching their
 calendars without promising a time; read on a later turn and accept fresh
 choices only when `checked_at` changes. A stopped `needs_account` snapshot
 requires account resolution and operator clearing; a request stays queued.
-While selections are absent, request only if the owner asks to see calendars
+While selections are absent or empty, request only if the owner asks to see calendars
 again or retry a degraded account, never just because you are waiting.
 
 Beyond that request file, never run discovery or a status probe, fetch or stage
@@ -900,7 +914,7 @@ the snapshot in this turn.
 
 **Nothing is written until that answer lands**, and then account and sources
 go in the SAME draft. A draft carrying sources and no account leaves
-`calendar.sources` present, so this section never runs again, and
+`calendar.sources` non-empty, so this section never runs again, and
 `calendar.account` missing, which the gate refuses forever: a household that
 looks set up and whose wall can never start.
 

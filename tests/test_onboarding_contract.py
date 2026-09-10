@@ -299,6 +299,33 @@ def test_a_rejected_sequence_uses_media_fallback_without_replaying_partial_deliv
         assert "`MEDIA:`" not in action, "uncertain delivery cannot blindly use the intro fallback"
 
 
+def test_sequence_progress_and_fallback_are_scoped_to_the_sent_beats():
+    transport = SKILL.split("## How a turn actually sends things", 1)[1].split("## The algorithm,", 1)[0]
+    rows = [line.split("|")[1:-1] for line in transport.splitlines()
+            if line.startswith("| opener ") or line.startswith("| intro ")]
+    kinds = {cells[0].strip(): [cell.strip() for cell in cells[1:]] for cells in rows}
+    assert set(kinds) == {"opener (§1)", "intro (§2)"}
+    assert kinds["opener (§1)"][0] == "no"
+    assert "`MEDIA:`" not in kinds["opener (§1)"][1]
+    assert "no attachments" in kinds["opener (§1)"][1]
+    assert kinds["intro (§2)"][0] == "only when every intro beat is confirmed"
+    assert "`MEDIA:`" in kinds["intro (§2)"][1]
+    queued = " ".join(ALGORITHM.split("A queued reply", 1)[1].split("**3 ·", 1)[0].split())
+    assert "opener receipt" in queued and "never" in queued
+
+
+def test_empty_calendar_selections_do_not_skip_onboarding_or_download():
+    description = SKILL.split("---", 2)[1]
+    assert "empty calendar.sources" in description
+    assert "non-empty" in SOUL.split("- `calendar.sources`", 1)[1].split("**A finished install", 1)[0]
+    intro = " ".join(SKILL.split("## The intro,", 1)[1].split("### 1 ·", 1)[0].split())
+    assert "`calendar.sources` is a non-empty list" in intro
+    catch = " ".join(SKILL.split("**Bubble: the conditional catch", 1)[1].split("All of these bubbles", 1)[0].split())
+    assert "`calendar.sources` is a non-empty list" in catch
+    choices = " ".join(SKILL.split("### 5 ·", 1)[1].split("read the background snapshot", 1)[0].split())
+    assert "absent or empty" in choices
+
+
 def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
     """Missing-tool fallback sends the same previews via ordinary MEDIA."""
     manifest = json.loads((ROOT / "docs/onboarding-v2/assets/manifest.json").read_text())
@@ -381,7 +408,7 @@ def test_the_config_alone_says_whether_to_onboard():
                   "`sports.followed`", "`calendar.sources`"):
         assert field in TRIGGER, f"{field} is not part of the condition"
     assert "present and empty counts as answered" in TRIGGER
-    assert "stays missing until Latch is connected" in TRIGGER
+    assert "absent or empty is unanswered" in TRIGGER
     assert "onboarding-complete" not in SOUL and "onboarding-complete" not in SKILL, \
         "the marker is back as a second authority"
 

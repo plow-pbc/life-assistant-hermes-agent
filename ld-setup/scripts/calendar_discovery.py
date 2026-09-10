@@ -264,7 +264,8 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # Changing them is the one thing that still needs fresh choices, and it
     # arrives as a request rather than as an hourly poll of every tenant.
     calendar = _load(CONFIG_FILE).get("calendar", {})
-    if not requested and isinstance(calendar, dict) and "sources" in calendar:
+    sources = calendar.get("sources") if isinstance(calendar, dict) else None
+    if not requested and isinstance(sources, list) and sources:
         return
     # A stopped state is the operator's to clear, not a request's: the account
     # it names still needs resolving before another attempt can succeed.
