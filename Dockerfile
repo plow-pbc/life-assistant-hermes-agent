@@ -15,8 +15,7 @@ FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-b43963d8167730fe0a3067371c0e
 # COPYed to /var/lib/hermes/SOUL.md, which is overwritten at boot. The base
 # carries the voice, no-fabrication, disclosure and untrusted-content rules this
 # file used to restate, so a FROM bump that drops them drops them here too.
-COPY runtime/persona.md /opt/hermes/plow-seed/persona.md
-RUN chmod 0644 /opt/hermes/plow-seed/persona.md
+COPY --chmod=0644 runtime/persona.md /opt/hermes/plow-seed/persona.md
 COPY LICENSE NOTICE /usr/share/doc/life-assistant/
 
 # Shipped at /opt/hermes/skills, outside every home, so a bind-mounted home

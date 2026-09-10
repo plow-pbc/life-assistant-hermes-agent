@@ -142,7 +142,7 @@ def test_producer_copy_and_persona_destination_are_not_merged_away():
     """
     dockerfile = (ROOT / "Dockerfile").read_text()
     assert "COPY ld-shared/ /opt/plow/ld-shared/" in dockerfile
-    assert "COPY runtime/persona.md /opt/hermes/plow-seed/persona.md" in dockerfile
+    assert "COPY --chmod=0644 runtime/persona.md /opt/hermes/plow-seed/persona.md" in dockerfile
     assert not [line for line in dockerfile.splitlines()
                 if line.startswith("COPY") and "/var/lib/hermes/SOUL.md" in line]
 
