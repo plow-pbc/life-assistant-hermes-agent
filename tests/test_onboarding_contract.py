@@ -27,12 +27,12 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILL = (ROOT / "ld-setup" / "SKILL.md").read_text()
 WALL = (ROOT / "ld-wall-setup" / "SKILL.md").read_text()
 TRIAGE = (ROOT / "ld-morning-triage" / "SKILL.md").read_text()
-SOUL = (ROOT / "runtime" / "SOUL.md").read_text()
+PERSONA = (ROOT / "runtime" / "persona.md").read_text()
 DOCKERFILE = (ROOT / "Dockerfile").read_text()
 # The whole sheet is onboarding now: the wall moved to its own skill, and the
 # section boundary that used to separate them is the file boundary.
 ONBOARDING = SKILL[SKILL.index("## Onboarding"):]
-TRIGGER = " ".join(SOUL[SOUL.index("# First run"):SOUL.index("# The wall")].split())
+TRIGGER = " ".join(PERSONA[PERSONA.index("# First run"):PERSONA.index("# The wall")].split())
 
 WALL_MARKER = "/var/lib/hermes/ld/setup-complete"
 # The tool as the image REGISTERS it. An MCP tool carries its server's key as a
@@ -322,7 +322,7 @@ def test_sequence_progress_and_fallback_are_scoped_to_the_sent_beats():
 def test_empty_calendar_selections_do_not_skip_onboarding_or_download():
     description = SKILL.split("---", 2)[1]
     assert "empty calendar.sources" in description
-    assert "non-empty" in SOUL.split("- `calendar.sources`", 1)[1].split("**A finished install", 1)[0]
+    assert "non-empty" in PERSONA.split("- `calendar.sources`", 1)[1].split("**A finished install", 1)[0]
     intro = " ".join(SKILL.split("## The intro,", 1)[1].split("### 1 ·", 1)[0].split())
     assert "`calendar.sources` is a non-empty list" in intro
     catch = " ".join(SKILL.split("**Bubble: the conditional catch", 1)[1].split("All of these bubbles", 1)[0].split())
@@ -351,7 +351,7 @@ def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
 
 
 @pytest.mark.parametrize("where,text", [
-    ("SOUL.md", TRIGGER),
+    ("persona.md", TRIGGER),
     # The frontmatter decides whether the sheet is loaded at all.
     ("the frontmatter", " ".join(SKILL.split("---", 2)[1].split())),
     # The section's opening is what is read once it has been.
@@ -379,8 +379,8 @@ def test_silence_names_the_token_the_gateway_recognises():
     (gateway/response_filters.py, LIVE_GATEWAY_SILENT_MARKERS); prose that
     merely mentions the marker is explicitly not silence.
     """
-    soul = " ".join(SOUL.split())
-    assert "Say `NO_REPLY` and nothing else" in soul
+    persona = " ".join(PERSONA.split())
+    assert "Say `NO_REPLY` and nothing else" in persona
     transport = SKILL.split("## How a turn actually sends things", 1)[1].split("## The algorithm,", 1)[0]
     assert "`NO_REPLY`" in transport
     assert "LAST tool call" in transport
@@ -414,12 +414,12 @@ def test_the_config_alone_says_whether_to_onboard():
         assert field in TRIGGER, f"{field} is not part of the condition"
     assert "present and empty counts as answered" in TRIGGER
     assert "absent or empty is unanswered" in TRIGGER
-    assert "onboarding-complete" not in SOUL and "onboarding-complete" not in SKILL, \
+    assert "onboarding-complete" not in PERSONA and "onboarding-complete" not in SKILL, \
         "the marker is back as a second authority"
 
 
 def test_first_owner_turn_batches_inputs_before_sequence_delivery():
-    entry = SOUL.split("# First run", 1)[1].split("**A finished install", 1)[0]
+    entry = PERSONA.split("# First run", 1)[1].split("**A finished install", 1)[0]
     rows = [line.split("|")[1:-1] for line in entry.splitlines()
             if line.startswith("| 1 ·") or line.startswith("| 2 ·")]
     assert len(rows) == 2
@@ -499,7 +499,7 @@ def test_the_keys_are_asked_in_one_order_everywhere():
     assert positions == sorted(positions), "step 1 lists the keys out of order"
     step5 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[4]):].split())
     assert "name → city → teams → calendars" in step5
-    # SOUL.md's trigger and the frontmatter must agree with that same set.
+    # persona.md's trigger and the frontmatter must agree with that same set.
     for key in order:
         assert f"`{key}`" in TRIGGER
 
@@ -916,13 +916,13 @@ def test_the_sheet_and_the_service_agree_on_staleness():
 def test_a_stored_setting_change_can_reach_the_skill():
     """The change flow has to be reachable, or the request file is never made.
 
-    SOUL.md sent a finished install home ("ask them nothing") while the sheet's
+    persona.md sent a finished install home ("ask them nothing") while the sheet's
     own description forbade the skill for exactly that case, so "Changing one
     setting later" -- and the calendar refresh request inside it -- could not
     run at all.
     """
-    soul = " ".join(SOUL.split())
-    assert "run `ld-setup` and follow ONLY its \"Changing one setting later\" section" in soul
+    persona = " ".join(PERSONA.split())
+    assert "run `ld-setup` and follow ONLY its \"Changing one setting later\" section" in persona
     description = " ".join(SKILL.split("---", 2)[1].split())
     assert "this skill is still the right one" in description
     assert "never the interview" in description

@@ -10,9 +10,13 @@
 # tag would substitute code underneath them.
 FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-b43963d8167730fe0a3067371c0ebe3c572d26a4@sha256:06d35308979dfdd4a8b1e2ff6d995388df1ea90bc40d5f04a42f452fcbff74f5
 
-# This replaces the base's own SOUL.md; first boot re-asserts root ownership
-# on that file, which is what the trailing chmod answers.
-COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
+# Identity: only what is specific to this agent. plow-init writes the home's
+# SOUL.md on every boot as the base persona followed by this file; nothing is
+# COPYed to /var/lib/hermes/SOUL.md, which is overwritten at boot. The base
+# carries the voice, no-fabrication, disclosure and untrusted-content rules this
+# file used to restate, so a FROM bump that drops them drops them here too.
+COPY runtime/persona.md /opt/hermes/plow-seed/persona.md
+RUN chmod 0644 /opt/hermes/plow-seed/persona.md
 COPY LICENSE NOTICE /usr/share/doc/life-assistant/
 
 # Shipped at /opt/hermes/skills, outside every home, so a bind-mounted home
@@ -39,8 +43,7 @@ COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 # This root stays root-owned always; only its reconciled home copy is agent-owned.
 RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
- && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
- && chmod 0644 /var/lib/hermes/SOUL.md
+ && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} +
 
 # The unattended producer's own copy, outside every home and out of the agent's
 # reach.
@@ -107,5 +110,5 @@ RUN chmod 0755 /srv/plow-assets && chmod 0644 /srv/plow-assets/*
 
 # The instance directory the producers read and ld-setup writes. Nothing exists
 # before first boot, so the image creates it empty: an unset-up agent is routed
-# to ld-setup by SOUL.md.
+# to ld-setup by persona.md.
 RUN install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld
