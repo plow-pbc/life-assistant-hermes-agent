@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-cd2a898d673812621bae6764560e455807e9818e@sha256:bfd4980f361a551e62569f8c2eb717c1076d0b8be3a0499b869eaece151336a4
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-b43963d8167730fe0a3067371c0ebe3c572d26a4@sha256:06d35308979dfdd4a8b1e2ff6d995388df1ea90bc40d5f04a42f452fcbff74f5
 
 # This replaces the base's own SOUL.md; first boot re-asserts root ownership
 # on that file, which is what the trailing chmod answers.
