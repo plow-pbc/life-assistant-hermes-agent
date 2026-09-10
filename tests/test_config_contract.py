@@ -427,13 +427,20 @@ CONTRACTS = [
     # claim it as work it did.
     (SOUL, "It refreshes whether or not you"),
     (SOUL, "not yours to claim you refreshed"),
-    # No mail connector is installed. The owner's Gmail is read only where a
-    # producer's sheet says so (the triage, through Latch's plow-gog), so an
-    # open offer to search their inbox is one nothing here can keep -- while
-    # the assistant's own public mailbox stays reachable by asking
-    # (ld-email-inbox), and a prompt denying it would make that unreachable.
-    (SOUL, "Never advertise smart-home control, documents, spreadsheets, or"),
-    (SOUL, "The owner's Gmail is read where a producer's sheet says so"),
+    # Latch's reach is not this file's to enumerate. The plow-latch plugin
+    # context already says to default to the Mac for the owner's own world and
+    # to call plow_list_skills before answering "can you...", and Latch's own
+    # MCP instructions say it again -- so a list here is a third copy that goes
+    # stale the moment Latch gains a tool. It did: the fence outlived the
+    # no-mail-path premise it was written under and the assistant refused an
+    # on-demand inbox read it could perform, without ever calling a tool.
+    # What is pinned instead is the deferral, and the one negative still true
+    # -- no plow-connectors is installed, Latch vendors only plow-gog, and the
+    # relay's tools/list carries no Slack tool. The assistant's own public
+    # mailbox stays reachable by asking (ld-email-inbox); a prompt denying it
+    # would make that unreachable.
+    (SOUL, "plow_list_skills"),
+    (SOUL, "installs no `plow-connectors`"),
     (SOUL, "public mailbox on demand"),
     # Browsing cannot be flatly denied -- the Latch server does expose browser
     # tools -- and the intro promises errands through them. So the bound is the
