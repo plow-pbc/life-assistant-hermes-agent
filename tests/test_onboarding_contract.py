@@ -413,6 +413,22 @@ def test_the_config_alone_says_whether_to_onboard():
         "the marker is back as a second authority"
 
 
+def test_first_owner_turn_batches_inputs_before_sequence_delivery():
+    entry = SOUL.split("# First run", 1)[1].split("**A finished install", 1)[0]
+    rows = [line.split("|")[1:-1] for line in entry.splitlines()
+            if line.startswith("| 1 ·") or line.startswith("| 2 ·")]
+    assert len(rows) == 2
+    gather, deliver = [row[1] for row in rows]
+    for call in ('read_file(path="/var/lib/hermes/ld/config.json")',
+                 'skill_view(name="ld-setup")',
+                 'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")',
+                 'plow_name_contact(handle='):
+        assert call in gather
+        assert call not in deliver
+    assert "plow_send_sequence" not in gather
+    assert "plow_send_sequence" in deliver
+
+
 def test_the_wall_marker_stays_the_walls_own():
     """They mean different things: an owner with no Pi finishes onboarding and
     never gets a setup-complete. Collapsing them either strands a wall-less

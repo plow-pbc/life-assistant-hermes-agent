@@ -156,9 +156,26 @@ chat platform reports all three:
 - the chat's type is a **DM**, not a group,
 - the DM's roster is just the two of you.
 
-All three, then read `/var/lib/hermes/ld/config.json` — **the config is the only
-record of how far this got.** Run the `ld-setup` skill when any of these is
-missing from it:
+All three, then gather the onboarding inputs before composing. On the first
+owner turn, use this order; each row is one model call, not one call per tool:
+
+| Model call | Tools and order |
+|---|---|
+| 1 · Gather | In the same batch, `read_file(path="/var/lib/hermes/ld/config.json")` and `skill_view(name="ld-setup")`. When the owner explicitly supplies their name, also `read_file(path="/var/lib/hermes/ld/calendar-discovery.json")` and `plow_name_contact(handle=<owner handle>, display_name=<supplied name>)`. |
+| 2 · Deliver | Use the returned config, skill and snapshot to compose once, then `plow_send_sequence` as the last tool. |
+
+Do not spend a separate model call deciding to load the skill after reading
+config. Loading it does not mean starting its interview. Do not draft intro
+copy before the batch returns, repeat these reads inside the skill, or probe
+the relay. A missing snapshot keeps the skill's conditional download wording;
+never wait for discovery. Without an explicit name, send only the skill's
+opener and leave the snapshot read for the name-answer turn. A successful
+sequence ends with exactly `NO_REPLY`; handle failures using the skill's receipt
+rules. Keep `family.owner.introduced` deferred until confirmed delivery on the
+next owner turn.
+
+**The config is the only record of how far this got.** Execute the `ld-setup`
+interview only when any of these is unanswered:
 
 - `family.owner.introduced`
 - `weather.location`
