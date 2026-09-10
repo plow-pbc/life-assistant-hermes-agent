@@ -186,6 +186,29 @@ def test_a_patch_the_gate_would_refuse_never_reaches_the_file(tmp_path, monkeypa
     assert target.read_text() == before
 
 
+def test_empty_calendar_sources_allow_other_onboarding_answers(tmp_path, monkeypatch):
+    monkeypatch.setattr(wc, "geocode", fake_geocode)
+    target = tmp_path / "config.json"
+    target.write_text(json.dumps({"calendar": {"sources": []}}))
+    wc.main(["--draft"], env=ENV, config_path=str(target),
+            stdin=io.StringIO(json.dumps({"weather": {"location": "Chicago"}})))
+    saved = json.loads(target.read_text())
+    assert saved["weather"]["location"] == "Chicago"
+    assert saved["calendar"]["sources"] == []
+    assert gate(saved), "unanswered calendars must still fail the completion gate"
+
+
+@pytest.mark.parametrize("sources", [None, {}, "", [{}]])
+def test_malformed_calendar_sources_still_refuse_drafts(tmp_path, sources):
+    target = tmp_path / "config.json"
+    target.write_text(json.dumps({"calendar": {"sources": sources}}))
+    before = target.read_bytes()
+    with pytest.raises(SystemExit, match="refusing to draft"):
+        wc.main(["--draft"], env=ENV, config_path=str(target),
+                stdin=io.StringIO('{"sports": {"followed": []}}'))
+    assert target.read_bytes() == before
+
+
 def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
     """Through __main__, not through main() -- the seam every other test here
     skips, and the one the documented invocation actually uses.

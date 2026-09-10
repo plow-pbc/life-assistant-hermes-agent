@@ -144,8 +144,8 @@ def geocode(city):
 # What the gate requires, and a stand-in for each that its own check accepts.
 # Only used to answer one question -- "would this config pass if the unasked
 # questions had been answered?" -- so the values need to be valid and nothing
-# more. Absent keys get filled; a key that is PRESENT is never touched, so a
-# supplied value is always judged on its own merits.
+# more. Absent keys and empty calendar selections are unanswered; other
+# supplied values are always judged on their own merits.
 _GATE_STANDINS = (
     (("family", "timezone"), "UTC"),
     (("calendar", "account"), "unasked@unasked.invalid"),
@@ -157,7 +157,7 @@ _GATE_STANDINS = (
 
 
 def fill_unasked(config):
-    """A copy of `config` with the gate's required-but-ABSENT keys stood in for.
+    """A copy of `config` with unanswered required fields stood in for.
 
     Gating this copy asks the one question --draft actually needs answered: is
     anything wrong here something the owner has SAID, rather than something
@@ -177,7 +177,10 @@ def fill_unasked(config):
                 break
             node = node.setdefault(key, {})
         else:
-            if isinstance(node, dict) and path[-1] not in node:
+            if isinstance(node, dict) and (
+                path[-1] not in node
+                or (path == ("calendar", "sources") and node[path[-1]] == [])
+            ):
                 node[path[-1]] = standin
     return filled
 
