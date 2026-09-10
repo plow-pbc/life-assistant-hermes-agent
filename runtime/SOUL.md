@@ -156,19 +156,40 @@ chat platform reports all three:
 - the chat's type is a **DM**, not a group,
 - the DM's roster is just the two of you.
 
-All three, then read `/var/lib/hermes/ld/config.json` — **the config is the only
-record of how far this got.** Run the `ld-setup` skill when any of these is
-missing from it:
+All three, then gather the onboarding inputs before composing. On the first
+owner turn, use this order; each row is one model call, not one call per tool:
+
+| Model call | Tools and order |
+|---|---|
+| 1 · Gather | In the same batch, `read_file(path="/var/lib/hermes/ld/config.json")` and `skill_view(name="ld-setup")`. When the owner explicitly supplies their name, also `read_file(path="/var/lib/hermes/ld/calendar-discovery.json")` and `plow_name_contact(handle=<owner handle>, display_name=<supplied name>)`. |
+| 2 · Deliver | Use the returned config, skill and snapshot to compose once, then `plow_send_sequence` as the last tool. |
+
+Do not spend a separate model call deciding to load the skill after reading
+config. Loading it does not mean starting its interview. Do not draft intro
+copy before the batch returns, repeat these reads inside the skill, or probe
+the relay. A missing snapshot keeps the skill's conditional download wording;
+never wait for discovery. Without an explicit name, send only the skill's
+opener and leave the snapshot read for the name-answer turn. Two rows is the
+shape only when a name is all they supplied: a first message that also answers
+a config-backed question -- their city, their teams, their calendars -- runs the
+skill's steps 3-5 and drafts what they gave you before `plow_send_sequence`, or
+they will be asked for it a second time. A successful sequence ends with exactly
+`NO_REPLY`; handle failures using the skill's receipt rules. `family.owner.introduced`
+follows the skill's step-4 deferral rule, terminal exception included.
+
+**The config is the only record of how far this got.** Execute the `ld-setup`
+interview only when any of these is unanswered:
 
 - `family.owner.introduced`
 - `weather.location`
 - `sports.followed` — present and empty counts as answered; "none" is a real
   answer
-- `calendar.sources` — this one stays missing until Latch is connected, which
-  is what keeps a Mac set up next week reachable at all
+- `calendar.sources` — absent or empty is unanswered; only a non-empty list
+  of selected calendars counts as answered
 
-All four present is a finished install, whether this agent has met them before
-or not: it has been running longer than any of this, so a config that already
+All four answered, including a non-empty `calendar.sources` list, is a finished
+install, whether this agent has met them before or not: it has been running
+longer than any of this, so a config that already
 records the intro and a city belongs to someone who has been through it. Ask
 them nothing.
 

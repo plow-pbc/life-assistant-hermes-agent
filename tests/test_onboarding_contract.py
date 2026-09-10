@@ -130,16 +130,21 @@ def test_a_drafted_zone_the_container_is_not_running_is_recorded(tmp_path, capsy
     assert "America/New_York" in out and "restart" in out
 
 
-def test_the_stand_ins_only_fill_what_is_absent():
+def test_the_stand_ins_keep_supplied_answers_but_an_empty_selection_is_no_answer():
     """fill_unasked() is the whole boundary between the two behaviours: if it
     overwrote a key that was present, a supplied blank timezone would be
-    replaced by a valid stand-in and sail through."""
+    replaced by a valid stand-in and sail through. An empty `calendar.sources`
+    is the one present value it still stands in for -- nobody chooses no
+    calendars, so an empty list is a question not yet answered, and letting it
+    survive the fill would make every unrelated answer unwritable."""
     supplied = {"family": {"timezone": "   "},
+                "calendar": {"sources": []},
                 "calendar_nudge": {"lookahead_virtual_minutes": -5}}
     original = json.loads(json.dumps(supplied))
     filled = wc.fill_unasked(supplied)
     assert filled["family"]["timezone"] == "   "
     assert filled["calendar_nudge"]["lookahead_virtual_minutes"] == -5
+    assert filled["calendar"]["sources"], "an empty selection must be stood in for"
     assert filled["calendar"]["account"]
     assert filled["calendar_nudge"]["lookahead_in_person_minutes"] > 0
     assert supplied == original, "fill mutated its input"
@@ -299,6 +304,33 @@ def test_a_rejected_sequence_uses_media_fallback_without_replaying_partial_deliv
         assert "`MEDIA:`" not in action, "uncertain delivery cannot blindly use the intro fallback"
 
 
+def test_sequence_progress_and_fallback_are_scoped_to_the_sent_beats():
+    transport = SKILL.split("## How a turn actually sends things", 1)[1].split("## The algorithm,", 1)[0]
+    rows = [line.split("|")[1:-1] for line in transport.splitlines()
+            if line.startswith("| opener ") or line.startswith("| intro ")]
+    kinds = {cells[0].strip(): [cell.strip() for cell in cells[1:]] for cells in rows}
+    assert set(kinds) == {"opener (§1)", "intro (§2)"}
+    assert kinds["opener (§1)"][0] == "no"
+    assert "`MEDIA:`" not in kinds["opener (§1)"][1]
+    assert "no attachments" in kinds["opener (§1)"][1]
+    assert kinds["intro (§2)"][0] == "only when every intro beat is confirmed"
+    assert "`MEDIA:`" in kinds["intro (§2)"][1]
+    queued = " ".join(ALGORITHM.split("A queued reply", 1)[1].split("**3 ·", 1)[0].split())
+    assert "opener receipt" in queued and "never" in queued
+
+
+def test_empty_calendar_selections_do_not_skip_onboarding_or_download():
+    description = SKILL.split("---", 2)[1]
+    assert "empty calendar.sources" in description
+    assert "non-empty" in SOUL.split("- `calendar.sources`", 1)[1].split("**A finished install", 1)[0]
+    intro = " ".join(SKILL.split("## The intro,", 1)[1].split("### 1 ·", 1)[0].split())
+    assert "`calendar.sources` is a non-empty list" in intro
+    catch = " ".join(SKILL.split("**Bubble: the conditional catch", 1)[1].split("All of these bubbles", 1)[0].split())
+    assert "`calendar.sources` is a non-empty list" in catch
+    choices = " ".join(SKILL.split("### 5 ·", 1)[1].split("read the background snapshot", 1)[0].split())
+    assert "absent or empty" in choices
+
+
 def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
     """Missing-tool fallback sends the same previews via ordinary MEDIA."""
     manifest = json.loads((ROOT / "docs/onboarding-v2/assets/manifest.json").read_text())
@@ -381,9 +413,29 @@ def test_the_config_alone_says_whether_to_onboard():
                   "`sports.followed`", "`calendar.sources`"):
         assert field in TRIGGER, f"{field} is not part of the condition"
     assert "present and empty counts as answered" in TRIGGER
-    assert "stays missing until Latch is connected" in TRIGGER
+    assert "absent or empty is unanswered" in TRIGGER
     assert "onboarding-complete" not in SOUL and "onboarding-complete" not in SKILL, \
         "the marker is back as a second authority"
+
+
+def test_first_owner_turn_batches_inputs_before_sequence_delivery():
+    entry = SOUL.split("# First run", 1)[1].split("**A finished install", 1)[0]
+    rows = [line.split("|")[1:-1] for line in entry.splitlines()
+            if line.startswith("| 1 ·") or line.startswith("| 2 ·")]
+    assert len(rows) == 2
+    gather, deliver = [row[1] for row in rows]
+    for call in ('read_file(path="/var/lib/hermes/ld/config.json")',
+                 'skill_view(name="ld-setup")',
+                 'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")',
+                 'plow_name_contact(handle='):
+        assert call in gather
+        assert call not in deliver
+    assert "plow_send_sequence" not in gather
+    assert "plow_send_sequence" in deliver
+    # And the fast path is not the whole story: a first message that answers a
+    # config-backed question has to be written down before it is answered, or
+    # the owner is asked for the same thing twice.
+    assert "drafts what they gave you before `plow_send_sequence`" in entry
 
 
 def test_the_wall_marker_stays_the_walls_own():
@@ -880,6 +932,12 @@ def test_intro_reads_snapshot_before_download_decision():
     assert "During the intro, read §5's local snapshot once" in ONBOARDING
     assert "fresh `ready` snapshot" in ONBOARDING
     assert "including the\nlocal reader" not in ONBOARDING
+
+
+def test_intro_snapshot_read_is_in_the_initial_config_step():
+    step1 = ALGORITHM[ALGORITHM.index(STEPS[0]):ALGORITHM.index(STEPS[1])]
+    assert step1.index("/var/lib/hermes/ld/config.json") < step1.index(
+        'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")')
 
 
 def test_sports_requires_snapshot_before_waiting_close():
