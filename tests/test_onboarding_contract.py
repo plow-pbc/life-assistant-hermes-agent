@@ -432,6 +432,10 @@ def test_first_owner_turn_batches_inputs_before_sequence_delivery():
         assert call not in deliver
     assert "plow_send_sequence" not in gather
     assert "plow_send_sequence" in deliver
+    # And the fast path is not the whole story: a first message that answers a
+    # config-backed question has to be written down before it is answered, or
+    # the owner is asked for the same thing twice.
+    assert "drafts what they gave you before `plow_send_sequence`" in entry
 
 
 def test_the_wall_marker_stays_the_walls_own():

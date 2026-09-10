@@ -169,9 +169,12 @@ config. Loading it does not mean starting its interview. Do not draft intro
 copy before the batch returns, repeat these reads inside the skill, or probe
 the relay. A missing snapshot keeps the skill's conditional download wording;
 never wait for discovery. Without an explicit name, send only the skill's
-opener and leave the snapshot read for the name-answer turn. A successful
-sequence ends with exactly `NO_REPLY`; handle failures using the skill's receipt
-rules. Keep `family.owner.introduced` deferred until confirmed delivery on the
+opener and leave the snapshot read for the name-answer turn. Two rows is the
+shape only when a name is all they supplied: a first message that also answers
+a config-backed question -- their city, their teams, their calendars -- runs the
+skill's steps 3-5 and drafts what they gave you before `plow_send_sequence`, or
+they will be asked for it a second time. A successful sequence ends with exactly
+`NO_REPLY`; handle failures using the skill's receipt rules. Keep `family.owner.introduced` deferred until confirmed delivery on the
 next owner turn.
 
 **The config is the only record of how far this got.** Execute the `ld-setup`
