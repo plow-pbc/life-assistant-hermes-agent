@@ -130,16 +130,21 @@ def test_a_drafted_zone_the_container_is_not_running_is_recorded(tmp_path, capsy
     assert "America/New_York" in out and "restart" in out
 
 
-def test_the_stand_ins_only_fill_what_is_absent():
+def test_the_stand_ins_keep_supplied_answers_but_an_empty_selection_is_no_answer():
     """fill_unasked() is the whole boundary between the two behaviours: if it
     overwrote a key that was present, a supplied blank timezone would be
-    replaced by a valid stand-in and sail through."""
+    replaced by a valid stand-in and sail through. An empty `calendar.sources`
+    is the one present value it still stands in for -- nobody chooses no
+    calendars, so an empty list is a question not yet answered, and letting it
+    survive the fill would make every unrelated answer unwritable."""
     supplied = {"family": {"timezone": "   "},
+                "calendar": {"sources": []},
                 "calendar_nudge": {"lookahead_virtual_minutes": -5}}
     original = json.loads(json.dumps(supplied))
     filled = wc.fill_unasked(supplied)
     assert filled["family"]["timezone"] == "   "
     assert filled["calendar_nudge"]["lookahead_virtual_minutes"] == -5
+    assert filled["calendar"]["sources"], "an empty selection must be stood in for"
     assert filled["calendar"]["account"]
     assert filled["calendar_nudge"]["lookahead_in_person_minutes"] > 0
     assert supplied == original, "fill mutated its input"
