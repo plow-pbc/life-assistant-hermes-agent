@@ -882,6 +882,12 @@ def test_intro_reads_snapshot_before_download_decision():
     assert "including the\nlocal reader" not in ONBOARDING
 
 
+def test_intro_snapshot_read_is_in_the_initial_config_step():
+    step1 = ALGORITHM[ALGORITHM.index(STEPS[0]):ALGORITHM.index(STEPS[1])]
+    assert step1.index("/var/lib/hermes/ld/config.json") < step1.index(
+        'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")')
+
+
 def test_sports_requires_snapshot_before_waiting_close():
     sports = ONBOARDING[ONBOARDING.index('### 3 ·'):ONBOARDING.index('### 5 ·')]
     assert "read §5's local snapshot before choosing" in sports
