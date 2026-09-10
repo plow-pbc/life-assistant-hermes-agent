@@ -6,10 +6,10 @@
 # each, or the sibling reports as `missing` and is never searched.
 #
 # Each row is a real edge: `plow-hermes-agent` is the base this image builds
-# FROM, `hermes-plow-chat` is the plugin it pins and every turn is framed by,
+# FROM, `hermes-plugin-plow` is the plugin it pins and every turn is framed by,
 # and `plow` pins which commit tenants boot and owns the API these skills call.
 # Peer variants share no edge with this repo, so they are not listed.
 
 plow-pbc/plow-hermes-agent
 plow-pbc/plow
-plow-pbc/hermes-plow-chat
+plow-pbc/hermes-plugin-plow
