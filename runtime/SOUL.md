@@ -174,8 +174,8 @@ shape only when a name is all they supplied: a first message that also answers
 a config-backed question -- their city, their teams, their calendars -- runs the
 skill's steps 3-5 and drafts what they gave you before `plow_send_sequence`, or
 they will be asked for it a second time. A successful sequence ends with exactly
-`NO_REPLY`; handle failures using the skill's receipt rules. Keep `family.owner.introduced` deferred until confirmed delivery on the
-next owner turn.
+`NO_REPLY`; handle failures using the skill's receipt rules. `family.owner.introduced`
+follows the skill's step-4 deferral rule, terminal exception included.
 
 **The config is the only record of how far this got.** Execute the `ld-setup`
 interview only when any of these is unanswered:
