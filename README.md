@@ -106,18 +106,18 @@ If the account has no assistant line, run `plow-agents login --new-line`, then
 | To | Run |
 | --- | --- |
 | rebuild after skill edits and keep its memory | `docker compose up --build -d` |
-| reset local state — onboarding again or load a changed `runtime/SOUL.md` | `docker compose down -v && docker compose up --build -d` |
+| reset local state — onboarding again | `docker compose down -v && docker compose up --build -d` |
 | finish | `plow-agents revoke && docker compose down -v` |
 
 On rebuild and restart, the base runtime reconciles bundled skills from
 `/opt/hermes/skills` into the home volume, updating skills the agent has not
-customised. Skill edits do not require deleting the volume. `runtime/SOUL.md`
-is still seeded directly into the home, so an existing volume shadows image
-changes to it.
+customised. Neither skill edits nor `runtime/persona.md` require deleting the
+volume: plow-init rewrites the home's `SOUL.md` from the base persona plus
+that file on every boot.
 
 **`down -v` deletes local agent memory, sessions, and setup.** Use it only for
-an intentional reset, including loading a changed `runtime/SOUL.md` this way.
-The chat and its history live on Plow and survive these local operations.
+an intentional reset. The chat and its history live on Plow and survive these
+local operations.
 
 **`TZ` is this agent's own, not the provisioner's**: the base image sets
 none, so a cont-init step here writes it at boot from `family.timezone` in
@@ -169,7 +169,7 @@ Here a copy-paste can cross an **account** boundary, not just an agent one.
 ## Bring-up
 
 The agent writes its own `ld/config.json` from the owner's first DM:
-`runtime/SOUL.md` tells it that a config missing any of
+`runtime/persona.md` tells it that a config missing any of
 `family.owner.introduced`, `weather.location`, `sports.followed` or
 `calendar.sources` means onboarding is unfinished, and `ld-setup/SKILL.md` is
 what it runs then — a conversation, not a form, drafting each answer through
@@ -348,8 +348,9 @@ the event feed uses that saved reader account and its selections.
 ## Layout
 
 ```
-runtime/        SOUL.md: the persona and the setup rule. No config.yaml -- the
-                model, plugins and mcp_servers are the base image's
+runtime/        persona.md: this agent's half of the identity, and the setup
+                rule. No config.yaml -- model, plugins and mcp_servers are the
+                base image's, and so is the persona it is composed onto
 image/          the s6 service definition for the calendar strip's schedule
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the triage producer: iMessage + Gmail through Latch, 07:05 and 18:00, texted

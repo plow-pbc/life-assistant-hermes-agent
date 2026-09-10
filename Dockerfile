@@ -8,11 +8,14 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-a687c6c0f2a625263cf2fc6f9f319bc40c7e99e4@sha256:38490aad00486bc2472896105fae1a3b97a0fe048b12172a9a95b22f331c81de
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-4acf2e96c375c1f0e0ec67eaaf705b632194b904@sha256:345b59e01fbf45e0275f62403c766d55d12ff161916272b5cd9f51b37d697297
 
-# This replaces the base's own SOUL.md; first boot re-asserts root ownership
-# on that file, which is what the trailing chmod answers.
-COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
+# Identity: only what is specific to this agent. plow-init writes the home's
+# SOUL.md on every boot as the base persona followed by this file; nothing is
+# COPYed to /var/lib/hermes/SOUL.md, which is overwritten at boot. The base
+# carries the voice, no-fabrication, disclosure and untrusted-content rules this
+# file used to restate, so a FROM bump that drops them drops them here too.
+COPY --chmod=0644 runtime/persona.md /opt/hermes/plow-seed/persona.md
 COPY LICENSE NOTICE /usr/share/doc/life-assistant/
 
 # Shipped at /opt/hermes/skills, outside every home, so a bind-mounted home
@@ -39,8 +42,7 @@ COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 # This root stays root-owned always; only its reconciled home copy is agent-owned.
 RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
- && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} + \
- && chmod 0644 /var/lib/hermes/SOUL.md
+ && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} +
 
 # The unattended producer's own copy, outside every home and out of the agent's
 # reach.
@@ -107,5 +109,5 @@ RUN chmod 0755 /srv/plow-assets && chmod 0644 /srv/plow-assets/*
 
 # The instance directory the producers read and ld-setup writes. Nothing exists
 # before first boot, so the image creates it empty: an unset-up agent is routed
-# to ld-setup by SOUL.md.
+# to ld-setup by persona.md.
 RUN install -d -o 10000 -g 10000 -m 0700 /var/lib/hermes/ld

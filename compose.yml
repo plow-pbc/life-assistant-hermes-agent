@@ -7,8 +7,8 @@ services:
       # ownership in, and the image copies the file into place as root itself.
       - ./plow-credentials:/var/lib/plow/credentials.host:ro
       # The agent's home, kept across `up`/`down` for its sessions and setup.
-      # A skill edit reaches it on rebuild + restart via the base's reconcile;
-      # only SOUL.md (shipped straight here) or a full reset need `down -v`.
+      # A skill edit reaches it on rebuild + restart via the base's reconcile
+      # and the persona is recomposed on every boot; only a reset needs `down -v`.
       - agent-home:/var/lib/hermes
     # The agent checkpoints its session on SIGTERM and its supervisor allows
     # 30s for that, so Docker's own deadline has to sit outside that one.
