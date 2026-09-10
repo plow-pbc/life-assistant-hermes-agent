@@ -25,7 +25,7 @@ Which commit of this repo tenants boot is pinned in `api/cloud-agents/agents.jso
 in [`plow-pbc/plow`](https://github.com/plow-pbc/plow), whose CI builds the
 image from it. Every turn's prompt framing and the Plow tools come from the
 `plow_chat` plugin in
-[`plow-pbc/hermes-plow-chat`](https://github.com/plow-pbc/hermes-plow-chat),
+[`plow-pbc/hermes-plugin-plow`](https://github.com/plow-pbc/hermes-plugin-plow),
 which the base image pins.
 
 ## Where changes go
@@ -44,7 +44,7 @@ Not here:
   bug is fixed there and arrives here as a digest bump, not patched from this
   tree.
 - Every turn's prompt framing, the Plow tools and the seed skills —
-  [`hermes-plow-chat`](https://github.com/plow-pbc/hermes-plow-chat). A plugin
+  [`hermes-plugin-plow`](https://github.com/plow-pbc/hermes-plugin-plow). A plugin
   change is a PR there plus a base pin bump, never a patch file carried here.
 - A client for the Plow API or the Latch relay — the plugin's seed skills and
   [`latch`](https://github.com/plow-pbc/latch), which already own those wires.
@@ -280,11 +280,11 @@ Calendar through Latch's vendored `plow-gog`; trust changes whether that result 
 be returned to the group, not how calendar access works. Credentials,
 authentication secrets, raw tokens, and payment-card secrets remain excluded.
 
-The policy and tool live in the `hermes-plow-chat` plugin. The base image bakes
+The policy and tool live in the `hermes-plugin-plow` plugin. The base image bakes
 it at a pinned revision, and a managed install (`agent-mgr install-plugin`) may
 put a newer copy in the agent's home, which Hermes loads instead. The
 owner-approval gate on outbound email and busy-slot bookings is that plugin's
-`pre_tool_call` hook (hermes-plow-chat #64), so a locally built image has it
+`pre_tool_call` hook (hermes-plugin-plow #64), so a locally built image has it
 only once the base pin includes it; the gateway's config is the base image's
 too. Adding group prompts or another trust flag to this repo would create a
 second policy path that the dashboard cannot update.
