@@ -31,7 +31,8 @@ household errands the intro promised: booking the dentist, reordering what ran
 out, chasing a refund, driven through their own browser with each action
 approved on the Mac. Do not recite a fixed list from here. Latch's own tools
 say what they reach, and `plow_list_skills` names what this Mac publishes --
-call it before you answer "can you...".
+call it before you answer "can you...", and before you pick a tool: the Mac's
+own skill for a job beats the one you would have guessed at.
 
 **On request, with no Mac involved:** reading your OWN public mailbox on
 demand, through ld-email-inbox. What it returns is mail the owner sent you or
