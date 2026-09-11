@@ -263,24 +263,23 @@ def test_every_asset_the_sheet_sends_is_one_the_image_holds():
                 assert target.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
-def test_the_lead_in_and_the_pictures_travel_together():
-    """The callable example preserves the stack and replaces ordinary gaps."""
+def test_the_intro_sequence_has_no_active_previews():
+    """Previews (the "Want to see?" lead-in and the four-photo stack) are
+    temporarily disabled. The active sequence runs greeting/gist/app/privacy ->
+    catch -> link -> pause -> check-in, with NO photos item and no reading pause
+    before the catch."""
     items = intro_items()
     assert [item["type"] for item in items] == [
-        "text", "text", "text", "text", "text", "photos", "pause",
-        "text", "text", "pause", "text"]
+        "text", "text", "text", "text", "text", "text", "pause", "text"]
+    assert not any(item["type"] == "photos" for item in items), (
+        "previews are disabled; the active sequence must carry no photos item")
     # The intro eases in with a soft check-in and the first question together in
     # ONE item, never a cold jump into the question.
     assert "knock out" in items[-1]["body"]
     assert "First up, what city are you in?" in items[-1]["body"]
-    assert len(items[5]["asset_ids"]) == 4
-    assert len(set(items[5]["asset_ids"])) == 4
-    manifest = json.loads((ROOT / "docs/onboarding-v2/assets/manifest.json").read_text())
-    assert [manifest["assets"][i] for i in items[5]["asset_ids"]] == [
-        "work-1-vault-login.png", "work-2-instacart-grocery.png",
-        "work-3-amazon-shopping.png", "work-4-medical-discovery.png"]
-    assert items[6] == items[9] == {"type": "pause", "seconds": 4}
-    assert items[8]["body"] == "https://plow.co/latch"
+    # One reading pause remains, after the Latch link.
+    assert items[6] == {"type": "pause", "seconds": 4}
+    assert items[5]["body"] == "https://plow.co/latch"
     for item in items:
         if item["type"] == "text":
             assert set(item) == {"type", "body"}
@@ -296,12 +295,12 @@ def test_a_rejected_sequence_uses_media_fallback_without_replaying_partial_deliv
     outcomes = {cells[0].strip(): cells[1].strip() for cells in rows}
     rejected = next((action for condition, action in outcomes.items()
                      if "`rejected`" in condition and "`completed: []`" in condition), "")
-    assert "`MEDIA:`" in rejected, "a rejected call has no delivery to suppress"
+    assert "intro text" in rejected, "a rejected call must still deliver the intro via the fallback"
     for status in ("failed", "delivery_unknown"):
         action = next((action for condition, action in outcomes.items()
                        if f"`{status}`" in condition), "")
         assert "`NO_REPLY`" in action
-        assert "`MEDIA:`" not in action, "uncertain delivery cannot blindly use the intro fallback"
+        assert "intro text" not in action, "uncertain delivery cannot blindly replay the intro fallback"
 
 
 def test_sequence_progress_and_fallback_are_scoped_to_the_sent_beats():
@@ -314,7 +313,9 @@ def test_sequence_progress_and_fallback_are_scoped_to_the_sent_beats():
     assert "`MEDIA:`" not in kinds["opener (§1)"][1]
     assert "no attachments" in kinds["opener (§1)"][1]
     assert kinds["intro (§2)"][0] == "only when every intro beat is confirmed"
-    assert "`MEDIA:`" in kinds["intro (§2)"][1]
+    # Previews disabled: the intro fallback is plain text, no MEDIA attachments.
+    assert "no attachments" in kinds["intro (§2)"][1]
+    assert "`MEDIA:`" not in kinds["intro (§2)"][1]
     queued = " ".join(ALGORITHM.split("A queued reply", 1)[1].split("**3 ·", 1)[0].split())
     assert "opener receipt" in queued and "never" in queued
 
@@ -331,18 +332,29 @@ def test_empty_calendar_selections_do_not_skip_onboarding_or_download():
     assert "absent or empty" in choices
 
 
-def test_the_baked_asset_path_is_one_the_media_layer_will_deliver():
-    """Missing-tool fallback sends the same previews via ordinary MEDIA."""
+def test_the_disabled_preview_block_keeps_the_real_assets_for_re_add():
+    """Previews are temporarily disabled but must stay copy-paste re-addable: the
+    disabled block still carries the four asset_ids and their MEDIA paths in
+    order, they resolve to the real baked assets, and no active MEDIA tag leaks
+    into the live sequence."""
     manifest = json.loads((ROOT / "docs/onboarding-v2/assets/manifest.json").read_text())
-    ids = next(item["asset_ids"] for item in intro_items() if item["type"] == "photos")
-    paths = re.findall(r"^MEDIA:(/srv/plow-assets/\S+)$", SKILL, re.MULTILINE)
+    assets = ROOT / "docs/onboarding-v2/assets"
+    block = SKILL.split("[DISABLED PREVIEWS", 1)[1].split("**Bubble: the conditional catch", 1)[0]
+    ids = re.findall(r'"(preview_\d)"', block)
+    assert ids == ["preview_1", "preview_2", "preview_3", "preview_4"]
+    paths = re.findall(r"MEDIA:(/srv/plow-assets/\S+)", block)
     assert paths == ["/srv/plow-assets/" + manifest["assets"][i] for i in ids]
     denied = ("/etc/", "/proc/", "/sys/", "/dev/", "/root/", "/boot/",
               "/var/log/", "/var/lib/", "/var/run/")
     assert all(not path.startswith(denied) for path in paths)
-    # Fenced MEDIA is discarded before the gateway scans attachments.
-    unfenced = re.sub(r"```.*?```", "", SKILL, flags=re.DOTALL)
-    assert all("MEDIA:" + path in unfenced for path in paths)
+    # The four previews still point at real, baked PNG assets, so re-add is one step.
+    for asset_id in ids:
+        target = assets / manifest["assets"][asset_id]
+        assert not target.is_symlink() and target.is_file()
+        assert target.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    # No MEDIA tag leaks into the ACTIVE flow (everything before the disabled block).
+    active = SKILL.split("[DISABLED PREVIEWS", 1)[0]
+    assert "MEDIA:" not in active
 
 
 # --------------------------------------------------------------------------
