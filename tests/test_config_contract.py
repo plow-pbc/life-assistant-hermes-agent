@@ -348,11 +348,21 @@ def test_the_life_assistant_exhausts_safe_capabilities_before_handoff():
         ),
         "Request the narrow access you need",
         "Ask the owner only when you are blocked by",
-        "Share only task-required, audience-appropriate results",
-        "never expose secrets or raw private source data in chat",
     )
     for rule in required:
         assert rule in persona, f"persona.md is missing the resourcefulness rule: {rule!r}"
+
+
+def test_the_persona_leaves_sharing_and_sends_to_the_layers_that_own_them():
+    """Sharing is the chat platform's per-turn rule and send discipline is the
+    base persona's; a third copy here is how a trusted room refused its owner."""
+    persona = " ".join((ROOT / "runtime" / "persona.md").read_text().split())
+    for restated in ("audience-appropriate", "raw private source data",
+                     "asks the owner to approve it in this chat",
+                     "Never rephrase, split, or reroute a send",
+                     "research you were not asked for", "plow_list_skills"):
+        assert restated not in persona, f"persona.md restates {restated!r}"
+    assert "unprompted research" in persona
 
 
 def test_unfinished_wall_setup_does_not_block_unrelated_assistant_requests():
@@ -433,12 +443,16 @@ CONTRACTS = [
     # stale the moment Latch gains a tool. It did: the fence outlived the
     # no-mail-path premise it was written under and the assistant refused an
     # on-demand inbox read it could perform, without ever calling a tool.
-    # What is pinned instead is the deferral, and the one negative still true
-    # -- no plow-connectors is installed, Latch vendors only plow-gog, and the
+    # The deferral itself used to be pinned here too. It no longer is: the
+    # plugin's Latch prompt now carries that same deferral on every
+    # Mac-connected turn, so a copy here is restated text like the sharing and
+    # send rules were, and its absence is pinned instead in
+    # test_the_persona_leaves_sharing_and_sends_to_the_layers_that_own_them.
+    # What is still pinned below are the two negatives no plugin states -- no
+    # plow-connectors is installed, Latch vendors only plow-gog, and the
     # relay's tools/list carries no Slack tool. The assistant's own public
     # mailbox stays reachable by asking (ld-email-inbox); a prompt denying it
     # would make that unreachable.
-    (PERSONA, "plow_list_skills"),
     (PERSONA, "installs no `plow-connectors`"),
     (PERSONA, "public mailbox on demand"),
     # Browsing cannot be flatly denied -- the Latch server does expose browser
