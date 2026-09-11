@@ -1,5 +1,5 @@
 #!/bin/sh
-# Report this agent's token usage to the Agent Index, hourly.
+# Report this agent's token usage to the Agent Index, every 5 minutes.
 #
 # NO SWITCH. The reporter is here because somebody put it in this image, and
 # that is the decision: an agent whose owner does not want their usage on the
@@ -52,10 +52,10 @@ while :; do
   #
   # 2 is not 3, and this must not collapse them: registering over state the
   # client could not read mints against a new install id and strands the usage
-  # this install has already published. That hour is skipped instead. The
+  # this install has already published. That pass is skipped instead. The
   # contract and why it has three answers are in the client's README.
   #
-  # stdout is dropped -- it says the same thing every hour. stderr is not: on 2
+  # stdout is dropped -- it says the same thing every pass. stderr is not: on 2
   # it carries the client's account of WHICH file it could not read.
   /command/s6-setuidgid hermes \
     env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
@@ -67,15 +67,15 @@ while :; do
         env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
         /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
         --register --agent "$AGENT_ID" >/dev/null || {
-      echo "agent-index: no index key this hour, not reporting" >&2
-      /bin/sleep 3600
+      echo "agent-index: no index key this pass, not reporting" >&2
+      /bin/sleep 300
       continue
       }
       ;;
     *)
       echo "agent-index: the client could not read this install's state (above);" >&2
       echo "standing off rather than registering over it." >&2
-      /bin/sleep 3600
+      /bin/sleep 300
       continue
       ;;
   esac
@@ -84,11 +84,11 @@ while :; do
   # exchange stored in the agent's home and reports with that.
   #
   # Never fatal. A collector that failed says so and exits non-zero; a crashing
-  # longrun would be respawned in a tight loop, which turns one bad hour into a
+  # longrun would be respawned in a tight loop, which turns one bad pass into a
   # hot loop against the index.
   /command/s6-setuidgid hermes \
     env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" \
     /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
     || echo "agent-index: reporter exited non-zero, see the line above" >&2
-  /bin/sleep 3600
+  /bin/sleep 300
 done

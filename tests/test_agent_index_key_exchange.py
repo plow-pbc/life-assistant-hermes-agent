@@ -24,9 +24,9 @@ def test_bootstrap_invokes_the_pinned_client_with_the_plow_token():
     assert "--name" not in bootstrap, "boot must never own publisher page content"
 
 
-def test_hourly_report_receives_only_the_stored_key():
+def test_every_report_receives_only_the_stored_key():
     run = commands(RUN.read_text())
-    reporter = run.split("\n  esac\n", 1)[1].split("/bin/sleep 3600", 1)[0]
+    reporter = run.split("\n  esac\n", 1)[1].split("/bin/sleep 300", 1)[0]
     assert "agent-index-client.py" in reporter
     assert "PLOW_AGENT_TOKEN" not in reporter
 
