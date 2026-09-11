@@ -65,7 +65,7 @@ Examples:
 ## Usage reporting
 
 This image carries a reporter that publishes this agent's token usage to the
-[Agent Index](https://aiworthusing.com/agent-index) once an hour: day x model
+[Agent Index](https://aiworthusing.com/agent-index) every 5 minutes: day x model
 counts and nothing else — no prompts, no task titles, no file paths, no costs.
 
 **There is no switch.** The reporter is in the image because somebody built it
