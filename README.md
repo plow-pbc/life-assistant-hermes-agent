@@ -272,13 +272,15 @@ dashboard's **Trusted lines** card or ask the agent in that conversation, which
 uses the shared `plow_set_conversation_trusted` tool after explicit
 confirmation. A member cannot change the setting.
 
-In an untrusted group, the assistant keeps owner material out of the thread. In
-a trusted group, every participant may ask it to use its normal tools and
-connected accounts, and requested results are answered where everyone can see
-them. For this life assistant, “What's on the schedule today?” reaches Google
-Calendar through Latch's vendored `plow-gog`; trust changes whether that result may
-be returned to the group, not how calendar access works. Credentials,
-authentication secrets, raw tokens, and payment-card secrets remain excluded.
+Trust changes authority, not membership. A turn carries the owner's
+authority when it is the owner's own, in any room, or a human member's turn
+in a group the owner has marked trusted — a peer agent's turn or an
+unattended wake never gains it, and a DM is never promoted by it. An
+authority turn gets the owner's own help, such as email sends whose approval
+prompt posts in the room for anyone there to `/approve`; a member of an
+untrusted group gets discretion instead, owner material only with the
+owner's okay in that thread. Standing secrets — passwords, backup codes, API
+keys, raw tokens, full card numbers — never go in chat, trusted or not.
 
 The policy and tool live in the `hermes-plugin-plow` plugin. The base image bakes
 it at a pinned revision, and a managed install (`agent-mgr install-plugin`) may
