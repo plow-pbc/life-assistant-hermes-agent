@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-8710797b6409c77df560c6198407765d138ea617@sha256:b9627febe57e34ec0df373709ad91a27a7fda68093e76d519678cac1012614f9
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-ef4b30e00e74b4f2c47832acecfacb5eba717468@sha256:693ac5520ec0a2cabe8fc9de6a0c4827b79a7a0556228345aaf63664a001d7b4
 
 # Identity: only what is specific to this agent. plow-init writes the home's
 # SOUL.md on every boot as the base persona followed by this file; nothing is
