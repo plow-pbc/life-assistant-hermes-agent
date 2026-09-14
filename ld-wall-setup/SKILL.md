@@ -275,7 +275,7 @@ setup-complete marker) from texting the token across chat a second time:
 
     date -u +%FT%TZ > /var/lib/hermes/ld/pi-brought-up
 
-## Phase 4 — Crons, and one card
+## Phase 4 — Crons, then every card
 
 Create-if-missing and safe to re-run, so there is no skip condition of its own
 — always run it (Phase 4's artifact is the marker at the end):
@@ -283,46 +283,64 @@ Create-if-missing and safe to re-run, so there is no skip condition of its own
     /var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py
 
 Paste its output and its exit status; `refusing to register`, `WARNING` or
-`PAUSED` means this phase did not finish (see
-`/var/lib/hermes/skills/ld-dashboard/SKILL.md`).
+`PAUSED` is a failed registration to report and fix (see
+`/var/lib/hermes/skills/ld-dashboard/SKILL.md`) — but never a reason to leave
+the wall empty. The fill below does not depend on a single schedule existing,
+so run it either way, and tell the owner plainly if their scheduled refreshes
+are not yet registered.
 
 **Without a Mac, registration is the whole phase** — everything from here to
 the owner question is Latch work a no-Mac install cannot do: every pushed
 card — weather, sports, messages — stays empty until a Mac with Latch
 exists, because delivery always routes through the outbox and nothing ships
-it. Do not force a card, do not try to read one back, and do not ask the
+it. Do not run a producer, do not try to read a card back, and do not ask the
 owner to look for one — the screen being up was already confirmed when
 Phase 3 wrote `pi-brought-up`, so go straight to the marker at the end.
 
-**With a Mac, force the weather card.**
-`hermes cron run` takes a job **id**, not a name, and ids are opaque hex, so
-look the id up from `/var/lib/hermes/cron/jobs.json` (the same file
-`register_crons.py` itself trusts, not `hermes cron list`'s human rendering)
-first:
+**With a Mac, fill every card now.** A wall that says "the cards arrive at
+6 a.m." is a wall the owner reads as broken, and it hides a producer that
+cannot post at all until the next morning. So setup does not wait for a
+schedule: it runs each card producer once, right now, whatever the hour, and
+does not finish until all five cards are on the Pi. The schedules registered
+above are for refreshing them.
 
-    ID=$(python3 -c 'import json,sys
-    j=json.load(open("/var/lib/hermes/cron/jobs.json"))["jobs"]
-    i=next((x["id"] for x in j if x["name"]=="ld-weather"),None)
-    sys.exit("refusing: no ld-weather job in /var/lib/hermes/cron/jobs.json -- re-run register_crons.py") if i is None else print(i)') && /opt/hermes/bin/hermes cron run "$ID"
+Run these five, one at a time, each by its own sheet — that sheet is the
+whole procedure, this phase only orders them:
 
-The refusal is the whole point of the lookup: no `ld-weather` row means the
-registration above did not land, and forcing nothing would look like success.
+| card | producer | sheet |
+|---|---|---|
+| 1 · alert | `ld-morning-triage` | `/var/lib/hermes/skills/ld-morning-triage/SKILL.md` |
+| 2 · affirmation | `ld-morning-updates` | `/var/lib/hermes/skills/ld-morning-updates/SKILL.md` |
+| 3 · weather | `ld-weather` | `/var/lib/hermes/skills/ld-weather/SKILL.md` |
+| 4 · digest | `ld-weekly-digest` | `/var/lib/hermes/skills/ld-weekly-digest/SKILL.md` |
+| 5 · sports | `ld-sports` | `/var/lib/hermes/skills/ld-sports/SKILL.md` |
 
-That run is its own turn: the weather producer composes the tile, and
-because the dotenv says `DASHBOARD_DELIVERY=latch` its helper prints
-`NOT DELIVERED — ship it through Latch, then paste both outputs:` followed by
-the two calls to make. That turn makes those two calls, in that order —
-polling `mcp__plow__plow_get_result` if either answers with a pending handle — per
-`/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`. Wait
-until `/opt/hermes/bin/hermes cron runs` lists that run as finished, then
-read the card back the same way the producers write it:
+The hour is not a reason to skip one. A triage run at 3 p.m. reads the same
+inbox a 7 a.m. run would; a digest on a Wednesday covers the week from
+today; a sports tile with no game today says so. Two sheets have a branch
+that posts no card, and setup overrides both, because a fresh wall has no
+earlier card to leave up: a quiet triage (both gathers empty) writes exactly
+`No alert today.` to its handoff file and posts it, so card 1 carries the
+quiet-day state; and the digest runs its kiosk step here — its
+"invoked directly in chat, skip the kiosk" rule is for a chat question, and
+this is setup. Each producer's helper ends
+with `NOT DELIVERED — ship it through Latch, then paste both outputs:` because
+the dotenv says `DASHBOARD_DELIVERY=latch`; make those two calls, in that
+order — polling `mcp__plow__plow_get_result` if either answers with a pending
+handle — per `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`.
+The triage and digest rows also text the owner (their `--deliver` leg in
+`register_crons.py`); that is the chat leg working, not a mistake.
 
-    mcp__plow__plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr 'http://<pi_address>:5174/api/message?card=3'"], network=true)
+Then read every card back in one call, the same way the producers write them:
 
-`{"message": {…"type":"weather"…}}` is the gate: the weather producer's card
-is on the Pi. `{"message": null}` means it is not — read the forced run's
-output (`/opt/hermes/bin/hermes cron runs`) for what went wrong, fix it, and
-force it again.
+    mcp__plow__plow_run_command(argv=["sh","-c","for c in 1 2 3 4 5; do printf 'card %s: ' $c; curl -fsS -H @$HOME/Plow/ld/dashboard.hdr \"http://<pi_address>:5174/api/message?card=$c\" | python3 -c 'import json,sys; d=sys.stdin.read(); m=json.loads(d)[\"message\"] if d else None; print(m[\"type\"] if m else \"EMPTY\")'; done"], network=true)
+
+Five lines reading `alert`, `affirmation`, `weather`, `digest`, `sports`, in
+that order, is the gate. A failed fetch prints `EMPTY` too (curl's own error
+line says why). Any `EMPTY` names the producer that did not land:
+read what its run printed, fix it, run that one again, and read back again.
+Do not go on to the marker with an empty card, and do not describe a card as
+"coming later" — every card the wall has is on it before this phase ends.
 
 **Then run the calendar strip once.** The strip
 (`ld-shared/scripts/calendar_feed.py`) runs unattended with no model in it and
@@ -345,8 +363,8 @@ pass. `calendar feed not configured: …` means an earlier phase did not finish
 — fix that first. The strip on the wall is real events from this household's
 own calendars, so it is also the proof, exactly as the weather card is.
 
-Then tell the owner: "your wall is live — the weather card should be
-showing; is it?" — their answer confirms the screen itself, which is the
+Then tell the owner: "your wall is live — all five cards should be showing;
+are they?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.
 
 Only now — after the owner's confirmation, this phase's for a Mac install,
