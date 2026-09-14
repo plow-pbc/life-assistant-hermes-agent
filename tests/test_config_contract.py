@@ -206,6 +206,7 @@ PRODUCERS = [
     ("ld-calendar-nudge", "post_nudge.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
+    ("ld-priorities", "post_priorities.py"),
 ]
 # The helper ships no sheet; its constant is the docstring example the next
 # producer copies, so it is pinned for the write-safe check alone.
