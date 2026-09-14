@@ -20,7 +20,7 @@ Every producer POSTs ONE message to the household's Pi message API:
     Authorization: Bearer <DASHBOARD_TOKEN>
     Content-Type: application/json
 
-    { "card": "<1-5>", "type": "<type>", "text": "<body>", "title": "<optional>" }
+    { "card": "<1-6>", "type": "<type>", "text": "<body>", "title": "<optional>" }
 
 - `card`, `type`, `text` are REQUIRED. `title` is OPTIONAL.
 - The store is **latest-post-per-card-wins**: re-posting a card replaces it.
