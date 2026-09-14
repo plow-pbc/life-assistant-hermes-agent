@@ -12,9 +12,13 @@ absolute path (a chat turn's working directory is not the skill directory):
 
     /var/lib/hermes/skills/ld-priorities/scripts/priorities.py <command>
 
+Every mutating command prints nothing on success except `add` (which prints
+the new item's id) — silence is success, an error is loud (`refusing: ...`,
+non-zero exit).
+
 | command | what it does |
 |---|---|
-| `show` | the manifest as JSON — read it FIRST, every turn |
+| `show` | the manifest as JSON (last 5 `done`, not all 50 kept) — read it FIRST, every turn |
 | `add "<text>" [--why "<chip>"]` | append an item (prints its id) |
 | `done <id>` / `remove <id>` | finish (kept under `done`) / forget |
 | `rename "<name>"` | rename the list — the card's title follows |
@@ -27,19 +31,21 @@ absolute path (a chat turn's working directory is not the skill directory):
 
 1. `show`.
 2. Apply what the owner asked: `add`, `done`, `remove`, `rename`, `why`.
-3. **Rank.** You own the order. Read `rules` first — they are what the owner
-   has told you about how they want things ranked — then use judgment: a date
-   you can see coming, something blocking something else, what the owner
-   sounded worried about. Emit `rank` with every open id in the order you
-   chose. Put a one-line reason under an item with `why` when the reason is
-   not obvious ("before Oct 3 trip", "landlord asked twice").
-4. **Learn.** When the owner corrects an order or states a preference — "the
+3. **Learn.** When the owner corrects an order or states a preference — "the
    passport is more urgent than the gutters", "groceries always go last",
    "anything for the kids' school first" — `rule add` a short sentence in the
    owner's terms BEFORE you re-rank. The rules are the manifest of how to
    rank; a correction that does not become a rule is one you will make again.
    `rule remove` one the owner has since reversed.
+4. **Rank.** You own the order. Read `rules` first — they are what the owner
+   has told you about how they want things ranked — then use judgment: a date
+   you can see coming, something blocking something else, what the owner
+   sounded worried about. Emit `rank` with every open id in the order you
+   chose. Put a one-line reason under an item with `why` when the reason is
+   not obvious ("before Oct 3 trip", "landlord asked twice").
 5. `post`.
+6. Reply with the top of the list (name, then the first few items, numbered)
+   and — on a re-rank — one sentence on what moved and why. Nothing else.
 
 ## Post
 
@@ -60,10 +66,9 @@ through Latch: follow
 `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md` — the run is
 not done until the Latch `curl` returned 2xx.
 
-Preview without sending: `… priorities.py post --dry-run`.
-
-Reply with the top of the list (name, then the first few items, numbered) and
-— on a re-rank — one sentence on what moved and why. Nothing else.
+Preview without sending: `… priorities.py post --dry-run` — this also prints
+`NO WALL` before the wall is set up, since dry-run previews the *send*, not
+the compose.
 
 The card shows up to six items; the manifest may hold more. Item text on the
 wall is one line: keep items short, put detail in `why`.

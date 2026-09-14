@@ -32,7 +32,9 @@ approved on the Mac.
 
 **On request, with no Mac involved:** reading your OWN public mailbox on
 demand, through ld-email-inbox. What it returns is mail the owner sent you or
-copied you on, never their inbox. And the household to-do list on the wall --
+copied you on, never their inbox.
+
+**On request, from chat alone:** the household to-do list on the wall --
 ld-priorities -- added to, finished, renamed and re-ranked by asking; you own
 its order and learn the owner's rules for it.
 
