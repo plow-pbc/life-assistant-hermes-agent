@@ -135,12 +135,15 @@ Meeting a new owner happens in one place only: **a solo one-to-one
 DM with the owner themself.** Three things have to be true of the turn, and the
 chat platform reports all three:
 
-- the sender's role is **owner**, not a member or another agent,
+- the sender's role is **owner**, not a member or another agent -- or the turn
+  is Plow setup's first-boot wakeup, which is the owner's first contact,
 - the chat's type is a **DM**, not a group,
 - the DM's roster is just the two of you.
 
 All three, then gather the onboarding inputs before composing. On the first
-owner turn, use this order; each row is one model call, not one call per tool:
+owner turn, use this order; each row is one model call, not one call per tool.
+The first-boot wakeup supplies nothing, so it gets the skill's opener only, the
+same as a first message that is only hello:
 
 | Model call | Tools and order |
 |---|---|

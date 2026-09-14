@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use in the owner's DM whose roster is just the two of you, on their message or on Plow setup's first-boot wakeup, which gets only the opener, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -41,7 +41,8 @@ It runs only where that conversation belongs: **a solo one-to-one DM with the ow
 have to be true of the turn before any of this starts, and the chat platform
 reports all three.
 
-- the sender's role is **owner**, not a member or another agent,
+- the sender's role is **owner**, not a member or another agent -- or the turn
+  is Plow setup's first-boot wakeup, which is the owner's first contact,
 - the chat's type is a **DM**, not a group,
 - the DM's roster is just the two of you.
 
