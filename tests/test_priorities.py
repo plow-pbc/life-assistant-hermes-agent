@@ -71,6 +71,12 @@ def test_done_moves_to_done_and_remove_forgets(manifest):
     assert "done" in m["done"][0]
     with pytest.raises(SystemExit, match="unknown"):
         run("done", "nope")
+    for n in range(51):  # DONE_KEPT (50) + 1, on top of "A" already there
+        run("add", f"item{n}")
+        run("done", priorities.load()["items"][0]["id"])
+    done = priorities.load()["done"]
+    assert len(done) == priorities.DONE_KEPT
+    assert done[0]["text"] == "item1"  # "A" and item0 evicted, oldest-first
 
 
 def test_rename_and_rules(manifest):
@@ -113,6 +119,13 @@ def test_compose_escapes_and_caps_at_six(manifest):
 
 def test_compose_empty_list_still_renders(manifest):
     assert "Nothing on the list" in priorities.compose(priorities.load())
+
+
+def test_compose_style_matches_the_protocol_doc(manifest):
+    doc = (REPO_ROOT / "ld-shared" / "references" / "kiosk-protocol.md").read_text()
+    block = re.search(r"### Priorities tile.*?```html\n(<style>.*?</style>)", doc, re.S).group(1)
+    run("add", "A")
+    assert priorities.compose(priorities.load()).startswith(re.sub(r"\n", "", block))
 
 
 def test_post_without_a_wall_keeps_the_list_and_exits_zero(manifest):

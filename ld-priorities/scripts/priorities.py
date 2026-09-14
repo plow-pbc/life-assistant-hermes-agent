@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import functools
 import html
 import json
 import os
@@ -130,95 +131,90 @@ def compose(m: dict) -> str:
 
 
 def _mutate(fn):
-    """Run `fn(manifest)` under the lock; save; print whatever it returns."""
-    with exclusive_lock(MANIFEST, "refusing to write"):
-        m = load()
-        out = fn(m)
-        save(m)
-    if out:
-        print(out)
+    """Decorator: run a `cmd_X(a, m)` mutator under the lock, save the
+    manifest it edited in place, and print whatever it returned (an id,
+    usually). The seven cmd_X functions below are `fn`; each one just edits
+    `m` and returns."""
+
+    @functools.wraps(fn)
+    def wrapper(a):
+        with exclusive_lock(MANIFEST, "refusing to write"):
+            m = load()
+            out = fn(a, m)
+            save(m)
+        if out:
+            print(out)
+
+    return wrapper
 
 
-def cmd_add(a):
-    def go(m):
-        item = {"id": _new_id(m), "text": _text(a.text, "item text"), "added": _today()}
-        if a.why:
-            item["why"] = _text(a.why, "why")
-        m["items"].append(item)
-        return item["id"]
-
-    _mutate(go)
+@_mutate
+def cmd_add(a, m):
+    item = {"id": _new_id(m), "text": _text(a.text, "item text"), "added": _today()}
+    if a.why:
+        item["why"] = _text(a.why, "why")
+    m["items"].append(item)
+    return item["id"]
 
 
-def cmd_done(a):
-    def go(m):
-        item = m["items"].pop(_find(m, a.id))
-        item["done"] = _today()
-        m["done"] = (m["done"] + [item])[-DONE_KEPT:]
-
-    _mutate(go)
+@_mutate
+def cmd_done(a, m):
+    item = m["items"].pop(_find(m, a.id))
+    item["done"] = _today()
+    m["done"] = (m["done"] + [item])[-DONE_KEPT:]
 
 
-def cmd_remove(a):
-    def go(m):
-        m["items"].pop(_find(m, a.id))
-
-    _mutate(go)
+@_mutate
+def cmd_remove(a, m):
+    m["items"].pop(_find(m, a.id))
 
 
-def cmd_rename(a):
-    def go(m):
-        m["name"] = _text(a.name, "list name")
-
-    _mutate(go)
+@_mutate
+def cmd_rename(a, m):
+    m["name"] = _text(a.name, "list name")
 
 
-def cmd_rule(a):
-    def go(m):
-        if a.action == "add":
-            m["rules"].append(_text(a.value, "rule"))
-        else:
-            try:
-                n = int(a.value)
-            except ValueError:
-                sys.exit(f"refusing: {a.value!r} is not a rule number")
-            if not 1 <= n <= len(m["rules"]):
-                sys.exit(f"refusing: no rule {n}; there are {len(m['rules'])}")
-            del m["rules"][n - 1]
-
-    _mutate(go)
+@_mutate
+def cmd_rule(a, m):
+    if a.action == "add":
+        m["rules"].append(_text(a.value, "rule"))
+        return
+    try:
+        n = int(a.value)
+    except ValueError:
+        sys.exit(f"refusing: {a.value!r} is not a rule number")
+    if not 1 <= n <= len(m["rules"]):
+        sys.exit(f"refusing: no rule {n}; there are {len(m['rules'])}")
+    del m["rules"][n - 1]
 
 
-def cmd_rank(a):
-    def go(m):
-        by_id = {i["id"]: i for i in m["items"]}
-        unknown = [i for i in a.ids if i not in by_id]
-        if unknown:
-            sys.exit(f"refusing: unknown item id(s) {unknown}; run `show` for the open ids")
-        if sorted(a.ids) != sorted(by_id):
-            sys.exit(
-                "refusing: rank must list every open item exactly once "
-                f"(got {len(a.ids)}, have {len(by_id)}); run `show` for the open ids"
-            )
-        m["items"] = [by_id[i] for i in a.ids]
-
-    _mutate(go)
+@_mutate
+def cmd_rank(a, m):
+    by_id = {i["id"]: i for i in m["items"]}
+    unknown = [i for i in a.ids if i not in by_id]
+    if unknown:
+        sys.exit(f"refusing: unknown item id(s) {unknown}; run `show` for the open ids")
+    if sorted(a.ids) != sorted(by_id):
+        sys.exit(
+            "refusing: rank must list every open item exactly once "
+            f"(got {len(a.ids)}, have {len(by_id)}); run `show` for the open ids"
+        )
+    m["items"] = [by_id[i] for i in a.ids]
 
 
-def cmd_why(a):
-    def go(m):
-        item = m["items"][_find(m, a.id)]
-        text = " ".join(a.text.split())
-        if text:
-            item["why"] = text
-        else:
-            item.pop("why", None)
-
-    _mutate(go)
+@_mutate
+def cmd_why(a, m):
+    item = m["items"][_find(m, a.id)]
+    text = " ".join(a.text.split())
+    if text:
+        item["why"] = text
+    else:
+        item.pop("why", None)
 
 
 def cmd_show(_a):
-    print(json.dumps(load(), indent=2, ensure_ascii=False))
+    m = load()
+    print(json.dumps({**m, "done": m["done"][-5:]}, indent=2, ensure_ascii=False))
 
 
 def cmd_post(a):
@@ -227,12 +223,19 @@ def cmd_post(a):
         return
     m = load()
     _publish(MESSAGE_FILE, compose(m))
+    import post_priorities  # noqa: E402  -- sets post_to_kiosk.CARD/BODY_TYPE
+    # MESSAGE_FILE is re-set from OUR OWN module constant, not left at
+    # post_priorities' production literal: tests monkeypatch priorities.
+    # MESSAGE_FILE to a tmp path, and post_priorities.py never sees that
+    # rebind, so skipping this line would post from the wrong file in tests
+    # (and on a symlinked skills tree, potentially in production too).
     post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE
-    post_to_kiosk.CARD = "6"
-    post_to_kiosk.BODY_TYPE = "priorities"
     post_to_kiosk.TITLE = m["name"]
-    sys.argv = ["post_priorities.py"] + (["--dry-run"] if a.dry_run else [])
-    post_to_kiosk.main()
+    saved_argv, sys.argv = sys.argv, ["post_priorities.py"] + (["--dry-run"] if a.dry_run else [])
+    try:
+        post_to_kiosk.main()
+    finally:
+        sys.argv = saved_argv
 
 
 # (subcommand name, positional/optional argument specs, handler) -- one row
