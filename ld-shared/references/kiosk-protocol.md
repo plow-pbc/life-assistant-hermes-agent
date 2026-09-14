@@ -99,8 +99,9 @@ empty meta slot (no stray separator).
 A stacked list of up to 3 game rows (Apple-Sports look): away (left) · center ·
 home (right); loser greyed; `is-live` warms the background when a shown game is
 live; empty window → "No upcoming games" (still posted, so the card refreshes
-rather than going stale). Per-team monogram colors are set inline via `--p` /
-`--s`. Text fields (team abbrs, status, logo URLs) are HTML-escaped.
+rather than going stale). Text fields (team abbrs, status, logo URLs) are
+HTML-escaped. Each team logo is embedded in the tile as a `data:` PNG, because
+the wall shows images from itself only (`img-src 'self' data:`).
 
 ```html
 <style>
@@ -112,7 +113,6 @@ rather than going stale). Per-team monogram colors are set inline via `--p` /
 .sp-star{color:var(--accent-ink,var(--clay-ink));font-size:12px;text-align:center;line-height:1}
 .sp-logo{width:38px;height:38px;position:relative;display:flex;align-items:center;justify-content:center}
 .sp-logo img{width:100%;height:100%;object-fit:contain;display:block}
-.sp-mono{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--p,var(--muted));color:var(--s,#fff);font-family:var(--ff-mono);font-weight:500;font-size:12px;letter-spacing:0.02em}
 .sp-sc{font-family:var(--ff-body);font-weight:700;font-size:24px;line-height:1;font-variant-numeric:tabular-nums;color:var(--ink)}
 .sp-sc.a{text-align:right}
 .sp-sc.h{text-align:left}

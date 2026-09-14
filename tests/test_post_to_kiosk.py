@@ -58,6 +58,7 @@ def reset_module():
     post_to_kiosk.BODY_TYPE = None
     post_to_kiosk.TITLE = None
     post_to_kiosk.MESSAGE_FILE = None
+    post_to_kiosk.TRANSFORM = None
     post_to_kiosk.ENDPOINT_FILE = "/config/secrets/dashboard-endpoint-url"
     post_to_kiosk.TOKEN_FILE = "/config/secrets/dashboard-token"
     # Not the real /var/lib/hermes/.env: a machine that happens to have one would
@@ -393,6 +394,25 @@ def test_optional_title_is_posted_when_set():
             "body carries an empty title to hide the eyebrow",
             _CapturingHandler.received[-1]["body"].get("title") == "",
         )
+
+
+def test_transform_shapes_the_posted_text():
+    """A producer can set TRANSFORM to finish its text before it is posted:
+    the body carries the function's output, not the text as read."""
+    server, base = _start_server()
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            use_file_secrets(Path(d), endpoint=f"{base}/api/message", card="5", body_type="sports")
+            post_to_kiosk.TRANSFORM = lambda text: text.replace("logo-url", "data:image/png;base64,AA")
+            code, _ = run(stdin_text='<img src="logo-url">')
+    finally:
+        server.shutdown()
+        reset_module()
+    check("transform post exit zero", code == 0)
+    check(
+        "body text is the transformed tile",
+        [r["body"]["text"] for r in _CapturingHandler.received] == ['<img src="data:image/png;base64,AA">'],
+    )
 
 
 def test_dry_run_redacts_body_and_token():
