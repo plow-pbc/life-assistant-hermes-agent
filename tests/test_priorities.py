@@ -97,3 +97,35 @@ def test_manifest_is_private_and_survives_a_concurrent_add(manifest, run_concurr
     assert errors == []
     assert sorted(i["text"] for i in priorities.load()["items"]) == ["one", "two"]
     assert oct(Path(priorities.MANIFEST).stat().st_mode)[-3:] == "600"
+
+
+def test_compose_escapes_and_caps_at_six(manifest):
+    for n in range(8):
+        run("add", f"Item <{n}> & co")
+    tile = priorities.compose(priorities.load())
+    assert tile.count('class="pr-item"') == 6
+    assert "Item &lt;0&gt; &amp; co" in tile
+    assert "<script" not in tile and "<Item" not in tile
+
+
+def test_compose_empty_list_still_renders(manifest):
+    assert "Nothing on the list" in priorities.compose(priorities.load())
+
+
+def test_post_without_a_wall_keeps_the_list_and_exits_zero(manifest):
+    run("add", "A")
+    assert run("post").startswith("NO WALL")
+    assert not Path(priorities.MESSAGE_FILE).exists()
+
+
+def test_post_dry_run_carries_the_list_name_as_title(manifest, monkeypatch):
+    Path(priorities.WALL_READY).touch()
+    monkeypatch.setenv("DASHBOARD_ENDPOINT_URL", "https://x.test/api/message")
+    monkeypatch.setenv("DASHBOARD_TOKEN", "t")
+    run("rename", "Weekend jobs")
+    run("add", "A")
+    out = json.loads(run("post", "--dry-run"))
+    assert out["body"]["card"] == "6"
+    assert out["body"]["type"] == "priorities"
+    assert out["body"]["title"] == "Weekend jobs"
+    assert Path(priorities.MESSAGE_FILE).read_text().startswith("<style>")

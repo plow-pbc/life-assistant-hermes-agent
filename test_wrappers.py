@@ -6,17 +6,19 @@ plow-pbc/life-dashboard-skills and now live in-tree as ld-shared/ — there is n
 sync step, so this runs against the checkout as-is. It verifies the part each
 producer owns: its thin wrapper sets the right CARD / BODY_TYPE on the shared
 module at import, per the pinned producer→card mapping the viewer renders
-(1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports). On Hermes every
-producer — including weather and sports — runs as an LLM cron job that calls a
-Python wrapper.
+(1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports, 6=priorities). On
+Hermes every producer — including weather, sports and priorities — runs as an
+LLM cron job or chat turn that calls a Python wrapper.
 
-Two rows, not six. The other four producers read Gmail, Google Calendar or
+Three rows, not six. The other four producers read Gmail, Google Calendar or
 Slack, and plow-connectors is dropped, so they have no data source on this
 agent and their bodies are not in this repo: three are blocked on
 plow-pbc/latch#183 (Google through a vendored gog), and ld-morning-triage needs
 a rewrite onto the Mac's iMessage DB through Latch. Their card numbers stay
 reserved above so the mapping this asserts does not silently renumber when they
-land.
+land. ld-priorities is card 6, outside that original six-producer scope: it is
+chat-driven with no data-source blocker, so it ships with the other two rather
+than waiting behind Latch.
 
 Each wrapper runs in a fresh interpreter: an in-process import would find
 post_to_kiosk already in sys.modules and mask a broken relative sys.path in the
@@ -53,6 +55,7 @@ SNIPPET = (
 WRAPPERS = (
     ("ld-weather/scripts/post_weather.py", "3", "weather"),
     ("ld-sports/scripts/post_sports.py", "5", "sports"),
+    ("ld-priorities/scripts/post_priorities.py", "6", "priorities"),
 )
 
 
