@@ -18,7 +18,7 @@ non-zero exit).
 
 | command | what it does |
 |---|---|
-| `show` | the manifest as JSON (last 5 `done`, not all 50 kept) — read it FIRST, every turn |
+| `show` | the manifest as JSON (only the last 5 `done`; all are kept) — read it FIRST, every turn |
 | `add "<text>" [--why "<chip>"]` | append an item (prints its id) |
 | `done <id>` / `remove <id>` | finish (kept under `done`) / forget |
 | `rename "<name>"` | rename the list — the card's title follows |

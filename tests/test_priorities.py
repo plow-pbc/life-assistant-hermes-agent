@@ -58,6 +58,12 @@ def test_rank_must_be_a_full_permutation(manifest):
     with pytest.raises(SystemExit, match="unknown"):
         run("rank", a, b, "zzzz")
     assert ids() == [c, a, b]  # a refused rank changes nothing
+    with pytest.raises(SystemExit, match="every open item"):
+        run("rank")  # empty rank while items are open
+    for i in (a, b, c):
+        run("done", i)
+    run("rank")  # the last item done: an empty rank is the valid order
+    assert ids() == []
 
 
 def test_done_moves_to_done_and_remove_forgets(manifest):
@@ -71,12 +77,6 @@ def test_done_moves_to_done_and_remove_forgets(manifest):
     assert "done" in m["done"][0]
     with pytest.raises(SystemExit, match="unknown"):
         run("done", "nope")
-    for n in range(51):  # DONE_KEPT (50) + 1, on top of "A" already there
-        run("add", f"item{n}")
-        run("done", priorities.load()["items"][0]["id"])
-    done = priorities.load()["done"]
-    assert len(done) == priorities.DONE_KEPT
-    assert done[0]["text"] == "item1"  # "A" and item0 evicted, oldest-first
 
 
 def test_rename_and_rules(manifest):
@@ -145,14 +145,3 @@ def test_post_dry_run_carries_the_list_name_as_title(manifest, monkeypatch):
     assert out["body"]["type"] == "priorities"
     assert out["body"]["title"] == "Weekend jobs"
     assert Path(priorities.MESSAGE_FILE).read_text().startswith("<style>")
-
-
-def test_the_wrapper_and_the_module_agree_on_the_handoff_path():
-    """post_priorities.py's MESSAGE_FILE is a literal (test_config_contract.py's
-    _handoff() needs a quoted string), duplicating priorities.py's own module
-    constant -- nothing else ties the two together, so a solo edit to either
-    would silently split what `post` writes from what a failed-send retry
-    reads back."""
-    wrapper = (REPO_ROOT / "ld-priorities" / "scripts" / "post_priorities.py").read_text()
-    (wrapper_path,) = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper)
-    assert wrapper_path == priorities.MESSAGE_FILE

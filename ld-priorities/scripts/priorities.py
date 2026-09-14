@@ -3,11 +3,12 @@
 
 One file, `/var/lib/hermes/ld/priorities.json`, holds the list's name, the
 open items IN RANK ORDER, the rules the assistant has learned about how the
-owner wants things ranked, and what got done. Every mutation is a subcommand
-here so the model decides only three things -- the order, a reason chip, and a
-rule -- and never rewrites the file by hand. Read-modify-write under
-`ld-shared/scripts/exclusive_lock.py`, published tmp+fchmod+fsync+os.replace,
-mode 600.
+owner wants things ranked, and what got done -- kept, not capped: the skill
+promises recall. Every mutation is a subcommand here so the model decides
+only three things -- the order, a reason chip, and a rule -- and never
+rewrites the file by hand. Read-modify-write under
+`ld-shared/scripts/exclusive_lock.py`, published by
+`ld-shared/scripts/atomic_write.py`, mode 600.
 
     show | add <text> [--why T] | done <id> | remove <id> | rename <name>
     rule add <sentence> | rule remove <n> | rank <id>... | why <id> <text>
@@ -16,7 +17,6 @@ mode 600.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import datetime as dt
 import functools
 import html
@@ -24,10 +24,10 @@ import json
 import os
 import secrets
 import sys
-import tempfile
 
 _SCRIPTS_DIR = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(_SCRIPTS_DIR, "..", "..", "ld-shared", "scripts"))
+from atomic_write import atomic_write  # noqa: E402
 from exclusive_lock import exclusive_lock  # noqa: E402
 import post_to_kiosk  # noqa: E402
 
@@ -36,43 +36,18 @@ MESSAGE_FILE = "/var/lib/hermes/ld/priorities-text"
 WALL_READY = "/var/lib/hermes/ld/setup-complete"
 DEFAULT_NAME = "Our to-do list"
 SHOWN = 6
-DONE_KEPT = 50
 
 
 def load() -> dict:
     try:
         with open(MANIFEST, encoding="utf-8") as f:
-            m = json.load(f)
+            return json.load(f)
     except FileNotFoundError:
         return {"name": DEFAULT_NAME, "rules": [], "items": [], "done": []}
-    for key, default in (("name", DEFAULT_NAME), ("rules", []), ("items", []), ("done", [])):
-        m.setdefault(key, default)
-    return m
-
-
-def _publish(path: str, text: str) -> None:
-    """Write `text` to `path` by rename -- tmp + fchmod 600 + fsync +
-    os.replace, the same shape write_config.py's atomic_write uses for
-    config.json. Shared by save() (MANIFEST) and cmd_post (MESSAGE_FILE) so
-    neither can leave a reader looking at a truncated file mid-write."""
-    directory = os.path.dirname(path)
-    os.makedirs(directory, mode=0o700, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".priorities-")
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
 
 
 def save(m: dict) -> None:
-    _publish(MANIFEST, json.dumps(m, indent=2, ensure_ascii=False) + "\n")
+    atomic_write(MANIFEST, json.dumps(m, indent=2, ensure_ascii=False) + "\n")
 
 
 def _today() -> str:
@@ -161,7 +136,7 @@ def cmd_add(a, m):
 def cmd_done(a, m):
     item = m["items"].pop(_find(m, a.id))
     item["done"] = _today()
-    m["done"] = (m["done"] + [item])[-DONE_KEPT:]
+    m["done"].append(item)
 
 
 @_mutate
@@ -221,21 +196,21 @@ def cmd_post(a):
     if not os.path.exists(WALL_READY):
         print("NO WALL: the list is kept, nothing was posted (ld-wall-setup has not finished)")
         return
-    m = load()
-    _publish(MESSAGE_FILE, compose(m))
-    import post_priorities  # noqa: E402  -- sets post_to_kiosk.CARD/BODY_TYPE
-    # MESSAGE_FILE is re-set from OUR OWN module constant, not left at
-    # post_priorities' production literal: tests monkeypatch priorities.
-    # MESSAGE_FILE to a tmp path, and post_priorities.py never sees that
-    # rebind, so skipping this line would post from the wrong file in tests
-    # (and on a symlinked skills tree, potentially in production too).
-    post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE
-    post_to_kiosk.TITLE = m["name"]
-    saved_argv, sys.argv = sys.argv, ["post_priorities.py"] + (["--dry-run"] if a.dry_run else [])
-    try:
-        post_to_kiosk.main()
-    finally:
-        sys.argv = saved_argv
+    # Serialized on the manifest lock: two overlapping posts (a chat turn and
+    # a retry) would otherwise race on MESSAGE_FILE. post_priorities.py's own
+    # __main__ takes the same lock.
+    with exclusive_lock(MANIFEST, "refusing to post"):
+        m = load()
+        atomic_write(MESSAGE_FILE, compose(m))
+        import post_priorities  # sets post_to_kiosk.CARD/BODY_TYPE
+        post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE  # tests rebind ours, not the wrapper's literal
+        post_to_kiosk.TITLE = m["name"]
+        saved_argv = sys.argv
+        sys.argv = ["post_priorities.py"] + (["--dry-run"] if a.dry_run else [])
+        try:
+            post_to_kiosk.main()
+        finally:
+            sys.argv = saved_argv
 
 
 # (subcommand name, positional/optional argument specs, handler) -- one row
@@ -247,7 +222,7 @@ SUBCOMMANDS = (
     ("remove", (("id", {}),), cmd_remove),
     ("rename", (("name", {}),), cmd_rename),
     ("rule", (("action", {"choices": ("add", "remove")}), ("value", {})), cmd_rule),
-    ("rank", (("ids", {"nargs": "+"}),), cmd_rank),
+    ("rank", (("ids", {"nargs": "*"}),), cmd_rank),
     ("why", (("id", {}), ("text", {})), cmd_why),
     ("show", (), cmd_show),
     ("post", (("--dry-run", {"action": "store_true"}),), cmd_post),

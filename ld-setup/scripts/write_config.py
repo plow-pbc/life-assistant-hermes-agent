@@ -80,7 +80,6 @@ import copy
 import json
 import os
 import sys
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -89,6 +88,7 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
+from atomic_write import atomic_write  # noqa: E402
 from exclusive_lock import exclusive_lock  # noqa: E402
 from ld_config_gate import GateError, gate  # noqa: E402
 
@@ -275,44 +275,6 @@ def apply_patch(patch, current, env, geocoder=None, gated=True):
         return merged, matched, restart_note
 
     return merged, None, restart_note
-
-
-def atomic_write(config_path, text):
-    """Replace the config in one step, or leave the old one untouched.
-
-    A truncate-then-write destroys the file before the replacement exists, so
-    ENOSPC or a kill in that window leaves an empty or half-written config.
-    The first-run path could survive that -- the owner had just answered every
-    question, so re-running rebuilds it -- but a patch cannot: the file IS the
-    only copy of every preference the owner is not currently restating, and
-    preserving those is the whole reason --patch exists. An unreadable config
-    also stands every producer down at once (the shared gate refuses it), so
-    the failure presents as a wall that quietly stops updating.
-
-    So: a fresh file in the same directory (same filesystem, or os.replace is
-    not atomic), chmod BEFORE the PII-bearing content goes in, fsync so the
-    bytes are durable before the rename publishes them, then one os.replace.
-    A reader sees the old config or the new one, never neither.
-
-    Nothing is validated here: the caller serializes with allow_nan=False, and
-    json.dumps output is valid JSON by construction otherwise, so re-reading
-    the file back would be a second validation contract around a single
-    caller.
-    """
-    directory = os.path.dirname(config_path)
-    os.makedirs(directory, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(
-        prefix=f".{os.path.basename(config_path)}.", dir=directory)
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temporary, config_path)
-    except BaseException:
-        os.unlink(temporary)
-        raise
 
 
 def main(argv=None, env=None, stdin=None, config_path=CONFIG):

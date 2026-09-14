@@ -14,6 +14,7 @@ import sys
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "ld-shared", "scripts"))
+from exclusive_lock import exclusive_lock  # noqa: E402
 import post_to_kiosk  # noqa: E402
 
 post_to_kiosk.MESSAGE_FILE = "/var/lib/hermes/ld/priorities-text"
@@ -28,5 +29,7 @@ if __name__ == "__main__":
     sys.path.insert(0, HERE)
     import priorities  # noqa: E402
 
-    post_to_kiosk.TITLE = priorities.load()["name"]
-    post_to_kiosk.main()
+    # The lock `priorities.py post` holds while it recomposes MESSAGE_FILE.
+    with exclusive_lock(priorities.MANIFEST, "refusing to post"):
+        post_to_kiosk.TITLE = priorities.load()["name"]
+        post_to_kiosk.main()
