@@ -8,7 +8,7 @@ places, both files under /var/lib/hermes/ld that the agent ships whole with
 Latch's file tool -- never through chat, never on argv (argv is shown on the
 owner's approval card and kept in the audit record):
 
-  /var/lib/hermes/ld/pi.env         ICAL_URL + DASHBOARD_TOKEN   -> the Pi's ~/ld-data/.env
+  /var/lib/hermes/ld/pi.env         DASHBOARD_TOKEN              -> the Pi's ~/ld-data/.env
   /var/lib/hermes/ld/dashboard.hdr  Authorization: Bearer <t>    -> ~/Plow/ld/dashboard.hdr on the Mac
 
 and three lines are appended to the agent's own dotenv,
@@ -27,11 +27,10 @@ decommissioned one. The two files ARE rewritten from the existing token every
 run, so a re-run after a lost /var/lib/hermes/ld/ still has something to ship.
 
 Answers arrive as ONE JSON object on stdin -- {"pi_address": ..., "pi_user":
-..., "ical_url": ...} -- never on argv and never interpolated into shell
+...} -- never on argv and never interpolated into shell
 text: fed through a quoted heredoc they are inert data, the same rule as
 write_config.py, where an embedded quote in an owner's answer would
-otherwise execute before any validation here could see it. Leave "ical_url"
-out to keep the feed already in pi.env.
+otherwise execute before any validation here could see it.
 
 Every key may be left out on a resume: pi_address falls back to the host
 already in DASHBOARD_ENDPOINT_URL, and pi_user to the DASHBOARD_PI_USER line
@@ -45,14 +44,6 @@ supply.
 Stdout never carries the token. It carries pi_line_1= and pi_line_2=, the two
 commands the agent runs on the Pi through Latch -- bare, one per line, nothing
 shell-wrapped, so each value drops straight into an ssh argv element.
-
-ICAL_URL comes from the "ical_url" answer when the key is present with a
-non-null value; absent or null,
-the value already in pi.env is kept (an idempotent re-run must not erase the
-feed), and only a first run with no pi.env writes it blank -- the viewer
-treats a blank one as "Can't reach calendar" until the owner fills it. The
-URL is a private feed, so like the token it is written to pi.env only --
-never printed.
 """
 from __future__ import annotations
 
@@ -174,10 +165,9 @@ def main(stdin=None, dotenv_path=AGENT_DOTENV, ld_dir=LD_DIR, argv=None):
         raise SystemExit(f"refusing: could not read {staged}: {exc}") from None
     except json.JSONDecodeError as exc:
         raise SystemExit(f"refusing: stdin is not one JSON object: {exc}") from None
-    unknown = set(answers) - {"pi_address", "pi_user", "ical_url"}
+    unknown = set(answers) - {"pi_address", "pi_user"}
     if unknown:
         raise SystemExit(f"refusing: unknown keys {sorted(unknown)}")
-    ical_url = answers.get("ical_url")  # absent = keep what pi.env holds
 
     # Everything from the dotenv read to both private writes happens under one
     # lock: the read decides whether a token already exists, and two runs that
@@ -273,15 +263,8 @@ def main(stdin=None, dotenv_path=AGENT_DOTENV, ld_dir=LD_DIR, argv=None):
                   f"DASHBOARD_TOKEN, DASHBOARD_DELIVERY=latch and DASHBOARD_PI_USER={pi_user} "
                   f"to {dotenv_path}.")
 
-        ical = ical_url
-        if ical is None:
-            # Omitted is not "blank": an idempotent re-run must not erase the
-            # feed a later re-point or Pi rebuild ships. dotenv_values reads a
-            # missing pi.env as empty, so a first run still writes it blank.
-            ical = dotenv_values(os.path.join(ld_dir, "pi.env")).get("ICAL_URL", "")
-
         os.makedirs(ld_dir, mode=0o700, exist_ok=True)
-        write_private(os.path.join(ld_dir, "pi.env"), f"ICAL_URL={ical}\nDASHBOARD_TOKEN={token}\n")
+        write_private(os.path.join(ld_dir, "pi.env"), f"DASHBOARD_TOKEN={token}\n")
         write_private(os.path.join(ld_dir, "dashboard.hdr"), f"Authorization: Bearer {token}\n")
         # Qualified: this line is read by the model, and a bare tool name is one
         # the build does not register.
@@ -294,7 +277,7 @@ def main(stdin=None, dotenv_path=AGENT_DOTENV, ld_dir=LD_DIR, argv=None):
         try:
             os.remove(staged)
         except OSError as exc:
-            # Not swallowed: it can hold an ical_url and the Pi's address, and
+            # Not swallowed: it holds the Pi's address and login, and
             # one left behind is a second copy with no reader. The writes landed,
             # so say both and exit non-zero.
             raise SystemExit(
