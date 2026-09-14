@@ -43,10 +43,11 @@ absolute path (a chat turn's working directory is not the skill directory):
 
 ## Post
 
-`post` composes the tile HTML and writes it to the fixed handoff file —
-`/var/lib/hermes/ld/priorities-text` — then runs the shared kiosk helper by
-absolute path (the same file its `post` subcommand invokes internally, and
-what a standalone retry after a failed send calls directly):
+`post` composes the tile HTML, writes it to the fixed handoff file —
+`/var/lib/hermes/ld/priorities-text` — and posts it in one step; you never
+call the helper below yourself. It exists only so a retry after a failed send
+can re-post the same composed tile without you re-running `post` (which would
+recompose from whatever the manifest says now, not what was last sent):
 
     /var/lib/hermes/skills/ld-priorities/scripts/post_priorities.py
 

@@ -49,24 +49,29 @@ def load() -> dict:
     return m
 
 
-def save(m: dict) -> None:
-    """Publish `m` by rename -- tmp + fchmod 600 + fsync + os.replace, the same
-    shape write_config.py's atomic_write uses for config.json."""
-    directory = os.path.dirname(MANIFEST)
+def _publish(path: str, text: str) -> None:
+    """Write `text` to `path` by rename -- tmp + fchmod 600 + fsync +
+    os.replace, the same shape write_config.py's atomic_write uses for
+    config.json. Shared by save() (MANIFEST) and cmd_post (MESSAGE_FILE) so
+    neither can leave a reader looking at a truncated file mid-write."""
+    directory = os.path.dirname(path)
     os.makedirs(directory, mode=0o700, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".priorities-", suffix=".json")
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".priorities-")
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(m, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+            f.write(text)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, MANIFEST)
+        os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+def save(m: dict) -> None:
+    _publish(MANIFEST, json.dumps(m, indent=2, ensure_ascii=False) + "\n")
 
 
 def _today() -> str:
@@ -173,7 +178,10 @@ def cmd_rule(a):
         if a.action == "add":
             m["rules"].append(_text(a.value, "rule"))
         else:
-            n = int(a.value)
+            try:
+                n = int(a.value)
+            except ValueError:
+                sys.exit(f"refusing: {a.value!r} is not a rule number")
             if not 1 <= n <= len(m["rules"]):
                 sys.exit(f"refusing: no rule {n}; there are {len(m['rules'])}")
             del m["rules"][n - 1]
@@ -218,9 +226,7 @@ def cmd_post(a):
         print("NO WALL: the list is kept, nothing was posted (ld-wall-setup has not finished)")
         return
     m = load()
-    fd = os.open(MESSAGE_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(compose(m))
+    _publish(MESSAGE_FILE, compose(m))
     post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE
     post_to_kiosk.CARD = "6"
     post_to_kiosk.BODY_TYPE = "priorities"

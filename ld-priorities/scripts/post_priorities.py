@@ -22,6 +22,9 @@ post_to_kiosk.BODY_TYPE = "priorities"
 
 
 if __name__ == "__main__":
+    # Python auto-inserts the invoked script's own directory, but that is the
+    # INVOCATION path, not HERE's realpath -- explicit, so `import priorities`
+    # still resolves if this is ever reached through a symlinked skills tree.
     sys.path.insert(0, HERE)
     import priorities  # noqa: E402
 

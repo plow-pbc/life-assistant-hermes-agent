@@ -4,6 +4,7 @@ reach the card title."""
 import contextlib
 import io
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -129,3 +130,14 @@ def test_post_dry_run_carries_the_list_name_as_title(manifest, monkeypatch):
     assert out["body"]["type"] == "priorities"
     assert out["body"]["title"] == "Weekend jobs"
     assert Path(priorities.MESSAGE_FILE).read_text().startswith("<style>")
+
+
+def test_the_wrapper_and_the_module_agree_on_the_handoff_path():
+    """post_priorities.py's MESSAGE_FILE is a literal (test_config_contract.py's
+    _handoff() needs a quoted string), duplicating priorities.py's own module
+    constant -- nothing else ties the two together, so a solo edit to either
+    would silently split what `post` writes from what a failed-send retry
+    reads back."""
+    wrapper = (REPO_ROOT / "ld-priorities" / "scripts" / "post_priorities.py").read_text()
+    (wrapper_path,) = re.findall(r'MESSAGE_FILE\s*=\s*"([^"]+)"', wrapper)
+    assert wrapper_path == priorities.MESSAGE_FILE
