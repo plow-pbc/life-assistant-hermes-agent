@@ -122,20 +122,20 @@ the viewer's theme tokens style. Keep the column grid (`14px 38px 30px 1fr 30px
 
 ### Priorities tile (card 6)
 
-The household to-do list, in the order the assistant ranks it. Up to 6
-numbered rows; an optional `.pr-why` chip under a row (a date, a reason). The
+The household to-do list, in the order the assistant ranks it. Up to 6 items
+in a two-column, three-row grid — 1–3 down the left column, 4–6 down the
+right — sized so six chip-bearing items fit the card's fixed height. The
 list's NAME travels as the wire `title` (a non-empty override), so renaming
 the list in chat renames the card. Empty list → `.pr-empty` "Nothing on the
 list" (still posted so the card refreshes). Item and chip text are HTML-escaped.
 
 ```html
 <style>
-.pr-list{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-start}
-.pr-empty{text-align:center;color:var(--muted);font-size:var(--t-card)}
-.pr-item{display:grid;grid-template-columns:2ch 1fr;column-gap:10px;align-items:baseline;padding:8px 0}
-.pr-item + .pr-item{border-top:1px solid var(--hair)}
+.pr-list{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,auto);grid-auto-flow:column;column-gap:18px;align-content:start}
+.pr-empty{grid-column:1/-1;text-align:center;color:var(--muted);font-size:var(--t-card)}
+.pr-item{display:grid;grid-template-columns:2ch 1fr;column-gap:8px;align-items:baseline;padding:5px 0;min-width:0}
 .pr-n{font-family:var(--ff-mono);font-weight:500;font-size:13px;letter-spacing:0.06em;color:var(--accent-ink,var(--clay-ink));text-align:right}
-.pr-text{font-family:var(--ff-body);font-weight:500;font-size:18px;line-height:1.15;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr-text{font-family:var(--ff-body);font-weight:500;font-size:16px;line-height:1.15;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pr-why{grid-column:2;font-family:var(--ff-mono);font-weight:var(--cap-weight);font-size:var(--cap-size);letter-spacing:var(--cap-tracking);text-transform:uppercase;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 <div class="pr-list"><div class="pr-item"><span class="pr-n">1</span><span class="pr-text">Renew passports</span><span class="pr-why">before Oct 3 trip</span></div></div>
