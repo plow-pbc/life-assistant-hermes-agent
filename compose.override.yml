@@ -63,3 +63,4 @@ services:
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-sports:/opt/data/skills/ld-sports:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-shared:/opt/data/skills/ld-shared:ro
       - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-dashboard:/opt/data/skills/ld-dashboard:ro
+      - ${AGENT_DIR:?set by agent-mgr from the registry}/ld-priorities:/opt/data/skills/ld-priorities:ro
