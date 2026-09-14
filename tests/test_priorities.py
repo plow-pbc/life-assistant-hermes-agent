@@ -83,6 +83,8 @@ def test_rename_and_rules(manifest):
     assert m["rules"] == ["Dated things first"]
     with pytest.raises(SystemExit):
         run("rename", "   ")
+    with pytest.raises(SystemExit, match="not a rule number"):
+        run("rule", "remove", "abc")
 
 
 def test_why_sets_and_clears(manifest):
