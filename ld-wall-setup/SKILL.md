@@ -328,7 +328,13 @@ whole procedure, this phase only orders them:
 
 The hour is not a reason to skip one. A triage run at 3 p.m. reads the same
 inbox a 7 a.m. run would; a digest on a Wednesday covers the week from
-today; a sports tile with no game today says so. Each producer's helper ends
+today; a sports tile with no game today says so. Two sheets have a branch
+that posts no card, and setup overrides both, because a fresh wall has no
+earlier card to leave up: a quiet triage (both gathers empty) writes exactly
+`No alert today.` to its handoff file and posts it, so card 1 carries the
+quiet-day state; and the digest runs its kiosk step here — its
+"invoked directly in chat, skip the kiosk" rule is for a chat question, and
+this is setup. Each producer's helper ends
 with `NOT DELIVERED — ship it through Latch, then paste both outputs:` because
 the dotenv says `DASHBOARD_DELIVERY=latch`; make those two calls, in that
 order — polling `mcp__plow__plow_get_result` if either answers with a pending
