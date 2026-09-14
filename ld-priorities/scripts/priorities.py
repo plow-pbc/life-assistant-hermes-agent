@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""priorities.py -- the household to-do list's manifest, and the card it feeds.
+
+One file, `/var/lib/hermes/ld/priorities.json`, holds the list's name, the
+open items IN RANK ORDER, the rules the assistant has learned about how the
+owner wants things ranked, and what got done. Every mutation is a subcommand
+here so the model decides only three things -- the order, a reason chip, and a
+rule -- and never rewrites the file by hand. Read-modify-write under
+`ld-shared/scripts/exclusive_lock.py`, published tmp+fchmod+fsync+os.replace,
+mode 600.
+
+    show | add <text> [--why T] | done <id> | remove <id> | rename <name>
+    rule add <sentence> | rule remove <n> | rank <id>... | why <id> <text>
+    post [--dry-run]
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import datetime as dt
+import html
+import json
+import os
+import secrets
+import sys
+import tempfile
+
+_SCRIPTS_DIR = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(_SCRIPTS_DIR, "..", "..", "ld-shared", "scripts"))
+from exclusive_lock import exclusive_lock  # noqa: E402
+import post_to_kiosk  # noqa: E402
+
+MANIFEST = "/var/lib/hermes/ld/priorities.json"
+MESSAGE_FILE = "/var/lib/hermes/ld/priorities-text"
+WALL_READY = "/var/lib/hermes/ld/setup-complete"
+DEFAULT_NAME = "Our to-do list"
+SHOWN = 6
+DONE_KEPT = 50
+
+
+def load() -> dict:
+    try:
+        with open(MANIFEST, encoding="utf-8") as f:
+            m = json.load(f)
+    except FileNotFoundError:
+        return {"name": DEFAULT_NAME, "rules": [], "items": [], "done": []}
+    for key, default in (("name", DEFAULT_NAME), ("rules", []), ("items", []), ("done", [])):
+        m.setdefault(key, default)
+    return m
+
+
+def save(m: dict) -> None:
+    """Publish `m` by rename -- tmp + fchmod 600 + fsync + os.replace, the same
+    shape write_config.py's atomic_write uses for config.json."""
+    directory = os.path.dirname(MANIFEST)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".priorities-", suffix=".json")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(m, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, MANIFEST)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def _today() -> str:
+    return dt.date.today().isoformat()
+
+
+def _find(m: dict, item_id: str) -> int:
+    for i, item in enumerate(m["items"]):
+        if item["id"] == item_id:
+            return i
+    sys.exit(f"refusing: unknown item id {item_id!r}; run `show` for the open ids")
+
+
+def _new_id(m: dict) -> str:
+    taken = {i["id"] for i in m["items"]} | {d["id"] for d in m["done"]}
+    while True:
+        candidate = secrets.token_hex(2)
+        if candidate not in taken:
+            return candidate
+
+
+def _text(value: str, what: str) -> str:
+    value = " ".join(value.split())
+    if not value:
+        sys.exit(f"refusing: {what} is empty")
+    return value
+
+
+def compose(m: dict) -> str:
+    """The card 6 tile -- a 2-column x 3-row grid so six chip-bearing items fit
+    the card's fixed height (v2; see ld-shared/references/kiosk-protocol.md
+    "Priorities tile"). Every rule concatenated in this same order, no
+    newlines, so this string and that doc's <style> block stay byte-identical."""
+    style = (
+        "<style>"
+        ".pr-list{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,auto);grid-auto-flow:column;column-gap:18px;align-content:start}"
+        ".pr-empty{grid-column:1/-1;text-align:center;color:var(--muted);font-size:var(--t-card)}"
+        ".pr-item{display:grid;grid-template-columns:2ch 1fr;column-gap:8px;align-items:baseline;padding:5px 0;min-width:0}"
+        ".pr-n{font-family:var(--ff-mono);font-weight:500;font-size:13px;letter-spacing:0.06em;color:var(--accent-ink,var(--clay-ink));text-align:right}"
+        ".pr-text{font-family:var(--ff-body);font-weight:500;font-size:16px;line-height:1.15;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
+        ".pr-why{grid-column:2;font-family:var(--ff-mono);font-weight:var(--cap-weight);font-size:var(--cap-size);letter-spacing:var(--cap-tracking);text-transform:uppercase;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+        "</style>"
+    )
+    items = m["items"][:SHOWN]
+    if not items:
+        return f'{style}<div class="pr-list"><div class="pr-empty">Nothing on the list</div></div>'
+    rows = []
+    for n, item in enumerate(items, 1):
+        why = item.get("why")
+        chip = f'<span class="pr-why">{html.escape(why, quote=True)}</span>' if why else ""
+        rows.append(
+            f'<div class="pr-item"><span class="pr-n">{n}</span>'
+            f'<span class="pr-text">{html.escape(item["text"], quote=True)}</span>{chip}</div>'
+        )
+    return f'{style}<div class="pr-list">{"".join(rows)}</div>'
+
+
+def _mutate(fn):
+    """Run `fn(manifest)` under the lock; save; print whatever it returns."""
+    with exclusive_lock(MANIFEST, "refusing to write"):
+        m = load()
+        out = fn(m)
+        save(m)
+    if out:
+        print(out)
+
+
+def cmd_add(a):
+    def go(m):
+        item = {"id": _new_id(m), "text": _text(a.text, "item text"), "added": _today()}
+        if a.why:
+            item["why"] = _text(a.why, "why")
+        m["items"].append(item)
+        return item["id"]
+
+    _mutate(go)
+
+
+def cmd_done(a):
+    def go(m):
+        item = m["items"].pop(_find(m, a.id))
+        item["done"] = _today()
+        m["done"] = (m["done"] + [item])[-DONE_KEPT:]
+
+    _mutate(go)
+
+
+def cmd_remove(a):
+    def go(m):
+        m["items"].pop(_find(m, a.id))
+
+    _mutate(go)
+
+
+def cmd_rename(a):
+    def go(m):
+        m["name"] = _text(a.name, "list name")
+
+    _mutate(go)
+
+
+def cmd_rule(a):
+    def go(m):
+        if a.action == "add":
+            m["rules"].append(_text(a.value, "rule"))
+        else:
+            n = int(a.value)
+            if not 1 <= n <= len(m["rules"]):
+                sys.exit(f"refusing: no rule {n}; there are {len(m['rules'])}")
+            del m["rules"][n - 1]
+
+    _mutate(go)
+
+
+def cmd_rank(a):
+    def go(m):
+        by_id = {i["id"]: i for i in m["items"]}
+        unknown = [i for i in a.ids if i not in by_id]
+        if unknown:
+            sys.exit(f"refusing: unknown item id(s) {unknown}; run `show` for the open ids")
+        if sorted(a.ids) != sorted(by_id):
+            sys.exit(
+                "refusing: rank must list every open item exactly once "
+                f"(got {len(a.ids)}, have {len(by_id)}); run `show` for the open ids"
+            )
+        m["items"] = [by_id[i] for i in a.ids]
+
+    _mutate(go)
+
+
+def cmd_why(a):
+    def go(m):
+        item = m["items"][_find(m, a.id)]
+        text = " ".join(a.text.split())
+        if text:
+            item["why"] = text
+        else:
+            item.pop("why", None)
+
+    _mutate(go)
+
+
+def cmd_show(_a):
+    print(json.dumps(load(), indent=2, ensure_ascii=False))
+
+
+def cmd_post(a):
+    if not os.path.exists(WALL_READY):
+        print("NO WALL: the list is kept, nothing was posted (ld-wall-setup has not finished)")
+        return
+    m = load()
+    fd = os.open(MESSAGE_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(compose(m))
+    post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE
+    post_to_kiosk.CARD = "6"
+    post_to_kiosk.BODY_TYPE = "priorities"
+    post_to_kiosk.TITLE = m["name"]
+    sys.argv = ["post_priorities.py"] + (["--dry-run"] if a.dry_run else [])
+    post_to_kiosk.main()
+
+
+# (subcommand name, positional/optional argument specs, handler) -- one row
+# per row of the SKILL.md table, so main() below is a plain loop instead of
+# nine near-identical add_parser/add_argument/set_defaults blocks.
+SUBCOMMANDS = (
+    ("add", (("text", {}), ("--why", {"default": ""})), cmd_add),
+    ("done", (("id", {}),), cmd_done),
+    ("remove", (("id", {}),), cmd_remove),
+    ("rename", (("name", {}),), cmd_rename),
+    ("rule", (("action", {"choices": ("add", "remove")}), ("value", {})), cmd_rule),
+    ("rank", (("ids", {"nargs": "+"}),), cmd_rank),
+    ("why", (("id", {}), ("text", {})), cmd_why),
+    ("show", (), cmd_show),
+    ("post", (("--dry-run", {"action": "store_true"}),), cmd_post),
+)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="The household to-do list's manifest and card.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    for name, args, fn in SUBCOMMANDS:
+        s = sub.add_parser(name)
+        for arg_name, kwargs in args:
+            s.add_argument(arg_name, **kwargs)
+        s.set_defaults(fn=fn)
+    a = p.parse_args(argv)
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()
