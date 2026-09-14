@@ -97,9 +97,8 @@ as unreachable, which is a different fault and not one this read can observe.
 Either way, never ask the owner for an address; the wall needs the Mac anyway,
 so there is nothing to gain by guessing one.
 
-You also need `has_mac` (and the optional `ical_url`) for Phases 2 and 3 — ask
-for those alone. Do NOT ask for `pi_address` or `pi_user` here: Phase 2's
-script recovers both from the dotenv and refuses by name for whichever it
+You also need `has_mac` for Phases 2 and 3 — ask for that alone. Do NOT ask
+for `pi_address` or `pi_user` here: Phase 2's script recovers both from the dotenv and refuses by name for whichever it
 cannot, and that refusal, not this note, is what decides when the owner gets
 asked.
 
@@ -128,16 +127,11 @@ follows.
 
 Stage this at `/var/lib/hermes/ld/.wall-<turn>.json`:
 
-    {"pi_address": "...", "pi_user": "...", "ical_url": "..."}
+    {"pi_address": "...", "pi_user": "..."}
 
 then:
 
     /var/lib/hermes/skills/ld-wall-setup/scripts/mint_wall_token.py --input /var/lib/hermes/ld/.wall-<turn>.json
-
-Leave the `ical_url` key out entirely when the owner gave no feed *this run*
-— an absent key keeps whatever feed `pi.env` already carries, and only a
-first run with no `pi.env` yet writes it blank (the viewer shows an empty
-calendar tile until a later re-run supplies one).
 
 Every key may be left out on a resume — `{}` is a valid staged object: the
 script recovers `pi_address` from the dotenv's `DASHBOARD_ENDPOINT_URL` and
@@ -160,8 +154,8 @@ instead — the endpoint line converges to the new Pi, the token stays, and
 Phase 3 ships `pi.env` to that Pi. Either way it (re)writes two files, mode 600, and prints two
 bare lines, `pi_line_1=…` and `pi_line_2=…`, for Phase 3:
 
-- `/var/lib/hermes/ld/pi.env` — the Pi's `~/ld-data/.env` (`ICAL_URL=` and
-  `DASHBOARD_TOKEN=`). Shipped in Phase 3.
+- `/var/lib/hermes/ld/pi.env` — the Pi's `~/ld-data/.env` (`DASHBOARD_TOKEN=`).
+  Shipped in Phase 3.
 - `/var/lib/hermes/ld/dashboard.hdr` — `Authorization: Bearer …`, the header every
   `curl` from the Mac reads. Ship it now, when the owner has a Mac:
 
@@ -184,9 +178,8 @@ call, and never send the literal angle brackets to the Mac.
 and the token is the one it checks (a Latch call, so it belongs to this path
 only; the no-Mac path has its own gate below) — skip the bring-up, EXCEPT
 the ship-and-restart step at the end of this path, which still runs whenever
-Phase 2 printed `re-pointed:` or this run supplied `ical_url`: the freshly
-rewritten `pi.env` has to reach the Pi or the new feed/address never takes
-effect.
+Phase 2 printed `re-pointed:`: the freshly rewritten `pi.env` has to reach
+the Pi or the new address never takes effect.
 
     mcp__plow__plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
 
@@ -254,14 +247,10 @@ minute and retry, at most a few times), unreachable device (the Mac) — is
 reported verbatim, and this phase is not done.
 
 **No Mac (or no Latch):** skip this path when `/var/lib/hermes/ld/pi-brought-up`
-exists — the file written below on the owner's confirmation. Two exceptions:
+exists — the file written below on the owner's confirmation. One exception:
 if Phase 2 printed `re-pointed:`, this is a *different Pi* — ignore the
 marker and run the full fallback below, because the new device has neither
-the packages nor its env. If this run only supplied a *new* `ical_url`, ask
-the owner to set `ICAL_URL=` in `~/ld-data/.env` on the Pi to the feed URL
-they just gave you — do not repeat the URL back (it is a private feed and
-they already hold it), and never the token line again — then
-`systemctl --user restart life-dashboard-viewer`. Otherwise the
+the packages nor its env. Otherwise the
 fallback is the direct one, and the token crosses chat once — acknowledged,
 not ideal, and the only place in this sheet where that is allowed. It is
 allowed *in the owner's own one-to-one thread and nowhere else*, and never in
@@ -273,10 +262,10 @@ rotate without re-minting and re-shipping the Pi. If this phase is reached
 anywhere but that thread, say the lines have to go to the owner directly, stop,
 and continue when they message you alone.
 
-There, text the owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the two lines of
+There, text the owner, verbatim: (1) `pi_line_1`, (2) `pi_line_2`, and (3) the line in
 `/var/lib/hermes/ld/pi.env` (read with your file tool; this is the one place its
 content may be pasted), and say: run the first two on the Pi over ssh or at
-its keyboard, then put those two lines in `~/ld-data/.env` on the Pi,
+its keyboard, then put that line in `~/ld-data/.env` on the Pi,
 `chmod 600 ~/ld-data/.env`, and run
 `systemctl --user restart life-dashboard-viewer`; the screen comes up on its
 own within a few minutes. You cannot reach the Pi yourself without a Mac, so
