@@ -338,10 +338,11 @@ The triage and digest rows also text the owner (their `--deliver` leg in
 
 Then read every card back in one call, the same way the producers write them:
 
-    mcp__plow__plow_run_command(argv=["sh","-c","for c in 1 2 3 4 5; do printf 'card %s: ' $c; curl -fsS -H @$HOME/Plow/ld/dashboard.hdr \"http://<pi_address>:5174/api/message?card=$c\" | python3 -c 'import json,sys; m=json.load(sys.stdin)[\"message\"]; print(m[\"type\"] if m else \"EMPTY\")'; done"], network=true)
+    mcp__plow__plow_run_command(argv=["sh","-c","for c in 1 2 3 4 5; do printf 'card %s: ' $c; curl -fsS -H @$HOME/Plow/ld/dashboard.hdr \"http://<pi_address>:5174/api/message?card=$c\" | python3 -c 'import json,sys; d=sys.stdin.read(); m=json.loads(d)[\"message\"] if d else None; print(m[\"type\"] if m else \"EMPTY\")'; done"], network=true)
 
-Five lines, each naming a type (`alert`, `affirmation`, `weather`, `digest`,
-`sports`), is the gate. Any `EMPTY` names the producer that did not land:
+Five lines reading `alert`, `affirmation`, `weather`, `digest`, `sports`, in
+that order, is the gate. A failed fetch prints `EMPTY` too (curl's own error
+line says why). Any `EMPTY` names the producer that did not land:
 read what its run printed, fix it, run that one again, and read back again.
 Do not go on to the marker with an empty card, and do not describe a card as
 "coming later" — every card the wall has is on it before this phase ends.
