@@ -227,35 +227,15 @@ def cmd_post(a):
 def main(argv=None):
     p = argparse.ArgumentParser(description="The household to-do list's manifest and card.")
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("add")
-    s.add_argument("text")
-    s.add_argument("--why", default="")
-    s.set_defaults(fn=cmd_add)
-    s = sub.add_parser("done")
-    s.add_argument("id")
-    s.set_defaults(fn=cmd_done)
-    s = sub.add_parser("remove")
-    s.add_argument("id")
-    s.set_defaults(fn=cmd_remove)
-    s = sub.add_parser("rename")
-    s.add_argument("name")
-    s.set_defaults(fn=cmd_rename)
-    s = sub.add_parser("rule")
-    s.add_argument("action", choices=("add", "remove"))
-    s.add_argument("value")
-    s.set_defaults(fn=cmd_rule)
-    s = sub.add_parser("rank")
-    s.add_argument("ids", nargs="+")
-    s.set_defaults(fn=cmd_rank)
-    s = sub.add_parser("why")
-    s.add_argument("id")
-    s.add_argument("text")
-    s.set_defaults(fn=cmd_why)
-    s = sub.add_parser("show")
-    s.set_defaults(fn=cmd_show)
-    s = sub.add_parser("post")
-    s.add_argument("--dry-run", action="store_true")
-    s.set_defaults(fn=cmd_post)
+    s = sub.add_parser("add"); s.add_argument("text"); s.add_argument("--why", default=""); s.set_defaults(fn=cmd_add)  # noqa: E702,E501
+    s = sub.add_parser("done"); s.add_argument("id"); s.set_defaults(fn=cmd_done)  # noqa: E702
+    s = sub.add_parser("remove"); s.add_argument("id"); s.set_defaults(fn=cmd_remove)  # noqa: E702
+    s = sub.add_parser("rename"); s.add_argument("name"); s.set_defaults(fn=cmd_rename)  # noqa: E702
+    s = sub.add_parser("rule"); s.add_argument("action", choices=("add", "remove")); s.add_argument("value"); s.set_defaults(fn=cmd_rule)  # noqa: E702,E501
+    s = sub.add_parser("rank"); s.add_argument("ids", nargs="+"); s.set_defaults(fn=cmd_rank)  # noqa: E702
+    s = sub.add_parser("why"); s.add_argument("id"); s.add_argument("text"); s.set_defaults(fn=cmd_why)  # noqa: E702
+    s = sub.add_parser("show"); s.set_defaults(fn=cmd_show)  # noqa: E702
+    s = sub.add_parser("post"); s.add_argument("--dry-run", action="store_true"); s.set_defaults(fn=cmd_post)  # noqa: E702
     a = p.parse_args(argv)
     a.fn(a)
 
