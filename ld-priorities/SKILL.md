@@ -49,6 +49,9 @@ non-zero exit).
 
 ## Post
 
+From chat, call the `household_todo` tool with `action: post` (it is the same
+`post`); the script path below is the fallback on an image without the tool.
+
 `post` composes the tile HTML, writes it to the fixed handoff file —
 `/var/lib/hermes/ld/priorities-text` — and posts it in one step. The wrapper
 below is that same `post` (a retry after a failed send recomposes from the
