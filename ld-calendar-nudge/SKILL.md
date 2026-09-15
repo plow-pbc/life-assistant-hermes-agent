@@ -84,10 +84,8 @@ see, write, or relay reminder content: stdout is only
 
 If it exits non-zero, the gather or its consumption FAILED — surface the
 error in the final response so the owner sees it; a failed gather (an
-unanswered approval card, no account answering) must never read as a quiet
-no-meetings run. If it exits 0 but stderr names accounts "not read this run",
-carry on and name those accounts in the final response: the other accounts'
-reminders still count.
+unanswered approval card, an account Latch could not read) must never read as
+a quiet no-meetings run.
 
 If `qualifying` is 0 — **do nothing**. Skip both legs; emit a one-line "no
 nudge this tick" summary. A quiet half-hour is a deliberate no-op on both

@@ -163,23 +163,19 @@ def test_an_inline_result_written_bare_reads_the_same_as_the_persisted_one(rig):
     assert rig.handoff.read_text() == persisted
 
 
-def test_every_connected_account_is_the_owner_and_a_failed_one_costs_only_itself(rig):
+def test_every_connected_account_is_the_owner(rig):
     """An invite to any account Latch read through is the owner's meeting,
-    config or not; a meeting between two of them waits on nobody; and one
-    account needing reconnection must not silence the others' reminders."""
-    code, count, err = rig.run(gather(
+    config or not, and a meeting between two of them waits on nobody."""
+    work = "sam@work.test"
+    code, count, _ = rig.run(gather(
         {**event(minutes=20, summary="Board prep", uid="uid-work@google.com",
-                 attendees=(attendee("sam@work.test"),
-                            attendee("peer@example.test"))),
-         "account": "sam@work.test"},
+                 attendees=(attendee(work), attendee("peer@example.test"))),
+         "account": work},
         event(minutes=25, summary="Just me", uid="uid-solo@google.com",
               organizer="owner@example.test",
-              attendees=(attendee("owner@example.test"),
-                         attendee("old@example.test"))),
-        degraded=[{"account": "old@example.test", "reason": "needs_reauth"}]))
+              attendees=(attendee("owner@example.test"), attendee(work)))))
     assert (code, count) == (0, 1)
     assert '"Board prep"' in rig.handoff.read_text()
-    assert "old@example.test" in err
 
 
 @pytest.mark.parametrize("content", [
@@ -191,11 +187,12 @@ def test_every_connected_account_is_the_owner_and_a_failed_one_costs_only_itself
                                       "degraded": []})}),
     "Result: no payload at all",
     '{"result": "{\\"status\\": ',
-    # Nobody answered and somebody failed: Latch's own failure rule.
-    gather(degraded=[{"account": "owner@example.test",
-                      "reason": "needs_reauth"}]),
+    # An unread account's private copies are missing from the prepass, so a
+    # healthy account's default-visibility sibling would leak their title.
+    gather(event(), degraded=[{"account": "old@example.test",
+                               "reason": "needs_reauth"}]),
 ], ids=["not-completed", "missing-items", "unparseable-result",
-        "null-items", "no-object", "truncated-json", "no-account-answered"])
+        "null-items", "no-object", "truncated-json", "an-account-unread"])
 def test_a_broken_gather_fails_loudly_never_as_a_quiet_run(rig, content):
     # A failed gather read as "no meetings" would silently skip reminders
     # for as long as the failure persists — the exact quiet-day trap.

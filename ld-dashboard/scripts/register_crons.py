@@ -167,8 +167,8 @@ JOBS = (
         "type": "alert",
         "schedule": "20,50 * * * *",
         "prompt": (
-            "Run the ld-calendar-nudge producer now: gather the next day's "
-            "calendar through Latch plow-gog, run the nudge filter, and if a "
+            "Run the ld-calendar-nudge producer now: gather the next two days "
+            "of every connected calendar through Latch plow-gog, run the nudge filter, and if a "
             "meeting with other attendees starts within the lookahead window, "
             "post a kiosk reminder and message the owner over Plow Chat; a "
             "quiet tick is a no-op on both surfaces."

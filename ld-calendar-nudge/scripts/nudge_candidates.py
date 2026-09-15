@@ -29,9 +29,8 @@ reaches the kiosk.
 Exit 2 on malformed input rather than skipping rows: a half-parsed window is
 indistinguishable from a quiet one on both surfaces, so it must fail loudly.
 That includes a call that never completed (an unanswered approval card) and
-one where no account answered, and a failed gather must never read as a
-no-nudge run. One account failing while others answer is a partial read, not
-a failed one: it is named on stderr and the rest still nudge.
+any account Latch could not read, and a failed gather must never read as a
+no-nudge run.
 """
 from __future__ import annotations
 
@@ -189,25 +188,22 @@ def main(argv=None, now=None) -> int:
     now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
 
     try:
-        # Latch's own rule for a fan-out: nobody answered and somebody failed
-        # is a failure. One failed account beside answering ones costs only
-        # its own meetings -- a revoked secondary token must not silence the
-        # primary. Account and reason are Latch's text, never the calendar's.
+        # Any account Latch could not read fails the run: its private copies
+        # are missing from the prepass below, so a default-visibility sibling
+        # read through a healthy account would post the title they withhold.
+        # Account and reason are Latch's text, never the calendar's.
         if degraded:
             names = ", ".join(f"{d['account']} ({d['reason']})" for d in degraded)
-            if not events:
-                print(f"no account answered the gather: {names}", file=sys.stderr)
-                return 2
-            print(f"not read this run, reconnect in Latch: {names}",
+            print(f"not every account answered the gather: {names}",
                   file=sys.stderr)
+            return 2
 
-        # Every account Latch read through, or failed to, is one the owner
-        # connected, so it is theirs: an invite to any of them is the owner's
-        # meeting, and one between two of them waits on nobody. The Mac writes
-        # the tag after the fetch, so event text cannot forge one; the config
-        # still carries the addresses no account is connected as.
-        identities |= {row["account"].strip().lower()
-                       for row in [*events, *degraded]}
+        # Every account Latch read through is one the owner connected, so it
+        # is theirs: an invite to any of them is the owner's meeting, and one
+        # between two of them waits on nobody. The Mac writes the tag after
+        # the fetch, so event text cannot forge one; the config still carries
+        # the addresses no account is connected as.
+        identities |= {ev["account"].strip().lower() for ev in events}
 
         # Privacy prepass: one invite appears once per calendar it is on, all
         # copies sharing an iCalUID. ANY private/confidential copy means "do
