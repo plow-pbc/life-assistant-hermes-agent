@@ -8,7 +8,6 @@ description on each row is the routing lever and is quoted from the spec.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -17,14 +16,8 @@ from functools import partial
 SKILLS = "/opt/hermes/skills"
 TOOLSET = "life"
 
-# The shared writer every producer publishes through, on the skills root this
-# image ships and on the repo two levels up, which is the one the tests import.
-# A path that is not there is skipped by the import machinery.
-for _shared in (f"{SKILLS}/ld-shared/scripts",
-                os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                             "..", "..", "ld-shared", "scripts")):
-    if _shared not in sys.path:
-        sys.path.append(_shared)
+# The shared writer every producer publishes through.
+sys.path.append(f"{SKILLS}/ld-shared/scripts")
 
 
 @dataclass(frozen=True)
@@ -58,10 +51,8 @@ def todo_argv(args: dict):
     if need and not (args.get(need) if need == "ids" else _clean(args.get(need))):
         return f"{need} is required for {action}"
     if action == "add":
-        argv = ["add", _clean(args["text"])]
-        if _clean(args.get("why")):
-            argv += ["--why", _clean(args["why"])]
-        return argv
+        why = _clean(args.get("why"))
+        return ["add", _clean(args["text"]), *(["--why", why] if why else [])]
     if action in ("done", "remove"):
         return [action, _clean(args["id"])]
     if action == "rename":
@@ -162,7 +153,7 @@ def run(tool: Tool, args: dict, **_kwargs) -> str:
     # above, so CARDS has it.
     script, handoff = (tool.script, tool.handoff) if tool.script else CARDS[args["card"]]
     if handoff:
-        _write_handoff(handoff, args["text"].strip())
+        _write_handoff(handoff, str(args["text"]).strip())
     try:
         proc = subprocess.run([sys.executable, script, *argv],
                               capture_output=True, text=True, timeout=60)

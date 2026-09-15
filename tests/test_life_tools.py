@@ -10,6 +10,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "plugins"))
+sys.path.append(str(REPO_ROOT / "ld-shared" / "scripts"))  # atomic_write, for the handoff
 import life_tools  # noqa: E402
 
 
@@ -124,7 +125,11 @@ def test_cards_map_matches_the_poster_wrappers():
         assert f'BODY_TYPE = "{card}"' in src, card
 
 
-def test_kiosk_post_card_writes_the_handoff_and_dry_runs_the_poster(tmp_path, monkeypatch):
+@pytest.mark.parametrize("text,written", [
+    ("<div class=\"weather\">72°</div>", "<div class=\"weather\">72°</div>"),
+    (72, "72"),  # the schema says string; a number still reaches the card as text
+])
+def test_kiosk_post_card_writes_the_handoff_and_dry_runs_the_poster(tmp_path, monkeypatch, text, written):
     monkeypatch.setenv("DASHBOARD_ENDPOINT_URL", "https://x.test/api/message")
     monkeypatch.setenv("DASHBOARD_TOKEN", "t")
     handoff = tmp_path / "weather-text"
@@ -141,11 +146,11 @@ def test_kiosk_post_card_writes_the_handoff_and_dry_runs_the_poster(tmp_path, mo
     # The registered row itself, so run()'s per-card CARDS lookup is exercised.
     monkeypatch.setitem(life_tools.CARDS, "weather", (str(wrapper), str(handoff)))
     out = json.loads(life_tools.run(life_tools.KIOSK_POST_CARD,
-                                    {"card": "weather", "text": "<div class=\"weather\">72°</div>", "dry_run": True}))
+                                    {"card": "weather", "text": text, "dry_run": True}))
     assert out["ok"] is True, out
     preview = json.loads(out["stdout"])
     assert preview["body"]["card"] == "3" and preview["body"]["type"] == "weather"
-    assert handoff.read_text() == "<div class=\"weather\">72°</div>"
+    assert handoff.read_text() == written
     assert oct(handoff.stat().st_mode)[-3:] == "600"
 
 
