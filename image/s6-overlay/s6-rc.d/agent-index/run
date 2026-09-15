@@ -24,6 +24,11 @@ PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/nul
 AGENT_ID=$(cat /run/s6/container_environment/AGENT_ID 2>/dev/null || true)
 export AGENT_ID
 
+# Where the registration exchange goes. The client defaults to
+# https://api.plow.co, which is past the proxy that holds this agent's real
+# bearer -- so behind one, the exchange has to be sent where the token is.
+PLOW_API_BASE=$(cat /run/s6/container_environment/PLOW_API_BASE 2>/dev/null || true)
+
 # The agent's home is where its usage store lives, and the client keeps its
 # ledger beside that store. Fixed, not overridable: this image puts the home
 # there, and a second way to say where it is only creates the case where the
@@ -65,6 +70,7 @@ while :; do
     3)
       /command/s6-setuidgid hermes \
         env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
+        PLOW_API_BASE="$PLOW_API_BASE" \
         /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
         --register --agent "$AGENT_ID" >/dev/null || {
       echo "agent-index: no index key this pass, not reporting" >&2

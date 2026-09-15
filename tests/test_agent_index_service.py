@@ -24,6 +24,7 @@ SERVICE = ROOT / "image/s6-overlay/s6-rc.d/agent-index"
 # else, which it records the argv of. What the script did is then a file, not a
 # guess from the output of a program that is not there.
 STUB_CLIENT = """
+import os
 import sys
 
 if sys.argv[1:2] == ["status"]:
@@ -31,6 +32,10 @@ if sys.argv[1:2] == ["status"]:
 
 with open({record!r}, "a") as record:
     record.write(" ".join(sys.argv[1:]) + "\\n")
+# Separately, so the argv record above stays exactly what the script asked for:
+# where the client would send the registration exchange.
+with open({plow_api!r}, "a") as record:
+    record.write(os.environ.get("PLOW_API_BASE", "") + "\\n")
 """
 
 
@@ -60,7 +65,8 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
         home = tmp_path / "hermes"
         home.mkdir()
         client = tmp_path / "client.py"
-        client.write_text(STUB_CLIENT.format(status=status, record=str(tmp_path / "invoked")))
+        client.write_text(STUB_CLIENT.format(status=status, record=str(tmp_path / "invoked"),
+                                            plow_api=str(tmp_path / "plow-api-base")))
         script = (script
                   .replace("/var/lib/hermes", str(home))
                   .replace("/command/s6-setuidgid hermes", "")
@@ -151,6 +157,15 @@ def test_it_registers_exactly_when_the_client_says_this_install_is_not(tmp_path,
     run_service(tmp_path, {"PLOW_AGENT_TOKEN": "plow_atokenshapedthing",
                            "AGENT_ID": "life"}, status=status)
     assert invocations(tmp_path) == invoked
+
+
+def test_the_registration_exchange_goes_where_this_agent_s_token_is(tmp_path):
+    """The client defaults to https://api.plow.co, which is past the proxy that
+    holds the real bearer -- so behind one, the exchange authenticates with a
+    placeholder and this install never gets its key."""
+    run_service(tmp_path, {"PLOW_AGENT_TOKEN": "proxied", "AGENT_ID": "life",
+                           "PLOW_API_BASE": "https://plow-agt.int.exe.xyz"}, status=3)
+    assert (tmp_path / "plow-api-base").read_text().splitlines()[0] == "https://plow-agt.int.exe.xyz"
 
 
 def test_state_the_client_cannot_read_touches_the_index_not_at_all(tmp_path):
