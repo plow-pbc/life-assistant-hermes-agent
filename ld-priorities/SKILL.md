@@ -18,7 +18,7 @@ non-zero exit).
 
 | command | what it does |
 |---|---|
-| `show` | the manifest as JSON (only the last 5 `done`; all are kept) — read it FIRST, every turn |
+| `show` | the manifest as JSON (only the last 5 `done`) — read it FIRST, every turn. Every completed item is kept in `/var/lib/hermes/ld/priorities.json`; read that file when the owner asks about something finished longer ago |
 | `add "<text>" [--why "<chip>"]` | append an item (prints its id) |
 | `done <id>` / `remove <id>` | finish (kept under `done`) / forget |
 | `rename "<name>"` | rename the list — the card's title follows |

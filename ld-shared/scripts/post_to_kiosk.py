@@ -260,7 +260,7 @@ def hand_off_to_latch(url, body):
     print(LATCH_BLOCK.format(card=CARD, url=url, json=wire))
 
 
-def main():
+def main(argv=None):
     if not CARD:
         sys.exit("error: post_to_kiosk.CARD not set by caller")
     if not BODY_TYPE:
@@ -272,7 +272,7 @@ def main():
     parser.add_argument(
         "--dry-run", action="store_true", help="print the request instead of sending it"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     text = read_message()
     if TRANSFORM:

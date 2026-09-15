@@ -198,9 +198,8 @@ def cmd_post(a):
     if not os.path.exists(WALL_READY):
         print("NO WALL: the list is kept, nothing was posted (ld-wall-setup has not finished)")
         return
-    # Serialized on the manifest lock: two overlapping posts (a chat turn and
-    # a retry) would otherwise race on MESSAGE_FILE. post_priorities.py's own
-    # __main__ takes the same lock.
+    # Title and tile come from ONE locked manifest snapshot, and two
+    # overlapping posts (a chat turn and a retry) can't race on MESSAGE_FILE.
     with exclusive_lock(MANIFEST, "refusing to post"):
         m = load()
         atomic_write(MESSAGE_FILE, compose(m))
@@ -209,12 +208,7 @@ def cmd_post(a):
         post_to_kiosk.CARD, post_to_kiosk.BODY_TYPE = post_priorities.CARD, post_priorities.BODY_TYPE
         post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE
         post_to_kiosk.TITLE = m["name"]
-        saved_argv = sys.argv
-        sys.argv = ["post_priorities.py"] + (["--dry-run"] if a.dry_run else [])
-        try:
-            post_to_kiosk.main()
-        finally:
-            sys.argv = saved_argv
+        post_to_kiosk.main(["--dry-run"] if a.dry_run else [])
 
 
 # (subcommand name, positional/optional argument specs, handler) -- one row
