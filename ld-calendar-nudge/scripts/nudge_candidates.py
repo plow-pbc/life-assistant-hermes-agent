@@ -233,6 +233,7 @@ def main(argv=None, now=None) -> int:
                 continue
             # After the prepass, never before it: a private copy on a calendar
             # the owner does not watch still withholds its watched sibling.
+            # `CalendarID` is gog's own tag on an --all read (eventWithCalendar).
             if watched and ev["CalendarID"] not in watched:
                 continue
             # All-day events have start.date only; a date parsed as midnight
