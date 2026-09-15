@@ -102,6 +102,15 @@ def test_household_todo_surfaces_the_scripts_refusal(todo_via_tmp_manifest):
     assert out["ok"] is False and "unknown" in out["stderr"] and out["exit"] != 0
 
 
+def test_a_missing_script_is_an_error_not_a_traceback(todo_via_tmp_manifest):
+    """A skills-layout mismatch in the image is the interpreter's own exit, not
+    an exception out of the handler -- run() invokes [sys.executable, script],
+    so the script never has to exist for the call itself to succeed."""
+    gone = life_tools.Tool(**{**todo_via_tmp_manifest.__dict__, "script": "/nonexistent/priorities.py"})
+    out = json.loads(life_tools.run(gone, {"action": "show"}))
+    assert out["ok"] is False and out["exit"] != 0 and "/nonexistent/priorities.py" in out["stderr"]
+
+
 def test_household_todo_refuses_before_running(todo_via_tmp_manifest):
     out = json.loads(life_tools.run(todo_via_tmp_manifest, {"action": "add"}))
     assert out["ok"] is False and "required" in out["error"]
@@ -129,10 +138,10 @@ def test_kiosk_post_card_writes_the_handoff_and_dry_runs_the_poster(tmp_path, mo
         "post_to_kiosk.CARD = '3'; post_to_kiosk.BODY_TYPE = 'weather'; post_to_kiosk.TITLE = ''\n"
         "post_to_kiosk.main(sys.argv[1:])\n"
     )
-    t = life_tools.KIOSK_POST_CARD
-    row = life_tools.Tool(name=t.name, description=t.description, parameters=t.parameters,
-                          script=str(wrapper), argv=t.argv, handoff=str(handoff))
-    out = json.loads(life_tools.run(row, {"card": "weather", "text": "<div class=\"weather\">72°</div>", "dry_run": True}))
+    # The registered row itself, so run()'s per-card CARDS lookup is exercised.
+    monkeypatch.setitem(life_tools.CARDS, "weather", (str(wrapper), str(handoff)))
+    out = json.loads(life_tools.run(life_tools.KIOSK_POST_CARD,
+                                    {"card": "weather", "text": "<div class=\"weather\">72°</div>", "dry_run": True}))
     assert out["ok"] is True, out
     preview = json.loads(out["stdout"])
     assert preview["body"]["card"] == "3" and preview["body"]["type"] == "weather"
