@@ -322,10 +322,15 @@ SETUP_COMPLETE_MARKER = "/var/lib/hermes/ld/setup-complete"
 
 
 def test_every_calendar_gather_names_the_configured_gog_account():
-    """gog refuses --calendars without the account that owns those ids."""
-    for skill in ("ld-morning-updates", "ld-calendar-nudge", "ld-weekly-digest"):
+    """plow-gog refuses --calendars without the account that owns those ids,
+    and the nudge's all-account read must name neither: either one would
+    narrow it back to a single account's chosen calendars."""
+    for skill in ("ld-morning-updates", "ld-weekly-digest"):
         sheet = (ROOT / skill / "SKILL.md").read_text()
         assert "--account=<calendar.account>" in sheet, skill
+    nudge = (ROOT / "ld-calendar-nudge" / "SKILL.md").read_text()
+    assert '"--all"' in nudge
+    assert "--account" not in nudge and "--calendars" not in nudge
 
 
 def test_the_setup_complete_marker_is_named_the_same_way_everywhere():

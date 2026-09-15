@@ -1,6 +1,6 @@
 ---
 name: ld-calendar-nudge
-description: Post a short meeting reminder to the life-dashboard kiosk and message the owner over Plow Chat when a meeting with other attendees is starting soon — 30 min lookahead for virtual meetings, 60 min for in-person, read through Plow Latch's vendored plow-gog. Use when the scheduled half-hourly nudge cron fires, or when the user asks to run or test the calendar nudge once now.
+description: Post a short meeting reminder to the life-dashboard kiosk and message the owner over Plow Chat when a meeting with other attendees is starting soon — 30 min lookahead for virtual meetings, 60 min for in-person, read across every calendar on every Google account the owner connected, through Plow Latch's vendored plow-gog. Use when the scheduled half-hourly nudge cron fires, or when the user asks to run or test the calendar nudge once now.
 ---
 
 # Life Dashboard — Calendar Nudge
@@ -27,22 +27,28 @@ to the argv: Latch injects this Mac's own safety flags and REFUSES any
 caller-supplied duplicate, so carrying one makes every run fail before it
 starts.
 
-Read `calendar.account` and `calendar.sources` from `/var/lib/hermes/ld/config.json`,
-comma-join the sources' `calendar_id` values, then call `mcp__plow__plow_run_command` with
-EXACTLY this argv, substituting only those config-supplied values (which never
-vary between runs):
+Call `mcp__plow__plow_run_command` with EXACTLY this argv — no substitutions,
+nothing read from config first:
 
-    ["plow-gog", "calendar", "events", "list", "--account=<calendar.account>",
-     "--calendars=<comma-joined calendar_ids>",
-     "--from=now", "--days=1", "--json", "--results-only", "--sort=start",
+    ["plow-gog", "calendar", "events", "list", "--all",
+     "--from=now", "--days=2", "--json", "--results-only", "--sort=start",
      "--max=50"]
 
+It watches every calendar, not the household's `calendar.sources`: a meeting
+the owner is due at can sit on any of them, and the filter's owner and
+counterparty rules are what keep a holiday feed or someone else's shared
+calendar from nudging. No account flag, so plow-gog reads every connected
+account (`--all` is every calendar on each) and merges them into one
+`{status, items, degraded}` answer, each event tagged with its `account`.
+`--max` is per calendar per account, and `--days=2` because `--days=1` ends
+at midnight, which would blind the late-evening ticks to a 00:30 meeting.
+
 The argv is a byte-identical literal every run, and that is load-bearing:
-Latch always-allow rules key on the exact argv, so a computed timestamp
-anywhere in it would make every half-hour's argv novel and strand the run on
-an approval card nobody answers (plow-pbc/latch#181). The relative window
-lives in the flags instead (`--from=now --days=1`); the filter narrows it to
-the configured lookaheads.
+Latch always-allow rules key on the exact argv, so a computed timestamp — or
+a calendar list that grows when the owner adds one — would make the argv
+novel and strand the run on an approval card nobody answers
+(plow-pbc/latch#181). The relative window lives in the flags instead; the
+filter narrows it to the configured lookaheads.
 
 A large result is persisted by the runtime to a file (e.g.
 `/tmp/hermes-results/call_<id>.txt`) and you get that path in place of the
@@ -77,9 +83,11 @@ see, write, or relay reminder content: stdout is only
 `{"qualifying": <N>}`, and you route on that count.
 
 If it exits non-zero, the gather or its consumption FAILED — surface the
-error in the final response so the owner sees it; a failed gather must never
-read as a quiet no-meetings run (plow-gog fails the whole gather on one bad
-calendar name — measured, exit 2).
+error in the final response so the owner sees it; a failed gather (an
+unanswered approval card, no account answering) must never read as a quiet
+no-meetings run. If it exits 0 but stderr names accounts "not read this run",
+carry on and name those accounts in the final response: the other accounts'
+reminders still count.
 
 If `qualifying` is 0 — **do nothing**. Skip both legs; emit a one-line "no
 nudge this tick" summary. A quiet half-hour is a deliberate no-op on both
