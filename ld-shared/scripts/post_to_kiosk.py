@@ -71,8 +71,7 @@ optional module var TITLE to "" to hide it or to a string to override it:
 
     import post_to_kiosk
     post_to_kiosk.MESSAGE_FILE = "/var/lib/hermes/ld/<bundle>-text"  # Hermes only; Plow leaves None
-    post_to_kiosk.CARD = "1" | "2" | "3" | "4" | "5"
-    post_to_kiosk.BODY_TYPE = "alert" | "affirmation" | "weather" | "digest" | "sports"
+    post_to_kiosk.CARD, post_to_kiosk.BODY_TYPE = <the producer's row in references/kiosk-protocol.md § Card map>
     post_to_kiosk.TRANSFORM = <function(text) -> text>             # optional
     post_to_kiosk.main()   # message text on stdin when MESSAGE_FILE is None
 
@@ -260,7 +259,7 @@ def hand_off_to_latch(url, body):
     print(LATCH_BLOCK.format(card=CARD, url=url, json=wire))
 
 
-def main():
+def main(argv=None):
     if not CARD:
         sys.exit("error: post_to_kiosk.CARD not set by caller")
     if not BODY_TYPE:
@@ -272,7 +271,7 @@ def main():
     parser.add_argument(
         "--dry-run", action="store_true", help="print the request instead of sending it"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     text = read_message()
     if TRANSFORM:

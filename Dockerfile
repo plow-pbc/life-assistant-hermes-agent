@@ -26,6 +26,7 @@ COPY ld-dashboard/        /opt/hermes/skills/ld-dashboard/
 COPY ld-email-inbox/      /opt/hermes/skills/ld-email-inbox/
 COPY ld-morning-triage/   /opt/hermes/skills/ld-morning-triage/
 COPY ld-morning-updates/  /opt/hermes/skills/ld-morning-updates/
+COPY ld-priorities/       /opt/hermes/skills/ld-priorities/
 COPY ld-setup/            /opt/hermes/skills/ld-setup/
 COPY ld-shared/           /opt/hermes/skills/ld-shared/
 COPY ld-wall-setup/       /opt/hermes/skills/ld-wall-setup/
