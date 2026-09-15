@@ -174,13 +174,10 @@ def main(argv=None, now=None) -> int:
         identities = {str(e).strip().lower()
                       for e in nudge_cfg["owner_identities"] if str(e).strip()}
         # The owner's watch list, by calendar id: empty or absent is every
-        # connected calendar. Applied here rather than in the gather, so the
-        # approved argv never changes when the owner changes their mind.
-        watched = nudge_cfg.get("calendars", [])
-        if not (isinstance(watched, list)
-                and all(isinstance(c, str) for c in watched)):
-            raise TypeError("calendar_nudge.calendars is not a list of ids")
-        watched = set(watched)
+        # connected calendar (its shape is ld_config_gate.py's check 9).
+        # Applied here rather than in the gather, so the approved argv never
+        # changes when the owner changes their mind.
+        watched = set(nudge_cfg.get("calendars", []))
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(f"bad config {CONFIG_FILE}: {e!r}", file=sys.stderr)
         return 2

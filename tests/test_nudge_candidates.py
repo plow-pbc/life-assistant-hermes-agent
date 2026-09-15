@@ -412,9 +412,7 @@ def test_a_newline_in_untrusted_text_cannot_spoof_a_second_line(rig):
     lambda c: c.pop("calendar_nudge"),
     lambda c: c["calendar_nudge"].pop("lookahead_virtual_minutes"),
     lambda c: c.pop("family"),
-    lambda c: c["calendar_nudge"].update(calendars="work@example.test"),
-], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family",
-        "watch-list-not-a-list"])
+], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family"])
 def test_a_broken_config_fails_loudly_with_the_documented_exit(rig, mutate):
     config = json.loads(json.dumps(BASE_CONFIG))
     mutate(config)

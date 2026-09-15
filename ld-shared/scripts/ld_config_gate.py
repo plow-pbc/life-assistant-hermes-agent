@@ -33,7 +33,7 @@ to the same question. What onboarding records here is family.owner.introduced,
 and the gate does not require it either -- a household mid-interview is not a
 broken config.
 
-The eight checks, matching the (updated) jq filter exactly:
+The nine checks, matching the (updated) jq filter exactly:
   1. family.timezone must contain a non-whitespace char    (jq: (.family.timezone // "") | test("\\S"))
   2. calendar.sources must be a non-empty array            (jq: (type) == "array" and length >= 1)
   3. calendar.account must contain a non-whitespace char   (jq: (.calendar.account // "") | test("\\S"))
@@ -44,6 +44,8 @@ The eight checks, matching the (updated) jq filter exactly:
   7. calendar_nudge.lookahead_virtual_minutes and
      lookahead_in_person_minutes must be positive numbers  (jq: (type) == "number" and . > 0)
   8. no string value anywhere may be a leftover placeholder (jq: .. | strings | test("^\\[[A-Z][A-Z0-9_]*\\]$"))
+  9. calendar_nudge.calendars, when present, must be a list
+     of nonblank strings                                   (jq: (type) == "null" or ((type) == "array" and each (. // "") | test("\\S")))
 
 Checks 3-5 replace the old per-source account model with the one identity gog
 actually needs: calendar.account selects the authenticated account once, while
@@ -196,6 +198,14 @@ def gate(config):
     # 8. no leftover [UPPER_SNAKE] placeholder anywhere
     if any(_PLACEHOLDER_RE.match(s) for s in _all_strings(config)):
         failures.append("an unfilled [UPPER_SNAKE] placeholder remains")
+
+    # 9. the nudge's watch list is absent (every connected calendar) or a list
+    #    of nonblank ids. A blank id matches no calendar, so a watch list
+    #    holding one drops every meeting -- a quiet nudge that looks installed.
+    watched = _index(_index(config, "calendar_nudge"), "calendars")
+    if not (watched is None or (isinstance(watched, list)
+                                and all([_test_nonblank(c) for c in watched]))):
+        failures.append("calendar_nudge.calendars is not a list of nonblank ids")
 
     return "; ".join(failures)
 

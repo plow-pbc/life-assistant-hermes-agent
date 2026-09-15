@@ -51,7 +51,10 @@ JQ_FILTER = r"""
       if ((.calendar_nudge.lookahead_in_person_minutes | type) == "number" and .calendar_nudge.lookahead_in_person_minutes > 0)
         then empty else "calendar_nudge.lookahead_in_person_minutes is not a positive number" end,
       if ([.. | strings | select(test("^\\[[A-Z][A-Z0-9_]*\\]$"))] | length) == 0
-        then empty else "an unfilled [UPPER_SNAKE] placeholder remains" end
+        then empty else "an unfilled [UPPER_SNAKE] placeholder remains" end,
+      if ((.calendar_nudge.calendars | type) == "null" or ((.calendar_nudge.calendars | type) == "array"
+          and ([.calendar_nudge.calendars[] | select(((. // "") | test("\\S")) | not)] | length) == 0))
+        then empty else "calendar_nudge.calendars is not a list of nonblank ids" end
     ] | join("; ")
 """
 
@@ -151,6 +154,16 @@ CASES = [
     ("(i''''') lookahead Infinity → fail-closed (diverges from jq's accept)",
      json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "lookahead_virtual_minutes": float("inf")}}),
      "not valid JSON", False),
+    # The nudge's watch list: empty is every calendar, a blank id matches none.
+    ("(j) watch list empty",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "calendars": []}}),
+     "", True),
+    ("(j') watch list blank id",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "calendars": ["work@example.test", " "]}}),
+     "calendar_nudge.calendars is not a list of nonblank ids", True),
+    ("(j'') watch list not a list",
+     json.dumps({**VALID, "calendar_nudge": {**VALID["calendar_nudge"], "calendars": "work@example.test"}}),
+     "calendar_nudge.calendars is not a list of nonblank ids", True),
     ("(e') leftover placeholder (nested)",
      json.dumps({**VALID, "weather": {"location": "[CITY_NAME]"}}),
      "an unfilled [UPPER_SNAKE] placeholder remains", True),
