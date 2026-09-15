@@ -17,9 +17,11 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "ld-shared", "scripts"))
 from exclusive_lock import exclusive_lock  # noqa: E402
 import post_to_kiosk  # noqa: E402
 
-post_to_kiosk.MESSAGE_FILE = "/var/lib/hermes/ld/priorities-text"
-post_to_kiosk.CARD = "6"
-post_to_kiosk.BODY_TYPE = "priorities"
+# The one declaration of all three; priorities.py imports them from here.
+MESSAGE_FILE = "/var/lib/hermes/ld/priorities-text"
+CARD = "6"
+BODY_TYPE = "priorities"
+post_to_kiosk.MESSAGE_FILE, post_to_kiosk.CARD, post_to_kiosk.BODY_TYPE = MESSAGE_FILE, CARD, BODY_TYPE
 
 
 if __name__ == "__main__":

@@ -27,12 +27,14 @@ import sys
 
 _SCRIPTS_DIR = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(_SCRIPTS_DIR, "..", "..", "ld-shared", "scripts"))
+sys.path.insert(0, _SCRIPTS_DIR)
 from atomic_write import atomic_write  # noqa: E402
 from exclusive_lock import exclusive_lock  # noqa: E402
+import post_priorities  # noqa: E402
 import post_to_kiosk  # noqa: E402
 
 MANIFEST = "/var/lib/hermes/ld/priorities.json"
-MESSAGE_FILE = "/var/lib/hermes/ld/priorities-text"
+MESSAGE_FILE = post_priorities.MESSAGE_FILE
 WALL_READY = "/var/lib/hermes/ld/setup-complete"
 DEFAULT_NAME = "Our to-do list"
 SHOWN = 6
@@ -202,8 +204,10 @@ def cmd_post(a):
     with exclusive_lock(MANIFEST, "refusing to post"):
         m = load()
         atomic_write(MESSAGE_FILE, compose(m))
-        import post_priorities  # sets post_to_kiosk.CARD/BODY_TYPE
-        post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE  # tests rebind ours, not the wrapper's literal
+        # Set at post time (the shared module is process-global and tests
+        # reset it); MESSAGE_FILE is ours so a test's rebind is honoured.
+        post_to_kiosk.CARD, post_to_kiosk.BODY_TYPE = post_priorities.CARD, post_priorities.BODY_TYPE
+        post_to_kiosk.MESSAGE_FILE = MESSAGE_FILE
         post_to_kiosk.TITLE = m["name"]
         saved_argv = sys.argv
         sys.argv = ["post_priorities.py"] + (["--dry-run"] if a.dry_run else [])
