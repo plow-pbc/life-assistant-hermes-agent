@@ -157,14 +157,20 @@ def run(tool: Tool, args: dict, **_kwargs) -> str:
     if isinstance(argv, str):
         return json.dumps({"ok": False, "error": argv})
     script, handoff = tool.target(args)  # argv validated the card, so CARDS has it
-    with _handoff_lock(handoff):
-        if handoff:
-            _write_handoff(handoff, str(args["text"]).strip())
-        try:
+    try:
+        with _handoff_lock(handoff):
+            if handoff:
+                _write_handoff(handoff, str(args["text"]).strip())
             proc = subprocess.run([sys.executable, script, *argv],
                                   capture_output=True, text=True, timeout=60)
-        except subprocess.TimeoutExpired:
-            return json.dumps({"ok": False, "error": f"{tool.name} timed out after 60s"})
+    except subprocess.TimeoutExpired:
+        return json.dumps({"ok": False, "error": f"{tool.name} timed out after 60s"})
+    except SystemExit as exc:
+        # exclusive_lock is a CLI helper: it exits rather than raises when it
+        # cannot take the lock. tools/registry.py's dispatch() catches
+        # Exception, not BaseException, so an escaping SystemExit would take
+        # the whole tool host down over one failed card.
+        return json.dumps({"ok": False, "error": f"{tool.name}: {exc}"})
     if proc.returncode != 0:
         return json.dumps({"ok": False, "exit": proc.returncode,
                            "stderr": (proc.stderr or proc.stdout).strip()})

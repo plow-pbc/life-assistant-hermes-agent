@@ -172,6 +172,17 @@ def test_kiosk_post_card_holds_the_handoff_lock_across_the_poster(tmp_path, monk
     assert out["ok"] is True and out["stdout"] == "held"
 
 
+def test_a_lock_failure_is_the_tools_error_not_the_hosts_exit(tmp_path, monkeypatch):
+    """exclusive_lock exits rather than raises when it cannot take the lock, and
+    the registry dispatches tools under `except Exception` -- so an escaping
+    SystemExit would end the host over one failed card."""
+    handoff = tmp_path / "not-a-dir" / "sub" / "weather-text"
+    handoff.parent.parent.write_text("")  # the lock's parent cannot be created
+    monkeypatch.setitem(life_tools.CARDS, "weather", (str(tmp_path / "poster.py"), str(handoff)))
+    out = json.loads(life_tools.run(life_tools.KIOSK_POST_CARD, {"card": "weather", "text": "72"}))
+    assert out["ok"] is False and "could not take the lock" in out["error"]
+
+
 def test_kiosk_post_card_refuses_an_unknown_card_or_empty_text():
     assert "card" in life_tools.card_argv({"card": "priorities", "text": "x"})
     assert "text" in life_tools.card_argv({"card": "weather", "text": " "})
