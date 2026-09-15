@@ -50,9 +50,8 @@ forever.
 Event text is UNTRUSTED. Private and confidential occurrences — and every
 sibling copy sharing their identity — are dropped first; then Latch's
 untrusted-content markers and every URI-shaped token are stripped from what is
-left. The helpers for that are inline rather than lifted out of
-nudge_candidates.py, which keeps its own: sharing them means editing a live
-filter, and that is its own change.
+left. nudge_candidates.py filters through the same `visible_events` and
+`event_key`, so the kiosk's two calendar surfaces cannot disagree on privacy.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """tests/test_post_nudge.py — behavior tests for the nudge's posting coordinator.
 
 post_nudge.py is the one command the sheet runs: validate the chat config,
-read the ONE handoff, kiosk leg (first line, over the stdin transport), chat
-leg (whole body), consume once. These tests import the module and fake the
+read the one handoff, kiosk leg (the wall-calendar card, when there is one,
+over the stdin transport), chat leg (every reminder), consume once. These tests import the module and fake the
 two shared post_to_kiosk seams (main / post_bearer_json) — a seam reachable
 only by an importer, never by the CLI the sheet invokes. The wire behavior
 of those seams is owned by tests/test_post_to_kiosk.py
@@ -10,6 +10,7 @@ of those seams is owned by tests/test_post_to_kiosk.py
 suite pins is the coordinator's ordering and consume contract.
 """
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,8 +32,9 @@ LINE2 = 'Heads up: "Sync" at 12:40pm (40m).'
 def rig(tmp_path, monkeypatch):
     """The handoff on disk, the credential in the environment first boot fills,
     the two seams faked."""
-    handoff = tmp_path / "calendar-nudge-text"
-    handoff.write_text(LINE1 + "\n" + LINE2 + "\n")
+    handoff = tmp_path / "calendar-nudge.json"
+    # Only the later meeting is on the wall.
+    handoff.write_text(json.dumps({"chat": [LINE1, LINE2], "card": LINE2}))
     monkeypatch.setattr(pn, "HANDOFF", str(handoff))
     for name, value in (("PLOW_API_BASE", "https://plow.test"),
                         ("PLOW_HOME_CHANNEL", "cht_home"),
@@ -52,13 +54,14 @@ def rig(tmp_path, monkeypatch):
                            monkeypatch=monkeypatch)
 
 
-def test_success_posts_first_line_to_kiosk_full_body_to_chat_then_consumes(rig):
+@pytest.mark.parametrize("on_wall", [True, False], ids=["wall-card", "chat-only"])
+def test_success_posts_the_wall_card_and_every_reminder_to_chat_then_consumes(rig, on_wall):
+    if not on_wall:
+        rig.handoff.write_text(json.dumps({"chat": [LINE1, LINE2], "card": None}))
     pn.main()
-    assert rig.calls == [
-        ("kiosk", LINE1),
-        ("chat", "https://plow.test/v1/chats/cht_home/messages",
-         "tok_agent", {"body": LINE1 + "\n" + LINE2}),
-    ]
+    chat = ("chat", "https://plow.test/v1/chats/cht_home/messages",
+            "tok_agent", {"body": LINE1 + "\n" + LINE2})
+    assert rig.calls == ([("kiosk", LINE2)] if on_wall else []) + [chat]
     assert not rig.handoff.exists(), (
         "the coordinator owns consume-on-success, once, after both legs"
     )
@@ -107,7 +110,7 @@ def test_a_bad_handoff_refuses_before_anything_posts(rig, mutate):
 
 @pytest.mark.parametrize(("failing_seam", "calls_before"), [
     ("main", []),                       # kiosk fails: chat never runs
-    ("post_bearer_json", [("kiosk", LINE1)]),  # chat fails after kiosk
+    ("post_bearer_json", [("kiosk", LINE2)]),  # chat fails after kiosk
 ], ids=["kiosk-fails", "chat-fails"])
 def test_a_delivery_failure_leaves_the_handoff(rig, failing_seam, calls_before):
     """Either leg failing must leave the handoff for a retry — a chat retry
@@ -124,6 +127,6 @@ def test_a_delivery_failure_leaves_the_handoff(rig, failing_seam, calls_before):
 def test_dry_run_previews_without_consuming(rig, capsys):
     rig.monkeypatch.setattr(sys, "argv", ["post_nudge.py", "--dry-run"])
     pn.main()
-    assert rig.calls == [("kiosk", LINE1)], "no chat POST on a dry run"
+    assert rig.calls == [("kiosk", LINE2)], "no chat POST on a dry run"
     assert rig.handoff.exists()
     assert "dry-run" in capsys.readouterr().out

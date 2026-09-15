@@ -1000,7 +1000,9 @@ stopped refreshing when their selections were stored. Ask for one run with §5's
 request file, tell them you are fetching their calendars, and read the snapshot
 on a later turn -- then patch `calendar.sources` from what they pick. Do not
 patch it from memory of the last listing: calendars they have since removed
-would come back.
+would come back. Which calendars the meeting nudge watches is a separate list:
+it watches every connected calendar until `calendar_nudge.calendars` names
+some, picked from the same snapshot, and `[]` puts it back on all of them.
 
 A new name is not a config change; it lives on their account. One tool call
 records it, addressed by the handle in brackets in this turn's owner sentence:

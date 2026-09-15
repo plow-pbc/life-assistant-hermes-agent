@@ -2,8 +2,9 @@
 """post_nudge.py — the nudge's one posting command: kiosk card 1, then chat.
 
 The sheet runs only this. One handoff, written by nudge_candidates.py (never
-by the model): every qualifying reminder, earliest first. Order is the
-data-integrity contract:
+by the model): every qualifying reminder, earliest first, for chat, and the
+earliest one on a kitchen-wall calendar for the kiosk, or null when no meeting
+is on the wall. Order is the data-integrity contract:
 
 1. Resolve + validate the Plow Chat config FIRST — from the process
    environment, which first boot fills from the credential the host dropped in
@@ -11,7 +12,7 @@ data-integrity contract:
    leave a qualifying run half-delivered (kiosk up, owner never messaged).
 2. Read the handoff once through post_to_kiosk's fixed-file read/refusal
    seam (missing or empty refuses loudly, nothing consumed).
-3. Kiosk: the FIRST line — the earliest reminder, ≤115 enforced by the
+3. Kiosk, only when there is a card: its line — ≤115 enforced by the
    filter — goes to card 1, `type: "alert"` (the slot shared with
    ld-morning-triage; latest post per card wins), over post_to_kiosk's
    stdin transport: MESSAGE_FILE stays None, so the shared helper neither
@@ -24,6 +25,7 @@ data-integrity contract:
    harmless latest-wins replace).
 """
 import io
+import json
 import os
 import sys
 
@@ -39,7 +41,7 @@ post_to_kiosk.BODY_TYPE = "alert"
 post_to_kiosk.TITLE = ""  # hide the eyebrow — the reminder gets the full card height
 
 # The one handoff, written by nudge_candidates.py and consumed here.
-HANDOFF = "/var/lib/hermes/ld/calendar-nudge-text"
+HANDOFF = "/var/lib/hermes/ld/calendar-nudge.json"
 
 
 def require(name):
@@ -69,17 +71,19 @@ def resolve_chat():
 
 def main():
     chat_url, token = resolve_chat()
-    text = post_to_kiosk.read_required_file(HANDOFF, "reminder text")
+    handoff = json.loads(post_to_kiosk.read_required_file(HANDOFF, "reminder handoff"))
+    text, card = "\n".join(handoff["chat"]), handoff["card"]
 
-    # The kiosk leg takes its one line over the stdin transport — an
-    # importer-only seam (the CLI feeds no stdin), so the shared helper
-    # never touches the handoff.
-    saved_stdin = sys.stdin
-    sys.stdin = io.StringIO(text.splitlines()[0])
-    try:
-        post_to_kiosk.main()
-    finally:
-        sys.stdin = saved_stdin
+    if card:
+        # The kiosk leg takes its one line over the stdin transport — an
+        # importer-only seam (the CLI feeds no stdin), so the shared helper
+        # never touches the handoff.
+        saved_stdin = sys.stdin
+        sys.stdin = io.StringIO(card)
+        try:
+            post_to_kiosk.main()
+        finally:
+            sys.stdin = saved_stdin
 
     if "--dry-run" in sys.argv:
         # main() printed the redacted kiosk envelope; nothing was consumed.
@@ -92,6 +96,9 @@ def main():
     # (direct) or sits durably in the outbox (latch) — the Latch calls above
     # replay from that file, so consuming the handoff loses nothing.
     os.unlink(HANDOFF)
+    if not card:
+        print(f"no meeting on a wall calendar, so no kiosk card; chat nudge posted ({len(text)} chars)")
+        return
     latch = agent_values(AGENT_DOTENV).get(post_to_kiosk.DELIVERY_KEY, "").strip() == "latch"
     kiosk = "kiosk card queued for Latch (both calls above still owed)" if latch else "posted kiosk card"
     print(f"{kiosk}; chat nudge posted ({len(text)} chars)")

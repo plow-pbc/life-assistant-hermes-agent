@@ -307,9 +307,10 @@ the old `family.owner.name`, set `family.owner.introduced` to `true`, then delet
 `family.owner.name` by editing the mode-600 file, since `--patch` merges and
 cannot remove a key.
 
-The three calendar skills add that account to their exact
-plow-gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
-shape — and the triage's exact `plow-gog gmail search` argv from
+The digest and morning skills add that account to their exact plow-gog argv
+(the nudge reads every connected account and carries none); manually run and
+approve each new gather shape — the nudge's 2-day, the morning's 3-day, the
+digest's 7-day — and the triage's exact `plow-gog gmail search` argv from
 `ld-morning-triage/SKILL.md` — once through Latch before relying on the
 unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
 — for the same reason: it ticks with nobody there to answer an approval card.
