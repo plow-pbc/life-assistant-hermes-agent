@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """nudge_candidates.py — filter + compose the calendar gather for ld-calendar-nudge.
 
-Reads the fixed plow-gog `calendar events list --json --results-only` output from
+Reads the fixed all-account plow-gog `calendar events list --all` fan-out from
 its gather-file argument, deleting the file as it goes, applies the nudge
 rules — privacy prepass, per-event filter, dedupe — and writes every
 composed ≤115-char reminder, earliest first, STRAIGHT to the ONE fixed
@@ -23,14 +23,15 @@ Field spellings are pinned against a REAL gather through the live Latch door
 (camelCase: iCalUID, start.dateTime, hangoutLink, attendees[].responseStatus;
 `visibility` absent means default). Latch's injected safety flags wrap every
 free-text field (summary, location, description, ...) in
-EXTERNAL_UNTRUSTED_CONTENT markers and prepend a "Note:" preamble line to the
-output — both are stripped here so marker soup never reaches the kiosk.
+EXTERNAL_UNTRUSTED_CONTENT markers — stripped here so marker soup never
+reaches the kiosk.
 
 Exit 2 on malformed input rather than skipping rows: a half-parsed window is
 indistinguishable from a quiet one on both surfaces, so it must fail loudly.
-That includes a nonzero envelope exit_code — plow-gog fails the WHOLE gather on
-one unrecognized calendar name (measured: exit 2), and a failed gather must
-never read as a no-nudge run.
+That includes a call that never completed (an unanswered approval card) and
+one where no account answered, and a failed gather must never read as a
+no-nudge run. One account failing while others answer is a partial read, not
+a failed one: it is named on stderr and the rest still nudge.
 """
 from __future__ import annotations
 
@@ -49,7 +50,7 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
 from external_content import strip_markers  # noqa: E402
-from gather_result import GatherError, read_gather  # noqa: E402
+from gather_result import GatherError, read_fanout  # noqa: E402
 
 LIMIT = 115
 # The only gather locations the model may name (validated before any I/O):
@@ -144,9 +145,8 @@ def main(argv=None, now=None) -> int:
     could widen the windows or the identity set). Both are pinned."""
     parser = argparse.ArgumentParser()
     parser.add_argument("gather",
-                        help="gather file (raw plow-gog --json --results-only "
-                             "output, or the persisted plow_run_command "
-                             "result envelope)")
+                        help="gather file (the plow_run_command fan-out "
+                             "result, persisted or written inline)")
     args = parser.parse_args(argv)
 
     if not gather_path_allowed(args.gather):
@@ -156,10 +156,9 @@ def main(argv=None, now=None) -> int:
               "path would be an arbitrary delete", file=sys.stderr)
         return 2
 
-    # Consume-first + envelope sniff live in ld-shared/scripts/gather_result.py
-    # (shared with the triage filter); the semantics are unchanged.
+    # Consume-first + the fan-out payload live in ld-shared/scripts/gather_result.py.
     try:
-        raw = read_gather(args.gather)
+        events, degraded = read_fanout(args.gather)
     except GatherError as e:
         print(e, file=sys.stderr)
         return 2
@@ -186,22 +185,30 @@ def main(argv=None, now=None) -> int:
               "fire", file=sys.stderr)
         return 2
 
-    # Latch prepends preamble lines ("Note: Using direct access token ...")
-    # to the command output; the events are the array that follows.
-    match = re.search(r"^\[", raw, re.MULTILINE)
-    if not match:
-        print("no event array in gather output", file=sys.stderr)
-        return 2
-    try:
-        events = json.loads(raw[match.start():])
-    except json.JSONDecodeError as e:
-        print(f"malformed plow-gog json: {e}", file=sys.stderr)
-        return 2
-
     now = int(time.time()) if now is None else now
     now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
 
     try:
+        # Latch's own rule for a fan-out: nobody answered and somebody failed
+        # is a failure. One failed account beside answering ones costs only
+        # its own meetings -- a revoked secondary token must not silence the
+        # primary. Account and reason are Latch's text, never the calendar's.
+        if degraded:
+            names = ", ".join(f"{d['account']} ({d['reason']})" for d in degraded)
+            if not events:
+                print(f"no account answered the gather: {names}", file=sys.stderr)
+                return 2
+            print(f"not read this run, reconnect in Latch: {names}",
+                  file=sys.stderr)
+
+        # Every account Latch read through, or failed to, is one the owner
+        # connected, so it is theirs: an invite to any of them is the owner's
+        # meeting, and one between two of them waits on nobody. The Mac writes
+        # the tag after the fetch, so event text cannot forge one; the config
+        # still carries the addresses no account is connected as.
+        identities |= {row["account"].strip().lower()
+                       for row in [*events, *degraded]}
+
         # Privacy prepass: one invite appears once per calendar it is on, all
         # copies sharing an iCalUID. ANY private/confidential copy means "do
         # not surface this" — drop every copy sharing its key, or a

@@ -1,7 +1,7 @@
 """tests/test_nudge_candidates.py — behavior tests for the calendar-nudge filter.
 
-Feeds the script gog `calendar events list --json --results-only`-shaped
-output as a gather file and asserts on what post_nudge.py will see: the one
+Feeds the script plow-gog's all-account `calendar events list --all` fan-out
+payload as a gather file and asserts on what post_nudge.py will see: the one
 handoff (every qualifying reminder, earliest first) and the
 {"qualifying": N} count on stdout — the only thing the model routes on.
 The module is imported and its path constants rebound to a scratch
@@ -12,9 +12,10 @@ Field spellings are pinned against a real gather captured through Latch:
 camelCase
 `iCalUID` / `start.dateTime` / `hangoutLink` / `attendees[].responseStatus`,
 `visibility` absent on default-visibility events, free-text fields wrapped in
-EXTERNAL_UNTRUSTED_CONTENT markers by Latch, and a "Note:" preamble line
-ahead of the JSON array. Fixture VALUES are synthesized; only the key
-spellings and structural shapes are real.
+EXTERNAL_UNTRUSTED_CONTENT markers by Latch, and the fan-out's
+{status, items[+account], degraded} payload nested as a JSON string under
+`result`. Fixture VALUES are synthesized; only the key spellings and
+structural shapes are real.
 """
 import importlib.util
 import json
@@ -128,18 +129,19 @@ def event(minutes=20, *, summary="Standup", uid="uid-1@google.com",
     return ev
 
 
-def gather(*events):
-    """gog's stdout as Latch relays it: a Note preamble, then the array."""
-    return ("Note: Using direct access token (expires in ~1 hour)\n"
-            + json.dumps(list(events)))
+def payload(*events, degraded=(), status="completed"):
+    """plow-gog's fan-out answer: every account's events merged, each tagged
+    with the account Latch read it through (the owner's own unless the event
+    already names one)."""
+    return {"status": status,
+            "items": [{"account": "owner@example.test", **ev} for ev in events],
+            "degraded": list(degraded)}
 
 
-def envelope(exit_code, output):
-    """The persisted plow_run_command result: gog's stdout nested as a JSON
-    string inside a JSON string."""
-    return json.dumps(
-        {"result": json.dumps({"exit_code": exit_code, "handle": "h",
-                               "status": "completed", "output": output})})
+def gather(*events, degraded=()):
+    """The plow_run_command result as the runtime persists it: the payload
+    nested as a JSON string (measured on a live fan-out, 2026-09-14)."""
+    return json.dumps({"result": json.dumps(payload(*events, degraded=degraded))})
 
 
 def test_a_qualifying_meeting_writes_the_handoff_and_the_count(rig):
@@ -149,25 +151,51 @@ def test_a_qualifying_meeting_writes_the_handoff_and_the_count(rig):
     assert rig.handoff.read_text() == line + "\n"
 
 
-def test_persisted_envelope_unwraps_to_the_same_handoff(rig):
-    raw = gather(event(minutes=20, location="Cafe Borrone"))
-    rig.run(raw)
-    from_raw = rig.handoff.read_text()
+def test_an_inline_result_written_bare_reads_the_same_as_the_persisted_one(rig):
+    """A quiet window comes back inline and the sheet writes it as returned;
+    with or without the runtime's `result` wrapper, it is the same run."""
+    ev = event(minutes=20, location="Cafe Borrone")
+    rig.run(gather(ev))
+    persisted = rig.handoff.read_text()
     rig.handoff.unlink()
-    code, count, _ = rig.run(envelope(0, raw))
+    code, count, _ = rig.run("Result:\n" + json.dumps(payload(ev)))
     assert (code, count) == (0, 1)
-    assert rig.handoff.read_text() == from_raw
+    assert rig.handoff.read_text() == persisted
+
+
+def test_every_connected_account_is_the_owner_and_a_failed_one_costs_only_itself(rig):
+    """An invite to any account Latch read through is the owner's meeting,
+    config or not; a meeting between two of them waits on nobody; and one
+    account needing reconnection must not silence the others' reminders."""
+    code, count, err = rig.run(gather(
+        {**event(minutes=20, summary="Board prep", uid="uid-work@google.com",
+                 attendees=(attendee("sam@work.test"),
+                            attendee("peer@example.test"))),
+         "account": "sam@work.test"},
+        event(minutes=25, summary="Just me", uid="uid-solo@google.com",
+              organizer="owner@example.test",
+              attendees=(attendee("owner@example.test"),
+                         attendee("old@example.test"))),
+        degraded=[{"account": "old@example.test", "reason": "needs_reauth"}]))
+    assert (code, count) == (0, 1)
+    assert '"Board prep"' in rig.handoff.read_text()
+    assert "old@example.test" in err
 
 
 @pytest.mark.parametrize("content", [
-    envelope(2, ""),  # gog exit 2: one bad calendar name fails the whole gather
-    json.dumps({"result": json.dumps({"exit_code": 0, "handle": "h"})}),
+    # An approval card nobody answered comes back pending, never as no rows.
+    json.dumps({"result": json.dumps({"status": "pending", "handle": "h"})}),
+    json.dumps({"result": json.dumps({"status": "completed", "degraded": []})}),
     json.dumps({"result": "not json"}),
-    envelope(0, None),
-    "Note: preamble only, no array",
-    'Note: x\n[{"bad": }]',
-], ids=["gather-failed", "missing-output", "unparseable-result",
-        "null-output", "no-array", "truncated-json"])
+    json.dumps({"result": json.dumps({"status": "completed", "items": None,
+                                      "degraded": []})}),
+    "Result: no payload at all",
+    '{"result": "{\\"status\\": ',
+    # Nobody answered and somebody failed: Latch's own failure rule.
+    gather(degraded=[{"account": "owner@example.test",
+                      "reason": "needs_reauth"}]),
+], ids=["not-completed", "missing-items", "unparseable-result",
+        "null-items", "no-object", "truncated-json", "no-account-answered"])
 def test_a_broken_gather_fails_loudly_never_as_a_quiet_run(rig, content):
     # A failed gather read as "no meetings" would silently skip reminders
     # for as long as the failure persists — the exact quiet-day trap.
