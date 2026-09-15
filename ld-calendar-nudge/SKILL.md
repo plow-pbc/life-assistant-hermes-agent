@@ -79,8 +79,10 @@ path are fixed inside the script, so there is nothing else to steer.
 It accepts only a runtime-persisted result path or the fixed inline gather
 above (any other path is refused before it is touched), deletes the gather
 as it reads it (the raw calendar corpus must not outlive the run), and when
-meetings qualify it writes the posting handoff ITSELF — every qualifying
-reminder, earliest first, to `/var/lib/hermes/ld/calendar-nudge-text`. You never
+meetings qualify it writes the posting handoffs ITSELF — every qualifying
+reminder, earliest first, to `/var/lib/hermes/ld/calendar-nudge-text`, and the
+earliest one on a kitchen-wall calendar (`calendar.sources`) to
+`/var/lib/hermes/ld/calendar-nudge-card`. You never
 see, write, or relay reminder content: stdout is only
 `{"qualifying": <N>}`, and you route on that count.
 
@@ -103,12 +105,12 @@ has nothing to steer):
     /var/lib/hermes/skills/ld-calendar-nudge/scripts/post_nudge.py
 
 It validates the Plow Chat config FIRST (a broken chat config refuses
-before anything posts — never a half-delivered run), reads the handoff
-once, posts its first line — the earliest reminder — as card 1,
-`type: "alert"` (the slot shared with `ld-morning-triage`; the store keeps
-the latest post per card; `DASHBOARD_*` env vars), then messages the owner
-the whole reminder body over Plow Chat (`PLOW_API_BASE`/`PLOW_HOME_CHANNEL`/`PLOW_AGENT_TOKEN`, bearer
-never in argv), consuming the handoff only after both legs succeed. Fails
+before anything posts — never a half-delivered run), posts the wall card —
+only when a qualifying meeting is on a kitchen-wall calendar; a work meeting
+never reaches the shared screen — as card 1, `type: "alert"` (the slot shared
+with `ld-morning-triage`; the store keeps the latest post per card;
+`DASHBOARD_*` env vars), then messages the owner every reminder over Plow Chat (`PLOW_API_BASE`/`PLOW_HOME_CHANNEL`/`PLOW_AGENT_TOKEN`, bearer
+never in argv), consuming the handoffs only after both legs succeed. Fails
 loudly at whichever leg breaks — surface that in the final response.
 Preview with `--dry-run` (body redacted, nothing consumed).
 

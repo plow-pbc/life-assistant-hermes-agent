@@ -4,9 +4,9 @@
 Reads the fixed all-account plow-gog `calendar events list --all` fan-out from
 its gather-file argument, deleting the file as it goes, applies the nudge
 rules — privacy prepass, per-event filter, dedupe — and writes every
-composed ≤115-char reminder, earliest first, STRAIGHT to the ONE fixed
-handoff post_nudge.py consumes (the first line becomes the kiosk card, the
-whole body the chat message). stdout carries only {"qualifying": N} — the
+composed ≤115-char reminder, earliest first, STRAIGHT to the fixed chat
+handoff post_nudge.py consumes, and the earliest one on a kitchen-wall
+calendar (`calendar.sources`) to the card handoff beside it. stdout carries only {"qualifying": N} — the
 model routes on the count and never touches reminder content, so the helper
 chain takes zero model-controlled content end to end (the plow#625 shape).
 Deterministic on purpose: the rules were 200 lines of sheet prose upstream;
@@ -58,8 +58,10 @@ LIMIT = 115
 # it is a prefix check, and "/tmp/hermes-results-evil" must not pass.
 PERSISTED_ROOT = "/tmp/hermes-results/"
 GATHER_FILE = "/var/lib/hermes/ld/calendar-nudge-gather"
-# The one fixed handoff this helper writes and post_nudge.py consumes.
+# The fixed handoffs this helper writes and post_nudge.py consumes: every
+# reminder for chat, and the kitchen wall's one card when a meeting is on it.
 HANDOFF = "/var/lib/hermes/ld/calendar-nudge-text"
+CARD = "/var/lib/hermes/ld/calendar-nudge-card"
 # The shared ld-config, fixed here rather than taken as a flag: the model
 # builds the argv, and a steerable --config could point at a model-written
 # JSON whose identities/lookaheads make a non-qualifying event publish.
@@ -122,6 +124,11 @@ def compose(summary, local_time, minutes_until, where):
     return render((summary[:keep] + "…") if keep > 0 else "…", where)
 
 
+def occurrence(ev):
+    """(iCalUID, start): one meeting's identity across every calendar's copy."""
+    return ev["iCalUID"], ev["start"].get("dateTime") or ev["start"].get("date")
+
+
 def gather_path_allowed(path):
     """Whether a model-supplied gather path may be opened (and consumed).
 
@@ -178,6 +185,10 @@ def main(argv=None, now=None) -> int:
         # Applied here rather than in the gather, so the approved argv never
         # changes when the owner changes their mind.
         watched = set(nudge_cfg.get("calendars", []))
+        # The kitchen wall's calendars are the household's, not the nudge's:
+        # the nudge watches everything the owner attends, and only a meeting
+        # on one of these may put its title on the shared screen.
+        wall = {s["calendar_id"] for s in config["calendar"]["sources"]}
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(f"bad config {CONFIG_FILE}: {e!r}", file=sys.stderr)
         return 2
@@ -214,16 +225,14 @@ def main(argv=None, now=None) -> int:
         # copies sharing an iCalUID. ANY private/confidential copy means "do
         # not surface this" — drop every copy sharing its key, or a
         # default-visibility sibling would post the title to the shared kiosk.
-        private_keys = {
-            (ev["iCalUID"], ev["start"].get("dateTime") or ev["start"].get("date"))
-            for ev in events
-            if ev.get("visibility") in ("private", "confidential")
-        }
+        private_keys = {occurrence(ev) for ev in events
+                        if ev.get("visibility") in ("private", "confidential")}
+        # An invite on a wall calendar and a work one is on the wall.
+        wall_keys = {occurrence(ev) for ev in events if ev["CalendarID"] in wall}
 
         survivors = []
         for ev in events:
-            key = (ev["iCalUID"],
-                   ev["start"].get("dateTime") or ev["start"].get("date"))
+            key = occurrence(ev)
             if key in private_keys:
                 continue
             if ev["status"] == "cancelled":
@@ -297,6 +306,7 @@ def main(argv=None, now=None) -> int:
     survivors.sort(key=lambda s: s[1])
     seen = set()
     reminders = []
+    card = None
     for key, start_dt, minutes_until, virtual, location, ev in survivors:
         if key[0]:
             if key in seen:
@@ -310,11 +320,14 @@ def main(argv=None, now=None) -> int:
         summary = " ".join(_URL_TOKEN.sub("", unwrap(ev.get("summary"))).split())
         reminders.append(compose(summary or "(untitled meeting)", local_time,
                                  minutes_until, where))
+        if card is None and key in wall_keys:
+            card = reminders[-1]
 
-    # The handoff is written HERE, never by the model: every qualifying
-    # reminder, earliest first (each line ≤115, enforced above). post_nudge
-    # gives the first line to the kiosk and the whole body to chat, and owns
-    # consume-on-success. stdout carries only the count the sheet routes on.
+    # The handoffs are written HERE, never by the model: every qualifying
+    # reminder, earliest first (each line ≤115, enforced above), for chat, and
+    # the earliest wall-calendar one for the kiosk -- absent when none is, so
+    # an earlier run's card cannot post. post_nudge owns consume-on-success.
+    # stdout carries only the count the sheet routes on.
     # A direct write, on purpose: posting only begins after this process
     # exits 0, a mid-write crash exits nonzero and the sheet stops, and the
     # next tick overwrites the file — the staged-rename variant defended an
@@ -322,6 +335,14 @@ def main(argv=None, now=None) -> int:
     if reminders:
         with open(HANDOFF, "w") as f:
             f.write("\n".join(reminders) + "\n")
+        if card is None:
+            try:
+                os.unlink(CARD)
+            except FileNotFoundError:
+                pass
+        else:
+            with open(CARD, "w") as f:
+                f.write(card + "\n")
 
     json.dump({"qualifying": len(reminders)}, sys.stdout)
     print()

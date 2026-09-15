@@ -38,6 +38,8 @@ NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=timezone(timedelta(hours=-7)))
 
 BASE_CONFIG = {
     "family": {"timezone": "America/Los_Angeles"},
+    # The kitchen wall's calendars; event() puts every meeting on this one.
+    "calendar": {"sources": [{"calendar_id": "owner@example.test"}]},
     "calendar_nudge": {
         "lookahead_virtual_minutes": 30,
         "lookahead_in_person_minutes": 60,
@@ -62,8 +64,10 @@ def rig(tmp_path, monkeypatch, capsys):
     results = tmp_path / "results"
     results.mkdir()
     handoff = tmp_path / "calendar-nudge-text"
+    card = tmp_path / "calendar-nudge-card"
     monkeypatch.setattr(nc, "PERSISTED_ROOT", str(results) + "/")
     monkeypatch.setattr(nc, "HANDOFF", str(handoff))
+    monkeypatch.setattr(nc, "CARD", str(card))
     cfg = tmp_path / "config.json"
     monkeypatch.setattr(nc, "CONFIG_FILE", str(cfg))
 
@@ -78,7 +82,7 @@ def rig(tmp_path, monkeypatch, capsys):
         out, err = capsys.readouterr()
         return code, (json.loads(out)["qualifying"] if out.strip() else None), err
 
-    return SimpleNamespace(run=run, handoff=handoff,
+    return SimpleNamespace(run=run, handoff=handoff, card=card,
                            results=results, tmp=tmp_path)
 
 
@@ -176,6 +180,23 @@ def test_every_connected_account_is_the_owner(rig):
               attendees=(attendee("owner@example.test"), attendee(work)))))
     assert (code, count) == (0, 1)
     assert '"Board prep"' in rig.handoff.read_text()
+
+
+def test_only_a_meeting_on_a_wall_calendar_reaches_the_kitchen_screen(rig):
+    """The wall shows the household's calendar.sources and the nudge watches
+    every calendar, so a reminder from any other calendar goes to chat only.
+    One invite on both is on the wall, and a run with nothing for the wall
+    leaves no card behind from an earlier one."""
+    work = {**event(minutes=10, summary="Board prep", uid="uid-w@google.com"),
+            "CalendarID": "work@example.test"}
+    family = event(minutes=25, summary="Recital", uid="uid-f@google.com")
+    assert rig.run(gather(work, family))[:2] == (0, 2)
+    assert '"Board prep"' in lines(rig)[0]
+    assert rig.card.read_text() == lines(rig)[1] + "\n"
+    rig.run(gather(work, {**work, "CalendarID": "owner@example.test"}))
+    assert '"Board prep"' in rig.card.read_text()
+    assert rig.run(gather(work))[:2] == (0, 1)
+    assert rig.handoff.exists() and not rig.card.exists()
 
 
 def test_a_watch_list_narrows_the_nudge_without_narrowing_the_privacy_prepass(rig):
@@ -412,7 +433,9 @@ def test_a_newline_in_untrusted_text_cannot_spoof_a_second_line(rig):
     lambda c: c.pop("calendar_nudge"),
     lambda c: c["calendar_nudge"].pop("lookahead_virtual_minutes"),
     lambda c: c.pop("family"),
-], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family"])
+    lambda c: c.pop("calendar"),
+], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family",
+        "no-wall-calendars"])
 def test_a_broken_config_fails_loudly_with_the_documented_exit(rig, mutate):
     config = json.loads(json.dumps(BASE_CONFIG))
     mutate(config)
