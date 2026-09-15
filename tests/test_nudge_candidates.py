@@ -393,6 +393,9 @@ def test_a_private_sibling_drops_every_copy_of_the_invite(rig):
     # The same instant written in another calendar's offset is the same copy.
     utc = (NOW + timedelta(minutes=20)).astimezone(timezone.utc).isoformat()
     assert rig.run(gather({**private, "start": {"dateTime": utc}}, sibling))[:2] == (0, 0)
+    # A private meeting with no iCalUID has no siblings to take down with it.
+    assert rig.run(gather({**private, "iCalUID": ""},
+                          event(minutes=20, uid="", summary="Public")))[:2] == (0, 1)
 
 
 def test_copies_collapse_and_the_earliest_leads_the_handoff(rig):

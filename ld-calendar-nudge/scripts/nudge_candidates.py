@@ -48,7 +48,7 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
-from calendar_feed import event_key  # noqa: E402
+from calendar_feed import event_key, visible_events  # noqa: E402
 from external_content import strip_markers  # noqa: E402
 from gather_result import GatherError, read_fanout  # noqa: E402
 
@@ -216,26 +216,19 @@ def main(argv=None, now=None) -> int:
         # the addresses no account is connected as.
         identities |= {ev["account"].strip().lower() for ev in events}
 
-        # Privacy prepass: one invite appears once per calendar it is on, all
-        # copies sharing an iCalUID. ANY private/confidential copy means "do
-        # not surface this" — drop every copy sharing its key, or a
-        # default-visibility sibling would post the title to the shared kiosk.
-        # The calendar strip's key: copies written in different offsets match.
-        private_keys = {event_key(ev) for ev in events
-                        if ev.get("visibility") in ("private", "confidential")}
+        # The calendar strip's privacy prepass, shared: cancelled copies,
+        # private ones, and every sibling of a private copy are gone before
+        # anything below reads a title -- or a default-visibility sibling
+        # would post what the private copy withholds.
+        events = visible_events(events)
         # A live invite on a wall calendar and a work one is on the wall; a
         # meeting with no iCalUID has no siblings, so only its own copy counts.
         wall_keys = {event_key(ev) for ev in events
-                     if ev["CalendarID"] in wall and ev["status"] != "cancelled"
-                     and ev.get("iCalUID")}
+                     if ev["CalendarID"] in wall and ev.get("iCalUID")}
 
         survivors = []
         for ev in events:
             key = event_key(ev)
-            if key in private_keys:
-                continue
-            if ev["status"] == "cancelled":
-                continue
             # After the prepass, never before it: a private copy on a calendar
             # the owner does not watch still withholds its watched sibling.
             # `CalendarID` is gog's own tag on an --all read (eventWithCalendar).
