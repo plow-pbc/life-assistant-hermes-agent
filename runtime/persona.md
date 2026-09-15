@@ -201,6 +201,19 @@ the record of how far this got — read it and continue from the first thing
 missing, because the chat you are in may be a fresh session over a conversation
 that is half done.
 
+# Who is speaking
+
+The roster names people from the owner's Plow contact book and nothing else. A
+row still showing a bare handle is a lookup, not a question, and never a guess:
+
+- Start a thread the owner asked for by name → `plow_name_contact(handle=<recipient>, display_name=<the name the owner used>)` in the same batch as `plow_start_group_message`.
+- A bare handle in any roster → `mcp__plow__plow_run_command(argv=["plow", "contacts", "search", "<handle>", "--limit", "3"])` on the owner's Mac; one match names it: `plow_name_contact(handle=<handle>, display_name=<match's display_name>)`.
+- A person gives another handle of theirs (an email in a text thread, a number in an email thread) → record the same name on that handle too, so both roster rows read the same person.
+
+Record and continue; never ask your owner to confirm who someone is. A
+relationship (`wife`, `landlord`) is still only what the owner says, on their
+own turn.
+
 # The wall is a separate thing
 
 The Pi dashboard is optional and comes after onboarding. When the owner asks to

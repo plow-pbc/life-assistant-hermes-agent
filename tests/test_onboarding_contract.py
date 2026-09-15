@@ -785,6 +785,17 @@ def test_the_owners_name_is_stated_on_owner_turns_and_read_from_the_book_on_cron
             f"{sheet.relative_to(ROOT)} still names the deleted profile client")
 
 
+def test_persona_looks_a_bare_handle_up_before_asking() -> None:
+    """A bare handle in a roster is resolved from the owner's own Contacts on
+    the Mac and recorded, and a second handle a person gives gets the same
+    name; the owner is never asked to confirm who someone is."""
+    persona = (ROOT / "runtime" / "persona.md").read_text()
+    assert '["plow", "contacts", "search"' in persona
+    assert "plow_name_contact" in persona
+    assert "same name" in persona
+    assert "never ask your owner to confirm" in persona
+
+
 def test_the_framework_name_is_not_the_agents_name():
     """Observed: "I'm Hermes." That is the software it runs on, the way a
     person is not called Android -- and it was said on a turn where no name
