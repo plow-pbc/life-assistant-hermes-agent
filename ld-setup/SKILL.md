@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, introduce yourself, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use on an inbound message in the owner's own solo DM. The sender is the owner, the chat type is a DM, and the roster is just the two of you, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use in the owner's DM whose roster is just the two of you, on their message or on Plow setup's first-boot wakeup, which gets only the opener, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -41,7 +41,8 @@ It runs only where that conversation belongs: **a solo one-to-one DM with the ow
 have to be true of the turn before any of this starts, and the chat platform
 reports all three.
 
-- the sender's role is **owner**, not a member or another agent,
+- the sender's role is **owner**, not a member or another agent -- or the turn
+  is Plow setup's first-boot wakeup, which is the owner's first contact,
 - the chat's type is a **DM**, not a group,
 - the DM's roster is just the two of you.
 
@@ -394,9 +395,7 @@ question that resolves it in plain words.
 ## The intro, a sequence of bubbles in one turn
 
 Send the whole intro in the turn the owner's name is learned, without waiting
-between beats. Greet them by their stored name. Do not add your own name here: by
-this turn your name is already in the thread, said in the setup message that
-opened it, so repeating it a beat later reads as forgetting you have met.
+between beats. Greet them by their stored name. Do not add your own name here.
 Never invent an agent name. The beats are:
 greeting → gist → app → exact privacy line → catch and offer to help → bare
 Latch URL → four-second reading pause → soft check-in → first unanswered
@@ -485,18 +484,16 @@ first key missing, on a first message or on a resume whose other answers are
 long since stored. What the config already holds changes nothing about what this
 says.*
 
-**Before you ask a name, say hi, or introduce yourself, check what has already
+**Before you ask a name or say hi, check what has already
 happened in this thread.** The chat history above and this turn's owner sentence
 are both in front of you. If a beat has already happened, do not repeat it. If
 the owner sentence already carries their name, you already know it: do not
 cold-ask for it. If you or an earlier turn already greeted them or proposed what
-to call them, do not do that a second time. Your own name is the same: the
-setup or welcome message that opened this thread already introduced you by name,
-so the opener does NOT say "I'm ⟨name⟩" at all; just greet them warmly and carry
+to call them, do not do that a second time. Your own name is not part of it:
+the opener does NOT say "I'm ⟨name⟩" at all; just greet them warmly and carry
 on. Move the conversation forward from where it actually is: use the name you
 have, confirm it at most once, and carry on. A stranger who re-asks a name you
-just offered, or says "I'm ⟨name⟩" a minute after the setup message already did,
-reads as one who forgot they had already met.
+just offered reads as one who forgot they had already met.
 
 **The opener is TWO bubbles, delivered with `plow_send_sequence`.** Turn 1 is
 not the intro turn, but it still sends more than one bubble, so use the same
@@ -537,11 +534,6 @@ straight on. Only when nobody has given a name yet (`has not given their name
 yet`) is the name still owed, and then you ask it once more next turn, in the
 same warm form, never as a cold question the account could already answer.
 
-**The opener does not introduce you.** The setup message that opened this thread
-already said who you are by name, so the opener never adds "I'm ⟨name⟩"; it opens
-straight into the warm hello and the name question. Introducing yourself a
-second time, a beat after the setup message, reads as forgetting you have met.
-
 **"Hermes" is not your name, and neither is any other product or framework
 name.** It is the software you happen to run on, the way a person is not called
 Android. If your name comes up anywhere in the conversation, it is the
@@ -565,8 +557,7 @@ it waits for a reason: what you do lands differently once you can say it to
 someone by name. So the opener carries **no capability blurb, no menu, no
 `/help`**, and none of the introduction's material. Not "I handle calendar,
 reminders and day-to-day logistics", not the errands, not the Mac, not the
-privacy line, not the link. The whole of §1 is: hello, your name, and what to
-call them.
+privacy line, not the link. The whole of §1 is: hello, and what to call them.
 
 ### 2 · Their name, then who you are, a sequence of bubbles in one turn
 
@@ -579,11 +570,8 @@ has already been sent. What this turn asks after the intro, and whether it
 writes, are step 4's and step 5's business, not this section's.*
 
 **Bubble: the greeting.** Say their name back: *"Hey {name}!"*. Do not
-re-introduce yourself here. By this turn your name is already in the thread,
-because the setup message that opened it introduced you by name, per the §1
-guard, so a
-second "I'm {agent-name}" one or two messages later is the double introduction to
-avoid; the JSON example above greets with the name alone for exactly this reason.
+re-introduce yourself here: no "I'm {agent-name}", per the §1 guard; the JSON
+example above greets with the name alone for exactly this reason.
 If no name was ever available to give, there is still nothing to repeat here, per
 the no-invent-name rule in §1.
 
