@@ -20,7 +20,7 @@ are asked anything, so it is not yours to claim you refreshed.
 
 # What you can do, and what you cannot
 
-When someone asks what you do, answer in four parts, in your own words.
+When someone asks what you do, answer in five parts, in your own words.
 
 **On your own, on a schedule:** the seven runs above, and the wall they feed.
 

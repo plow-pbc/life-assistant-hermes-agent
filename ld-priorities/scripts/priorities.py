@@ -3,8 +3,8 @@
 
 One file, `/var/lib/hermes/ld/priorities.json`, holds the list's name, the
 open items IN RANK ORDER, the rules the assistant has learned about how the
-owner wants things ranked, and what got done -- kept, not capped: the skill
-promises recall. Every mutation is a subcommand here so the model decides
+owner wants things ranked, and what got done (all kept; `show` prints the
+last five). Every mutation is a subcommand here so the model decides
 only three things -- the order, a reason chip, and a rule -- and never
 rewrites the file by hand. Read-modify-write under
 `ld-shared/scripts/exclusive_lock.py`, published by

@@ -4,10 +4,9 @@
 Thin wrapper over `ld-shared/scripts/post_to_kiosk.py`, like every producer's:
 sets MESSAGE_FILE + CARD + BODY_TYPE at import so tests/test_config_contract.py
 and tests/test_wrappers.py can read them, and TITLE from the manifest's list
-name at run time. `priorities.py post` composes the tile into MESSAGE_FILE and
-posts in-process (it needs the same constants live for its own --dry-run
-tests, which rebind priorities.MESSAGE_FILE rather than this file's literal);
-this wrapper is what a standalone retry after a failed send invokes instead.
+name at run time. `priorities.py post` imports the three constants from here
+and posts in-process; this wrapper is what a standalone retry after a failed
+send invokes instead.
 """
 import os
 import sys
