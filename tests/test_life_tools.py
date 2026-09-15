@@ -49,6 +49,7 @@ def test_every_row_points_at_an_executable_script_in_this_tree():
     ({"action": "rule_add", "rule": "Groceries last"}, ["rule", "add", "Groceries last"]),
     ({"action": "rule_remove", "rule": "2"}, ["rule", "remove", "2"]),
     ({"action": "rank", "ids": ["b", "a"]}, ["rank", "b", "a"]),
+    ({"action": "rank", "ids": []}, ["rank"]),  # the last item done: an empty order is valid
     ({"action": "why", "id": "a1", "why": ""}, ["why", "a1", ""]),
     ({"action": "post", "dry_run": True}, ["post", "--dry-run"]),
 ])
@@ -58,7 +59,7 @@ def test_todo_argv_maps_each_action(args, expected):
 
 @pytest.mark.parametrize("args", [
     {"action": "add"}, {"action": "done"}, {"action": "rename", "name": " "},
-    {"action": "rule_add"}, {"action": "bogus"}, {},
+    {"action": "rule_add"}, {"action": "bogus"}, {}, {"action": "rank"},
 ])
 def test_todo_argv_refuses_a_missing_field_without_running(args):
     out = life_tools.todo_argv(args)
@@ -152,6 +153,26 @@ def test_kiosk_post_card_writes_the_handoff_and_dry_runs_the_poster(tmp_path, mo
     assert preview["body"]["card"] == "3" and preview["body"]["type"] == "weather"
     assert handoff.read_text() == written
     assert oct(handoff.stat().st_mode)[-3:] == "600"
+
+
+def test_kiosk_post_card_holds_the_handoff_lock_across_the_poster(tmp_path, monkeypatch):
+    """Two overlapping posts to one card must not have the second's text land
+    before the first's poster has read it. The poster here IS the second
+    writer: it tries the lock non-blockingly and reports what it found."""
+    handoff = tmp_path / "weather-text"
+    wrapper = tmp_path / "poster.py"
+    wrapper.write_text(
+        "import fcntl\n"
+        f"f = open({str(handoff) + '.lock'!r}, 'a+')\n"
+        "try:\n"
+        "    fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+        "    print('free')\n"
+        "except BlockingIOError:\n"
+        "    print('held')\n"
+    )
+    monkeypatch.setitem(life_tools.CARDS, "weather", (str(wrapper), str(handoff)))
+    out = json.loads(life_tools.run(life_tools.KIOSK_POST_CARD, {"card": "weather", "text": "72"}))
+    assert out["ok"] is True and out["stdout"] == "held"
 
 
 def test_kiosk_post_card_refuses_an_unknown_card_or_empty_text():

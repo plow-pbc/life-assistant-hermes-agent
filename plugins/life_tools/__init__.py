@@ -7,6 +7,7 @@ description on each row is the routing lever and is quoted from the spec.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import sys
@@ -25,13 +26,18 @@ class Tool:
     name: str
     description: str
     parameters: dict
-    script: str
-    argv: object  # callable(args) -> list[str] | str (an error message)
+    argv: object                # callable(args) -> list[str] | str (an error message)
+    script: str = ""            # the one script this row runs
     handoff: str | None = None  # a fixed file the handler writes `text` to first
+    resolve: object = None      # callable(args) -> (script, handoff), for a row that varies per call
 
     @property
     def schema(self) -> dict:
         return {"name": self.name, "description": self.description, "parameters": self.parameters}
+
+    def target(self, args: dict) -> tuple[str, str | None]:
+        """The script to run and the handoff to write first, for THIS call."""
+        return self.resolve(args) if self.resolve else (self.script, self.handoff)
 
 
 TODO_ACTIONS = ("show", "add", "done", "remove", "rename", "rank", "rule_add", "rule_remove", "why", "post")
@@ -48,7 +54,9 @@ def todo_argv(args: dict):
     if action not in TODO_ACTIONS:
         return f"unknown action {action!r}; one of {', '.join(TODO_ACTIONS)}"
     need = _TODO_REQUIRED.get(action)
-    if need and not (args.get(need) if need == "ids" else _clean(args.get(need))):
+    # `ids` is gated on presence, not truthiness: `rank` with no ids left is the
+    # valid order once the last item is done, and priorities.py accepts it.
+    if need and (args.get(need) is None if need == "ids" else not _clean(args.get(need))):
         return f"{need} is required for {action}"
     if action == "add":
         why = _clean(args.get("why"))
@@ -138,9 +146,8 @@ KIOSK_POST_CARD = Tool(
         "required": ["card", "text"],
         "additionalProperties": False,
     },
-    script="",   # resolved from CARDS per call
     argv=card_argv,
-    handoff="",  # resolved from CARDS per call
+    resolve=lambda args: CARDS[args["card"]],
 )
 
 
@@ -149,20 +156,34 @@ def run(tool: Tool, args: dict, **_kwargs) -> str:
     argv = tool.argv(args)
     if isinstance(argv, str):
         return json.dumps({"ok": False, "error": argv})
-    # An empty script is a row that resolves per card; argv validated the card
-    # above, so CARDS has it.
-    script, handoff = (tool.script, tool.handoff) if tool.script else CARDS[args["card"]]
-    if handoff:
-        _write_handoff(handoff, str(args["text"]).strip())
-    try:
-        proc = subprocess.run([sys.executable, script, *argv],
-                              capture_output=True, text=True, timeout=60)
-    except subprocess.TimeoutExpired:
-        return json.dumps({"ok": False, "error": f"{tool.name} timed out after 60s"})
+    script, handoff = tool.target(args)  # argv validated the card, so CARDS has it
+    with _handoff_lock(handoff):
+        if handoff:
+            _write_handoff(handoff, str(args["text"]).strip())
+        try:
+            proc = subprocess.run([sys.executable, script, *argv],
+                                  capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            return json.dumps({"ok": False, "error": f"{tool.name} timed out after 60s"})
     if proc.returncode != 0:
         return json.dumps({"ok": False, "exit": proc.returncode,
                            "stderr": (proc.stderr or proc.stdout).strip()})
     return json.dumps({"ok": True, "stdout": proc.stdout.strip()})
+
+
+def _handoff_lock(path: str | None):
+    """The lock the producers take, held across the write AND the poster run.
+
+    A card's handoff file is one fixed path, and the poster reads it in a
+    second process. Two overlapping posts to the same card would otherwise
+    have the second's text land before the first's poster read it -- both
+    calls report success and the wall shows one card twice.
+    """
+    if not path:
+        return contextlib.nullcontext()
+    from exclusive_lock import exclusive_lock  # the producers' own lock
+
+    return exclusive_lock(path, "refusing to post")
 
 
 def _write_handoff(path: str, text: str) -> None:
