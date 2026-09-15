@@ -170,7 +170,7 @@ JOBS = (
             "Run the ld-calendar-nudge producer now: gather the next two days "
             "of every connected calendar through Latch plow-gog, run the nudge filter, and if a "
             "meeting with other attendees starts within the lookahead window, "
-            "post a kiosk reminder and message the owner over Plow Chat; a "
+            "message the owner over Plow Chat and post a kiosk reminder if it is on a wall calendar; a "
             "quiet tick is a no-op on both surfaces."
         ),
         "skill": "ld-calendar-nudge",

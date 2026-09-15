@@ -1,13 +1,13 @@
 ---
 name: ld-calendar-nudge
-description: Post a short meeting reminder to the life-dashboard kiosk and message the owner over Plow Chat when a meeting with other attendees is starting soon — 30 min lookahead for virtual meetings, 60 min for in-person, read across every calendar on every Google account the owner connected, through Plow Latch's vendored plow-gog. Use when the scheduled half-hourly nudge cron fires, or when the user asks to run or test the calendar nudge once now.
+description: Message the owner over Plow Chat, and post a short reminder to the life-dashboard kiosk when the meeting is on a kitchen-wall calendar, when a meeting with other attendees is starting soon — 30 min lookahead for virtual meetings, 60 min for in-person, read across every calendar on every Google account the owner connected, through Plow Latch's vendored plow-gog. Use when the scheduled half-hourly nudge cron fires, or when the user asks to run or test the calendar nudge once now.
 ---
 
 # Life Dashboard — Calendar Nudge
 
-Remind the owner about an upcoming meeting with other attendees, on both
-surfaces — kiosk (glanceable shared display) and Plow Chat (gets the owner's
-attention). Runs half-hourly from a Hermes cron job; the schedule is owned by
+Remind the owner about an upcoming meeting with other attendees over Plow
+Chat (gets the owner's attention), and on the kiosk (glanceable shared
+display) only when the meeting is on one of the wall's `calendar.sources`. Runs half-hourly from a Hermes cron job; the schedule is owned by
 `ld-dashboard` (`/var/lib/hermes/skills/ld-dashboard/scripts/register_crons.py`) —
 this skill never self-registers. A manual "nudge me about my next meeting
 now" request follows this sheet once and stops — do NOT create a second cron.
@@ -79,10 +79,10 @@ path are fixed inside the script, so there is nothing else to steer.
 It accepts only a runtime-persisted result path or the fixed inline gather
 above (any other path is refused before it is touched), deletes the gather
 as it reads it (the raw calendar corpus must not outlive the run), and when
-meetings qualify it writes the posting handoffs ITSELF — every qualifying
-reminder, earliest first, to `/var/lib/hermes/ld/calendar-nudge-text`, and the
-earliest one on a kitchen-wall calendar (`calendar.sources`) to
-`/var/lib/hermes/ld/calendar-nudge-card`. You never
+meetings qualify it writes the posting handoff ITSELF, to
+`/var/lib/hermes/ld/calendar-nudge.json` — every qualifying reminder, earliest
+first, and the earliest one on a kitchen-wall calendar (`calendar.sources`) as
+the kiosk card. You never
 see, write, or relay reminder content: stdout is only
 `{"qualifying": <N>}`, and you route on that count.
 
@@ -110,7 +110,7 @@ only when a qualifying meeting is on a kitchen-wall calendar; a work meeting
 never reaches the shared screen — as card 1, `type: "alert"` (the slot shared
 with `ld-morning-triage`; the store keeps the latest post per card;
 `DASHBOARD_*` env vars), then messages the owner every reminder over Plow Chat (`PLOW_API_BASE`/`PLOW_HOME_CHANNEL`/`PLOW_AGENT_TOKEN`, bearer
-never in argv), consuming the handoffs only after both legs succeed. Fails
+never in argv), consuming the handoff only after both legs succeed. Fails
 loudly at whichever leg breaks — surface that in the final response.
 Preview with `--dry-run` (body redacted, nothing consumed).
 

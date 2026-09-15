@@ -63,11 +63,9 @@ def rig(tmp_path, monkeypatch, capsys):
     call. Returns (exit_code, parsed_count_or_None, stderr_text)."""
     results = tmp_path / "results"
     results.mkdir()
-    handoff = tmp_path / "calendar-nudge-text"
-    card = tmp_path / "calendar-nudge-card"
+    handoff = tmp_path / "calendar-nudge.json"
     monkeypatch.setattr(nc, "PERSISTED_ROOT", str(results) + "/")
     monkeypatch.setattr(nc, "HANDOFF", str(handoff))
-    monkeypatch.setattr(nc, "CARD", str(card))
     cfg = tmp_path / "config.json"
     monkeypatch.setattr(nc, "CONFIG_FILE", str(cfg))
 
@@ -82,12 +80,16 @@ def rig(tmp_path, monkeypatch, capsys):
         out, err = capsys.readouterr()
         return code, (json.loads(out)["qualifying"] if out.strip() else None), err
 
-    return SimpleNamespace(run=run, handoff=handoff, card=card,
+    return SimpleNamespace(run=run, handoff=handoff,
                            results=results, tmp=tmp_path)
 
 
 def lines(rig):
-    return rig.handoff.read_text().splitlines()
+    return json.loads(rig.handoff.read_text())["chat"]
+
+
+def card(rig):
+    return json.loads(rig.handoff.read_text())["card"]
 
 
 def at(minutes, date_only=False):
@@ -152,7 +154,7 @@ def test_a_qualifying_meeting_writes_the_handoff_and_the_count(rig):
     code, count, _ = rig.run(gather(event(minutes=20, location="Cafe Borrone")))
     assert (code, count) == (0, 1)
     line = 'Heads up: "Standup" at 12:20pm (20m) — Cafe Borrone.'
-    assert rig.handoff.read_text() == line + "\n"
+    assert lines(rig) == [line] and card(rig) == line
 
 
 def test_an_inline_result_written_bare_reads_the_same_as_the_persisted_one(rig):
@@ -179,24 +181,28 @@ def test_every_connected_account_is_the_owner(rig):
               organizer="owner@example.test",
               attendees=(attendee("owner@example.test"), attendee(work)))))
     assert (code, count) == (0, 1)
-    assert '"Board prep"' in rig.handoff.read_text()
+    assert '"Board prep"' in lines(rig)[0]
 
 
 def test_only_a_meeting_on_a_wall_calendar_reaches_the_kitchen_screen(rig):
     """The wall shows the household's calendar.sources and the nudge watches
     every calendar, so a reminder from any other calendar goes to chat only.
-    One invite on both is on the wall, and a run with nothing for the wall
-    leaves no card behind from an earlier one."""
+    One live invite on both is on the wall; a cancelled wall copy is not, and
+    two meetings with no iCalUID never borrow each other's calendar."""
     work = {**event(minutes=10, summary="Board prep", uid="uid-w@google.com"),
             "CalendarID": "work@example.test"}
     family = event(minutes=25, summary="Recital", uid="uid-f@google.com")
     assert rig.run(gather(work, family))[:2] == (0, 2)
     assert '"Board prep"' in lines(rig)[0]
-    assert rig.card.read_text() == lines(rig)[1] + "\n"
+    assert card(rig) == lines(rig)[1]
     rig.run(gather(work, {**work, "CalendarID": "owner@example.test"}))
-    assert '"Board prep"' in rig.card.read_text()
-    assert rig.run(gather(work))[:2] == (0, 1)
-    assert rig.handoff.exists() and not rig.card.exists()
+    assert '"Board prep"' in card(rig)
+    rig.run(gather(work, {**work, "CalendarID": "owner@example.test",
+                          "status": "cancelled"}))
+    assert card(rig) is None
+    rig.run(gather({**event(uid="", summary="Work"), "CalendarID": "work@example.test"},
+                   event(uid="", summary="Home")))
+    assert len(lines(rig)) == 2 and '"Home"' in card(rig)
 
 
 def test_a_watch_list_narrows_the_nudge_without_narrowing_the_privacy_prepass(rig):
@@ -218,7 +224,7 @@ def test_a_watch_list_narrows_the_nudge_without_narrowing_the_privacy_prepass(ri
         config["calendar_nudge"]["calendars"] = calendars
         code, count, _ = rig.run(gather(*evs), config=config)
         assert (code, count) == (0, len(kept))
-        assert all(k in rig.handoff.read_text() for k in kept)
+        assert all(k in "\n".join(lines(rig)) for k in kept)
         rig.handoff.unlink()
 
 
@@ -345,8 +351,8 @@ def test_latch_untrusted_markers_never_reach_the_handoffs(rig):
     rig.run(gather(event(minutes=20,
                          summary=WRAP_OPEN + "Piano recital" + WRAP_CLOSE,
                          location=WRAP_OPEN + "School hall" + WRAP_CLOSE)))
-    assert rig.handoff.read_text() == (
-        'Heads up: "Piano recital" at 12:20pm (20m) — School hall.\n')
+    assert lines(rig) == [
+        'Heads up: "Piano recital" at 12:20pm (20m) — School hall.']
 
 
 def test_a_url_in_the_title_is_stripped_never_posted(rig):
@@ -384,6 +390,9 @@ def test_a_private_sibling_drops_every_copy_of_the_invite(rig):
     private = event(minutes=20, visibility="private")
     sibling = event(minutes=20)  # same uid, default visibility
     assert rig.run(gather(private, sibling))[:2] == (0, 0)
+    # The same instant written in another calendar's offset is the same copy.
+    utc = (NOW + timedelta(minutes=20)).astimezone(timezone.utc).isoformat()
+    assert rig.run(gather({**private, "start": {"dateTime": utc}}, sibling))[:2] == (0, 0)
 
 
 def test_copies_collapse_and_the_earliest_leads_the_handoff(rig):
