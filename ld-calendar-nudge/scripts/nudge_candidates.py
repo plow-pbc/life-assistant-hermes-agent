@@ -173,6 +173,14 @@ def main(argv=None, now=None) -> int:
         lookahead_in_person = nudge_cfg["lookahead_in_person_minutes"]
         identities = {str(e).strip().lower()
                       for e in nudge_cfg["owner_identities"] if str(e).strip()}
+        # The owner's watch list, by calendar id: empty or absent is every
+        # connected calendar. Applied here rather than in the gather, so the
+        # approved argv never changes when the owner changes their mind.
+        watched = nudge_cfg.get("calendars", [])
+        if not (isinstance(watched, list)
+                and all(isinstance(c, str) for c in watched)):
+            raise TypeError("calendar_nudge.calendars is not a list of ids")
+        watched = set(watched)
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(f"bad config {CONFIG_FILE}: {e!r}", file=sys.stderr)
         return 2
@@ -222,6 +230,10 @@ def main(argv=None, now=None) -> int:
             if key in private_keys:
                 continue
             if ev["status"] == "cancelled":
+                continue
+            # After the prepass, never before it: a private copy on a calendar
+            # the owner does not watch still withholds its watched sibling.
+            if watched and ev["CalendarID"] not in watched:
                 continue
             # All-day events have start.date only; a date parsed as midnight
             # would fire a misleading late-night reminder. They belong to the

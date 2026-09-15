@@ -34,10 +34,12 @@ nothing read from config first:
      "--from=now", "--days=2", "--json", "--results-only", "--sort=start",
      "--max=50"]
 
-It watches every calendar, not the household's `calendar.sources`: a meeting
+It reads every calendar, not the household's `calendar.sources`: a meeting
 the owner is due at can sit on any of them, and the filter's owner and
 counterparty rules are what keep a holiday feed or someone else's shared
-calendar from nudging. No account flag, so plow-gog reads every connected
+calendar from nudging. An owner who wants fewer sets
+`calendar_nudge.calendars` (ld-setup's "Changing one setting later"); the
+filter applies it, so this argv stays the same either way. No account flag, so plow-gog reads every connected
 account (`--all` is every calendar on each) and merges them into one
 `{status, items, degraded}` answer, each event tagged with its `account`.
 `--max` is per calendar per account, and `--days=2` because `--days=1` ends

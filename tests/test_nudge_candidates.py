@@ -178,6 +178,29 @@ def test_every_connected_account_is_the_owner(rig):
     assert '"Board prep"' in rig.handoff.read_text()
 
 
+def test_a_watch_list_narrows_the_nudge_without_narrowing_the_privacy_prepass(rig):
+    """calendar_nudge.calendars keeps only meetings on the named calendars,
+    and an empty or absent list watches every one. An unwatched calendar's
+    private copy still withholds its watched sibling: the prepass sees every
+    calendar the gather read, whatever the owner chose to be nudged about."""
+    def on(calendar_id, **kw):
+        return {**event(**kw), "CalendarID": calendar_id}
+
+    evs = (on("work@example.test", summary="Watched", uid="uid-a@google.com"),
+           on("other@example.test", summary="Unwatched", uid="uid-b@google.com"),
+           on("work@example.test", summary="Withheld", uid="uid-c@google.com"),
+           on("other@example.test", summary="Withheld", uid="uid-c@google.com",
+              visibility="private"))
+    config = json.loads(json.dumps(BASE_CONFIG))
+    for calendars, kept in ((["work@example.test"], ['"Watched"']),
+                            ([], ['"Watched"', '"Unwatched"'])):
+        config["calendar_nudge"]["calendars"] = calendars
+        code, count, _ = rig.run(gather(*evs), config=config)
+        assert (code, count) == (0, len(kept))
+        assert all(k in rig.handoff.read_text() for k in kept)
+        rig.handoff.unlink()
+
+
 @pytest.mark.parametrize("content", [
     # An approval card nobody answered comes back pending, never as no rows.
     json.dumps({"result": json.dumps({"status": "pending", "handle": "h"})}),
@@ -389,7 +412,9 @@ def test_a_newline_in_untrusted_text_cannot_spoof_a_second_line(rig):
     lambda c: c.pop("calendar_nudge"),
     lambda c: c["calendar_nudge"].pop("lookahead_virtual_minutes"),
     lambda c: c.pop("family"),
-], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family"])
+    lambda c: c["calendar_nudge"].update(calendars="work@example.test"),
+], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family",
+        "watch-list-not-a-list"])
 def test_a_broken_config_fails_loudly_with_the_documented_exit(rig, mutate):
     config = json.loads(json.dumps(BASE_CONFIG))
     mutate(config)
