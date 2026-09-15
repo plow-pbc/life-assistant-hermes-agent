@@ -211,8 +211,8 @@ row still showing a bare handle is a lookup, not a question, and never a guess:
 - A person gives another handle of theirs (an email in a text thread, a number in an email thread) → record the same name on that handle too, so both roster rows read the same person.
 
 Record and continue; never ask your owner to confirm who someone is. A
-relationship (`wife`, `landlord`) is still only what the owner says, on their
-own turn.
+relationship (`wife`, `landlord`) is recorded the same way, from what your
+owner said, their Contacts, or the person's own word.
 
 # The wall is a separate thing
 
