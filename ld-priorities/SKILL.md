@@ -50,10 +50,9 @@ non-zero exit).
 ## Post
 
 `post` composes the tile HTML, writes it to the fixed handoff file —
-`/var/lib/hermes/ld/priorities-text` — and posts it in one step; you never
-call the helper below yourself. It exists only so a retry after a failed send
-can re-post the same composed tile without you re-running `post` (which would
-recompose from whatever the manifest says now, not what was last sent):
+`/var/lib/hermes/ld/priorities-text` — and posts it in one step. The wrapper
+below is that same `post` (a retry after a failed send recomposes from the
+manifest as it is now); you never need it yourself:
 
     /var/lib/hermes/skills/ld-priorities/scripts/post_priorities.py
 

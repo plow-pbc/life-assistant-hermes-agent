@@ -14,8 +14,8 @@ tile to the kiosk.
 So: a fresh file in the same directory (same filesystem, or os.replace is not
 atomic), chmod BEFORE the content goes in (config.json and priorities.json
 both carry a person's data), fsync so the bytes are durable before the rename
-publishes them, then one os.replace. A reader sees the old file or the new
-one, never neither.
+publishes them, one os.replace, then fsync the directory so the rename itself
+survives a power cut. A reader sees the old file or the new one, never neither.
 """
 from __future__ import annotations
 
@@ -39,3 +39,8 @@ def atomic_write(path: str, text: str) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+    dfd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(dfd)  # the rename itself, so a power cut can't undo it
+    finally:
+        os.close(dfd)
