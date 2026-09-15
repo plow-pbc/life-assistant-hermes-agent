@@ -148,11 +148,12 @@ def test_post_dry_run_carries_the_list_name_as_title(manifest, monkeypatch):
     assert Path(priorities.MESSAGE_FILE).read_text().startswith("<style>")
 
 
-def test_the_retry_wrapper_is_the_same_post(tmp_path):
-    """Run as a script, post_priorities.py must be `priorities.py post`: on a
-    host with no wall marker it prints NO WALL and exits 0 -- the old wrapper
-    went straight to post_to_kiosk and died on the missing handoff file."""
+def test_the_retry_wrapper_is_the_same_post():
+    """Run as a script, post_priorities.py must be `priorities.py post`. Its
+    --help is the `post` subcommand's usage line, which only the delegated
+    path renders (the shared helper's own parser has no subcommand) -- and
+    --help touches no file, so the check holds on a host with a real wall."""
     wrapper = REPO_ROOT / "ld-priorities" / "scripts" / "post_priorities.py"
-    proc = subprocess.run([sys.executable, str(wrapper), "--dry-run"], capture_output=True, text=True)
+    proc = subprocess.run([sys.executable, str(wrapper), "--help"], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.startswith("NO WALL")
+    assert "post [-h] [--dry-run]" in proc.stdout
