@@ -1,7 +1,7 @@
 """tests/test_nudge_candidates.py — behavior tests for the calendar-nudge filter.
 
-Feeds the script gog `calendar events list --json --results-only`-shaped
-output as a gather file and asserts on what post_nudge.py will see: the one
+Feeds the script plow-gog's all-account `calendar events list --all` fan-out
+payload as a gather file and asserts on what post_nudge.py will see: the one
 handoff (every qualifying reminder, earliest first) and the
 {"qualifying": N} count on stdout — the only thing the model routes on.
 The module is imported and its path constants rebound to a scratch
@@ -12,9 +12,10 @@ Field spellings are pinned against a real gather captured through Latch:
 camelCase
 `iCalUID` / `start.dateTime` / `hangoutLink` / `attendees[].responseStatus`,
 `visibility` absent on default-visibility events, free-text fields wrapped in
-EXTERNAL_UNTRUSTED_CONTENT markers by Latch, and a "Note:" preamble line
-ahead of the JSON array. Fixture VALUES are synthesized; only the key
-spellings and structural shapes are real.
+EXTERNAL_UNTRUSTED_CONTENT markers by Latch, and the fan-out's
+{status, items[+account], degraded} payload nested as a JSON string under
+`result`. Fixture VALUES are synthesized; only the key spellings and
+structural shapes are real.
 """
 import importlib.util
 import json
@@ -37,6 +38,8 @@ NOW = datetime(2026, 8, 27, 12, 0, 0, tzinfo=timezone(timedelta(hours=-7)))
 
 BASE_CONFIG = {
     "family": {"timezone": "America/Los_Angeles"},
+    # The kitchen wall's calendars; event() puts every meeting on this one.
+    "calendar": {"sources": [{"calendar_id": "owner@example.test"}]},
     "calendar_nudge": {
         "lookahead_virtual_minutes": 30,
         "lookahead_in_person_minutes": 60,
@@ -60,7 +63,7 @@ def rig(tmp_path, monkeypatch, capsys):
     call. Returns (exit_code, parsed_count_or_None, stderr_text)."""
     results = tmp_path / "results"
     results.mkdir()
-    handoff = tmp_path / "calendar-nudge-text"
+    handoff = tmp_path / "calendar-nudge.json"
     monkeypatch.setattr(nc, "PERSISTED_ROOT", str(results) + "/")
     monkeypatch.setattr(nc, "HANDOFF", str(handoff))
     cfg = tmp_path / "config.json"
@@ -82,7 +85,11 @@ def rig(tmp_path, monkeypatch, capsys):
 
 
 def lines(rig):
-    return rig.handoff.read_text().splitlines()
+    return json.loads(rig.handoff.read_text())["chat"]
+
+
+def card(rig):
+    return json.loads(rig.handoff.read_text())["card"]
 
 
 def at(minutes, date_only=False):
@@ -128,46 +135,114 @@ def event(minutes=20, *, summary="Standup", uid="uid-1@google.com",
     return ev
 
 
-def gather(*events):
-    """gog's stdout as Latch relays it: a Note preamble, then the array."""
-    return ("Note: Using direct access token (expires in ~1 hour)\n"
-            + json.dumps(list(events)))
+def payload(*events, degraded=(), status="completed"):
+    """plow-gog's fan-out answer: every account's events merged, each tagged
+    with the account Latch read it through (the owner's own unless the event
+    already names one)."""
+    return {"status": status,
+            "items": [{"account": "owner@example.test", **ev} for ev in events],
+            "degraded": list(degraded)}
 
 
-def envelope(exit_code, output):
-    """The persisted plow_run_command result: gog's stdout nested as a JSON
-    string inside a JSON string."""
-    return json.dumps(
-        {"result": json.dumps({"exit_code": exit_code, "handle": "h",
-                               "status": "completed", "output": output})})
+def gather(*events, degraded=()):
+    """The plow_run_command result as the runtime persists it: the payload
+    nested as a JSON string (measured on a live fan-out, 2026-09-14)."""
+    return json.dumps({"result": json.dumps(payload(*events, degraded=degraded))})
 
 
 def test_a_qualifying_meeting_writes_the_handoff_and_the_count(rig):
     code, count, _ = rig.run(gather(event(minutes=20, location="Cafe Borrone")))
     assert (code, count) == (0, 1)
     line = 'Heads up: "Standup" at 12:20pm (20m) — Cafe Borrone.'
-    assert rig.handoff.read_text() == line + "\n"
+    assert lines(rig) == [line] and card(rig) == line
 
 
-def test_persisted_envelope_unwraps_to_the_same_handoff(rig):
-    raw = gather(event(minutes=20, location="Cafe Borrone"))
-    rig.run(raw)
-    from_raw = rig.handoff.read_text()
+def test_an_inline_result_written_bare_reads_the_same_as_the_persisted_one(rig):
+    """A quiet window comes back inline and the sheet writes it as returned;
+    with or without the runtime's `result` wrapper, it is the same run."""
+    ev = event(minutes=20, location="Cafe Borrone")
+    rig.run(gather(ev))
+    persisted = rig.handoff.read_text()
     rig.handoff.unlink()
-    code, count, _ = rig.run(envelope(0, raw))
+    code, count, _ = rig.run("Result:\n" + json.dumps(payload(ev)))
     assert (code, count) == (0, 1)
-    assert rig.handoff.read_text() == from_raw
+    assert rig.handoff.read_text() == persisted
+
+
+def test_every_connected_account_is_the_owner(rig):
+    """An invite to any account Latch read through is the owner's meeting,
+    config or not, and a meeting between two of them waits on nobody."""
+    work = "sam@work.test"
+    code, count, _ = rig.run(gather(
+        {**event(minutes=20, summary="Board prep", uid="uid-work@google.com",
+                 attendees=(attendee(work), attendee("peer@example.test"))),
+         "account": work},
+        event(minutes=25, summary="Just me", uid="uid-solo@google.com",
+              organizer="owner@example.test",
+              attendees=(attendee("owner@example.test"), attendee(work)))))
+    assert (code, count) == (0, 1)
+    assert '"Board prep"' in lines(rig)[0]
+
+
+def test_only_a_meeting_on_a_wall_calendar_reaches_the_kitchen_screen(rig):
+    """The wall shows the household's calendar.sources and the nudge watches
+    every calendar, so a reminder from any other calendar goes to chat only.
+    One live invite on both is on the wall; a cancelled wall copy is not, and
+    two meetings with no iCalUID never borrow each other's calendar."""
+    work = {**event(minutes=10, summary="Board prep", uid="uid-w@google.com"),
+            "CalendarID": "work@example.test"}
+    family = event(minutes=25, summary="Recital", uid="uid-f@google.com")
+    assert rig.run(gather(work, family))[:2] == (0, 2)
+    assert '"Board prep"' in lines(rig)[0]
+    assert card(rig) == lines(rig)[1]
+    rig.run(gather(work, {**work, "CalendarID": "owner@example.test"}))
+    assert '"Board prep"' in card(rig)
+    rig.run(gather(work, {**work, "CalendarID": "owner@example.test",
+                          "status": "cancelled"}))
+    assert card(rig) is None
+    rig.run(gather({**event(uid="", summary="Work"), "CalendarID": "work@example.test"},
+                   event(uid="", summary="Home")))
+    assert len(lines(rig)) == 2 and '"Home"' in card(rig)
+
+
+def test_a_watch_list_narrows_the_nudge_without_narrowing_the_privacy_prepass(rig):
+    """calendar_nudge.calendars keeps only meetings on the named calendars,
+    and an empty or absent list watches every one. An unwatched calendar's
+    private copy still withholds its watched sibling: the prepass sees every
+    calendar the gather read, whatever the owner chose to be nudged about."""
+    def on(calendar_id, **kw):
+        return {**event(**kw), "CalendarID": calendar_id}
+
+    evs = (on("work@example.test", summary="Watched", uid="uid-a@google.com"),
+           on("other@example.test", summary="Unwatched", uid="uid-b@google.com"),
+           on("work@example.test", summary="Withheld", uid="uid-c@google.com"),
+           on("other@example.test", summary="Withheld", uid="uid-c@google.com",
+              visibility="private"))
+    config = json.loads(json.dumps(BASE_CONFIG))
+    for calendars, kept in ((["work@example.test"], ['"Watched"']),
+                            ([], ['"Watched"', '"Unwatched"'])):
+        config["calendar_nudge"]["calendars"] = calendars
+        code, count, _ = rig.run(gather(*evs), config=config)
+        assert (code, count) == (0, len(kept))
+        assert all(k in "\n".join(lines(rig)) for k in kept)
+        rig.handoff.unlink()
 
 
 @pytest.mark.parametrize("content", [
-    envelope(2, ""),  # gog exit 2: one bad calendar name fails the whole gather
-    json.dumps({"result": json.dumps({"exit_code": 0, "handle": "h"})}),
+    # An approval card nobody answered comes back pending, never as no rows.
+    json.dumps({"result": json.dumps({"status": "pending", "handle": "h"})}),
+    json.dumps({"result": json.dumps({"status": "completed", "degraded": []})}),
     json.dumps({"result": "not json"}),
-    envelope(0, None),
-    "Note: preamble only, no array",
-    'Note: x\n[{"bad": }]',
-], ids=["gather-failed", "missing-output", "unparseable-result",
-        "null-output", "no-array", "truncated-json"])
+    json.dumps({"result": json.dumps({"status": "completed", "items": None,
+                                      "degraded": []})}),
+    "Result: no payload at all",
+    '{"result": "{\\"status\\": ',
+    # An unread account's private copies are missing from the prepass, so a
+    # healthy account's default-visibility sibling would leak their title.
+    gather(event(), degraded=[{"account": "old@example.test",
+                               "reason": "needs_reauth"}]),
+], ids=["not-completed", "missing-items", "unparseable-result",
+        "null-items", "no-object", "truncated-json", "an-account-unread"])
 def test_a_broken_gather_fails_loudly_never_as_a_quiet_run(rig, content):
     # A failed gather read as "no meetings" would silently skip reminders
     # for as long as the failure persists — the exact quiet-day trap.
@@ -276,8 +351,8 @@ def test_latch_untrusted_markers_never_reach_the_handoffs(rig):
     rig.run(gather(event(minutes=20,
                          summary=WRAP_OPEN + "Piano recital" + WRAP_CLOSE,
                          location=WRAP_OPEN + "School hall" + WRAP_CLOSE)))
-    assert rig.handoff.read_text() == (
-        'Heads up: "Piano recital" at 12:20pm (20m) — School hall.\n')
+    assert lines(rig) == [
+        'Heads up: "Piano recital" at 12:20pm (20m) — School hall.']
 
 
 def test_a_url_in_the_title_is_stripped_never_posted(rig):
@@ -315,6 +390,12 @@ def test_a_private_sibling_drops_every_copy_of_the_invite(rig):
     private = event(minutes=20, visibility="private")
     sibling = event(minutes=20)  # same uid, default visibility
     assert rig.run(gather(private, sibling))[:2] == (0, 0)
+    # The same instant written in another calendar's offset is the same copy.
+    utc = (NOW + timedelta(minutes=20)).astimezone(timezone.utc).isoformat()
+    assert rig.run(gather({**private, "start": {"dateTime": utc}}, sibling))[:2] == (0, 0)
+    # A private meeting with no iCalUID has no siblings to take down with it.
+    assert rig.run(gather({**private, "iCalUID": ""},
+                          event(minutes=20, uid="", summary="Public")))[:2] == (0, 1)
 
 
 def test_copies_collapse_and_the_earliest_leads_the_handoff(rig):
@@ -364,7 +445,9 @@ def test_a_newline_in_untrusted_text_cannot_spoof_a_second_line(rig):
     lambda c: c.pop("calendar_nudge"),
     lambda c: c["calendar_nudge"].pop("lookahead_virtual_minutes"),
     lambda c: c.pop("family"),
-], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family"])
+    lambda c: c.pop("calendar"),
+], ids=["no-calendar-nudge", "no-virtual-lookahead", "no-family",
+        "no-wall-calendars"])
 def test_a_broken_config_fails_loudly_with_the_documented_exit(rig, mutate):
     config = json.loads(json.dumps(BASE_CONFIG))
     mutate(config)

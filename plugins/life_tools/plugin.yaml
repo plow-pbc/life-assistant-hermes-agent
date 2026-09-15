@@ -1,0 +1,12 @@
+name: life-tools
+kind: backend
+version: 1.0.0
+description: >
+  The Life assistant's own tools, beside plow_chat: the household to-do list
+  on the wall (household_todo) and the wall's card posters (kiosk_post_card).
+  Each tool runs one of this image's skill scripts; nothing here reaches the
+  owner's Mac.
+author: The Plow Collective, Inc
+provides_tools:
+  - household_todo
+  - kiosk_post_card

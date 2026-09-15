@@ -23,7 +23,6 @@ spec.loader.exec_module(mwt)
 
 PI = "raspberrypi.local"
 SEED = "PLOW_CHAT_TOKEN=tok_chat"  # no trailing newline, on purpose
-ICAL = "https://calendar.google.com/calendar/ical/secret%40group.calendar.google.com/private-abc123/basic.ics"
 
 
 @pytest.fixture
@@ -33,13 +32,10 @@ def home(tmp_path):
     return dotenv, tmp_path / "ld"
 
 
-def run(home, capsys, pi=PI, user="pi", ical=None):
-    """Feed the answers the way the sheet does: one JSON object on stdin.
-    ical=None leaves the key out (keep what pi.env holds)."""
+def run(home, capsys, pi=PI, user="pi"):
+    """Feed the answers the way the sheet does: one JSON object on stdin."""
     dotenv, ld = home
     payload = {"pi_address": pi, "pi_user": user}
-    if ical is not None:
-        payload["ical_url"] = ical
     rc = mwt.main(stdin=io.StringIO(json.dumps(payload)),
                   dotenv_path=str(dotenv), ld_dir=str(ld))
     return rc, capsys.readouterr().out
@@ -111,7 +107,7 @@ def test_a_first_run_appends_three_lines_and_ships_the_token_in_two_files_only(h
         f"DASHBOARD_TOKEN={tok}\nDASHBOARD_DELIVERY=latch\nDASHBOARD_PI_USER=so\n"
     )
     assert f"pi_target=so@{PI}\n" in out
-    assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
+    assert (ld / "pi.env").read_text() == f"DASHBOARD_TOKEN={tok}\n"
     assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
     for name in ("pi.env", "dashboard.hdr"):
         assert oct((ld / name).stat().st_mode & 0o777) == "0o600", name
@@ -138,7 +134,7 @@ def test_a_second_run_appends_nothing_re_ships_the_same_token_and_still_never_pr
     assert rc == 0
     assert dotenv.read_text() == after_first
     assert (ld / "dashboard.hdr").read_text() == f"Authorization: Bearer {tok}\n"
-    assert (ld / "pi.env").read_text() == f"ICAL_URL=\nDASHBOARD_TOKEN={tok}\n"
+    assert (ld / "pi.env").read_text() == f"DASHBOARD_TOKEN={tok}\n"
     assert tok not in out
     assert f"already minted: DASHBOARD_ENDPOINT_URL=http://{PI}:5174/api/message" in out
     assert "pi_line_1=" in out and "pi_line_2=" in out
@@ -178,18 +174,6 @@ def test_a_public_address_refuses_the_bearer_stays_on_the_household_network(home
     bare-hostname fallback at all -- see its docstring). The wall's bearer
     rides every request to this host."""
     assert "household" in refuse(home, pi_address=bad, pi_user="pi")
-
-
-def test_an_omitted_ical_url_keeps_the_feed_already_in_pi_env(home, capsys):
-    """Omitted is not blank: the idempotent re-run the sheet prescribes must
-    not erase the feed a later re-point or Pi rebuild ships."""
-    dotenv, ld = home
-    run(home, capsys, ical=ICAL)
-    rc, out = run(home, capsys)
-    assert rc == 0
-    tok = token_in(dotenv)
-    assert (ld / "pi.env").read_text() == f"ICAL_URL={ICAL}\nDASHBOARD_TOKEN={tok}\n"
-    assert ICAL not in out
 
 
 @pytest.mark.parametrize("seed_delivery", ["", "DASHBOARD_DELIVERY=direct\n"],
@@ -318,22 +302,6 @@ def test_an_endpoint_without_its_token_refuses_rather_than_shipping_a_blank(home
     assert not ld.exists()
 
 
-@pytest.mark.parametrize(("ical", "expected"), [
-    (ICAL, ICAL),
-    (None, ""),
-], ids=["given", "omitted"])
-def test_ical_url_lands_only_in_pi_env(home, capsys, ical, expected):
-    """The Pi's calendar tile reads the feed URL directly from pi.env; it is
-    a private feed, so it must never appear on stdout. Omitted leaves the
-    line blank."""
-    dotenv, ld = home
-    rc, out = run(home, capsys, ical=ical)
-    assert rc == 0
-    tok = token_in(dotenv)
-    assert (ld / "pi.env").read_text() == f"ICAL_URL={expected}\nDASHBOARD_TOKEN={tok}\n"
-    assert ICAL not in out
-
-
 
 def test_two_mints_at_once_leave_one_token_in_both_files(home, capsys, run_concurrently):
     """The bearer is minted once and written twice -- pi.env and dashboard.hdr.
@@ -361,7 +329,7 @@ def test_two_mints_at_once_leave_one_token_in_both_files(home, capsys, run_concu
 
 
 def test_a_staged_input_is_consumed_on_success_and_kept_on_refusal(home, tmp_path):
-    """It can hold an ical_url and the Pi's address, so one left behind is a
+    """It holds the Pi's address and login, so one left behind is a
     second copy of the owner's own words with no reader. Removed only on
     success: after a refusal the turn's next move is to fix what it staged."""
     dotenv, ld = home
@@ -393,7 +361,7 @@ def test_an_input_that_is_a_file_this_writes_is_refused(home, tmp_path):
 def test_a_staged_input_that_cannot_be_removed_is_reported(home, tmp_path, monkeypatch):
     """Not swallowed, and not reported as a clean run either.
 
-    The staged file can hold an ical_url and the Pi's address, so one left
+    The staged file holds the Pi's address and login, so one left
     behind is a second copy of the owner's own words with no reader. But the
     private writes DID land -- the token is on disk in both files -- and a
     caller told only "could not remove" would re-run a mint that already

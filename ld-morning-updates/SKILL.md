@@ -134,6 +134,9 @@ The kiosk is a shared display in the home; a child may read it.
 
 ## Post the message
 
+Prefer the `kiosk_post_card` tool (`card: affirmation`, `text: <the tile/text>`);
+it writes the handoff file and runs the helper below in one call.
+
 The affirmation is composed from untrusted calendar content. Write it to the
 fixed handoff file — `/var/lib/hermes/ld/morning-updates-text` — with your
 file-writing tool. Do **not** build a shell command containing the text, and

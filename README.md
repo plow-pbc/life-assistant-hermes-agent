@@ -276,8 +276,10 @@ Trust changes authority, not membership. A turn carries the owner's
 authority when it is the owner's own, in any room, or a human member's turn
 in a group the owner has marked trusted — a peer agent's turn or an
 unattended wake never gains it, and a DM is never promoted by it. An
-authority turn gets the owner's own help, such as email sends whose approval
-prompt posts in the room for anyone there to `/approve`; a member of an
+authority turn gets the owner's own help, such as `gmail send` from the owner's
+own account, whose approval prompt posts in the room for anyone there to
+`/approve` (mail from the agent's own mailbox needs no prompt: the owner is
+copied on it); a member of an
 untrusted group gets discretion instead, owner material only with the
 owner's okay in that thread. Standing secrets — passwords, backup codes, API
 keys, raw tokens, full card numbers — never go in chat, trusted or not.
@@ -285,7 +287,7 @@ keys, raw tokens, full card numbers — never go in chat, trusted or not.
 The policy and tool live in the `hermes-plugin-plow` plugin. The base image bakes
 it at a pinned revision, and a managed install (`agent-mgr install-plugin`) may
 put a newer copy in the agent's home, which Hermes loads instead. The
-owner-approval gate on outbound email and busy-slot bookings is that plugin's
+owner-approval gate on Gmail sends from the owner's account and busy-slot bookings is that plugin's
 `pre_tool_call` hook (hermes-plugin-plow #64), so a locally built image has it
 only once the base pin includes it; the gateway's config is the base image's
 too. Adding group prompts or another trust flag to this repo would create a
@@ -305,9 +307,10 @@ the old `family.owner.name`, set `family.owner.introduced` to `true`, then delet
 `family.owner.name` by editing the mode-600 file, since `--patch` merges and
 cannot remove a key.
 
-The three calendar skills add that account to their exact
-plow-gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
-shape — and the triage's exact `plow-gog gmail search` argv from
+The digest and morning skills add that account to their exact plow-gog argv
+(the nudge reads every connected account and carries none); manually run and
+approve each new gather shape — the nudge's 2-day, the morning's 3-day, the
+digest's 7-day — and the triage's exact `plow-gog gmail search` argv from
 `ld-morning-triage/SKILL.md` — once through Latch before relying on the
 unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
 — for the same reason: it ticks with nobody there to answer an approval card.

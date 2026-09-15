@@ -20,7 +20,7 @@ Every producer POSTs ONE message to the household's Pi message API:
     Authorization: Bearer <DASHBOARD_TOKEN>
     Content-Type: application/json
 
-    { "card": "<1-5>", "type": "<type>", "text": "<body>", "title": "<optional>" }
+    { "card": "<1-6>", "type": "<type>", "text": "<body>", "title": "<optional>" }
 
 - `card`, `type`, `text` are REQUIRED. `title` is OPTIONAL.
 - The store is **latest-post-per-card-wins**: re-posting a card replaces it.
@@ -42,6 +42,7 @@ Every producer POSTs ONE message to the household's Pi message API:
 | 3 | `weather` | ld-weather | self-contained HTML tile |
 | 4 | `digest` | ld-weekly-digest | plain text, long-form (viewer-clamped) |
 | 5 | `sports` | ld-sports | self-contained HTML tile |
+| 6 | `priorities` | ld-priorities | self-contained HTML tile; `title` = the list's name |
 
 Card 1 is shared: a calendar nudge and the morning triage alert both land in
 the alert slot; latest-per-card means the newest of the two shows.
@@ -58,7 +59,7 @@ paraphrase private mail/iMessage/Slack content — they never quote it
 verbatim, and `--dry-run` always redacts the body to `<redacted, N chars>`
 so agent-visible stdout stays non-sensitive.
 
-## HTML tile cards (3 weather, 5 sports)
+## HTML tile cards (3 weather, 5 sports, 6 priorities)
 
 `text` is a **self-contained HTML fragment** the viewer renders verbatim
 (`dangerouslySetInnerHTML`). The tile ships its OWN `<style>`, so the viewer
@@ -99,8 +100,9 @@ empty meta slot (no stray separator).
 A stacked list of up to 3 game rows (Apple-Sports look): away (left) · center ·
 home (right); loser greyed; `is-live` warms the background when a shown game is
 live; empty window → "No upcoming games" (still posted, so the card refreshes
-rather than going stale). Per-team monogram colors are set inline via `--p` /
-`--s`. Text fields (team abbrs, status, logo URLs) are HTML-escaped.
+rather than going stale). Text fields (team abbrs, status, logo URLs) are
+HTML-escaped. Each team logo is embedded in the tile as a `data:` PNG, because
+the wall shows images from itself only (`img-src 'self' data:`).
 
 ```html
 <style>
@@ -112,7 +114,6 @@ rather than going stale). Per-team monogram colors are set inline via `--p` /
 .sp-star{color:var(--accent-ink,var(--clay-ink));font-size:12px;text-align:center;line-height:1}
 .sp-logo{width:38px;height:38px;position:relative;display:flex;align-items:center;justify-content:center}
 .sp-logo img{width:100%;height:100%;object-fit:contain;display:block}
-.sp-mono{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:var(--p,var(--muted));color:var(--s,#fff);font-family:var(--ff-mono);font-weight:500;font-size:12px;letter-spacing:0.02em}
 .sp-sc{font-family:var(--ff-body);font-weight:700;font-size:24px;line-height:1;font-variant-numeric:tabular-nums;color:var(--ink)}
 .sp-sc.a{text-align:right}
 .sp-sc.h{text-align:left}
@@ -130,3 +131,24 @@ The row markup (`.sp-game` → away `.sp-logo`/`.sp-sc` · `.sp-ctr` · home) is
 produced by the platform's composer; the grid + class contract above is what
 the viewer's theme tokens style. Keep the column grid (`14px 38px 30px 1fr 30px
 38px 14px`) and class names stable — they ARE the contract.
+
+### Priorities tile (card 6)
+
+The household to-do list, in the order the assistant ranks it. Up to 6 items
+in a two-column, three-row grid — 1–3 down the left column, 4–6 down the
+right — sized so six chip-bearing items fit the card's fixed height. The
+list's NAME travels as the wire `title` (a non-empty override), so renaming
+the list in chat renames the card. Empty list → `.pr-empty` "Nothing on the
+list" (still posted so the card refreshes). Item and chip text are HTML-escaped.
+
+```html
+<style>
+.pr-list{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,auto);grid-auto-flow:column;column-gap:18px;align-content:start}
+.pr-empty{grid-column:1/-1;text-align:center;color:var(--muted);font-size:var(--t-card)}
+.pr-item{display:grid;grid-template-columns:2ch 1fr;column-gap:8px;align-items:baseline;padding:5px 0;min-width:0}
+.pr-n{font-family:var(--ff-mono);font-weight:500;font-size:13px;letter-spacing:0.06em;color:var(--accent-ink,var(--clay-ink));text-align:right}
+.pr-text{font-family:var(--ff-body);font-weight:500;font-size:16px;line-height:1.15;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr-why{grid-column:2;font-family:var(--ff-mono);font-weight:var(--cap-weight);font-size:var(--cap-size);letter-spacing:var(--cap-tracking);text-transform:uppercase;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+<div class="pr-list"><div class="pr-item"><span class="pr-n">1</span><span class="pr-text">Renew passports</span><span class="pr-why">before Oct 3 trip</span></div></div>
+```

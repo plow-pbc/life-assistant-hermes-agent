@@ -25,7 +25,10 @@ Once per run:
    game-row markup/grid contract are defined in
    `/var/lib/hermes/skills/ld-shared/references/kiosk-protocol.md` § "Sports tile (card 5)" — the ONE
    source both agent seeds share. Read it and reproduce that tile exactly,
-   one `.sp-game` row per shown game (up to 3). It ships its own `<style>`, so
+   one `.sp-game` row per shown game (up to 3). Each side's logo cell is
+   `<span class="sp-logo"><img src="<team.logo>" alt="<abbr>"></span>`, where
+   `team.logo` is the team's logo URL from the ESPN feed
+   (`https://a.espncdn.com/i/teamlogos/….png`). It ships its own `<style>`, so
    the viewer holds no sports CSS.
 4. Post it to the kiosk as card 5, `type: sports` (see Post).
 
@@ -42,6 +45,9 @@ every feed- or config-derived string (team names, status, scores) — `&`→`&am
 
 ## Post
 
+Prefer the `kiosk_post_card` tool (`card: sports`, `text: <the tile/text>`);
+it writes the handoff file and runs the helper below in one call.
+
 Write the composed tile HTML to the fixed handoff file —
 `/var/lib/hermes/ld/sports-text` — with your file-writing tool, then run the helper
 by absolute path (the cron's working directory is not the skill directory):
@@ -50,7 +56,10 @@ by absolute path (the cron's working directory is not the skill directory):
 
 It reads the tile from `/var/lib/hermes/ld/sports-text`, the endpoint from the
 `DASHBOARD_ENDPOINT_URL` env var, and the token from the `DASHBOARD_TOKEN`
-env var (both from `data/.env`, mode 600) — no value reaches argv. It posts
+env var (both from `data/.env`, mode 600) — no value reaches argv. The wall
+shows images from itself only, so the helper first embeds each team logo in
+the tile (fetched from ESPN at tile size); a logo it cannot embed ends the run
+with an error and posts nothing. It posts
 as card 5 with `type: "sports"`, http(s)-allowed, no redirects, and fails
 loudly on any non-200 response.
 

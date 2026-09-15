@@ -6,14 +6,14 @@ plow-pbc/life-dashboard-skills and now live in-tree as ld-shared/ — there is n
 sync step, so this runs against the checkout as-is. It verifies the part each
 producer owns: its thin wrapper sets the right CARD / BODY_TYPE on the shared
 module at import, per the pinned producer→card mapping the viewer renders
-(1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports). On Hermes every
-producer — including weather and sports — runs as an LLM cron job that calls a
-Python wrapper.
+(1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports, 6=priorities). On
+Hermes every producer — including weather, sports and priorities — runs as an
+LLM cron job or chat turn that calls a Python wrapper.
 
-Six rows, one per producer wrapper: weather and sports (public feeds),
-morning-triage (the Mac's iMessage DB through Latch), and the three calendar
+Seven rows, one per producer wrapper: weather and sports (public feeds),
+morning-triage (the Mac's iMessage DB through Latch), the three calendar
 producers (morning-updates, weekly-digest, calendar-nudge) on Latch's vendored
-gog.
+gog, and priorities — chat-driven, no cron, no external data source.
 
 Each wrapper runs in a fresh interpreter: an in-process import would find
 post_to_kiosk already in sys.modules and mask a broken relative sys.path in the
@@ -45,6 +45,7 @@ WRAPPERS = (
     ("ld-weather/scripts/post_weather.py", "3", "weather"),
     ("ld-weekly-digest/scripts/post_digest.py", "4", "digest"),
     ("ld-sports/scripts/post_sports.py", "5", "sports"),
+    ("ld-priorities/scripts/post_priorities.py", "6", "priorities"),
 )
 
 
