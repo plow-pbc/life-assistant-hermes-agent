@@ -109,15 +109,62 @@ HOUSEHOLD_TODO = Tool(
 )
 
 
+# card -> (poster wrapper, the fixed handoff file that wrapper reads). Card 1's
+# calendar-nudge producer owns its own JSON handoff and card 6 posts through
+# household_todo, so neither is here.
+CARDS = {
+    "alert":       (f"{SKILLS}/ld-morning-triage/scripts/post_alert.py",    "/var/lib/hermes/ld/morning-triage-text"),
+    "affirmation": (f"{SKILLS}/ld-morning-updates/scripts/post_message.py", "/var/lib/hermes/ld/morning-updates-text"),
+    "weather":     (f"{SKILLS}/ld-weather/scripts/post_weather.py",         "/var/lib/hermes/ld/weather-text"),
+    "digest":      (f"{SKILLS}/ld-weekly-digest/scripts/post_digest.py",    "/var/lib/hermes/ld/weekly-digest-text"),
+    "sports":      (f"{SKILLS}/ld-sports/scripts/post_sports.py",           "/var/lib/hermes/ld/sports-text"),
+}
+
+
+def card_argv(args: dict):
+    card = args.get("card")
+    if card not in CARDS:
+        return f"card must be one of {', '.join(CARDS)}"
+    if not str(args.get("text") or "").strip():
+        return "text is required"
+    return ["--dry-run"] if args.get("dry_run") else []
+
+
+KIOSK_POST_CARD = Tool(
+    name="kiosk_post_card",
+    description=(
+        "Post one card to the household wall. Use for the scheduled weather, sports, "
+        "alert, affirmation and digest cards after composing the text or tile per that "
+        "card's skill. One call replaces writing the handoff file and running the poster."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "card": {"type": "string", "enum": list(CARDS)},
+            "text": {"type": "string", "description": "the composed card text or self-contained HTML tile"},
+            "dry_run": {"type": "boolean", "description": "preview the request without sending"},
+        },
+        "required": ["card", "text"],
+        "additionalProperties": False,
+    },
+    script="",   # resolved from CARDS per call
+    argv=card_argv,
+    handoff="",  # resolved from CARDS per call
+)
+
+
 def run(tool: Tool, args: dict, **_kwargs) -> str:
     args = args or {}
     argv = tool.argv(args)
     if isinstance(argv, str):
         return json.dumps({"ok": False, "error": argv})
-    if tool.handoff:
-        _write_handoff(tool.handoff, args["text"].strip())
+    # An empty script is a row that resolves per card; argv validated the card
+    # above, so CARDS has it.
+    script, handoff = (tool.script, tool.handoff) if tool.script else CARDS[args["card"]]
+    if handoff:
+        _write_handoff(handoff, args["text"].strip())
     try:
-        proc = subprocess.run([sys.executable, tool.script, *argv],
+        proc = subprocess.run([sys.executable, script, *argv],
                               capture_output=True, text=True, timeout=60)
     except subprocess.TimeoutExpired:
         return json.dumps({"ok": False, "error": f"{tool.name} timed out after 60s"})
@@ -132,7 +179,7 @@ def _write_handoff(path: str, text: str) -> None:
     atomic_write(path, text)
 
 
-TOOLS: tuple[Tool, ...] = (HOUSEHOLD_TODO,)
+TOOLS: tuple[Tool, ...] = (HOUSEHOLD_TODO, KIOSK_POST_CARD)
 
 
 def register(ctx) -> None:

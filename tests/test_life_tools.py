@@ -34,10 +34,10 @@ def test_register_puts_every_row_in_the_tools_list():
 
 
 def test_every_row_points_at_an_executable_script_in_this_tree():
-    for t in life_tools.TOOLS:
-        local = REPO_ROOT / t.script.replace("/opt/hermes/skills/", "")
-        assert local.exists(), t.script
-        assert local.stat().st_mode & stat.S_IXUSR, t.script
+    for script in [life_tools.HOUSEHOLD_TODO.script, *(s for s, _ in life_tools.CARDS.values())]:
+        local = REPO_ROOT / script.replace("/opt/hermes/skills/", "")
+        assert local.exists(), script
+        assert local.stat().st_mode & stat.S_IXUSR, script
 
 
 @pytest.mark.parametrize("args,expected", [
@@ -105,3 +105,41 @@ def test_household_todo_surfaces_the_scripts_refusal(todo_via_tmp_manifest):
 def test_household_todo_refuses_before_running(todo_via_tmp_manifest):
     out = json.loads(life_tools.run(todo_via_tmp_manifest, {"action": "add"}))
     assert out["ok"] is False and "required" in out["error"]
+
+
+def test_cards_map_matches_the_poster_wrappers():
+    for card, (script, handoff) in life_tools.CARDS.items():
+        local = REPO_ROOT / script.replace("/opt/hermes/skills/", "")
+        src = local.read_text()
+        assert f'MESSAGE_FILE = "{handoff}"' in src, card
+        assert f'BODY_TYPE = "{card}"' in src, card
+
+
+def test_kiosk_post_card_writes_the_handoff_and_dry_runs_the_poster(tmp_path, monkeypatch):
+    monkeypatch.setenv("DASHBOARD_ENDPOINT_URL", "https://x.test/api/message")
+    monkeypatch.setenv("DASHBOARD_TOKEN", "t")
+    handoff = tmp_path / "weather-text"
+    wrapper = tmp_path / "post_weather_tmp.py"
+    shared = REPO_ROOT / "ld-shared" / "scripts"
+    wrapper.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(shared)!r})\n"
+        "import post_to_kiosk\n"
+        f"post_to_kiosk.MESSAGE_FILE = {str(handoff)!r}\n"
+        "post_to_kiosk.CARD = '3'; post_to_kiosk.BODY_TYPE = 'weather'; post_to_kiosk.TITLE = ''\n"
+        "post_to_kiosk.main(sys.argv[1:])\n"
+    )
+    t = life_tools.KIOSK_POST_CARD
+    row = life_tools.Tool(name=t.name, description=t.description, parameters=t.parameters,
+                          script=str(wrapper), argv=t.argv, handoff=str(handoff))
+    out = json.loads(life_tools.run(row, {"card": "weather", "text": "<div class=\"weather\">72°</div>", "dry_run": True}))
+    assert out["ok"] is True, out
+    preview = json.loads(out["stdout"])
+    assert preview["body"]["card"] == "3" and preview["body"]["type"] == "weather"
+    assert handoff.read_text() == "<div class=\"weather\">72°</div>"
+    assert oct(handoff.stat().st_mode)[-3:] == "600"
+
+
+def test_kiosk_post_card_refuses_an_unknown_card_or_empty_text():
+    assert "card" in life_tools.card_argv({"card": "priorities", "text": "x"})
+    assert "text" in life_tools.card_argv({"card": "weather", "text": " "})
