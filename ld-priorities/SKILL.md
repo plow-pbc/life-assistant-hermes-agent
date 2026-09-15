@@ -1,6 +1,6 @@
 ---
 name: ld-priorities
-description: The household to-do list and its wall card — add, finish, rename, and re-rank items from chat ("add X to our to-do list", "X is done", "call the list Weekend jobs", "no, the passport is more urgent"). The assistant owns the order; the list's manifest keeps the rules it has learned. Use whenever the owner or a trusted household member talks about the to-do list, what's next, or what matters most; never on a schedule.
+description: The household to-do list — every todo, task, or "add this to the list" the owner or a household member gives you in chat ("create a todo: check who can come Oct 12", "add X to our to-do list", "remind me to renew the passports", "X is done", "what's next?", "call the list Weekend jobs", "no, the passport is more urgent"). Items live in this list and show on the wall card; the assistant owns the order and keeps the rules it learns. Not Apple Reminders: use that only when the owner names the Reminders app or their iPhone. Never on a schedule.
 ---
 
 # Life Dashboard — Priorities (the to-do list)
