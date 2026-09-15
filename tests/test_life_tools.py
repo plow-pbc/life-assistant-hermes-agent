@@ -143,3 +143,12 @@ def test_kiosk_post_card_writes_the_handoff_and_dry_runs_the_poster(tmp_path, mo
 def test_kiosk_post_card_refuses_an_unknown_card_or_empty_text():
     assert "card" in life_tools.card_argv({"card": "priorities", "text": "x"})
     assert "text" in life_tools.card_argv({"card": "weather", "text": " "})
+
+
+def test_image_ships_the_plugin_and_persona_routes_todos():
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+    assert "COPY plugins/life_tools/" in dockerfile and "/opt/hermes/plugins/life_tools/" in dockerfile
+    persona = (REPO_ROOT / "runtime" / "persona.md").read_text()
+    assert "first tool call is `household_todo`" in persona
+    for skill in ("ld-weather", "ld-sports", "ld-morning-triage", "ld-morning-updates", "ld-weekly-digest"):
+        assert "kiosk_post_card" in (REPO_ROOT / skill / "SKILL.md").read_text(), skill

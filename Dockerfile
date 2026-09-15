@@ -45,6 +45,17 @@ RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} +
 
+# This agent's own tools, beside the base's plow_chat plugin. `kind: backend`
+# is the one bundled kind the gateway auto-loads with no `plugins.enabled`
+# entry, which this repo does not own. Each tool runs one of the skill scripts
+# COPYed above; the plugin key is this directory name, so it cannot collide.
+# Modes are normalized here because the skills block above stops at its own
+# root, and a `--chmod` on the COPY would take the directory's traverse bit
+# with it.
+COPY plugins/life_tools/ /opt/hermes/plugins/life_tools/
+RUN find /opt/hermes/plugins/life_tools -type d -exec chmod 0755 {} + \
+ && find /opt/hermes/plugins/life_tools -type f -exec chmod 0644 {} +
+
 # The unattended producer's own copy, outside every home and out of the agent's
 # reach.
 #
