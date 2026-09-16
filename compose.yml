@@ -4,8 +4,10 @@ services:
     build: .
     # For a local run this loads what `plow-agents mint` wrote: where Plow is
     # and this agent's token. When Plow runs your image as a cloud agent it
-    # sets the environment itself.
-    env_file: ./plow-credentials
+    # sets the environment itself. `PLOW_CREDENTIALS` lets a smoke point at a
+    # credential outside the checkout (e.g. ~/.config/plow-smoke/credentials),
+    # so `down -v` and re-export can't wipe it; unset, it is the in-checkout file.
+    env_file: ${PLOW_CREDENTIALS:-./plow-credentials}
     volumes:
       # The agent's home, kept across `up`/`down` for its sessions and setup.
       # A skill edit reaches it on rebuild + restart via the base's reconcile
