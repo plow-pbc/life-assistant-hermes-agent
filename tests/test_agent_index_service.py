@@ -33,9 +33,12 @@ if sys.argv[1:2] == ["status"]:
 with open({record!r}, "a") as record:
     record.write(" ".join(sys.argv[1:]) + "\\n")
 # Separately, so the argv record above stays exactly what the script asked for:
-# where the client would send the registration exchange.
+# where the client would send the registration exchange, and whether this
+# invocation was handed the Plow bearer at all.
 with open({plow_api!r}, "a") as record:
     record.write(os.environ.get("PLOW_API_BASE", "") + "\\n")
+with open({token!r}, "a") as record:
+    record.write(os.environ.get("PLOW_AGENT_TOKEN", "") + "\\n")
 """
 
 
@@ -54,19 +57,14 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
     That is the only way to see what it does on the second hour, which is where
     the registration gate is either right or minting a key an hour forever.
     """
-    env_dir = tmp_path / "run/s6/container_environment"
-    env_dir.mkdir(parents=True)
-    for name, value in environment.items():
-        (env_dir / name).write_text(value)
-
-    script = (SERVICE / "run").read_text().replace(
-        "/run/s6/container_environment", str(env_dir))
+    script = (SERVICE / "run").read_text()
     if status is not None:
         home = tmp_path / "hermes"
         home.mkdir()
         client = tmp_path / "client.py"
         client.write_text(STUB_CLIENT.format(status=status, record=str(tmp_path / "invoked"),
-                                            plow_api=str(tmp_path / "plow-api-base")))
+                                            plow_api=str(tmp_path / "plow-api-base"),
+                                            token=str(tmp_path / "plow-agent-token")))
         script = (script
                   .replace("/var/lib/hermes", str(home))
                   .replace("/command/s6-setuidgid hermes", "")
@@ -77,8 +75,11 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
     sandbox.chmod(0o755)
 
     try:
+        # The container environment, as `with-contenv` in the shebang would hand
+        # it over -- `sh` is invoked directly here, so the shebang itself does
+        # not run and this stands in for it.
         done = subprocess.run(["sh", str(sandbox)], capture_output=True, text=True,
-                              timeout=seconds, env={"PATH": os.environ["PATH"]})
+                              timeout=seconds, env={"PATH": os.environ["PATH"], **environment})
         return done.stdout + done.stderr
     except subprocess.TimeoutExpired as expired:
         out = (expired.stdout or b"") + (expired.stderr or b"")
@@ -166,6 +167,16 @@ def test_the_registration_exchange_goes_where_this_agent_s_token_is(tmp_path):
     run_service(tmp_path, {"PLOW_AGENT_TOKEN": "proxied", "AGENT_ID": "life",
                            "PLOW_API_BASE": "https://plow-agt.int.exe.xyz"}, status=3)
     assert (tmp_path / "plow-api-base").read_text().splitlines()[0] == "https://plow-agt.int.exe.xyz"
+
+
+def test_only_the_exchange_is_handed_the_plow_bearer(tmp_path):
+    """The exchange needs it; the hourly report does not -- it authenticates
+    with the key that exchange stored. The script runs under with-contenv, so
+    the bearer is in its own environment and every child inherits it unless
+    that one is unset."""
+    run_service(tmp_path, {"PLOW_AGENT_TOKEN": "sk-real", "AGENT_ID": "life",
+                           "PLOW_API_BASE": "https://api.plow.co"}, status=3)
+    assert (tmp_path / "plow-agent-token").read_text().splitlines() == ["sk-real", ""]
 
 
 def test_state_the_client_cannot_read_touches_the_index_not_at_all(tmp_path):

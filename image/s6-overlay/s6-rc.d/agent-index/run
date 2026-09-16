@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/command/with-contenv sh
 # Report this agent's token usage to the Agent Index, every 5 minutes.
 #
 # NO SWITCH. The reporter is here because somebody put it in this image, and
@@ -16,18 +16,16 @@
 PATH=/command:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 export PATH
 
-# Written by first boot from the credential the host dropped in, 0600 root --
-# read here, before dropping to the agent's uid. AGENT_ID is which agent this
-# is; without it there is nothing to report FOR, so the service stands down
-# rather than guessing a name.
-PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)
-AGENT_ID=$(cat /run/s6/container_environment/AGENT_ID 2>/dev/null || true)
+# PLOW_API_BASE, AGENT_ID and PLOW_AGENT_TOKEN come from the shebang's
+# with-contenv, which hands this script the container environment first boot
+# published. AGENT_ID is which agent this is; without it there is nothing to
+# report FOR, so the service stands down rather than guessing a name.
+#
+# PLOW_API_BASE is also where the registration exchange goes. The client
+# defaults to https://api.plow.co, which is past the proxy that holds this
+# agent's real bearer -- so behind one, the exchange has to be sent where the
+# token is.
 export AGENT_ID
-
-# Where the registration exchange goes. The client defaults to
-# https://api.plow.co, which is past the proxy that holds this agent's real
-# bearer -- so behind one, the exchange has to be sent where the token is.
-PLOW_API_BASE=$(cat /run/s6/container_environment/PLOW_API_BASE 2>/dev/null || true)
 
 # The agent's home is where its usage store lives, and the client keeps its
 # ledger beside that store. Fixed, not overridable: this image puts the home
@@ -69,8 +67,7 @@ while :; do
     0) ;;
     3)
       /command/s6-setuidgid hermes \
-        env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
-        PLOW_API_BASE="$PLOW_API_BASE" \
+        env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
         /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
         --register --agent "$AGENT_ID" >/dev/null || {
       echo "agent-index: no index key this pass, not reporting" >&2
@@ -86,14 +83,15 @@ while :; do
       ;;
   esac
 
-  # No PLOW_AGENT_TOKEN in this environment. The client finds the key the
+  # No PLOW_AGENT_TOKEN in this environment -- unset explicitly, because
+  # with-contenv put it in this script's own. The client finds the key the
   # exchange stored in the agent's home and reports with that.
   #
   # Never fatal. A collector that failed says so and exits non-zero; a crashing
   # longrun would be respawned in a tight loop, which turns one bad pass into a
   # hot loop against the index.
   /command/s6-setuidgid hermes \
-    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" \
+    env -u PLOW_AGENT_TOKEN HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
     /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
     || echo "agent-index: reporter exited non-zero, see the line above" >&2
   /bin/sleep 300
