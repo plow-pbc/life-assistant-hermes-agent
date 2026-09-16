@@ -27,18 +27,20 @@ STUB_CLIENT = """
 import os
 import sys
 
+# Before the status exit, so EVERY invocation is recorded here -- status
+# included, which is the one that used to be handed the bearer unnoticed.
+with open({token!r}, "a") as record:
+    record.write(os.environ.get("PLOW_AGENT_TOKEN", "") + "\\n")
+
 if sys.argv[1:2] == ["status"]:
     sys.exit({status})
 
 with open({record!r}, "a") as record:
     record.write(" ".join(sys.argv[1:]) + "\\n")
 # Separately, so the argv record above stays exactly what the script asked for:
-# where the client would send the registration exchange, and whether this
-# invocation was handed the Plow bearer at all.
+# where the client would send the registration exchange.
 with open({plow_api!r}, "a") as record:
     record.write(os.environ.get("PLOW_API_BASE", "") + "\\n")
-with open({token!r}, "a") as record:
-    record.write(os.environ.get("PLOW_AGENT_TOKEN", "") + "\\n")
 """
 
 
@@ -160,23 +162,25 @@ def test_it_registers_exactly_when_the_client_says_this_install_is_not(tmp_path,
     assert invocations(tmp_path) == invoked
 
 
-def test_the_registration_exchange_goes_where_this_agent_s_token_is(tmp_path):
-    """The client defaults to https://api.plow.co, which is past the proxy that
-    holds the real bearer -- so behind one, the exchange authenticates with a
-    placeholder and this install never gets its key."""
-    run_service(tmp_path, {"PLOW_AGENT_TOKEN": "proxied", "AGENT_ID": "life",
-                           "PLOW_API_BASE": "https://plow-agt.int.exe.xyz"}, status=3)
-    assert (tmp_path / "plow-api-base").read_text().splitlines()[0] == "https://plow-agt.int.exe.xyz"
+def test_only_the_registration_exchange_is_handed_the_plow_bearer(tmp_path):
+    """One pass that registers, judged on what each invocation was given.
 
+    Only the exchange needs the bearer. `status` reads local state and the
+    report authenticates with the key the exchange stored, so neither has any
+    use for it -- and under with-contenv it is in this script's own
+    environment, so a child that says nothing about it inherits it.
 
-def test_only_the_exchange_is_handed_the_plow_bearer(tmp_path):
-    """The exchange needs it; the hourly report does not -- it authenticates
-    with the key that exchange stored. The script runs under with-contenv, so
-    the bearer is in its own environment and every child inherits it unless
-    that one is unset."""
+    The exchange also has to go to PLOW_API_BASE: the client defaults to
+    https://api.plow.co, which is past the proxy that holds this agent's real
+    bearer, so behind one it would authenticate with a placeholder and this
+    install would never get its key.
+    """
+    base = "https://plow-agt.plow-proxy.invalid"
     run_service(tmp_path, {"PLOW_AGENT_TOKEN": "sk-real", "AGENT_ID": "life",
-                           "PLOW_API_BASE": "https://api.plow.co"}, status=3)
-    assert (tmp_path / "plow-agent-token").read_text().splitlines() == ["sk-real", ""]
+                           "PLOW_API_BASE": base}, status=3)
+    # status, then the exchange, then the report.
+    assert (tmp_path / "plow-agent-token").read_text().splitlines() == ["", "sk-real", ""]
+    assert (tmp_path / "plow-api-base").read_text().splitlines()[0] == base
 
 
 def test_state_the_client_cannot_read_touches_the_index_not_at_all(tmp_path):

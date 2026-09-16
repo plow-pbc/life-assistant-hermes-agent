@@ -61,7 +61,7 @@ while :; do
   # stdout is dropped -- it says the same thing every pass. stderr is not: on 2
   # it carries the client's account of WHICH file it could not read.
   /command/s6-setuidgid hermes \
-    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
+    env -u PLOW_AGENT_TOKEN HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
     /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py status >/dev/null
   case $? in
     0) ;;
