@@ -43,14 +43,20 @@ non-zero exit).
    sounded worried about. Emit `rank` with every open id in the order you
    chose. Put a one-line reason under an item with `why` when the reason is
    not obvious ("before Oct 3 trip", "landlord asked twice").
-5. `post`.
+5. Every change above already refreshed the wall: read the `wall` field of
+   the last change's result. `NO WALL` means the wall is not set up — say
+   nothing about it. `NOT DELIVERED` means this wall is reached through
+   Latch: follow `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`
+   — the turn is not done until the Latch `curl` returned 2xx. Use `post` on
+   its own only to retry a failed delivery or to refresh with no change.
 6. Reply with the top of the list (name, then the first few items, numbered)
    and — on a re-rank — one sentence on what moved and why. Nothing else.
 
 ## Post
 
-From chat, call the `household_todo` tool with `action: post` (it is the same
-`post`); the script path below is the fallback on an image without the tool.
+From chat, every `household_todo` change posts by itself; `action: post` is
+the same `post`, for a retry or a refresh. Running the script directly (a
+cron turn, or a retry by hand) saves the change only — run `post` yourself.
 
 `post` composes the tile HTML, writes it to the fixed handoff file —
 `/var/lib/hermes/ld/priorities-text` — and posts it in one step. The wrapper

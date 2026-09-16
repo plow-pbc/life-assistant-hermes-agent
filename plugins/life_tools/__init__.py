@@ -41,6 +41,8 @@ class Tool:
 
 
 TODO_ACTIONS = ("show", "add", "done", "remove", "rename", "rank", "rule_add", "rule_remove", "why", "post")
+# Every action that changes the manifest refreshes the wall card afterwards.
+TODO_MUTATIONS = frozenset(TODO_ACTIONS) - {"show", "post"}
 _TODO_REQUIRED = {"add": "text", "done": "id", "remove": "id", "rename": "name",
                   "rule_add": "rule", "rule_remove": "rule", "rank": "ids", "why": "id"}
 
@@ -86,7 +88,9 @@ HOUSEHOLD_TODO = Tool(
         "turn one, before any Mac tool. It RECORDS the item; it never carries the item "
         "out, looks anything up, or sends anything to anyone. Apple Reminders only when "
         "the owner names that app or their iPhone. Actions: show, add, done, remove, "
-        "rename, rank, rule_add, rule_remove, why, post."
+        "rename, rank, rule_add, rule_remove, why, post. Every change refreshes the wall card by "
+        "itself; if the result's `wall` says NOT DELIVERED, run the two Latch calls it lists "
+        "before replying."
     ),
     parameters={
         "type": "object",
@@ -174,7 +178,18 @@ def run(tool: Tool, args: dict, **_kwargs) -> str:
     if proc.returncode != 0:
         return json.dumps({"ok": False, "exit": proc.returncode,
                            "stderr": (proc.stderr or proc.stdout).strip()})
-    return json.dumps({"ok": True, "stdout": proc.stdout.strip()})
+    result = {"ok": True, "stdout": proc.stdout.strip()}
+    if tool.name == HOUSEHOLD_TODO.name and args.get("action") in TODO_MUTATIONS:
+        # The list changed, so the card changes: post it now rather than
+        # trusting the model to make a second call (on 2026-09-15 it did not).
+        try:
+            post = subprocess.run([sys.executable, script, "post"], capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:  # the change is already saved; only the card is late
+            result["wall"] = "POST FAILED: timed out after 60s; the change is saved, run action post to retry"
+            return json.dumps(result)
+        result["wall"] = (post.stdout.strip() if post.returncode == 0
+                          else f"POST FAILED (exit {post.returncode}): {(post.stderr or post.stdout).strip()}")
+    return json.dumps(result)
 
 
 def _handoff_lock(path: str | None):
