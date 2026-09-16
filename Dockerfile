@@ -1,4 +1,4 @@
-# The Plow cloud image: this repo's agent, built for an exe.dev VM.
+# The Plow cloud image: this repo's agent, built for Plow to run as a cloud agent.
 #
 # No agent content of its own — the persona and skills copied below are the
 # tracked files this repo owns. Context is the
