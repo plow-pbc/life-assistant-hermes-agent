@@ -240,7 +240,10 @@ does not live on the VM at all. The VM is given only `PLOW_API_BASE`, an
 endpoint whose proxy holds the real bearer and adds it to each request on the
 way out; the container carries a placeholder. Root on that VM can spend the
 token — every request it makes is authenticated — but cannot read it out or
-take it anywhere else. On a local `docker compose`, there is no proxy, so the
+take it anywhere else — on a VM provisioned since Plow began handing the
+environment over. One provisioned before that still gets the old credential
+file and holds a real bearer, readable by root, until it is re-provisioned. On
+a local `docker compose`, there is no proxy, so the
 real token is in `./plow-credentials` and `env_file` loads it into the
 container: whoever can read that file, or exec in as root, holds it. Either
 way, that person's mailbox is reachable from that host, which is a fact an
