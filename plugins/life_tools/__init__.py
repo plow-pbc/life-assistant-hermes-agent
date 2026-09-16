@@ -182,7 +182,11 @@ def run(tool: Tool, args: dict, **_kwargs) -> str:
     if tool.name == HOUSEHOLD_TODO.name and args.get("action") in TODO_MUTATIONS:
         # The list changed, so the card changes: post it now rather than
         # trusting the model to make a second call (on 2026-09-15 it did not).
-        post = subprocess.run([sys.executable, script, "post"], capture_output=True, text=True, timeout=60)
+        try:
+            post = subprocess.run([sys.executable, script, "post"], capture_output=True, text=True, timeout=60)
+        except subprocess.TimeoutExpired:  # the change is already saved; only the card is late
+            result["wall"] = "POST FAILED: timed out after 60s; the change is saved, run action post to retry"
+            return json.dumps(result)
         result["wall"] = (post.stdout.strip() if post.returncode == 0
                           else f"POST FAILED (exit {post.returncode}): {(post.stderr or post.stdout).strip()}")
     return json.dumps(result)
