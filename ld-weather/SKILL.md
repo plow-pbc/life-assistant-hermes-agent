@@ -41,6 +41,9 @@ every feed- or config-derived string (condition, location, temps) — `&`→`&am
 
 ## Post
 
+Prefer the `kiosk_post_card` tool (`card: weather`, `text: <the tile/text>`);
+it writes the handoff file and runs the helper below in one call.
+
 Write the composed tile HTML to the fixed handoff file —
 `/var/lib/hermes/ld/weather-text` — with your file-writing tool, then run the helper
 by absolute path (the cron's working directory is not the skill directory):

@@ -215,6 +215,9 @@ backstop).
 
 ## Post
 
+Prefer the `kiosk_post_card` tool (`card: alert`, `text: <the tile/text>`);
+it writes the handoff file and runs the helper below in one call.
+
 Write `alert_text` to `/var/lib/hermes/ld/morning-triage-text` with the
 file-writing tool, then run the helper by absolute path (the cron's working
 directory is not the skill directory):

@@ -1,4 +1,4 @@
-# The Plow cloud image: this repo's agent, built for an exe.dev VM.
+# The Plow cloud image: this repo's agent, built for Plow to run as a cloud agent.
 #
 # No agent content of its own — the persona and skills copied below are the
 # tracked files this repo owns. Context is the
@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-8710797b6409c77df560c6198407765d138ea617@sha256:b9627febe57e34ec0df373709ad91a27a7fda68093e76d519678cac1012614f9
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-80ef5024eb4b770e727a618a9b55421c73da6228@sha256:864771e8165db16c11a55635df85696f39d91020f258576dd62b7cab0515514f
 
 # Identity: only what is specific to this agent. plow-init writes the home's
 # SOUL.md on every boot as the base persona followed by this file; nothing is
@@ -26,6 +26,7 @@ COPY ld-dashboard/        /opt/hermes/skills/ld-dashboard/
 COPY ld-email-inbox/      /opt/hermes/skills/ld-email-inbox/
 COPY ld-morning-triage/   /opt/hermes/skills/ld-morning-triage/
 COPY ld-morning-updates/  /opt/hermes/skills/ld-morning-updates/
+COPY ld-priorities/       /opt/hermes/skills/ld-priorities/
 COPY ld-setup/            /opt/hermes/skills/ld-setup/
 COPY ld-shared/           /opt/hermes/skills/ld-shared/
 COPY ld-wall-setup/       /opt/hermes/skills/ld-wall-setup/
@@ -43,6 +44,13 @@ COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} +
+
+# This agent's own tools, beside the base's plow_chat plugin. Modes are
+# normalized here because the skills block above stops at its own root, and a
+# `--chmod` on the COPY would take the directory's traverse bit with it.
+COPY plugins/life_tools/ /opt/hermes/plugins/life_tools/
+RUN find /opt/hermes/plugins/life_tools -type d -exec chmod 0755 {} + \
+ && find /opt/hermes/plugins/life_tools -type f -exec chmod 0644 {} +
 
 # The unattended producer's own copy, outside every home and out of the agent's
 # reach.

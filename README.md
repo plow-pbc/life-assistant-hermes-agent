@@ -74,7 +74,9 @@ published is built without this service. A flag would only re-ask a question the
 Dockerfile has already answered, somewhere that can disagree with it.
 
 The pinned client uses `PLOW_AGENT_TOKEN` once to exchange for a report-only
-`aik_` key; every report authenticates with that stored key. It needs
+`aik_` key — the service sends that exchange to `PLOW_API_BASE`, so on a hosted
+VM the proxy there supplies the real bearer — and every report afterwards
+authenticates with the stored key. It needs
 `AGENT_ID` — which agent this is —
 in the container's environment; without it the service says so and stands down,
 because guessing a name files this container's usage under somebody else's
@@ -135,7 +137,9 @@ running container disagree.
 entirely by *which phone texts the code back*. That single fact is what lets the
 tracked tree stay identical for everyone:
 
-- The `PLOW_AGENT_TOKEN` the host drops in belongs to whoever texted.
+- What the host hands the container — a `PLOW_AGENT_TOKEN` locally and on a
+  pre-handoff VM, a proxy-backed `PLOW_API_BASE` on a hosted one — reaches
+  whoever texted's line and nobody else's.
 - The Plow Chat credential and private conversation belong to that owner. Other
   people participate through group conversations; explicit owner trust controls
   whether a group can use normal tools and owner material.
@@ -146,9 +150,9 @@ tracked tree stay identical for everyone:
 Nothing is pre-staged for anyone. There is no credential to hand over before
 bring-up; the activation exchange mints it.
 
-Latch is bound the same way: the relay is the agent's own, `PLOW_MCP_URL` and
-`PLOW_AGENT_TOKEN`, resolved by first boot from the credential the host dropped
-in and published where nothing the agent runs can write. The image is shared;
+Latch is bound the same way: the relay is the agent's own `PLOW_MCP_URL`,
+resolved by first boot from what the host handed it and published where nothing
+the agent runs can write. The image is shared;
 the Mac that relay resolves to is not.
 
 ## What an agent cannot reach
@@ -235,13 +239,21 @@ The mechanics — running activation, what to do when a code expires — are in
 
 ## What the operator can see
 
-The agent's Plow token is the two-line file the host drops at
-`/var/lib/plow/credentials`, root-owned and unreadable to the agent, and first
-boot publishes it into the container environment rather than into any file the
-agent can read. Through it, that person's mailbox is reachable from that host.
-Whoever can read that file, or exec into the container as root, holds it. This
-is stated rather than left implied — it is a fact an owner should know before
-they text the activation code, not one to discover afterwards.
+Where the agent's Plow token lives depends on where it runs, and when Plow runs
+this image as a cloud agent it does not live on that machine at all. It is
+given only `PLOW_API_BASE`, an
+endpoint whose proxy holds the real bearer and adds it to each request on the
+way out; the container carries a placeholder. Root on that VM can spend the
+token — every request it makes is authenticated — but cannot read it out or
+take it anywhere else — on a VM provisioned since Plow began handing the
+environment over. One provisioned before that still gets the old credential
+file and holds a real bearer, readable by root, until it is re-provisioned. On
+a local `docker compose`, there is no proxy, so the
+real token is in `./plow-credentials` and `env_file` loads it into the
+container: whoever can read that file, or exec in as root, holds it. Either
+way, that person's mailbox is reachable from that host, which is a fact an
+owner should know before they text the activation code rather than discover
+afterwards.
 
 The agent's own dotenv is a different file and a smaller one: `ld/.env` holds
 what the agent records during setup — the wall's endpoint and token, the Pi's
@@ -276,8 +288,10 @@ Trust changes authority, not membership. A turn carries the owner's
 authority when it is the owner's own, in any room, or a human member's turn
 in a group the owner has marked trusted — a peer agent's turn or an
 unattended wake never gains it, and a DM is never promoted by it. An
-authority turn gets the owner's own help, such as email sends whose approval
-prompt posts in the room for anyone there to `/approve`; a member of an
+authority turn gets the owner's own help, such as `gmail send` from the owner's
+own account, whose approval prompt posts in the room for anyone there to
+`/approve` (mail from the agent's own mailbox needs no prompt: the owner is
+copied on it); a member of an
 untrusted group gets discretion instead, owner material only with the
 owner's okay in that thread. Standing secrets — passwords, backup codes, API
 keys, raw tokens, full card numbers — never go in chat, trusted or not.
@@ -285,7 +299,7 @@ keys, raw tokens, full card numbers — never go in chat, trusted or not.
 The policy and tool live in the `hermes-plugin-plow` plugin. The base image bakes
 it at a pinned revision, and a managed install (`agent-mgr install-plugin`) may
 put a newer copy in the agent's home, which Hermes loads instead. The
-owner-approval gate on outbound email and busy-slot bookings is that plugin's
+owner-approval gate on Gmail sends from the owner's account and busy-slot bookings is that plugin's
 `pre_tool_call` hook (hermes-plugin-plow #64), so a locally built image has it
 only once the base pin includes it; the gateway's config is the base image's
 too. Adding group prompts or another trust flag to this repo would create a
@@ -305,9 +319,10 @@ the old `family.owner.name`, set `family.owner.introduced` to `true`, then delet
 `family.owner.name` by editing the mode-600 file, since `--patch` merges and
 cannot remove a key.
 
-The three calendar skills add that account to their exact
-plow-gog argv; manually run and approve each new 1-day, 3-day and 7-day gather
-shape — and the triage's exact `plow-gog gmail search` argv from
+The digest and morning skills add that account to their exact plow-gog argv
+(the nudge reads every connected account and carries none); manually run and
+approve each new gather shape — the nudge's 2-day, the morning's 3-day, the
+digest's 7-day — and the triage's exact `plow-gog gmail search` argv from
 `ld-morning-triage/SKILL.md` — once through Latch before relying on the
 unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
 — for the same reason: it ticks with nobody there to answer an approval card.
@@ -376,8 +391,10 @@ and tells the Mac who is asking; the Mac authorises each action, so the approval
 surface stays on that machine rather than here.
 
 The credential is the agent's own: first boot asks Plow who this agent is and
-publishes the relay it is told about as `PLOW_MCP_URL`, reached with
-`PLOW_AGENT_TOKEN` — the same relay the gateway itself uses. Nothing here mints
+publishes the relay it is told about as `PLOW_MCP_URL`, reached with whichever
+bearer this container has — the real `PLOW_AGENT_TOKEN` locally or on a
+pre-handoff VM, the placeholder the proxy replaces on a hosted one — and it is
+the same relay the gateway itself uses. Nothing here mints
 or holds a per-device pair, and an agent whose owner has no relay switched on
 simply has no `PLOW_MCP_URL` and stands down. The token travels in a header,
 never in the URL.

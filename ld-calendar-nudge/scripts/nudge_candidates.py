@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """nudge_candidates.py — filter + compose the calendar gather for ld-calendar-nudge.
 
-Reads the fixed plow-gog `calendar events list --json --results-only` output from
+Reads the fixed all-account plow-gog `calendar events list --all` fan-out from
 its gather-file argument, deleting the file as it goes, applies the nudge
 rules — privacy prepass, per-event filter, dedupe — and writes every
-composed ≤115-char reminder, earliest first, STRAIGHT to the ONE fixed
-handoff post_nudge.py consumes (the first line becomes the kiosk card, the
-whole body the chat message). stdout carries only {"qualifying": N} — the
+composed ≤115-char reminder, earliest first, STRAIGHT to the one fixed
+handoff post_nudge.py consumes -- every reminder for chat, and the earliest
+one on a kitchen-wall calendar (`calendar.sources`) as the kiosk card. stdout carries only {"qualifying": N} — the
 model routes on the count and never touches reminder content, so the helper
 chain takes zero model-controlled content end to end (the plow#625 shape).
 Deterministic on purpose: the rules were 200 lines of sheet prose upstream;
@@ -23,14 +23,14 @@ Field spellings are pinned against a REAL gather through the live Latch door
 (camelCase: iCalUID, start.dateTime, hangoutLink, attendees[].responseStatus;
 `visibility` absent means default). Latch's injected safety flags wrap every
 free-text field (summary, location, description, ...) in
-EXTERNAL_UNTRUSTED_CONTENT markers and prepend a "Note:" preamble line to the
-output — both are stripped here so marker soup never reaches the kiosk.
+EXTERNAL_UNTRUSTED_CONTENT markers — stripped here so marker soup never
+reaches the kiosk.
 
 Exit 2 on malformed input rather than skipping rows: a half-parsed window is
 indistinguishable from a quiet one on both surfaces, so it must fail loudly.
-That includes a nonzero envelope exit_code — plow-gog fails the WHOLE gather on
-one unrecognized calendar name (measured: exit 2), and a failed gather must
-never read as a no-nudge run.
+That includes a call that never completed (an unanswered approval card) and
+any account Latch could not read, and a failed gather must never read as a
+no-nudge run.
 """
 from __future__ import annotations
 
@@ -48,8 +48,9 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
+from calendar_feed import event_key, visible_events  # noqa: E402
 from external_content import strip_markers  # noqa: E402
-from gather_result import GatherError, read_gather  # noqa: E402
+from gather_result import GatherError, read_fanout  # noqa: E402
 
 LIMIT = 115
 # The only gather locations the model may name (validated before any I/O):
@@ -58,8 +59,9 @@ LIMIT = 115
 # it is a prefix check, and "/tmp/hermes-results-evil" must not pass.
 PERSISTED_ROOT = "/tmp/hermes-results/"
 GATHER_FILE = "/var/lib/hermes/ld/calendar-nudge-gather"
-# The one fixed handoff this helper writes and post_nudge.py consumes.
-HANDOFF = "/var/lib/hermes/ld/calendar-nudge-text"
+# The one fixed handoff this helper writes and post_nudge.py consumes:
+# {"chat": [every reminder], "card": the kitchen wall's reminder or null}.
+HANDOFF = "/var/lib/hermes/ld/calendar-nudge.json"
 # The shared ld-config, fixed here rather than taken as a flag: the model
 # builds the argv, and a steerable --config could point at a model-written
 # JSON whose identities/lookaheads make a non-qualifying event publish.
@@ -144,9 +146,8 @@ def main(argv=None, now=None) -> int:
     could widen the windows or the identity set). Both are pinned."""
     parser = argparse.ArgumentParser()
     parser.add_argument("gather",
-                        help="gather file (raw plow-gog --json --results-only "
-                             "output, or the persisted plow_run_command "
-                             "result envelope)")
+                        help="gather file (the plow_run_command fan-out "
+                             "result, persisted or written inline)")
     args = parser.parse_args(argv)
 
     if not gather_path_allowed(args.gather):
@@ -156,10 +157,9 @@ def main(argv=None, now=None) -> int:
               "path would be an arbitrary delete", file=sys.stderr)
         return 2
 
-    # Consume-first + envelope sniff live in ld-shared/scripts/gather_result.py
-    # (shared with the triage filter); the semantics are unchanged.
+    # Consume-first + the fan-out payload live in ld-shared/scripts/gather_result.py.
     try:
-        raw = read_gather(args.gather)
+        events, degraded = read_fanout(args.gather)
     except GatherError as e:
         print(e, file=sys.stderr)
         return 2
@@ -175,6 +175,15 @@ def main(argv=None, now=None) -> int:
         lookahead_in_person = nudge_cfg["lookahead_in_person_minutes"]
         identities = {str(e).strip().lower()
                       for e in nudge_cfg["owner_identities"] if str(e).strip()}
+        # The owner's watch list, by calendar id: empty or absent is every
+        # connected calendar (its shape is ld_config_gate.py's check 9).
+        # Applied here rather than in the gather, so the approved argv never
+        # changes when the owner changes their mind.
+        watched = set(nudge_cfg.get("calendars", []))
+        # The kitchen wall's calendars are the household's, not the nudge's:
+        # the nudge watches everything the owner attends, and only a meeting
+        # on one of these may put its title on the shared screen.
+        wall = {s["calendar_id"] for s in config["calendar"]["sources"]}
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(f"bad config {CONFIG_FILE}: {e!r}", file=sys.stderr)
         return 2
@@ -186,39 +195,44 @@ def main(argv=None, now=None) -> int:
               "fire", file=sys.stderr)
         return 2
 
-    # Latch prepends preamble lines ("Note: Using direct access token ...")
-    # to the command output; the events are the array that follows.
-    match = re.search(r"^\[", raw, re.MULTILINE)
-    if not match:
-        print("no event array in gather output", file=sys.stderr)
-        return 2
-    try:
-        events = json.loads(raw[match.start():])
-    except json.JSONDecodeError as e:
-        print(f"malformed plow-gog json: {e}", file=sys.stderr)
-        return 2
-
     now = int(time.time()) if now is None else now
     now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
 
     try:
-        # Privacy prepass: one invite appears once per calendar it is on, all
-        # copies sharing an iCalUID. ANY private/confidential copy means "do
-        # not surface this" — drop every copy sharing its key, or a
-        # default-visibility sibling would post the title to the shared kiosk.
-        private_keys = {
-            (ev["iCalUID"], ev["start"].get("dateTime") or ev["start"].get("date"))
-            for ev in events
-            if ev.get("visibility") in ("private", "confidential")
-        }
+        # Any account Latch could not read fails the run: its private copies
+        # are missing from the prepass below, so a default-visibility sibling
+        # read through a healthy account would post the title they withhold.
+        # Account and reason are Latch's text, never the calendar's.
+        if degraded:
+            names = ", ".join(f"{d['account']} ({d['reason']})" for d in degraded)
+            print(f"not every account answered the gather: {names}",
+                  file=sys.stderr)
+            return 2
+
+        # Every account Latch read through is one the owner connected, so it
+        # is theirs: an invite to any of them is the owner's meeting, and one
+        # between two of them waits on nobody. The Mac writes the tag after
+        # the fetch, so event text cannot forge one; the config still carries
+        # the addresses no account is connected as.
+        identities |= {ev["account"].strip().lower() for ev in events}
+
+        # The calendar strip's privacy prepass, shared: cancelled copies,
+        # private ones, and every sibling of a private copy are gone before
+        # anything below reads a title -- or a default-visibility sibling
+        # would post what the private copy withholds.
+        events = visible_events(events)
+        # A live invite on a wall calendar and a work one is on the wall; a
+        # meeting with no iCalUID has no siblings, so only its own copy counts.
+        wall_keys = {event_key(ev) for ev in events
+                     if ev["CalendarID"] in wall and ev.get("iCalUID")}
 
         survivors = []
         for ev in events:
-            key = (ev["iCalUID"],
-                   ev["start"].get("dateTime") or ev["start"].get("date"))
-            if key in private_keys:
-                continue
-            if ev["status"] == "cancelled":
+            key = event_key(ev)
+            # After the prepass, never before it: a private copy on a calendar
+            # the owner does not watch still withholds its watched sibling.
+            # `CalendarID` is gog's own tag on an --all read (eventWithCalendar).
+            if watched and ev["CalendarID"] not in watched:
                 continue
             # All-day events have start.date only; a date parsed as midnight
             # would fire a misleading late-night reminder. They belong to the
@@ -284,6 +298,7 @@ def main(argv=None, now=None) -> int:
     survivors.sort(key=lambda s: s[1])
     seen = set()
     reminders = []
+    card = None
     for key, start_dt, minutes_until, virtual, location, ev in survivors:
         if key[0]:
             if key in seen:
@@ -297,10 +312,12 @@ def main(argv=None, now=None) -> int:
         summary = " ".join(_URL_TOKEN.sub("", unwrap(ev.get("summary"))).split())
         reminders.append(compose(summary or "(untitled meeting)", local_time,
                                  minutes_until, where))
+        if card is None and (ev["CalendarID"] in wall or key in wall_keys):
+            card = reminders[-1]
 
     # The handoff is written HERE, never by the model: every qualifying
-    # reminder, earliest first (each line ≤115, enforced above). post_nudge
-    # gives the first line to the kiosk and the whole body to chat, and owns
+    # reminder, earliest first (each line ≤115, enforced above), for chat, and
+    # the earliest wall-calendar one for the kiosk, or null. post_nudge owns
     # consume-on-success. stdout carries only the count the sheet routes on.
     # A direct write, on purpose: posting only begins after this process
     # exits 0, a mid-write crash exits nonzero and the sheet stops, and the
@@ -308,7 +325,7 @@ def main(argv=None, now=None) -> int:
     # unobserved failure mode and was deleted (operator ruling, PR #26).
     if reminders:
         with open(HANDOFF, "w") as f:
-            f.write("\n".join(reminders) + "\n")
+            json.dump({"chat": reminders, "card": card}, f)
 
     json.dump({"qualifying": len(reminders)}, sys.stdout)
     print()

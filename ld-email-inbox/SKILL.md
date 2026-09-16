@@ -10,9 +10,10 @@ its address. This sheet is the second half. Which address that is depends on
 which assistant this is, and the API answers it — nothing here names one. It answers a question asked in
 chat by reading the mailbox live.
 
-There is no poller, no inbox copy, and no replying from this address. Mail arriving needs
-no response; the owner's next message is what asks about it. That is the whole
-design, and it is why nothing here stores anything.
+Mail arriving at this address becomes a turn on the `plow_email` platform, and
+the reply goes out from this address — that is the plugin's job, not this
+sheet's. This sheet is only the on-demand read: a question asked in chat about
+what is in the mailbox, answered live, which is why nothing here stores anything.
 
 ## Run it
 

@@ -8,6 +8,7 @@ These RUN the service script in a sandbox rather than reading it. A test that
 greps for a string passes on a script that would not start, which is the one
 thing worth knowing about a boot service.
 """
+import json
 import os
 import subprocess
 import sys
@@ -24,13 +25,19 @@ SERVICE = ROOT / "image/s6-overlay/s6-rc.d/agent-index"
 # else, which it records the argv of. What the script did is then a file, not a
 # guess from the output of a program that is not there.
 STUB_CLIENT = """
+import json
+import os
 import sys
+
+# Written before the status exit, so EVERY invocation is recorded -- status
+# included, which is the one that used to be handed the bearer unnoticed. The
+# whole environment, because what must not be there is not a list this file
+# gets to choose.
+with open({record!r}, "a") as record:
+    record.write(json.dumps({{"argv": sys.argv[1:], "env": dict(os.environ)}}) + "\\n")
 
 if sys.argv[1:2] == ["status"]:
     sys.exit({status})
-
-with open({record!r}, "a") as record:
-    record.write(" ".join(sys.argv[1:]) + "\\n")
 """
 
 
@@ -49,13 +56,7 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
     That is the only way to see what it does on the second hour, which is where
     the registration gate is either right or minting a key an hour forever.
     """
-    env_dir = tmp_path / "run/s6/container_environment"
-    env_dir.mkdir(parents=True)
-    for name, value in environment.items():
-        (env_dir / name).write_text(value)
-
-    script = (SERVICE / "run").read_text().replace(
-        "/run/s6/container_environment", str(env_dir))
+    script = (SERVICE / "run").read_text()
     if status is not None:
         home = tmp_path / "hermes"
         home.mkdir()
@@ -71,8 +72,11 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
     sandbox.chmod(0o755)
 
     try:
+        # The container environment, as `with-contenv` in the shebang would hand
+        # it over -- `sh` is invoked directly here, so the shebang itself does
+        # not run and this stands in for it.
         done = subprocess.run(["sh", str(sandbox)], capture_output=True, text=True,
-                              timeout=seconds, env={"PATH": os.environ["PATH"]})
+                              timeout=seconds, env={"PATH": os.environ["PATH"], **environment})
         return done.stdout + done.stderr
     except subprocess.TimeoutExpired as expired:
         out = (expired.stdout or b"") + (expired.stderr or b"")
@@ -130,10 +134,17 @@ def test_neither_deleted_layout_comes_back():
     assert not (ROOT / "docker/s6-rc.d").exists()
 
 
-def invocations(tmp_path) -> list[str]:
-    """Every way the client was invoked in that run, in order."""
+def client_runs(tmp_path) -> list[dict]:
+    """Every invocation of the client in that run, in order: argv and the
+    environment it was actually given."""
     record = tmp_path / "invoked"
-    return record.read_text().splitlines() if record.exists() else []
+    return [json.loads(line) for line in record.read_text().splitlines()] if record.exists() else []
+
+
+def invocations(tmp_path) -> list[str]:
+    """The work invocations, in order -- `status` asks a question rather than
+    doing any, and the tests below are about what was done."""
+    return [" ".join(run["argv"]) for run in client_runs(tmp_path) if run["argv"][:1] != ["status"]]
 
 
 @pytest.mark.parametrize(("status", "invoked"), [
@@ -151,6 +162,49 @@ def test_it_registers_exactly_when_the_client_says_this_install_is_not(tmp_path,
     run_service(tmp_path, {"PLOW_AGENT_TOKEN": "plow_atokenshapedthing",
                            "AGENT_ID": "life"}, status=status)
     assert invocations(tmp_path) == invoked
+
+
+# The whole environment the service states for the client, TZ aside -- the
+# container in this test has none set.
+CLIENT_ENV = {"PATH", "HOME", "HERMES_HOME", "AGENT_ID", "PLOW_API_BASE"}
+
+
+def test_only_the_registration_exchange_is_given_a_credential(tmp_path):
+    """One pass that registers, judged on the environment each invocation got.
+
+    Only the exchange has a use for one: it trades the Plow bearer for the
+    report-only key `status` and the report then authenticate with. The script
+    runs under with-contenv, so the whole container environment is in its own
+    -- the bearer, its inference alias, the loopback API key -- and every child
+    inherits all of it unless the environment is stated in full.
+
+    The exchange also has to go to PLOW_API_BASE: the client defaults to
+    https://api.plow.co, which is past the proxy that holds this agent's real
+    bearer, so behind one it would authenticate with a placeholder and this
+    install would never get its key.
+    """
+    base = "https://plow-agt.plow-proxy.invalid"
+    container = {"PLOW_AGENT_TOKEN": "sk-real", "AGENT_ID": "life",
+                 "PLOW_API_BASE": base,
+                 # The alias and the loopback key, as first boot publishes them.
+                 "HERMES_CUSTOM_PLOW_API_KEY": "sk-real",
+                 "API_SERVER_KEY": "loopback-key"}
+    run_service(tmp_path, container, status=3)
+    status, register, report = client_runs(tmp_path)
+
+    # Which of the container's own names reached each invocation, exactly, so a
+    # name nobody anticipated fails here rather than having to be recognised.
+    # Intersected because a process inherits a little from the machine whatever
+    # it is given (__CF_USER_TEXT_ENCODING on macOS), which is not this boot's.
+    def from_container(run):
+        return set(run["env"]) & set(container)
+
+    assert CLIENT_ENV <= set(status["env"])
+    assert from_container(status) == {"AGENT_ID", "PLOW_API_BASE"}
+    assert from_container(register) == {"AGENT_ID", "PLOW_API_BASE", "PLOW_AGENT_TOKEN"}
+    assert from_container(report) == {"AGENT_ID", "PLOW_API_BASE"}
+    assert register["env"]["PLOW_AGENT_TOKEN"] == "sk-real"
+    assert register["env"]["PLOW_API_BASE"] == base
 
 
 def test_state_the_client_cannot_read_touches_the_index_not_at_all(tmp_path):
