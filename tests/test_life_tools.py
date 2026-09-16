@@ -195,3 +195,15 @@ def test_image_ships_the_plugin_and_persona_routes_todos():
     assert "first tool call is `household_todo`" in persona
     for skill in ("ld-weather", "ld-sports", "ld-morning-triage", "ld-morning-updates", "ld-weekly-digest"):
         assert "kiosk_post_card" in (REPO_ROOT / skill / "SKILL.md").read_text(), skill
+
+
+def test_a_mutation_refreshes_the_wall_by_itself(todo_via_tmp_manifest):
+    """The owner adds an item and the card should follow without a second call.
+    With no wall marker the post reports NO WALL; a refused change posts nothing."""
+    t = todo_via_tmp_manifest
+    added = json.loads(life_tools.run(t, {"action": "add", "text": "Renew passports"}))
+    assert added["ok"] is True and added["wall"].startswith("NO WALL")
+    shown = json.loads(life_tools.run(t, {"action": "show"}))
+    assert "wall" not in shown
+    refused = json.loads(life_tools.run(t, {"action": "done", "id": "nope"}))
+    assert refused["ok"] is False and "wall" not in refused
