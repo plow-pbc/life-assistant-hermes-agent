@@ -8,7 +8,9 @@ These RUN the service script in a sandbox rather than reading it. A test that
 greps for a string passes on a script that would not start, which is the one
 thing worth knowing about a boot service.
 """
+import json
 import os
+import re
 import subprocess
 import sys
 
@@ -24,23 +26,19 @@ SERVICE = ROOT / "image/s6-overlay/s6-rc.d/agent-index"
 # else, which it records the argv of. What the script did is then a file, not a
 # guess from the output of a program that is not there.
 STUB_CLIENT = """
+import json
 import os
 import sys
 
-# Before the status exit, so EVERY invocation is recorded here -- status
-# included, which is the one that used to be handed the bearer unnoticed.
-with open({token!r}, "a") as record:
-    record.write(os.environ.get("PLOW_AGENT_TOKEN", "") + "\\n")
+# Written before the status exit, so EVERY invocation is recorded -- status
+# included, which is the one that used to be handed the bearer unnoticed. The
+# whole environment, because what must not be there is not a list this file
+# gets to choose.
+with open({record!r}, "a") as record:
+    record.write(json.dumps({{"argv": sys.argv[1:], "env": dict(os.environ)}}) + "\\n")
 
 if sys.argv[1:2] == ["status"]:
     sys.exit({status})
-
-with open({record!r}, "a") as record:
-    record.write(" ".join(sys.argv[1:]) + "\\n")
-# Separately, so the argv record above stays exactly what the script asked for:
-# where the client would send the registration exchange.
-with open({plow_api!r}, "a") as record:
-    record.write(os.environ.get("PLOW_API_BASE", "") + "\\n")
 """
 
 
@@ -64,9 +62,7 @@ def run_service(tmp_path, environment: dict[str, str], seconds: float = 2.0,
         home = tmp_path / "hermes"
         home.mkdir()
         client = tmp_path / "client.py"
-        client.write_text(STUB_CLIENT.format(status=status, record=str(tmp_path / "invoked"),
-                                            plow_api=str(tmp_path / "plow-api-base"),
-                                            token=str(tmp_path / "plow-agent-token")))
+        client.write_text(STUB_CLIENT.format(status=status, record=str(tmp_path / "invoked")))
         script = (script
                   .replace("/var/lib/hermes", str(home))
                   .replace("/command/s6-setuidgid hermes", "")
@@ -139,10 +135,17 @@ def test_neither_deleted_layout_comes_back():
     assert not (ROOT / "docker/s6-rc.d").exists()
 
 
-def invocations(tmp_path) -> list[str]:
-    """Every way the client was invoked in that run, in order."""
+def client_runs(tmp_path) -> list[dict]:
+    """Every invocation of the client in that run, in order: argv and the
+    environment it was actually given."""
     record = tmp_path / "invoked"
-    return record.read_text().splitlines() if record.exists() else []
+    return [json.loads(line) for line in record.read_text().splitlines()] if record.exists() else []
+
+
+def invocations(tmp_path) -> list[str]:
+    """The work invocations, in order -- `status` asks a question rather than
+    doing any, and the tests below are about what was done."""
+    return [" ".join(run["argv"]) for run in client_runs(tmp_path) if run["argv"][:1] != ["status"]]
 
 
 @pytest.mark.parametrize(("status", "invoked"), [
@@ -162,13 +165,21 @@ def test_it_registers_exactly_when_the_client_says_this_install_is_not(tmp_path,
     assert invocations(tmp_path) == invoked
 
 
-def test_only_the_registration_exchange_is_handed_the_plow_bearer(tmp_path):
-    """One pass that registers, judged on what each invocation was given.
+# Any name that could carry a credential. The assertion is against the SHAPE of
+# a name rather than a list of the ones that exist today: the leak this closes
+# arrived as a second name for the same token (HERMES_CUSTOM_PLOW_API_KEY), and
+# the next one will arrive the same way.
+SECRET_SHAPED = re.compile(r"TOKEN|KEY|BEARER")
 
-    Only the exchange needs the bearer. `status` reads local state and the
-    report authenticates with the key the exchange stored, so neither has any
-    use for it -- and under with-contenv it is in this script's own
-    environment, so a child that says nothing about it inherits it.
+
+def test_only_the_registration_exchange_is_given_a_credential(tmp_path):
+    """One pass that registers, judged on the environment each invocation got.
+
+    Only the exchange has a use for one: it trades the Plow bearer for the
+    report-only key `status` and the report then authenticate with. The script
+    runs under with-contenv, so the whole container environment is in its own
+    -- the bearer, its inference alias, the loopback API key -- and every child
+    inherits all of it unless the environment is stated in full.
 
     The exchange also has to go to PLOW_API_BASE: the client defaults to
     https://api.plow.co, which is past the proxy that holds this agent's real
@@ -177,10 +188,20 @@ def test_only_the_registration_exchange_is_handed_the_plow_bearer(tmp_path):
     """
     base = "https://plow-agt.plow-proxy.invalid"
     run_service(tmp_path, {"PLOW_AGENT_TOKEN": "sk-real", "AGENT_ID": "life",
-                           "PLOW_API_BASE": base}, status=3)
-    # status, then the exchange, then the report.
-    assert (tmp_path / "plow-agent-token").read_text().splitlines() == ["", "sk-real", ""]
-    assert (tmp_path / "plow-api-base").read_text().splitlines()[0] == base
+                           "PLOW_API_BASE": base,
+                           # The alias and the loopback key, as first boot publishes them.
+                           "HERMES_CUSTOM_PLOW_API_KEY": "sk-real",
+                           "API_SERVER_KEY": "loopback-key"},
+                status=3)
+    status, register, report = client_runs(tmp_path)
+
+    def secrets(run):
+        return {name: value for name, value in run["env"].items() if SECRET_SHAPED.search(name)}
+
+    assert secrets(status) == {}
+    assert secrets(register) == {"PLOW_AGENT_TOKEN": "sk-real"}
+    assert secrets(report) == {}
+    assert register["env"]["PLOW_API_BASE"] == base
 
 
 def test_state_the_client_cannot_read_touches_the_index_not_at_all(tmp_path):
