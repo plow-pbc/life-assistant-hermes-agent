@@ -235,13 +235,17 @@ The mechanics — running activation, what to do when a code expires — are in
 
 ## What the operator can see
 
-The agent's Plow token is the two-line file the host drops at
-`/var/lib/plow/credentials`, root-owned and unreadable to the agent, and first
-boot publishes it into the container environment rather than into any file the
-agent can read. Through it, that person's mailbox is reachable from that host.
-Whoever can read that file, or exec into the container as root, holds it. This
-is stated rather than left implied — it is a fact an owner should know before
-they text the activation code, not one to discover afterwards.
+Where the agent's Plow token lives depends on where it runs, and on exe.dev it
+does not live on the VM at all. The VM is given only `PLOW_API_BASE`, an
+endpoint whose proxy holds the real bearer and adds it to each request on the
+way out; the container carries a placeholder. Root on that VM can spend the
+token — every request it makes is authenticated — but cannot read it out or
+take it anywhere else. On a local `docker compose`, there is no proxy, so the
+real token is in `./plow-credentials` and `env_file` loads it into the
+container: whoever can read that file, or exec in as root, holds it. Either
+way, that person's mailbox is reachable from that host, which is a fact an
+owner should know before they text the activation code rather than discover
+afterwards.
 
 The agent's own dotenv is a different file and a smaller one: `ld/.env` holds
 what the agent records during setup — the wall's endpoint and token, the Pi's
