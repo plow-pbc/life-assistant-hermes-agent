@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/command/with-contenv sh
 # Report this agent's token usage to the Agent Index, every 5 minutes.
 #
 # NO SWITCH. The reporter is here because somebody put it in this image, and
@@ -16,12 +16,15 @@
 PATH=/command:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 export PATH
 
-# Written by first boot from the credential the host dropped in, 0600 root --
-# read here, before dropping to the agent's uid. AGENT_ID is which agent this
-# is; without it there is nothing to report FOR, so the service stands down
-# rather than guessing a name.
-PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)
-AGENT_ID=$(cat /run/s6/container_environment/AGENT_ID 2>/dev/null || true)
+# PLOW_API_BASE, AGENT_ID and PLOW_AGENT_TOKEN come from the shebang's
+# with-contenv, which hands this script the container environment first boot
+# published. AGENT_ID is which agent this is; without it there is nothing to
+# report FOR, so the service stands down rather than guessing a name.
+#
+# PLOW_API_BASE is also where the registration exchange goes. The client
+# defaults to https://api.plow.co, which is past the proxy that holds this
+# agent's real bearer -- so behind one, the exchange has to be sent where the
+# token is.
 export AGENT_ID
 
 # The agent's home is where its usage store lives, and the client keeps its
@@ -30,6 +33,23 @@ export AGENT_ID
 # reporter and the agent disagree about which store is theirs.
 HERMES_HOME=/var/lib/hermes
 export HERMES_HOME
+
+# Every invocation of the client, with an environment this script states in
+# full. `env -i` and not an unset per name: with-contenv hands this script the
+# whole container environment -- the Plow bearer, its inference alias, the
+# loopback API key, whatever a later boot publishes -- and a child inherits all
+# of it unless told otherwise. Naming what to drop means a name added later
+# leaks by default; naming what to keep means it cannot. The bearer is not in
+# here: only the registration exchange below adds it.
+#
+# TZ only when the container has one: this image's cont-init writes it from the
+# household's config, and an EMPTY TZ is worse than none.
+client() {
+  /command/s6-setuidgid hermes env -i \
+    PATH="$PATH" HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
+    AGENT_ID="$AGENT_ID" PLOW_API_BASE="$PLOW_API_BASE" ${TZ:+TZ="$TZ"} \
+    "$@"
+}
 
 if [ -z "$AGENT_ID" ]; then
   echo "agent-index: no AGENT_ID in this container's environment, so there is no" >&2
@@ -57,14 +77,13 @@ while :; do
   #
   # stdout is dropped -- it says the same thing every pass. stderr is not: on 2
   # it carries the client's account of WHICH file it could not read.
-  /command/s6-setuidgid hermes \
-    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
-    /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py status >/dev/null
+  client /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py status >/dev/null
   case $? in
     0) ;;
     3)
-      /command/s6-setuidgid hermes \
-        env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
+      # The one invocation with a use for the bearer: it exchanges it for the
+      # report-only key everything else authenticates with.
+      client env PLOW_AGENT_TOKEN="$PLOW_AGENT_TOKEN" \
         /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
         --register --agent "$AGENT_ID" >/dev/null || {
       echo "agent-index: no index key this pass, not reporting" >&2
@@ -80,15 +99,14 @@ while :; do
       ;;
   esac
 
-  # No PLOW_AGENT_TOKEN in this environment. The client finds the key the
-  # exchange stored in the agent's home and reports with that.
+  # No bearer here, and nothing else the container environment holds: the
+  # client finds the key the exchange stored in the agent's home and reports
+  # with that.
   #
   # Never fatal. A collector that failed says so and exits non-zero; a crashing
   # longrun would be respawned in a tight loop, which turns one bad pass into a
   # hot loop against the index.
-  /command/s6-setuidgid hermes \
-    env HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" AGENT_ID="$AGENT_ID" \
-    /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
+  client /opt/hermes/.venv/bin/python3 /opt/plow/agent-index-client.py \
     || echo "agent-index: reporter exited non-zero, see the line above" >&2
   /bin/sleep 300
 done

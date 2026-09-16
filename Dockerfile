@@ -1,4 +1,4 @@
-# The Plow cloud image: this repo's agent, built for an exe.dev VM.
+# The Plow cloud image: this repo's agent, built for Plow to run as a cloud agent.
 #
 # No agent content of its own — the persona and skills copied below are the
 # tracked files this repo owns. Context is the
@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-818793623966135c0ab649269075efca9e2464b8@sha256:0b970aaf29ecc839d23fa81b81ac69d69f7e05f895ae9e4d42f21bc9e5761936
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-b78250ee114c8cd00c6dd2c4e84e0842c4e1fa14@sha256:858a787356742381da1b7bc5e90fbf8dc5dbda7f2cdfb36474be1d8e08cbc84f
 
 # Identity: only what is specific to this agent. plow-init writes the home's
 # SOUL.md on every boot as the base persona followed by this file; nothing is
