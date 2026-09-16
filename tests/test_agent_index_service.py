@@ -10,7 +10,6 @@ thing worth knowing about a boot service.
 """
 import json
 import os
-import re
 import subprocess
 import sys
 
@@ -165,11 +164,9 @@ def test_it_registers_exactly_when_the_client_says_this_install_is_not(tmp_path,
     assert invocations(tmp_path) == invoked
 
 
-# Any name that could carry a credential. The assertion is against the SHAPE of
-# a name rather than a list of the ones that exist today: the leak this closes
-# arrived as a second name for the same token (HERMES_CUSTOM_PLOW_API_KEY), and
-# the next one will arrive the same way.
-SECRET_SHAPED = re.compile(r"TOKEN|KEY|BEARER")
+# The whole environment the service states for the client, TZ aside -- the
+# container in this test has none set.
+CLIENT_ENV = {"PATH", "HOME", "HERMES_HOME", "AGENT_ID", "PLOW_API_BASE"}
 
 
 def test_only_the_registration_exchange_is_given_a_credential(tmp_path):
@@ -187,20 +184,26 @@ def test_only_the_registration_exchange_is_given_a_credential(tmp_path):
     install would never get its key.
     """
     base = "https://plow-agt.plow-proxy.invalid"
-    run_service(tmp_path, {"PLOW_AGENT_TOKEN": "sk-real", "AGENT_ID": "life",
-                           "PLOW_API_BASE": base,
-                           # The alias and the loopback key, as first boot publishes them.
-                           "HERMES_CUSTOM_PLOW_API_KEY": "sk-real",
-                           "API_SERVER_KEY": "loopback-key"},
-                status=3)
+    container = {"PLOW_AGENT_TOKEN": "sk-real", "AGENT_ID": "life",
+                 "PLOW_API_BASE": base,
+                 # The alias and the loopback key, as first boot publishes them.
+                 "HERMES_CUSTOM_PLOW_API_KEY": "sk-real",
+                 "API_SERVER_KEY": "loopback-key"}
+    run_service(tmp_path, container, status=3)
     status, register, report = client_runs(tmp_path)
 
-    def secrets(run):
-        return {name: value for name, value in run["env"].items() if SECRET_SHAPED.search(name)}
+    # Which of the container's own names reached each invocation, exactly, so a
+    # name nobody anticipated fails here rather than having to be recognised.
+    # Intersected because a process inherits a little from the machine whatever
+    # it is given (__CF_USER_TEXT_ENCODING on macOS), which is not this boot's.
+    def from_container(run):
+        return set(run["env"]) & set(container)
 
-    assert secrets(status) == {}
-    assert secrets(register) == {"PLOW_AGENT_TOKEN": "sk-real"}
-    assert secrets(report) == {}
+    assert CLIENT_ENV <= set(status["env"])
+    assert from_container(status) == {"AGENT_ID", "PLOW_API_BASE"}
+    assert from_container(register) == {"AGENT_ID", "PLOW_API_BASE", "PLOW_AGENT_TOKEN"}
+    assert from_container(report) == {"AGENT_ID", "PLOW_API_BASE"}
+    assert register["env"]["PLOW_AGENT_TOKEN"] == "sk-real"
     assert register["env"]["PLOW_API_BASE"] == base
 
 
