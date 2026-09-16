@@ -55,8 +55,8 @@ non-zero exit).
 ## Post
 
 From chat, every `household_todo` change posts by itself; `action: post` is
-the same `post`, for a retry or a refresh. The script path below is the
-fallback on an image without the tool.
+the same `post`, for a retry or a refresh. Running the script directly (a
+cron turn, or a retry by hand) saves the change only — run `post` yourself.
 
 `post` composes the tile HTML, writes it to the fixed handoff file —
 `/var/lib/hermes/ld/priorities-text` — and posts it in one step. The wrapper
