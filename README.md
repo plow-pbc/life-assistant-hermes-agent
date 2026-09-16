@@ -239,8 +239,9 @@ The mechanics — running activation, what to do when a code expires — are in
 
 ## What the operator can see
 
-Where the agent's Plow token lives depends on where it runs, and on exe.dev it
-does not live on the VM at all. The VM is given only `PLOW_API_BASE`, an
+Where the agent's Plow token lives depends on where it runs, and when Plow runs
+this image as a cloud agent it does not live on that machine at all. It is
+given only `PLOW_API_BASE`, an
 endpoint whose proxy holds the real bearer and adds it to each request on the
 way out; the container carries a placeholder. Root on that VM can spend the
 token — every request it makes is authenticated — but cannot read it out or

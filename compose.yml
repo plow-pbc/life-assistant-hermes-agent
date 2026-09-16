@@ -2,9 +2,9 @@ services:
   agent:
     # For base-image pull failures, see README.md: Building the image.
     build: .
-    # Where Plow is and this agent's token, as `plow-agents mint` writes them.
-    # The base reads both from the environment now; on a VM exe.dev sets
-    # PLOW_API_BASE alone and injects the token at its proxy.
+    # For a local run this loads what `plow-agents mint` wrote: where Plow is
+    # and this agent's token. When Plow runs your image as a cloud agent it
+    # sets the environment itself.
     env_file: ./plow-credentials
     volumes:
       # The agent's home, kept across `up`/`down` for its sessions and setup.
