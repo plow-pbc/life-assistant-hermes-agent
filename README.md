@@ -249,8 +249,9 @@ take it anywhere else — on a VM provisioned since Plow began handing the
 environment over. One provisioned before that still gets the old credential
 file and holds a real bearer, readable by root, until it is re-provisioned. On
 a local `docker compose`, there is no proxy, so the
-real token is in `./plow-credentials` and `env_file` loads it into the
-container: whoever can read that file, or exec in as root, holds it. Either
+real token is in the file `env_file` loads — `$PLOW_CREDENTIALS` if set,
+otherwise `./plow-credentials`: whoever can read that file, or exec in as
+root, holds it. Either
 way, that person's mailbox is reachable from that host, which is a fact an
 owner should know before they text the activation code rather than discover
 afterwards.
