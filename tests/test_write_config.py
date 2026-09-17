@@ -111,12 +111,12 @@ def test_a_write_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):
 
 def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
     current = live_config()
-    merged = wc.apply_patch({"family": {"partner": {"name": "Ro"}}}, current, ENV)[0]
-    assert merged["family"]["partner"] == {"name": "Ro"}
+    merged = wc.apply_patch({"morning_triage": {"ranking_instructions": "bank first"}}, current, ENV)[0]
+    assert merged["morning_triage"]["ranking_instructions"] == "bank first"
     # Everything the owner did not restate: the sibling keys inside the object
     # that was patched, and every other section.
-    assert merged["family"]["owner"]["introduced"] is True
-    assert merged["family"]["people"] == current["family"]["people"]
+    assert merged["morning_triage"]["chat_db_path"] == current["morning_triage"]["chat_db_path"]
+    assert merged["morning_triage"]["exclude"] == current["morning_triage"]["exclude"]
     assert merged["calendar"] == current["calendar"]
     assert merged["weather"] == current["weather"]
     assert gate(merged) == ""
