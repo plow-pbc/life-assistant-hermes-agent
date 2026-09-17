@@ -1035,7 +1035,7 @@ A partner is not config. "My partner is Jake" is one contact-book write —
 — and so is anyone else in the household (`wife`, `son`). Ask for the
 handle if the owner did not give one. The triage alert reads household
 from those relationships, so an agent that only ever surfaces the owner's
-own mail is usually one whose book records no household tie.
+own mail is usually one whose book records no kin or partner label.
 
 Two things it refuses rather than doing quietly, each naming what is wrong:
 a key that is not in `config.example.json` **at any depth**, list entries

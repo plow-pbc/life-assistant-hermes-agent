@@ -204,9 +204,9 @@ lower-case for an email, so strip a phone's punctuation (a `chat.db` handle
 already carries its country code) and lower-case an address before
 matching, and take the bare address out of Gmail's `from` (`Name <addr>`).
 A sender is household when that row's `relationship` is a kin or partner
-label — `wife`, `husband`, `partner`, `girlfriend`, `son`, `daughter`,
-`mom`, `dad`. A job, service or tenancy label — `boss`, `nanny`,
-`landlord` — is a relationship, not a household. Only the owner's own
+label — `wife`, `husband`, `partner`, `son`, `daughter`, `mom`, `dad`. A
+job, service or tenancy label — `boss`, `nanny`, `landlord` — is a
+relationship, not a household. Only the owner's own
 turn can write a relationship — the plugin refuses it on any other — so
 the label is the owner's word, and the book is the one place membership
 lives. `success: false` is a read that failed, not
