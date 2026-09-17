@@ -168,7 +168,9 @@ Send the surviving candidates to the LLM with:
 - Each iMessage candidate (`chat_id`, `handle`, `sent_at`, excerpt).
 - Each Gmail item (`account`, `from`, `subject`, `date`).
 - `morning_triage.ranking_instructions`.
-- Each candidate's contact-book row — name and relationship — from the read below.
+- Each candidate's contact-book row — name and relationship — from the
+  read below, and every row with a household relationship, so an excerpt
+  that names one of them is recognised too.
 - The household default, which holds unless those instructions say
   otherwise: rank for the household, not the owner alone. Something that
   touches the owner and the partner together — a message from the partner,
@@ -201,12 +203,13 @@ sender. Compare canonical forms: `provider_key` is E.164 for a phone and
 lower-case for an email, so strip a phone's punctuation (a `chat.db` handle
 already carries its country code) and lower-case an address before
 matching, and take the bare address out of Gmail's `from` (`Name <addr>`).
-A sender is household when that row's `relationship` is a household tie —
-`wife`, `husband`, `partner`, `son`, `daughter`, a parent who lives with the
-owner. A `landlord` or a `boss` is a relationship, not a household. Only
-the owner's own turn can write a relationship — the plugin refuses it on
-any other — so the label is the owner's word, and the book is the one
-place membership lives. `success: false` is a read that failed, not
+A sender is household when that row's `relationship` is a kin or partner
+label — `wife`, `husband`, `partner`, `girlfriend`, `son`, `daughter`,
+`mom`, `dad`. A job, service or tenancy label — `boss`, `nanny`,
+`landlord` — is a relationship, not a household. Only the owner's own
+turn can write a relationship — the plugin refuses it on any other — so
+the label is the owner's word, and the book is the one place membership
+lives. `success: false` is a read that failed, not
 an empty book; use the raw handles and carry on. Read the names, use them,
 cache nothing: the book is the one place they live. No row, or a
 `display_name` of `null`, is the book saying there is no name yet, not a

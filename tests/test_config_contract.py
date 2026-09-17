@@ -487,8 +487,8 @@ CONTRACTS = [
     # setup door is how a partner gets recorded there from chat.
     (PERSONA, "The household is the owner plus whoever their Plow contact book"),
     (TRIAGE, "rank for the household"),
-    (TRIAGE, "household tie"),
-    (SETUP, 'relationship="partner"'),
+    (TRIAGE, "kin or partner label"),
+    (SETUP, "A partner is not config"),
 ]
 
 
