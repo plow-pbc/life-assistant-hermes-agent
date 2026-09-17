@@ -39,7 +39,8 @@ uses:
   `family.partner.name` is the partner; `family.owner.imessage` /
   `family.partner.imessage` say which handle is whose in the composed alert.
   The owner's name is not in this file (see below). An absent
-  `family.partner` is a one-person household, not an error.
+  `family.partner` or an empty `family.people` is a smaller household, not
+  an error.
 - `morning_triage.chat_db_path` — absolute path to the owner's
   `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
   template's `[CHAT_DB_PATH]` placeholder, **stop before calling
@@ -169,15 +170,20 @@ Send the surviving candidates to the LLM with:
 - Each iMessage candidate (`chat_id`, `handle`, `sent_at`, excerpt).
 - Each Gmail item (`account`, `from`, `subject`, `date`).
 - `morning_triage.ranking_instructions`.
+- `family.partner.name` and `family.people` — the household's names, so a
+  sender or an excerpt can be recognised as one of them.
 - The household default, which holds unless those instructions say
   otherwise: rank for the household, not the owner alone. Something that
   touches the owner and the partner together — a message from the partner,
   a bill or booking they share, plans, the home, the kids, anyone in
   `family.people` — outranks a message that concerns only the owner, such
-  as a friend's social ping. Name the partner when they are involved.
-- The default that holds unless those instructions say otherwise: a
-  financial alert — a failed, returned or rejected payment, an
-  insufficient-funds notice, a declined charge — outranks everything else.
+  as a friend's social ping, when the two are otherwise close in urgency; a
+  genuinely urgent owner-only item still wins. Name the partner when they
+  are involved.
+- The financial default, which outranks everything above, the household
+  default included, unless those instructions say otherwise: a financial
+  alert — a failed, returned or rejected payment, an insufficient-funds
+  notice, a declined charge — outranks everything else.
   It is the one message that costs money by the hour.
   That default is for a sender the owner already deals with — their bank,
   a lender, a card issuer; an unknown sender's subject line saying the same
