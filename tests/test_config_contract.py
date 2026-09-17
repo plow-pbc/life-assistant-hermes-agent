@@ -419,23 +419,22 @@ WALL = ("ld-wall-setup", "SKILL.md")
 
 CONTRACTS = [
     # A first message answered "What can I help with?" by an assistant that
-    # runs seven scheduled things for the household.
-    (PERSONA, "Seven scheduled runs"),
+    # runs six scheduled things for the household.
+    (PERSONA, "Six scheduled runs"),
     (PERSONA, "**Morning updates**"),
     (PERSONA, "**Morning triage**"),
     (PERSONA, "**Evening triage**"),
-    (PERSONA, "**Weekly digest**"),
     (PERSONA, "**Calendar nudge**"),
     (PERSONA, "**Weather**"),
     (PERSONA, "**Sports**"),
     (PERSONA, 'Never answer only "What can I help with?"'),
-    # Only ld-morning-updates and ld-weekly-digest carry the shared-screen rule
+    # Only ld-morning-updates carries the shared-screen rule
     # ("skip medical, private, or sensitive titles"). The two triage runs have no
     # such filter -- they paraphrase a real inbound message — an iMessage or an
     # email — onto the same wall — so a blanket kid-safe promise covers the two
     # runs that cannot keep it.
     (PERSONA, "do not extend that promise to the morning alert"),
-    # The strip is a seventh producer with no model in it, published by a
+    # The strip is a sixth producer with no model in it, published by a
     # supervised service on its own five-minute tick -- so a turn may not
     # claim it as work it did.
     (PERSONA, "It refreshes whether or not you"),

@@ -34,12 +34,12 @@ A consequence worth naming: the wall's bearer is never read here at all. It
 lives in ~/Plow/ld/dashboard.hdr on the Mac and `curl -H @` reads it there, so
 the token never crosses the relay and this script never holds it.
 
-The gather argv is byte-identical to the seven-day one ld-weekly-digest
-already uses, deliberately: Latch always-allow keys on the exact argv, README
-"Bring-up" has the owner approve each of the 1-, 3- and 7-day shapes once, and
-a fourth shape would strand every unattended run on an approval card nobody
-answers (plow-pbc/latch#181). `--days=7` is already relative to the moment of
-the call, so there is nothing for a computed timestamp to add.
+The gather argv is one fixed seven-day shape, deliberately: Latch always-allow
+keys on the exact argv, README "Bring-up" has the owner approve each of the 2-,
+3- and 7-day shapes once, and a new shape would strand every unattended run on
+an approval card nobody answers (plow-pbc/latch#181). `--days=7` is already
+relative to the moment of the call, so there is nothing for a computed
+timestamp to add.
 
 Every failure is a one-line stand-down and exit 0. This runs unattended: a
 non-zero exit buys nothing because nobody is reading, while a traceback
