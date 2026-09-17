@@ -489,6 +489,9 @@ CONTRACTS = [
     (TRIAGE, "rank for the household"),
     (TRIAGE, "kin or partner label"),
     (SETUP, "A partner is not config"),
+    # And the self-labelling path is closed in the persona too: a relationship
+    # never comes from the person it describes.
+    (PERSONA, "never from the person's own word"),
 ]
 
 
