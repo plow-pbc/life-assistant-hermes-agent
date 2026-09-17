@@ -35,11 +35,10 @@ Read `/var/lib/hermes/ld/config.json` before starting (template:
 uses:
 
 - `family.timezone` — the household's tz; the cron fires in it.
-- `family.partner.name` and `family.people` — the household this alert
-  serves, by name. Which handle is whose is not in this file: the Plow
-  contact book is the one identity seam (see Rank + compose), and the
-  owner's name lives on their account. An absent `family.partner` or an
-  empty `family.people` is a smaller household, not an error.
+- The household this alert serves is not in this file: it is the owner
+  plus whoever their Plow contact book records with a household
+  relationship (see Rank + compose). A book with no such row is a
+  one-person household, not an error.
 - `morning_triage.chat_db_path` — absolute path to the owner's
   `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
   template's `[CHAT_DB_PATH]` placeholder, **stop before calling
@@ -169,13 +168,12 @@ Send the surviving candidates to the LLM with:
 - Each iMessage candidate (`chat_id`, `handle`, `sent_at`, excerpt).
 - Each Gmail item (`account`, `from`, `subject`, `date`).
 - `morning_triage.ranking_instructions`.
-- `family.partner.name` and `family.people` — the household's names, so a
-  sender or an excerpt can be recognised as one of them.
+- Each candidate's contact-book row — name and relationship — from the read below.
 - The household default, which holds unless those instructions say
   otherwise: rank for the household, not the owner alone. Something that
   touches the owner and the partner together — a message from the partner,
-  a bill or booking they share, plans, the home, the kids, anyone in
-  `family.people` — outranks a message that concerns only the owner, such
+  a bill or booking they share, plans, the home, the kids, anyone the book
+  records as household — outranks a message that concerns only the owner, such
   as a friend's social ping, when the two are otherwise close in urgency; a
   genuinely urgent owner-only item still wins over a routine household one.
   Name the partner when they are involved.
@@ -202,12 +200,13 @@ For each candidate, the row whose `provider_key` is its handle names the
 sender. Compare canonical forms: `provider_key` is E.164 for a phone and
 lower-case for an email, so strip a phone's punctuation (a `chat.db` handle
 already carries its country code) and lower-case an address before
-matching, and take the bare address out of Gmail's `from` (`Name <addr>`). A sender is household when that row's `display_name` is
-`family.partner.name` or an entry of `family.people` — membership is what
-the owner wrote in `family`, nothing else. A row's `relationship` is the
-roster's label, never membership: anyone on an owner-seated turn can say
-who they are, so a self-declared `partner` (or a real `landlord`) does not
-outrank the owner's own alert. `success: false` is a read that failed, not
+matching, and take the bare address out of Gmail's `from` (`Name <addr>`).
+A sender is household when that row's `relationship` is a household tie —
+`wife`, `husband`, `partner`, `son`, `daughter`, a parent who lives with the
+owner. A `landlord` or a `boss` is a relationship, not a household. Only
+the owner's own turn can write a relationship — the plugin refuses it on
+any other — so the label is the owner's word, and the book is the one
+place membership lives. `success: false` is a read that failed, not
 an empty book; use the raw handles and carry on. Read the names, use them,
 cache nothing: the book is the one place they live. No row, or a
 `display_name` of `null`, is the book saying there is no name yet, not a

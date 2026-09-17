@@ -88,7 +88,7 @@ def test_a_draft_records_an_answer_the_gate_would_refuse(tmp_path):
 
 
 @pytest.mark.parametrize("payload,complaint", [
-    ('{"family": {"partner": {"name": "[PARTNER_NAME]"}}}', "placeholder"),
+    ('{"calendar": {"account": "[OWNER_CALENDAR_EMAIL]"}}', "placeholder"),
     ('{"calendar": {"account": 5}}', "not valid JSON"),
     ('{"calendar": {"account": "a@b.test", "sources": [{"calendar_id": "", "name": "A"}]}}',
      "calendar.sources[].calendar_id is blank"),

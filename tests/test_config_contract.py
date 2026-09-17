@@ -481,12 +481,14 @@ CONTRACTS = [
     (PERSONA, "In a group, if none of that is true, stay silent"),
     (PERSONA, "The owner's own thread is different"),
     # The alert is for the household, not the owner alone: a user reported
-    # her agent only ever surfaced her own inbound. The household is `family`
-    # in the shared config; the triage sheet ranks for it and the setup door
-    # is how a partner gets recorded there from chat.
-    (PERSONA, "The household is `family`"),
+    # her agent only ever surfaced her own inbound. The household is the
+    # contact book's household relationships, not the shared config —
+    # `family` no longer names people. The triage sheet ranks for it and the
+    # setup door is how a partner gets recorded there from chat.
+    (PERSONA, "The household is the owner plus whoever their Plow contact book"),
     (TRIAGE, "rank for the household"),
-    (SETUP, '{"family": {"partner": {"name":'),
+    (TRIAGE, "household tie"),
+    (SETUP, 'relationship="partner"'),
 ]
 
 

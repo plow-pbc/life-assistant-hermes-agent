@@ -1030,14 +1030,12 @@ configured, so a settings change has no schedule to add, and re-running the
 registration would fail the change on unrelated paused cron state. Paste its
 whole output verbatim anyway. A chat turn does not propagate an exit code.
 
-A partner is a patch too. "My partner is Jake" is
-`{"family": {"partner": {"name": "Jake"}}}`. A handle the owner gives for
-them is not config: record it the way any name is —
-`plow_name_contact(handle=<handle>, display_name="Jake", relationship="partner")`
-— so the contact book, the one identity seam (persona § Who is speaking),
-knows them. The triage alert ranks for the household `family`
-records, so an agent that only ever surfaces the owner's own mail is usually
-one with no partner on file.
+A partner is not config. "My partner is Jake" is one contact-book write —
+`plow_name_contact(handle=<their handle>, display_name="Jake", relationship="partner")`
+— and so is anyone else in the household (`wife`, `son`). Ask for the
+handle if the owner did not give one. The triage alert reads household
+from those relationships, so an agent that only ever surfaces the owner's
+own mail is usually one whose book records no household tie.
 
 Two things it refuses rather than doing quietly, each naming what is wrong:
 a key that is not in `config.example.json` **at any depth**, list entries
