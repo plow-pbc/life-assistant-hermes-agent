@@ -35,12 +35,11 @@ Read `/var/lib/hermes/ld/config.json` before starting (template:
 uses:
 
 - `family.timezone` — the household's tz; the cron fires in it.
-- `family.partner` and `family.people` — the household this alert serves.
-  `family.partner.name` is the partner; `family.owner.imessage` /
-  `family.partner.imessage` say which handle is whose in the composed alert.
-  The owner's name is not in this file (see below). An absent
-  `family.partner` or an empty `family.people` is a smaller household, not
-  an error.
+- `family.partner.name` and `family.people` — the household this alert
+  serves, by name. Which handle is whose is not in this file: the Plow
+  contact book is the one identity seam (see Rank + compose), and the
+  owner's name lives on their account. An absent `family.partner` or an
+  empty `family.people` is a smaller household, not an error.
 - `morning_triage.chat_db_path` — absolute path to the owner's
   `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
   template's `[CHAT_DB_PATH]` placeholder, **stop before calling
@@ -189,23 +188,25 @@ Send the surviving candidates to the LLM with:
   a lender, a card issuer; an unknown sender's subject line saying the same
   words is how phishing is worded, and ranks as an ordinary email.
 
-Map handles to names when they match: `family.owner.imessage` is the owner,
-and the owner's name comes from their Plow account. This run is a cron turn, so
-nothing states it for you — there is no chat prompt above this one. Read the
-book instead:
+Map every candidate handle to a person through the Plow contact book — the
+owner's own name included, which comes from their account and nowhere else.
+This run is a cron turn, so nothing states any of it for you — there is no
+chat prompt above this one. Read the book:
 
     plow_contacts()
 
 It returns the tool's envelope, `{"success": true, "contacts": [...]}` — the
 rows the server wrote, the owner's own first, each row shaped
-`{"object": "contact", "provider_key": "<handle>", "display_name": "<name>|null", "relationship": null, "role": "owner"}`
-— take `display_name` from the row whose `role` is `owner`. `success: false` is
-a read that failed, not an empty book; use the raw handle and carry on.
-Meanwhile `family.partner.imessage` is the partner, named by
-`family.partner.name`. Read the name, use it, cache nothing: the account is the
-one place it lives. No such row, or a `display_name` of `null`, is the book
-saying there is no name yet, not a name: fall back to the raw handle, as you do
-for a handle that matches nobody.
+`{"object": "contact", "provider_key": "<handle>", "display_name": "<name>|null", "relationship": null, "role": "owner"}`.
+For each candidate, the row whose `provider_key` is its handle — an iMessage
+handle or an email address — names the sender; that row's `relationship`
+(`wife`, `partner`, `son`), or its `display_name` matching
+`family.partner.name` or an entry of `family.people`, is what makes them
+household for the ranking above. `success: false` is a read that failed, not
+an empty book; use the raw handles and carry on. Read the names, use them,
+cache nothing: the book is the one place they live. No row, or a
+`display_name` of `null`, is the book saying there is no name yet, not a
+name: fall back to the raw handle.
 
 Ask for JSON output:
 

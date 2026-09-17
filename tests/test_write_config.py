@@ -34,7 +34,7 @@ TZ = "America/Chicago"
 ENV = {"TZ": TZ}
 FULL = {
     "owner_email": "rowan@example.test",
-    "owner_imessage": "+15550001111", "city": "Chicago", "timezone": TZ,
+    "city": "Chicago", "timezone": TZ,
     "has_mac": True, "mac_username": "rowan",
     "extra_calendar_ids": ["fam@group.calendar.google.com"],
     "people": ["Mary"], "teams": [{"abbr": "chc", "sport": "baseball", "league": "mlb"}],
@@ -57,7 +57,7 @@ def live_config():
     # Built here rather than through a whole-config mode: that mode was a form,
     # and it is gone. This is the shape --patch expects to find on disk.
     return {
-        "family": {"owner": {"introduced": True, "imessage": FULL["owner_imessage"]},
+        "family": {"owner": {"introduced": True},
                    "people": list(FULL["people"]), "timezone": TZ},
         "calendar": {"account": FULL["owner_email"],
                      "sources": [{"calendar_id": FULL["owner_email"], "name": "Personal"},
@@ -111,11 +111,12 @@ def test_a_write_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):
 
 def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
     current = live_config()
-    merged = wc.apply_patch({"family": {"owner": {"imessage": "+15550002222"}}}, current, ENV)[0]
-    assert merged["family"]["owner"]["imessage"] == "+15550002222"
-    # Everything the owner did not restate: the sibling key inside the object
+    merged = wc.apply_patch({"family": {"partner": {"name": "Ro"}}}, current, ENV)[0]
+    assert merged["family"]["partner"] == {"name": "Ro"}
+    # Everything the owner did not restate: the sibling keys inside the object
     # that was patched, and every other section.
     assert merged["family"]["owner"]["introduced"] is True
+    assert merged["family"]["people"] == current["family"]["people"]
     assert merged["calendar"] == current["calendar"]
     assert merged["weather"] == current["weather"]
     assert gate(merged) == ""
