@@ -101,8 +101,7 @@ plow-agents mint ln_xxx       # choose a free line from `lines`, before the firs
 docker compose up --build -d
 ```
 
-If the account has no assistant line, run `plow-agents login --new-line`, then
-`plow-agents lines` again before minting. For base-image pull failures, see
+For base-image pull failures, see
 [Building the image](#building-the-image).
 
 | To | Run |
