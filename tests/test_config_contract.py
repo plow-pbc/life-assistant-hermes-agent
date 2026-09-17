@@ -486,7 +486,7 @@ CONTRACTS = [
     # is how a partner gets recorded there from chat.
     (PERSONA, "The household is `family`"),
     (TRIAGE, "rank for the household"),
-    (SETUP, '{"family": {"partner": {"name": "Jake"'),
+    (SETUP, '{"family": {"partner": {"name":'),
 ]
 
 

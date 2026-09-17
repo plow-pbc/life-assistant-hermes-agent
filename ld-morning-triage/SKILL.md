@@ -178,8 +178,8 @@ Send the surviving candidates to the LLM with:
   a bill or booking they share, plans, the home, the kids, anyone in
   `family.people` — outranks a message that concerns only the owner, such
   as a friend's social ping, when the two are otherwise close in urgency; a
-  genuinely urgent owner-only item still wins. Name the partner when they
-  are involved.
+  genuinely urgent owner-only item still wins over a routine household one.
+  Name the partner when they are involved.
 - The financial default, which outranks everything above, the household
   default included, unless those instructions say otherwise: a financial
   alert — a failed, returned or rejected payment, an insufficient-funds

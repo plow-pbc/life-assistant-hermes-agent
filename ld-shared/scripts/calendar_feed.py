@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """calendar_feed.py — publish the kiosk's calendar strip, with no model in it.
 
-The kiosk's five cards are composed by producers a model drives. The calendar
+The kiosk's cards are composed by producers a model drives. The calendar
 strip is not: it is a straight translation of what plow-gog returns into the
 viewer's `/api/calendar` contract, so there is nothing for a model to add and
 every turn it would cost is a turn that can go wrong on private calendar text.
