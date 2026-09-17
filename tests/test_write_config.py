@@ -38,7 +38,6 @@ FULL = {
     "has_mac": True, "mac_username": "rowan",
     "extra_calendar_ids": ["fam@group.calendar.google.com"],
     "people": ["Mary"], "teams": [{"abbr": "chc", "sport": "baseball", "league": "mlb"}],
-    "digest_length": "short",
 }
 def fake_geocode(city):
     """Open-Meteo, stubbed. No test in this suite touches the network: a live
@@ -64,7 +63,6 @@ def live_config():
                      "sources": [{"calendar_id": FULL["owner_email"], "name": "Personal"},
                                  {"calendar_id": FULL["extra_calendar_ids"][0],
                                   "name": FULL["extra_calendar_ids"][0]}]},
-        "weekly_digest": {"length": FULL["digest_length"], "long_lead": []},
         "morning_triage": {"chat_db_path": f"/Users/{FULL['mac_username']}/Library/Messages/chat.db",
                            "ranking_instructions": "", "exclude": {"imessage_handles": []}},
         "calendar_nudge": {"lookahead_virtual_minutes": 30, "lookahead_in_person_minutes": 60,
@@ -320,11 +318,11 @@ def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch, run_concurre
                                env=ENV, config_path=str(target))
 
     assert not run_concurrently(patch({"family": {"people": ["Ro"]}}),
-                                patch({"weekly_digest": {"length": "long"}}))
+                                patch({"morning_triage": {"ranking_instructions": "bank first"}}))
 
     written = json.loads(target.read_text())
     assert written["family"]["people"] == ["Ro"], "the household write was lost"
-    assert written["weekly_digest"]["length"] == "long", "the digest write was lost"
+    assert written["morning_triage"]["ranking_instructions"] == "bank first", "the triage write was lost"
     # And the rest is intact, so neither writer replaced the file with its own
     # partial view of it.
     assert written["calendar"] == live_config()["calendar"]

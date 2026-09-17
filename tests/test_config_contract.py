@@ -202,7 +202,6 @@ WRITE_SAFE_ROOT = "/var/lib/hermes"
 PRODUCERS = [
     ("ld-morning-triage", "post_alert.py"),
     ("ld-morning-updates", "post_message.py"),
-    ("ld-weekly-digest", "post_digest.py"),
     ("ld-calendar-nudge", "post_nudge.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
@@ -325,9 +324,8 @@ def test_every_calendar_gather_names_the_configured_gog_account():
     """plow-gog refuses --calendars without the account that owns those ids,
     and the nudge's all-account read must name neither: either one would
     narrow it back to a single account's chosen calendars."""
-    for skill in ("ld-morning-updates", "ld-weekly-digest"):
-        sheet = (ROOT / skill / "SKILL.md").read_text()
-        assert "--account=<calendar.account>" in sheet, skill
+    sheet = (ROOT / "ld-morning-updates" / "SKILL.md").read_text()
+    assert "--account=<calendar.account>" in sheet
     nudge = (ROOT / "ld-calendar-nudge" / "SKILL.md").read_text()
     assert '"--all"' in nudge
     assert "--account" not in nudge and "--calendars" not in nudge

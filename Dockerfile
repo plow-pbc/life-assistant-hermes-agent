@@ -32,7 +32,6 @@ COPY ld-shared/           /opt/hermes/skills/ld-shared/
 COPY ld-wall-setup/       /opt/hermes/skills/ld-wall-setup/
 COPY ld-sports/           /opt/hermes/skills/ld-sports/
 COPY ld-weather/          /opt/hermes/skills/ld-weather/
-COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 
 # Normalize whatever modes the checkout carried, preserving the executable bit:
 # several SKILL.md files invoke a script by bare path, so a blanket 0644 makes

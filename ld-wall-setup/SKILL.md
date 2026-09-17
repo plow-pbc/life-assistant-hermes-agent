@@ -312,7 +312,6 @@ whole procedure, this phase only orders them:
 | 1 · alert | `ld-morning-triage` | `/var/lib/hermes/skills/ld-morning-triage/SKILL.md` |
 | 2 · affirmation | `ld-morning-updates` | `/var/lib/hermes/skills/ld-morning-updates/SKILL.md` |
 | 3 · weather | `ld-weather` | `/var/lib/hermes/skills/ld-weather/SKILL.md` |
-| 4 · digest | `ld-weekly-digest` | `/var/lib/hermes/skills/ld-weekly-digest/SKILL.md` |
 | 5 · sports | `ld-sports` | `/var/lib/hermes/skills/ld-sports/SKILL.md` |
 
 The hour is not a reason to skip one. A triage run at 3 p.m. reads the same

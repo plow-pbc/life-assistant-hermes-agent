@@ -32,7 +32,7 @@ def spec():
 # documentation edits fail the suite. The prose is for humans; this is the part
 # that decides which tile a producer overwrites, so this is the part pinned.
 #
-# 1=alert, 2=affirmation, 3=weather, 4=digest, 5=sports is the viewer's mapping
+# 1=alert, 2=affirmation, 3=weather, 5=sports is the viewer's mapping
 # (ld-shared/references/kiosk-protocol.md) -- the viewer's wire contract, which
 # this table restates. Nothing guards that restatement, and nothing needs to:
 # both upstreams are being archived, which is the whole reason these files came
@@ -44,7 +44,6 @@ JOB_CONTRACT = {
     "ld-morning-updates": (2, "affirmation", "ld-morning-updates"),
     "ld-morning-triage":  (1, "alert",       "ld-morning-triage"),
     "ld-evening-triage":  (1, "alert",       "ld-morning-triage"),
-    "ld-weekly-digest":   (4, "digest",      "ld-weekly-digest"),
     "ld-calendar-nudge":  (1, "alert",       "ld-calendar-nudge"),
 }
 
@@ -57,7 +56,7 @@ def test_the_job_contract_is_exactly_this():
     overwriting another's tile), a retyped one (the right slot rendering the
     wrong way), and a producer added or dropped -- the things every separate
     check here used to cover between them, without reading a single Markdown
-    file. All seven rows register; the blocked/LIVE partition left with the
+    file. All six rows register; the blocked/LIVE partition left with the
     last blocked row (git history keeps the pattern). The skill is pinned per
     row too: the evening row deliberately attaches the morning sheet, and every
     other row attaches its own — a row attached to a neighbour's sheet would
@@ -189,7 +188,7 @@ def test_a_run_registers_only_the_live_jobs_that_are_missing(monkeypatch, capsys
     mod.main([], runner=fake, jobs_path=path, config_path=_cfg(tmp_path), env={"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"})
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage",
-        "ld-evening-triage", "ld-weekly-digest", "ld-calendar-nudge",
+        "ld-evening-triage", "ld-calendar-nudge",
     ], "the already-registered job must be skipped"
     assert "already present, skipped: ld-weather" in capsys.readouterr().out
 
@@ -214,7 +213,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
     assert "PAUSED" in str(exit_.value) and "ld-weather" in str(exit_.value)
     assert fake.created == [
         "ld-sports", "ld-morning-updates", "ld-morning-triage",
-        "ld-evening-triage", "ld-weekly-digest", "ld-calendar-nudge",
+        "ld-evening-triage", "ld-calendar-nudge",
     ], "a paused job must not be re-registered"
     out = capsys.readouterr().out
     assert "PAUSED" in out and "/opt/hermes/bin/hermes cron resume ld-weather" in out
@@ -222,7 +221,7 @@ def test_a_paused_job_is_warned_about_rather_than_skipped_or_duplicated(
 
 def test_a_fresh_instance_registers_every_job(monkeypatch, tmp_path):
     """No jobs.json at all — the rebuilt-instance case this script exists
-    for — must end with all seven rows scheduled."""
+    for — must end with all six rows scheduled."""
     mod = spec()
     monkeypatch.setattr(mod.shutil, "which", lambda _: mod.HERMES)
     path = tmp_path / "none.json"
@@ -320,15 +319,15 @@ def test_no_row_carries_a_literal_delivery_target():
 def test_only_always_has_content_rows_ride_the_native_deliver_arm():
     """The card IS the delivery for every other live producer, and the shape
     divide is deliberate: --deliver relays EVERY final response, which fits a
-    row whose every run has content -- the weekly digest, and the two triage
-    runs whose final response is the alert or the one-line "No alert today."
-    the owner's previous assistant texted every day -- and would spam from
-    the half-hourly quiet-no-op nudge, whose chat leg is its committed
+    row whose every run has content -- the two triage runs whose final
+    response is the alert or the one-line "No alert today." the owner's
+    previous assistant texted every day -- and would spam from the
+    half-hourly quiet-no-op nudge, whose chat leg is its committed
     post_nudge.py coordinator with deliver None (the row comment records
     this). The pin is on WHICH rows use it."""
     mod = spec()
     assert {j["name"] for j in mod.JOBS if j["deliver"]} == {
-        "ld-weekly-digest", "ld-morning-triage", "ld-evening-triage",
+        "ld-morning-triage", "ld-evening-triage",
     }
 
 
@@ -344,7 +343,7 @@ ENV_OK = {"TZ": "America/Los_Angeles", "PLOW_HOME_CHANNEL": "cht_test"}
 ], ids=["unset", "empty", "blank", "legacy-only", "nothing-published"])
 def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_path, monkeypatch):
     """The silent-drop trap: hermes accepts an empty or half-expanded target,
-    so the digest would post its card and message nobody, every Sunday, in
+    so the triage would post its card and message nobody, every morning, in
     front of nobody. Registration must stop, say which variable to fix, and
     name the source it actually consulted. The legacy-only row is an instance
     still carrying the retired PLOW_CHAT_CHAT_UID and nothing else: that spelling
@@ -353,9 +352,9 @@ def test_an_unexpandable_deliver_target_refuses_by_name(env, named_source, tmp_p
     does not carry it)."""
     mod = spec()
     monkeypatch.delenv("PLOW_HOME_CHANNEL", raising=False)
-    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
+    triage = next(j for j in mod.JOBS if j["name"] == "ld-morning-triage")
     with pytest.raises(SystemExit) as excinfo:
-        mod.create_argv(digest, env)
+        mod.create_argv(triage, env)
     assert "PLOW_HOME_CHANNEL" in str(excinfo.value)
     assert named_source in str(excinfo.value)
 
@@ -378,8 +377,8 @@ def test_the_deliver_target_expands_from_the_container_environment(
     monkeypatch.delenv("PLOW_HOME_CHANNEL", raising=False)
     if process is not None:
         monkeypatch.setenv("PLOW_HOME_CHANNEL", process)
-    digest = next(j for j in mod.JOBS if j["name"] == "ld-weekly-digest")
-    assert mod.create_argv(digest, env)[-2:] == ["--deliver", f"plow_chat:{expected}"]
+    triage = next(j for j in mod.JOBS if j["name"] == "ld-morning-triage")
+    assert mod.create_argv(triage, env)[-2:] == ["--deliver", f"plow_chat:{expected}"]
 
     weather = next(j for j in mod.JOBS if j["name"] == "ld-weather")
     assert "--deliver" not in mod.create_argv(weather, env)

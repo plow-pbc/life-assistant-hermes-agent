@@ -193,7 +193,7 @@ def test_image_ships_the_plugin_and_persona_routes_todos():
     assert "COPY plugins/life_tools/" in dockerfile and "/opt/hermes/plugins/life_tools/" in dockerfile
     persona = (REPO_ROOT / "runtime" / "persona.md").read_text()
     assert "first tool call is `household_todo`" in persona
-    for skill in ("ld-weather", "ld-sports", "ld-morning-triage", "ld-morning-updates", "ld-weekly-digest"):
+    for skill in ("ld-weather", "ld-sports", "ld-morning-triage", "ld-morning-updates"):
         assert "kiosk_post_card" in (REPO_ROOT / skill / "SKILL.md").read_text(), skill
 
 
