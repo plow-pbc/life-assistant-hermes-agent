@@ -37,7 +37,7 @@ FULL = {
     "city": "Chicago", "timezone": TZ,
     "has_mac": True, "mac_username": "rowan",
     "extra_calendar_ids": ["fam@group.calendar.google.com"],
-    "people": ["Mary"], "teams": [{"abbr": "chc", "sport": "baseball", "league": "mlb"}],
+    "teams": [{"abbr": "chc", "sport": "baseball", "league": "mlb"}],
 }
 def fake_geocode(city):
     """Open-Meteo, stubbed. No test in this suite touches the network: a live
@@ -57,8 +57,7 @@ def live_config():
     # Built here rather than through a whole-config mode: that mode was a form,
     # and it is gone. This is the shape --patch expects to find on disk.
     return {
-        "family": {"owner": {"introduced": True},
-                   "people": list(FULL["people"]), "timezone": TZ},
+        "family": {"owner": {"introduced": True}, "timezone": TZ},
         "calendar": {"account": FULL["owner_email"],
                      "sources": [{"calendar_id": FULL["owner_email"], "name": "Personal"},
                                  {"calendar_id": FULL["extra_calendar_ids"][0],
@@ -104,7 +103,7 @@ def test_a_write_that_did_not_geocode_says_nothing_about_it(tmp_path, capsys):
     target.parent.mkdir(parents=True)
     target.write_text(json.dumps(live_config()))
     capsys.readouterr()
-    wc.main(["--patch"], stdin=io.StringIO('{"family": {"people": ["Ro"]}}'),
+    wc.main(["--patch"], stdin=io.StringIO('{"morning_triage": {"ranking_instructions": "Ro first"}}'),
             env=ENV, config_path=str(target))
     assert "geocoded:" not in capsys.readouterr().out
 
@@ -235,7 +234,7 @@ def test_the_installed_command_line_actually_reaches_the_patch_path(tmp_path):
                                      f'CONFIG = {str(target)!r}'))
     proc = subprocess.run(
         [sys.executable, str(script), "--patch"],
-        input=json.dumps({"family": {"people": ["Ro"]}}),
+        input=json.dumps({"morning_triage": {"ranking_instructions": "Ro first"}}),
         capture_output=True, text=True,
         # The copy lives outside the repo, so the shared gate and lock helper
         # it imports by relative path have to be reachable some other way.
@@ -265,7 +264,7 @@ def test_a_write_that_fails_leaves_the_previous_config_intact(tmp_path, monkeypa
     monkeypatch.setattr(wc.os, "replace", boom)
     with pytest.raises(OSError):
         wc.main(["--patch"], env=ENV, config_path=str(target),
-                stdin=io.StringIO(json.dumps({"family": {"people": ["Ro"]}})))
+                stdin=io.StringIO(json.dumps({"morning_triage": {"ranking_instructions": "Ro first"}})))
 
     assert target.read_bytes() == before
     # And nothing half-written left beside it for the next run to trip over.
@@ -318,11 +317,11 @@ def test_two_concurrent_patches_both_survive(tmp_path, monkeypatch, run_concurre
         return lambda: wc.main(["--patch"], stdin=io.StringIO(json.dumps(payload)),
                                env=ENV, config_path=str(target))
 
-    assert not run_concurrently(patch({"family": {"people": ["Ro"]}}),
+    assert not run_concurrently(patch({"morning_triage": {"exclude": {"imessage_handles": ["Ro"]}}}),
                                 patch({"morning_triage": {"ranking_instructions": "bank first"}}))
 
     written = json.loads(target.read_text())
-    assert written["family"]["people"] == ["Ro"], "the household write was lost"
+    assert written["morning_triage"]["exclude"]["imessage_handles"] == ["Ro"], "the exclude write was lost"
     assert written["morning_triage"]["ranking_instructions"] == "bank first", "the triage write was lost"
     # And the rest is intact, so neither writer replaced the file with its own
     # partial view of it.
@@ -344,11 +343,11 @@ def test_two_first_drafts_race_before_the_directory_exists(tmp_path, run_concurr
         return lambda: wc.main(["--draft"], stdin=io.StringIO(json.dumps(payload)),
                                env=ENV, config_path=str(target))
 
-    assert not run_concurrently(draft({"family": {"people": ["Ro"]}}),
+    assert not run_concurrently(draft({"morning_triage": {"ranking_instructions": "Ro first"}}),
                                 draft({"sports": {"followed": []}}))
 
     written = json.loads(target.read_text())
-    assert written["family"]["people"] == ["Ro"], "the household draft was lost"
+    assert written["morning_triage"]["ranking_instructions"] == "Ro first", "the triage draft was lost"
     assert "followed" in written.get("sports", {}), "the teams draft was lost"
     assert oct(target.parent.stat().st_mode)[-3:] == "700", (
         "the directory the lock created holds a person's data")
@@ -365,10 +364,10 @@ def test_a_staged_input_is_removed_after_a_write_and_kept_after_a_refusal(tmp_pa
     target = tmp_path / "ld" / "config.json"
     staged = tmp_path / ".draft-abcd1234.json"
 
-    staged.write_text('{"family": {"people": ["Ro"]}}')
+    staged.write_text('{"morning_triage": {"ranking_instructions": "Ro first"}}')
     wc.main(["--draft", "--input", str(staged)], env=ENV, config_path=str(target))
     assert not staged.exists(), "the staged answers outlived the write"
-    assert json.loads(target.read_text())["family"]["people"] == ["Ro"]
+    assert json.loads(target.read_text())["morning_triage"]["ranking_instructions"] == "Ro first"
 
     staged.write_text('{"wether": {"location": "Denver"}}')
     with pytest.raises(SystemExit):
@@ -402,7 +401,7 @@ def test_a_staged_input_that_cannot_be_removed_is_reported(tmp_path, monkeypatch
     non-zero so a caller cannot read the run as clean."""
     target = tmp_path / "ld" / "config.json"
     staged = tmp_path / ".draft-abcd1234.json"
-    staged.write_text('{"family": {"people": ["Ro"]}}')
+    staged.write_text('{"morning_triage": {"ranking_instructions": "Ro first"}}')
 
     def refuse_remove(path):
         raise OSError(13, "Permission denied")
@@ -414,4 +413,4 @@ def test_a_staged_input_that_cannot_be_removed_is_reported(tmp_path, monkeypatch
     assert "could not remove the staged answers" in message
     assert "wrote" in message, "the caller is not told the write landed"
     # The write really did land -- this is a partial success, reported as one.
-    assert json.loads(target.read_text())["family"]["people"] == ["Ro"]
+    assert json.loads(target.read_text())["morning_triage"]["ranking_instructions"] == "Ro first"
