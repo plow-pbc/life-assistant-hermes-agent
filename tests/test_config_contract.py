@@ -416,6 +416,7 @@ def prose(*parts):
 PERSONA = ("runtime", "persona.md")
 SETUP = ("ld-setup", "SKILL.md")
 WALL = ("ld-wall-setup", "SKILL.md")
+TRIAGE = ("ld-morning-triage", "SKILL.md")
 
 CONTRACTS = [
     # A first message answered "What can I help with?" by an assistant that
@@ -479,6 +480,13 @@ CONTRACTS = [
     # reads as a broken assistant rather than as tact.
     (PERSONA, "In a group, if none of that is true, stay silent"),
     (PERSONA, "The owner's own thread is different"),
+    # The alert is for the household, not the owner alone: a user reported
+    # her agent only ever surfaced her own inbound. The household is `family`
+    # in the shared config; the triage sheet ranks for it and the setup door
+    # is how a partner gets recorded there from chat.
+    (PERSONA, "The household is `family`"),
+    (TRIAGE, "rank for the household"),
+    (SETUP, '{"family": {"partner": {"name": "Jake"'),
 ]
 
 

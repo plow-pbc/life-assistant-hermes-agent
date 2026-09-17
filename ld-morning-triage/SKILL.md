@@ -1,12 +1,12 @@
 ---
 name: ld-morning-triage
-description: Post the life-dashboard kiosk's *alert* — the one most-important unaddressed inbound from the last 36 hours, an iMessage read from the Mac's Messages DB or an email read through plow-gog, both over Plow Latch — and return it as the final response, which the cron texts to the owner. Runs at 07:05 and 18:00. Use when either scheduled triage cron fires, when the user asks to run or test the triage now, or when the user wants to set up the daily priority alert.
+description: Post the life-dashboard kiosk's *alert* — the one most-important unaddressed inbound for the household from the last 36 hours, an iMessage read from the Mac's Messages DB or an email read through plow-gog, both over Plow Latch — and return it as the final response, which the cron texts to the owner. Runs at 07:05 and 18:00. Use when either scheduled triage cron fires, when the user asks to run or test the triage now, or when the user wants to set up the daily priority alert.
 ---
 
 # Life Dashboard — Triage, morning and evening
 
 Surface the *one* unaddressed inbound — an iMessage or an email — from the
-last 36 hours that the user should pay attention to now, post it to the
+last 36 hours that the household should pay attention to now, post it to the
 life-dashboard kiosk as card 1, `type: alert`, and return it as the final
 response, which the cron's `--deliver` arm texts to the owner. Runs at 07:05
 and 18:00 in `family.timezone` as the rows `ld-morning-triage` and
@@ -35,9 +35,11 @@ Read `/var/lib/hermes/ld/config.json` before starting (template:
 uses:
 
 - `family.timezone` — the household's tz; the cron fires in it.
-- `family.owner.imessage` / `family.partner.imessage` — which handle is whose,
-  for the composed alert. The partner's name is `family.partner.name`; the
-  owner's is not in this file at all (see below).
+- `family.partner` and `family.people` — the household this alert serves.
+  `family.partner.name` is the partner; `family.owner.imessage` /
+  `family.partner.imessage` say which handle is whose in the composed alert.
+  The owner's name is not in this file (see below). An absent
+  `family.partner` is a one-person household, not an error.
 - `morning_triage.chat_db_path` — absolute path to the owner's
   `~/Library/Messages/chat.db` on the Mac. If it is missing or still the
   template's `[CHAT_DB_PATH]` placeholder, **stop before calling
@@ -167,6 +169,12 @@ Send the surviving candidates to the LLM with:
 - Each iMessage candidate (`chat_id`, `handle`, `sent_at`, excerpt).
 - Each Gmail item (`account`, `from`, `subject`, `date`).
 - `morning_triage.ranking_instructions`.
+- The household default, which holds unless those instructions say
+  otherwise: rank for the household, not the owner alone. Something that
+  touches the owner and the partner together — a message from the partner,
+  a bill or booking they share, plans, the home, the kids, anyone in
+  `family.people` — outranks a message that concerns only the owner, such
+  as a friend's social ping. Name the partner when they are involved.
 - The default that holds unless those instructions say otherwise: a
   financial alert — a failed, returned or rejected payment, an
   insufficient-funds notice, a declined charge — outranks everything else.
@@ -198,7 +206,7 @@ Ask for JSON output:
     {
       "source": "<imessage or gmail>",
       "who": "<sender display name or handle>",
-      "why_now": "<one sentence explaining contextual urgency>",
+      "why_now": "<one sentence on why this matters to the household now>",
       "alert_text": "<≤115 chars, neutral voice, paraphrased — never quote message bodies verbatim>"
     }
 

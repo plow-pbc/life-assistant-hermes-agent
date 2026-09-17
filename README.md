@@ -440,7 +440,7 @@ image reference; logging out is not a guaranteed fix for every `403`.
   `plow-connectors`, so Slack is unreachable however linked the
   owner's Plow account is. Google Calendar and Gmail are back — through the
   vendored `plow-gog` behind Latch rather than a connector skill; the
-  three calendar producers ride the first and the triage rides the second.
+  two calendar producers ride the first and the triage rides the second.
   See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
 
 ## License

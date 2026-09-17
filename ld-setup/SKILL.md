@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use in the owner's DM whose roster is just the two of you, on their message or on Plow setup's first-boot wakeup, which gets only the opener, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use in the owner's DM whose roster is just the two of you, on their message or on Plow setup's first-boot wakeup, which gets only the opener, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name, a partner), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -1029,6 +1029,12 @@ It merges onto the live file key by key, re-runs the shared gate on the
 configured, so a settings change has no schedule to add, and re-running the
 registration would fail the change on unrelated paused cron state. Paste its
 whole output verbatim anyway. A chat turn does not propagate an exit code.
+
+A partner is a patch too. "My partner is Jake" is
+`{"family": {"partner": {"name": "Jake"}}}`, and their iMessage handle rides
+along as `imessage` when the owner gives it. The triage alert ranks for the
+household this records, so an agent that only ever surfaces the owner's own
+mail is usually one with no partner on file.
 
 Two things it refuses rather than doing quietly, each naming what is wrong:
 a key that is not in `config.example.json` **at any depth**, list entries
