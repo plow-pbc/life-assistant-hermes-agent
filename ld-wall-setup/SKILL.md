@@ -78,7 +78,7 @@ landed is skipped and the run resumes where it stopped.
 |---|---|---|
 | 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/var/lib/hermes/ld/pi.env`, `/var/lib/hermes/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…` |
 | 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/var/lib/hermes/ld/pi-brought-up` exists |
-| 4 · crons + proof | the seven schedules and one real card | `/var/lib/hermes/ld/setup-complete` exists |
+| 4 · crons + proof | the six schedules and one real card | `/var/lib/hermes/ld/setup-complete` exists |
 
 The wall needs a config the shared gate accepts, and onboarding alone cannot
 produce one — `calendar.account`, its sources and
@@ -301,10 +301,10 @@ Phase 3 wrote `pi-brought-up`, so go straight to the marker at the end.
 6 a.m." is a wall the owner reads as broken, and it hides a producer that
 cannot post at all until the next morning. So setup does not wait for a
 schedule: it runs each card producer once, right now, whatever the hour, and
-does not finish until all five cards are on the Pi. The schedules registered
+does not finish until all four cards are on the Pi. The schedules registered
 above are for refreshing them.
 
-Run these five, one at a time, each by its own sheet — that sheet is the
+Run these four, one at a time, each by its own sheet — that sheet is the
 whole procedure, this phase only orders them:
 
 | card | producer | sheet |
@@ -312,30 +312,26 @@ whole procedure, this phase only orders them:
 | 1 · alert | `ld-morning-triage` | `/var/lib/hermes/skills/ld-morning-triage/SKILL.md` |
 | 2 · affirmation | `ld-morning-updates` | `/var/lib/hermes/skills/ld-morning-updates/SKILL.md` |
 | 3 · weather | `ld-weather` | `/var/lib/hermes/skills/ld-weather/SKILL.md` |
-| 4 · digest | `ld-weekly-digest` | `/var/lib/hermes/skills/ld-weekly-digest/SKILL.md` |
 | 5 · sports | `ld-sports` | `/var/lib/hermes/skills/ld-sports/SKILL.md` |
 
 The hour is not a reason to skip one. A triage run at 3 p.m. reads the same
-inbox a 7 a.m. run would; a digest on a Wednesday covers the week from
-today; a sports tile with no game today says so. Two sheets have a branch
-that posts no card, and setup overrides both, because a fresh wall has no
-earlier card to leave up: a quiet triage (both gathers empty) writes exactly
-`No alert today.` to its handoff file and posts it, so card 1 carries the
-quiet-day state; and the digest runs its kiosk step here — its
-"invoked directly in chat, skip the kiosk" rule is for a chat question, and
-this is setup. Each producer's helper ends
+inbox a 7 a.m. run would; a sports tile with no game today says so. One sheet
+has a branch that posts no card, and setup overrides it, because a fresh wall
+has no earlier card to leave up: a quiet triage (both gathers empty) writes
+exactly `No alert today.` to its handoff file and posts it, so card 1 carries
+the quiet-day state. Each producer's helper ends
 with `NOT DELIVERED — ship it through Latch, then paste both outputs:` because
 the dotenv says `DASHBOARD_DELIVERY=latch`; make those two calls, in that
 order — polling `mcp__plow__plow_get_result` if either answers with a pending
 handle — per `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`.
-The triage and digest rows also text the owner (their `--deliver` leg in
+The triage rows also text the owner (their `--deliver` leg in
 `register_crons.py`); that is the chat leg working, not a mistake.
 
 Then read every card back in one call, the same way the producers write them:
 
-    mcp__plow__plow_run_command(argv=["sh","-c","for c in 1 2 3 4 5; do printf 'card %s: ' $c; curl -fsS -H @$HOME/Plow/ld/dashboard.hdr \"http://<pi_address>:5174/api/message?card=$c\" | python3 -c 'import json,sys; d=sys.stdin.read(); m=json.loads(d)[\"message\"] if d else None; print(m[\"type\"] if m else \"EMPTY\")'; done"], network=true)
+    mcp__plow__plow_run_command(argv=["sh","-c","for c in 1 2 3 5; do printf 'card %s: ' $c; curl -fsS -H @$HOME/Plow/ld/dashboard.hdr \"http://<pi_address>:5174/api/message?card=$c\" | python3 -c 'import json,sys; d=sys.stdin.read(); m=json.loads(d)[\"message\"] if d else None; print(m[\"type\"] if m else \"EMPTY\")'; done"], network=true)
 
-Five lines reading `alert`, `affirmation`, `weather`, `digest`, `sports`, in
+Four lines reading `alert`, `affirmation`, `weather`, `sports`, in
 that order, is the gate. A failed fetch prints `EMPTY` too (curl's own error
 line says why). Any `EMPTY` names the producer that did not land:
 read what its run printed, fix it, run that one again, and read back again.
@@ -363,7 +359,7 @@ pass. `calendar feed not configured: …` means an earlier phase did not finish
 — fix that first. The strip on the wall is real events from this household's
 own calendars, so it is also the proof, exactly as the weather card is.
 
-Then tell the owner: "your wall is live — all five cards should be showing;
+Then tell the owner: "your wall is live — all four cards should be showing;
 are they?" — their answer confirms the screen itself, which is the
 one thing the API cannot show you.
 

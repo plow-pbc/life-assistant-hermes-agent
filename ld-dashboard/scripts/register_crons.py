@@ -3,9 +3,9 @@
 
 Why this exists at all. `hermes cron` persists jobs to /var/lib/hermes/cron/jobs.json,
 which no rebuild replays -- so a rebuilt agent comes up with
-a wall screen that never updates and nothing to diff against. Keeping the seven
+a wall screen that never updates and nothing to diff against. Keeping the six
 rows here means "set up the life dashboard crons" replays a reviewed spec
-instead of improvising seven schedules from a sentence.
+instead of improvising six schedules from a sentence.
 
 Schedules and prompts are ported from the retired seed's CRON_JOBS table
 (seed-life-dashboard-hermes-agent@678c7b17, ref/install-skills.sh:366-410), so
@@ -49,7 +49,7 @@ JOBS_FILE = "/var/lib/hermes/cron/jobs.json"
 # bare cron expression, and `hermes cron create` takes no per-job timezone.
 LD_CONFIG = "/var/lib/hermes/ld/config.json"
 
-# The spec. Seven rows for six producers -- the triage runs on two clocks --
+# The spec. Six rows for five producers -- the triage runs on two clocks --
 # and every row is live; the blocked/LIVE partition machinery left with the
 # last blocked row (git history keeps the pattern if a producer ever loses
 # its data source again).
@@ -57,8 +57,8 @@ LD_CONFIG = "/var/lib/hermes/ld/config.json"
 # `deliver` is None for every card-only producer: the card IS the delivery,
 # over the kiosk POST. The rows that also message the owner take two paths,
 # on purpose:
-#   - ld-weekly-digest and the two triage rows ride the cron's native
-#     --deliver arm: every one of their runs has content (a digest; an alert
+#   - the two triage rows ride the cron's native
+#     --deliver arm: every one of their runs has content (an alert
 #     or the one-line "No alert today."), so relaying the final response IS
 #     the chat leg -- the owner's previous assistant texted the triage at
 #     07:07 and 18:02 every day, and this keeps that. create_argv() expands
@@ -145,23 +145,6 @@ JOBS = (
         "deliver": "plow_chat:${PLOW_HOME_CHANNEL}",
     },
     {
-        "name": "ld-weekly-digest",
-        "card": 4,
-        "type": "digest",
-        "schedule": "0 17 * * 0",
-        "prompt": (
-            "Run the ld-weekly-digest producer now: gather the week's calendar "
-            "through Latch plow-gog, compose the week-ahead digest, post it to the "
-            "kiosk as card 4, type digest, and return the digest text as the "
-            "final response."
-        ),
-        "skill": "ld-weekly-digest",
-        # Native --deliver, unlike the nudge: the digest is weekly and
-        # always has content, so relaying every final response fits; the
-        # half-hourly nudge has quiet no-op runs and rides its script leg.
-        "deliver": "plow_chat:${PLOW_HOME_CHANNEL}",
-    },
-    {
         "name": "ld-calendar-nudge",
         "card": 1,
         "type": "alert",
@@ -174,7 +157,7 @@ JOBS = (
             "quiet tick is a no-op on both surfaces."
         ),
         "skill": "ld-calendar-nudge",
-        # deliver stays None ON PURPOSE, unlike the digest: --deliver relays
+        # deliver stays None ON PURPOSE, unlike the triage rows: --deliver relays
         # EVERY final response, and this producer runs half-hourly with quiet
         # no-op ticks -- its chat leg lives in its post_nudge.py coordinator,
         # which keeps quiet runs silent by construction.
@@ -290,8 +273,8 @@ def resolve_deliver(deliver, env=None):
     the chat its own messages are addressed to.
 
     An unset or blank variable REFUSES loudly: hermes would accept the
-    half-expanded or empty target and the digest's chat leg would drop
-    silently, every Sunday, in front of nobody -- the exact trap the old
+    half-expanded or empty target and the triage's chat leg would drop
+    silently, every morning, in front of nobody -- the exact trap the old
     tripwire test existed to catch.
 
     An explicit `env` is the test-injection override, taken alone.
@@ -315,8 +298,8 @@ def resolve_deliver(deliver, env=None):
 
 def create_argv(job, env=None):
     """The --deliver arm serves one live shape: a row whose every run has
-    content, where relaying the final response IS the chat leg -- the weekly
-    digest and the two triage runs. A quiet-run producer must not take it --
+    content, where relaying the final response IS the chat leg -- the two
+    triage runs. A quiet-run producer must not take it --
     --deliver relays every final response, no-ops included -- which is why
     the nudge's deliver is None and its chat leg lives in post_nudge.py."""
     argv = [HERMES, "cron", "create", job["schedule"], job["prompt"], "--name", job["name"]]

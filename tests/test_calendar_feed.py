@@ -267,7 +267,7 @@ def test_the_strip_is_ordered_by_when_things_start(feed):
     # The all-day row sorts by local midnight, ahead of the same day's 9am.
     assert [e["uid"] for e in wire["events"]] == ["allday", "a", "b"]
     assert wire["window_days"] == 7
-    # Byte-identical to ld-weekly-digest's already-approved seven-day argv.
+    # The one fixed seven-day argv the owner approved at bring-up.
     # A fourth shape strands every unattended run on a Latch approval card.
     # The dotenv endpoint went through post_to_kiosk's validator, not around
     # it. Loading it into the process env instead (an EnvironmentFile in the

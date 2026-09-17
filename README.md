@@ -271,10 +271,10 @@ vendored `plow-gog` on the owner's Mac instead.
 That is a deliberate trade. The two producers that need no account —
 `ld-weather` (NWS) and `ld-sports` (ESPN) — work immediately, as does
 the triage — `ld-morning-triage` at 07:05 and `ld-evening-triage` at 18:00,
-iMessage and Gmail read through Latch, texted to the owner — and the three
-calendar producers — `ld-morning-updates`, `ld-weekly-digest`,
-`ld-calendar-nudge` — whose calendar reads go through Latch's vendored `plow-gog`.
-`ld-dashboard` carries all seven schedules.
+iMessage and Gmail read through Latch, texted to the owner — and the two
+calendar producers — `ld-morning-updates`, `ld-calendar-nudge` — whose calendar
+reads go through Latch's vendored `plow-gog`.
+`ld-dashboard` carries all six schedules.
 
 ## Trusted group conversations
 
@@ -319,10 +319,10 @@ the old `family.owner.name`, set `family.owner.introduced` to `true`, then delet
 `family.owner.name` by editing the mode-600 file, since `--patch` merges and
 cannot remove a key.
 
-The digest and morning skills add that account to their exact plow-gog argv
+The morning skill adds that account to its exact plow-gog argv
 (the nudge reads every connected account and carries none); manually run and
 approve each new gather shape — the nudge's 2-day, the morning's 3-day, the
-digest's 7-day — and the triage's exact `plow-gog gmail search` argv from
+strip's 7-day — and the triage's exact `plow-gog gmail search` argv from
 `ld-morning-triage/SKILL.md` — once through Latch before relying on the
 unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
 — for the same reason: it ticks with nobody there to answer an approval card.
@@ -374,7 +374,7 @@ ld-morning-triage/  the triage producer: iMessage + Gmail through Latch, 07:05 a
 ld-morning-updates/ the calendar affirmation producer, plow-gog through Latch
 ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 calendar_feed.py -- the kiosk's calendar strip, no model in it
-ld-dashboard/   the seven cron schedules, all registered
+ld-dashboard/   the six cron schedules, all registered
 ld-setup/       first-run onboarding over chat
 ld-wall-setup/  the wall, if the owner wants one: token -> Pi over Latch -> crons
 tests/          this agent's own contract; the runtime's live in plow-hermes-agent
@@ -439,7 +439,7 @@ image reference; logging out is not a guaranteed fix for every `403`.
   `plow-connectors`, so Slack is unreachable however linked the
   owner's Plow account is. Google Calendar and Gmail are back — through the
   vendored `plow-gog` behind Latch rather than a connector skill; the
-  three calendar producers ride the first and the triage rides the second.
+  two calendar producers ride the first and the triage rides the second.
   See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
 
 ## License

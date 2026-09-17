@@ -119,7 +119,6 @@ CARDS = {
     "alert":       (f"{SKILLS}/ld-morning-triage/scripts/post_alert.py",    "/var/lib/hermes/ld/morning-triage-text"),
     "affirmation": (f"{SKILLS}/ld-morning-updates/scripts/post_message.py", "/var/lib/hermes/ld/morning-updates-text"),
     "weather":     (f"{SKILLS}/ld-weather/scripts/post_weather.py",         "/var/lib/hermes/ld/weather-text"),
-    "digest":      (f"{SKILLS}/ld-weekly-digest/scripts/post_digest.py",    "/var/lib/hermes/ld/weekly-digest-text"),
     "sports":      (f"{SKILLS}/ld-sports/scripts/post_sports.py",           "/var/lib/hermes/ld/sports-text"),
 }
 
@@ -137,7 +136,7 @@ KIOSK_POST_CARD = Tool(
     name="kiosk_post_card",
     description=(
         "Post one card to the household wall. Use for the scheduled weather, sports, "
-        "alert, affirmation and digest cards after composing the text or tile per that "
+        "alert and affirmation cards after composing the text or tile per that "
         "card's skill. One call replaces writing the handoff file and running the poster."
     ),
     parameters={

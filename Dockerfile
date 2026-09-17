@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-799a28bf97abb652da846eae0c574dda30eff66d@sha256:37adf728e2da358d4600ca4689349aa275d41a4e76a5d68d1cc6ea29d53c0b90
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-51f83158a70a383f03a4d03dbd8b6ea102cf0361@sha256:253d7ed3409effa7fa59113d93b4b79bb731d8264cdaf4cd60294924d0110a2e
 
 # Identity: only what is specific to this agent. plow-init writes the home's
 # SOUL.md on every boot as the base persona followed by this file; nothing is
@@ -32,7 +32,6 @@ COPY ld-shared/           /opt/hermes/skills/ld-shared/
 COPY ld-wall-setup/       /opt/hermes/skills/ld-wall-setup/
 COPY ld-sports/           /opt/hermes/skills/ld-sports/
 COPY ld-weather/          /opt/hermes/skills/ld-weather/
-COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 
 # Normalize whatever modes the checkout carried, preserving the executable bit:
 # several SKILL.md files invoke a script by bare path, so a blanket 0644 makes
