@@ -200,9 +200,9 @@ rows the server wrote, the owner's own first, each row shaped
 `{"object": "contact", "provider_key": "<handle>", "display_name": "<name>|null", "relationship": null, "role": "owner"}`.
 For each candidate, the row whose `provider_key` is its handle names the
 sender. Compare canonical forms: `provider_key` is E.164 for a phone and
-lower-case for an email, so strip a phone's punctuation and lower-case an
-address before matching, and take the bare address out of Gmail's `from`
-(`Name <addr>`). A sender is household when that row's `display_name` is
+lower-case for an email, so strip a phone's punctuation (a `chat.db` handle
+already carries its country code) and lower-case an address before
+matching, and take the bare address out of Gmail's `from` (`Name <addr>`). A sender is household when that row's `display_name` is
 `family.partner.name` or an entry of `family.people` — membership is what
 the owner wrote in `family`, nothing else. A row's `relationship` is the
 roster's label, never membership: anyone on an owner-seated turn can say
