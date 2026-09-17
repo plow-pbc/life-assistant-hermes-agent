@@ -198,11 +198,16 @@ chat prompt above this one. Read the book:
 It returns the tool's envelope, `{"success": true, "contacts": [...]}` — the
 rows the server wrote, the owner's own first, each row shaped
 `{"object": "contact", "provider_key": "<handle>", "display_name": "<name>|null", "relationship": null, "role": "owner"}`.
-For each candidate, the row whose `provider_key` is its handle — an iMessage
-handle or an email address — names the sender; that row's `relationship`
-(`wife`, `partner`, `son`), or its `display_name` matching
-`family.partner.name` or an entry of `family.people`, is what makes them
-household for the ranking above. `success: false` is a read that failed, not
+For each candidate, the row whose `provider_key` is its handle names the
+sender. Compare canonical forms: `provider_key` is E.164 for a phone and
+lower-case for an email, so strip a phone's punctuation and lower-case an
+address before matching, and take the bare address out of Gmail's `from`
+(`Name <addr>`). A sender is household when that row's `display_name` is
+`family.partner.name` or an entry of `family.people` — membership is what
+the owner wrote in `family`, nothing else. A row's `relationship` is the
+roster's label, never membership: anyone on an owner-seated turn can say
+who they are, so a self-declared `partner` (or a real `landlord`) does not
+outrank the owner's own alert. `success: false` is a read that failed, not
 an empty book; use the raw handles and carry on. Read the names, use them,
 cache nothing: the book is the one place they live. No row, or a
 `display_name` of `null`, is the book saying there is no name yet, not a
