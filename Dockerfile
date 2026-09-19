@@ -1,4 +1,4 @@
-# The Plow cloud image: this repo's agent, built for an exe.dev VM.
+# The Plow cloud image: this repo's agent, built for Plow to run as a cloud agent.
 #
 # No agent content of its own — the persona and skills copied below are the
 # tracked files this repo owns. Context is the
@@ -32,7 +32,6 @@ COPY ld-shared/           /opt/hermes/skills/ld-shared/
 COPY ld-wall-setup/       /opt/hermes/skills/ld-wall-setup/
 COPY ld-sports/           /opt/hermes/skills/ld-sports/
 COPY ld-weather/          /opt/hermes/skills/ld-weather/
-COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 
 # Normalize whatever modes the checkout carried, preserving the executable bit:
 # several SKILL.md files invoke a script by bare path, so a blanket 0644 makes
@@ -44,6 +43,13 @@ COPY ld-weekly-digest/    /opt/hermes/skills/ld-weekly-digest/
 RUN find /opt/hermes/skills -mindepth 1 -type d -exec chmod 0755 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f ! -perm -u+x -exec chmod 0644 {} + \
  && find /opt/hermes/skills -mindepth 1 -type f -perm -u+x -exec chmod 0755 {} +
+
+# This agent's own tools, beside the base's plow_chat plugin. Modes are
+# normalized here because the skills block above stops at its own root, and a
+# `--chmod` on the COPY would take the directory's traverse bit with it.
+COPY plugins/life_tools/ /opt/hermes/plugins/life_tools/
+RUN find /opt/hermes/plugins/life_tools -type d -exec chmod 0755 {} + \
+ && find /opt/hermes/plugins/life_tools -type f -exec chmod 0644 {} +
 
 # The unattended producer's own copy, outside every home and out of the agent's
 # reach.

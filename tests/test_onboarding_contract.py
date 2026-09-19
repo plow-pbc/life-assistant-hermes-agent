@@ -88,7 +88,7 @@ def test_a_draft_records_an_answer_the_gate_would_refuse(tmp_path):
 
 
 @pytest.mark.parametrize("payload,complaint", [
-    ('{"family": {"partner": {"name": "[PARTNER_NAME]"}}}', "placeholder"),
+    ('{"calendar": {"account": "[OWNER_CALENDAR_EMAIL]"}}', "placeholder"),
     ('{"calendar": {"account": 5}}', "not valid JSON"),
     ('{"calendar": {"account": "a@b.test", "sources": [{"calendar_id": "", "name": "A"}]}}',
      "calendar.sources[].calendar_id is blank"),
@@ -783,6 +783,18 @@ def test_the_owners_name_is_stated_on_owner_turns_and_read_from_the_book_on_cron
     for sheet in sorted(ROOT.glob("*/SKILL.md")) + [ROOT / "README.md"]:
         assert "owner_profile" not in sheet.read_text(), (
             f"{sheet.relative_to(ROOT)} still names the deleted profile client")
+
+
+def test_persona_looks_a_bare_handle_up_before_asking() -> None:
+    """A bare handle in a roster is resolved from the owner's own Contacts on
+    the Mac and recorded, and a second handle a person gives gets the same
+    name; the owner is never asked to confirm who someone is."""
+    assert "plow_send_message" in PERSONA
+    assert 'plow_read_skill(name="contacts")' in PERSONA
+    assert "plow contacts search" in PERSONA
+    assert "plow_name_contact" in PERSONA
+    assert "same name" in PERSONA
+    assert "never ask your owner to confirm" in PERSONA
 
 
 def test_the_framework_name_is_not_the_agents_name():

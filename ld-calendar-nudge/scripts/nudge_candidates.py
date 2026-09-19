@@ -236,7 +236,7 @@ def main(argv=None, now=None) -> int:
                 continue
             # All-day events have start.date only; a date parsed as midnight
             # would fire a misleading late-night reminder. They belong to the
-            # morning-updates/weekly-digest surfaces.
+            # morning-updates surface.
             start_iso = ev["start"].get("dateTime")
             if not start_iso:
                 continue

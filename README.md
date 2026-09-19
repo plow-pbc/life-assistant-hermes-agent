@@ -74,7 +74,9 @@ published is built without this service. A flag would only re-ask a question the
 Dockerfile has already answered, somewhere that can disagree with it.
 
 The pinned client uses `PLOW_AGENT_TOKEN` once to exchange for a report-only
-`aik_` key; every report authenticates with that stored key. It needs
+`aik_` key — the service sends that exchange to `PLOW_API_BASE`, so on a hosted
+VM the proxy there supplies the real bearer — and every report afterwards
+authenticates with the stored key. It needs
 `AGENT_ID` — which agent this is —
 in the container's environment; without it the service says so and stands down,
 because guessing a name files this container's usage under somebody else's
@@ -99,8 +101,7 @@ plow-agents mint ln_xxx       # choose a free line from `lines`, before the firs
 docker compose up --build -d
 ```
 
-If the account has no assistant line, run `plow-agents login --new-line`, then
-`plow-agents lines` again before minting. For base-image pull failures, see
+For base-image pull failures, see
 [Building the image](#building-the-image).
 
 | To | Run |
@@ -135,7 +136,9 @@ running container disagree.
 entirely by *which phone texts the code back*. That single fact is what lets the
 tracked tree stay identical for everyone:
 
-- The `PLOW_AGENT_TOKEN` the host drops in belongs to whoever texted.
+- What the host hands the container — a `PLOW_AGENT_TOKEN` locally and on a
+  pre-handoff VM, a proxy-backed `PLOW_API_BASE` on a hosted one — reaches
+  whoever texted's line and nobody else's.
 - The Plow Chat credential and private conversation belong to that owner. Other
   people participate through group conversations; explicit owner trust controls
   whether a group can use normal tools and owner material.
@@ -146,9 +149,9 @@ tracked tree stay identical for everyone:
 Nothing is pre-staged for anyone. There is no credential to hand over before
 bring-up; the activation exchange mints it.
 
-Latch is bound the same way: the relay is the agent's own, `PLOW_MCP_URL` and
-`PLOW_AGENT_TOKEN`, resolved by first boot from the credential the host dropped
-in and published where nothing the agent runs can write. The image is shared;
+Latch is bound the same way: the relay is the agent's own `PLOW_MCP_URL`,
+resolved by first boot from what the host handed it and published where nothing
+the agent runs can write. The image is shared;
 the Mac that relay resolves to is not.
 
 ## What an agent cannot reach
@@ -235,13 +238,22 @@ The mechanics — running activation, what to do when a code expires — are in
 
 ## What the operator can see
 
-The agent's Plow token is the two-line file the host drops at
-`/var/lib/plow/credentials`, root-owned and unreadable to the agent, and first
-boot publishes it into the container environment rather than into any file the
-agent can read. Through it, that person's mailbox is reachable from that host.
-Whoever can read that file, or exec into the container as root, holds it. This
-is stated rather than left implied — it is a fact an owner should know before
-they text the activation code, not one to discover afterwards.
+Where the agent's Plow token lives depends on where it runs, and when Plow runs
+this image as a cloud agent it does not live on that machine at all. It is
+given only `PLOW_API_BASE`, an
+endpoint whose proxy holds the real bearer and adds it to each request on the
+way out; the container carries a placeholder. Root on that VM can spend the
+token — every request it makes is authenticated — but cannot read it out or
+take it anywhere else — on a VM provisioned since Plow began handing the
+environment over. One provisioned before that still gets the old credential
+file and holds a real bearer, readable by root, until it is re-provisioned. On
+a local `docker compose`, there is no proxy, so the
+real token is in the file `env_file` loads — `$PLOW_CREDENTIALS` if set,
+otherwise `./plow-credentials`: whoever can read that file, or exec in as
+root, holds it. Either
+way, that person's mailbox is reachable from that host, which is a fact an
+owner should know before they text the activation code rather than discover
+afterwards.
 
 The agent's own dotenv is a different file and a smaller one: `ld/.env` holds
 what the agent records during setup — the wall's endpoint and token, the Pi's
@@ -259,10 +271,10 @@ vendored `plow-gog` on the owner's Mac instead.
 That is a deliberate trade. The two producers that need no account —
 `ld-weather` (NWS) and `ld-sports` (ESPN) — work immediately, as does
 the triage — `ld-morning-triage` at 07:05 and `ld-evening-triage` at 18:00,
-iMessage and Gmail read through Latch, texted to the owner — and the three
-calendar producers — `ld-morning-updates`, `ld-weekly-digest`,
-`ld-calendar-nudge` — whose calendar reads go through Latch's vendored `plow-gog`.
-`ld-dashboard` carries all seven schedules.
+iMessage and Gmail read through Latch, texted to the owner — and the two
+calendar producers — `ld-morning-updates`, `ld-calendar-nudge` — whose calendar
+reads go through Latch's vendored `plow-gog`.
+`ld-dashboard` carries all six schedules.
 
 ## Trusted group conversations
 
@@ -307,10 +319,10 @@ the old `family.owner.name`, set `family.owner.introduced` to `true`, then delet
 `family.owner.name` by editing the mode-600 file, since `--patch` merges and
 cannot remove a key.
 
-The digest and morning skills add that account to their exact plow-gog argv
+The morning skill adds that account to its exact plow-gog argv
 (the nudge reads every connected account and carries none); manually run and
 approve each new gather shape — the nudge's 2-day, the morning's 3-day, the
-digest's 7-day — and the triage's exact `plow-gog gmail search` argv from
+strip's 7-day — and the triage's exact `plow-gog gmail search` argv from
 `ld-morning-triage/SKILL.md` — once through Latch before relying on the
 unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
 — for the same reason: it ticks with nobody there to answer an approval card.
@@ -362,7 +374,7 @@ ld-morning-triage/  the triage producer: iMessage + Gmail through Latch, 07:05 a
 ld-morning-updates/ the calendar affirmation producer, plow-gog through Latch
 ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 calendar_feed.py -- the kiosk's calendar strip, no model in it
-ld-dashboard/   the seven cron schedules, all registered
+ld-dashboard/   the six cron schedules, all registered
 ld-setup/       first-run onboarding over chat
 ld-wall-setup/  the wall, if the owner wants one: token -> Pi over Latch -> crons
 tests/          this agent's own contract; the runtime's live in plow-hermes-agent
@@ -379,8 +391,10 @@ and tells the Mac who is asking; the Mac authorises each action, so the approval
 surface stays on that machine rather than here.
 
 The credential is the agent's own: first boot asks Plow who this agent is and
-publishes the relay it is told about as `PLOW_MCP_URL`, reached with
-`PLOW_AGENT_TOKEN` — the same relay the gateway itself uses. Nothing here mints
+publishes the relay it is told about as `PLOW_MCP_URL`, reached with whichever
+bearer this container has — the real `PLOW_AGENT_TOKEN` locally or on a
+pre-handoff VM, the placeholder the proxy replaces on a hosted one — and it is
+the same relay the gateway itself uses. Nothing here mints
 or holds a per-device pair, and an agent whose owner has no relay switched on
 simply has no `PLOW_MCP_URL` and stands down. The token travels in a header,
 never in the URL.
@@ -425,7 +439,7 @@ image reference; logging out is not a guaranteed fix for every `403`.
   `plow-connectors`, so Slack is unreachable however linked the
   owner's Plow account is. Google Calendar and Gmail are back — through the
   vendored `plow-gog` behind Latch rather than a connector skill; the
-  three calendar producers ride the first and the triage rides the second.
+  two calendar producers ride the first and the triage rides the second.
   See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
 
 ## License

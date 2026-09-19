@@ -5,7 +5,7 @@ This repo owns `ld-shared` outright — nothing syncs it in or out any more — 
 this file is edited here and nowhere else.
 
 Each producer ships a tiny wrapper (`post_message.py`, `post_alert.py`,
-`post_digest.py`, `post_nudge.py`, `post_weather.py`, `post_sports.py`) that
+`post_nudge.py`, `post_weather.py`, `post_sports.py`) that
 sets a couple of module-level constants and calls `main()`. The wrapper is the
 only file the cron/agent invokes; this module is never on the agent's
 invocation path directly. That keeps the no-CLI-content security model intact:

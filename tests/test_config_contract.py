@@ -202,7 +202,6 @@ WRITE_SAFE_ROOT = "/var/lib/hermes"
 PRODUCERS = [
     ("ld-morning-triage", "post_alert.py"),
     ("ld-morning-updates", "post_message.py"),
-    ("ld-weekly-digest", "post_digest.py"),
     ("ld-calendar-nudge", "post_nudge.py"),
     ("ld-weather", "post_weather.py"),
     ("ld-sports", "post_sports.py"),
@@ -325,9 +324,8 @@ def test_every_calendar_gather_names_the_configured_gog_account():
     """plow-gog refuses --calendars without the account that owns those ids,
     and the nudge's all-account read must name neither: either one would
     narrow it back to a single account's chosen calendars."""
-    for skill in ("ld-morning-updates", "ld-weekly-digest"):
-        sheet = (ROOT / skill / "SKILL.md").read_text()
-        assert "--account=<calendar.account>" in sheet, skill
+    sheet = (ROOT / "ld-morning-updates" / "SKILL.md").read_text()
+    assert "--account=<calendar.account>" in sheet
     nudge = (ROOT / "ld-calendar-nudge" / "SKILL.md").read_text()
     assert '"--all"' in nudge
     assert "--account" not in nudge and "--calendars" not in nudge
@@ -418,26 +416,26 @@ def prose(*parts):
 PERSONA = ("runtime", "persona.md")
 SETUP = ("ld-setup", "SKILL.md")
 WALL = ("ld-wall-setup", "SKILL.md")
+TRIAGE = ("ld-morning-triage", "SKILL.md")
 
 CONTRACTS = [
     # A first message answered "What can I help with?" by an assistant that
-    # runs seven scheduled things for the household.
-    (PERSONA, "Seven scheduled runs"),
+    # runs six scheduled things for the household.
+    (PERSONA, "Six scheduled runs"),
     (PERSONA, "**Morning updates**"),
     (PERSONA, "**Morning triage**"),
     (PERSONA, "**Evening triage**"),
-    (PERSONA, "**Weekly digest**"),
     (PERSONA, "**Calendar nudge**"),
     (PERSONA, "**Weather**"),
     (PERSONA, "**Sports**"),
     (PERSONA, 'Never answer only "What can I help with?"'),
-    # Only ld-morning-updates and ld-weekly-digest carry the shared-screen rule
+    # Only ld-morning-updates carries the shared-screen rule
     # ("skip medical, private, or sensitive titles"). The two triage runs have no
     # such filter -- they paraphrase a real inbound message — an iMessage or an
     # email — onto the same wall — so a blanket kid-safe promise covers the two
     # runs that cannot keep it.
     (PERSONA, "do not extend that promise to the morning alert"),
-    # The strip is a seventh producer with no model in it, published by a
+    # The strip is a sixth producer with no model in it, published by a
     # supervised service on its own five-minute tick -- so a turn may not
     # claim it as work it did.
     (PERSONA, "It refreshes whether or not you"),
@@ -482,6 +480,18 @@ CONTRACTS = [
     # reads as a broken assistant rather than as tact.
     (PERSONA, "In a group, if none of that is true, stay silent"),
     (PERSONA, "The owner's own thread is different"),
+    # The alert is for the household, not the owner alone: a user reported
+    # her agent only ever surfaced her own inbound. The household is the
+    # contact book's household relationships, not the shared config —
+    # `family` no longer names people. The triage sheet ranks for it and the
+    # setup door is how a partner gets recorded there from chat.
+    (PERSONA, "The household is the owner plus whoever their Plow contact book"),
+    (TRIAGE, "rank for the household"),
+    (TRIAGE, "kin or partner label"),
+    (SETUP, "A partner is not config"),
+    # And the self-labelling path is closed in the persona too: a relationship
+    # never comes from the person it describes.
+    (PERSONA, "never from the person's own word"),
 ]
 
 
