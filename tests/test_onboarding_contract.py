@@ -270,16 +270,18 @@ def test_the_intro_sequence_has_no_active_previews():
     before the catch."""
     items = intro_items()
     assert [item["type"] for item in items] == [
-        "text", "text", "text", "text", "text", "text", "pause", "text"]
+        "text", "text", "text", "text", "pause", "text"]
     assert not any(item["type"] == "photos" for item in items), (
         "previews are disabled; the active sequence must carry no photos item")
     # The intro eases in with a soft check-in and the first question together in
     # ONE item, never a cold jump into the question.
     assert "knock out" in items[-1]["body"]
     assert "First up, what city are you in?" in items[-1]["body"]
-    # One reading pause remains, after the Latch link.
-    assert items[6] == {"type": "pause", "seconds": 4}
-    assert items[5]["body"] == "https://plow.co/latch"
+    # One reading pause remains, after the combined download bubble.
+    assert items[4] == {"type": "pause", "seconds": 4}
+    # app+privacy is one bubble; the download bubble carries the link at its end.
+    assert "Grab it here" in items[3]["body"]
+    assert items[3]["body"].endswith("https://plow.co/latch")
     for item in items:
         if item["type"] == "text":
             assert set(item) == {"type", "body"}
@@ -811,7 +813,8 @@ def test_the_privacy_line_does_not_claim_local_execution():
     else's server" -- a false claim about where someone's credentials live,
     made at the moment they are deciding whether to trust it."""
     intro = ONBOARDING[ONBOARDING.index("### 2 ·"):ONBOARDING.index("### 3 ·")]
-    assert "The app on your Mac is where your accounts live" in " ".join(intro.split())
+    assert ("your logins stay in a vault there that I can use but never see, "
+            "and you set the boundaries I work inside") in " ".join(intro.split())
     assert "not** in your own words" in intro
     # The counter-example is quoted on purpose, behind a NOT: marker.
     said = "\n".join(l for l in intro.splitlines() if "NOT:" not in l)
