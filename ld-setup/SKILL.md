@@ -447,10 +447,9 @@ item: “Want to knock out a few quick things so I can tailor this to you? First
 up, what city are you in?” It is one item in the sequence call.
 
 **If `calendar.sources` is a non-empty list, or the snapshot is fresh and ready, or the owner already said
-Latch is connected, omit the catch, link and its pause.** `calendar.sources` is
+Latch is connected, omit the download bubble and its pause.** `calendar.sources` is
 only answered by picks from a real calendar snapshot, so a non-empty list is standing
-proof Latch is connected. Otherwise phrase the catch conditionally: “If you have
-not connected Latch yet, grab it below and connect your calendar.” Do not claim
+proof Latch is connected. Otherwise send the download bubble: “Grab it here. It's a quick setup, and I'll walk you through what you need: https://plow.co/latch”. Do not claim
 to have checked. Keep the rest of the intro. Never delay the
 intro to decide which copy to send.
 
