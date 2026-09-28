@@ -31,10 +31,16 @@ We studied `github.com/EnzoTironi/Plow` ("Zoen") as a **reference for technique 
 
 ## Non-goals
 
-- No changes to onboarding *mechanics* (`plow_send_sequence`, receipts, config gating, batched model-call tables).
+- No changes to the onboarding *delivery machinery* (`plow_send_sequence`, receipts, batched model-call tables). We keep all of that. **We do restructure the completion gate and move the sports question — see D6.**
 - No changes to guardrails or producer behavior.
 - **Per-owner learned voice (a `VOICE.md`-style file): deferred** to a later pass.
-- No new skills, no dashboard changes (later sub-projects).
+- No dashboard/viewer changes (later sub-project). `ld-wall-setup` gains the sports question (D6) but the wall's setup mechanics are otherwise untouched.
+
+## Scope update (2026-09-28)
+
+Mid-design, two things settled that grew the scope beyond copy:
+- **File architecture (D1) resolved: keep a single `runtime/persona.md`.** (Mary.) The character + Voice edits are already applied there.
+- **Onboarding restructured (D6):** sports leaves general onboarding for wall setup; the completion gate drops from four keys to three. This changes what "onboarding complete" means for *everyone*, so it must be proven on the second test agent before merge.
 
 ---
 
@@ -60,25 +66,31 @@ A new **"Voice"** section with **reference exchanges** (authored fresh) that *sh
 
 ```
 them: morning
-you: morning! sleep ok?
-you: today's easy, just the dentist at 3:40
+you: Morning! Today's an easy one, just the dentist at 3:40.
 
 them: ugh forgot, thanks
-you: i've got you, i'll poke you before 3
+you: Got you, I'll nudge you before 3.
 
 (calendar unreachable)
-you: calendar's just out of reach, looks like the mac's napping
-you: wake it up and i'll grab your day
+you: Can't see the calendar right now. Looks like the Mac's asleep.
+you: Wake it up and I'll pull your whole day together.
 ```
+
+**Target voice: "a friend catching up over brunch."** Sentence case. Mostly complete
+sentences with contractions, the occasional fragment as a natural beat. Not
+all-lowercase/all-fragments (Zoen), not stiff/work-formal. The relaxed middle.
+(Mary, 2026-09-28.)
 
 ### D3. Voice & delivery rules (enforceable half)
 
 Written into persona.md, adapted to the **current** delivery machinery (`plow_send_sequence` — *not* the stranded `[[BUBBLE]]` prototype):
 
-- **Bubble discipline** — at most two lines per bubble, one thought per line; a third line is a new bubble; no lists or walls in chat.
-- **Punctuation for a human feel** — no em/en dashes; no trailing period at the end of a bubble; one `?` only when actually asking; no `!!!`/`???`.
-- **Banned AI-slop phrases** — our own list: e.g. "great question," "happy to help," "absolutely," "as an AI," "let me…", "I'd be happy to."
-- **Language + style mirroring** — match the owner's language and casing.
+- **"Friend over brunch" register — sentence case.** Relaxed and conversational, properly capitalized. Mostly complete sentences with contractions, and the occasional fragment as a natural beat. *Not* all-lowercase/all-fragments (the Zoen device we studied), *not* stiff or work-formal where every sentence is complete. The middle. Firm owner preference (Mary, 2026-09-28).
+- **Warm, not terse; easy, not stiff.** Short is good; clipped is not. A whole thought, never a telegram — and never a memo.
+- **Bubble discipline** — one or two sentences per bubble; a genuinely separate thought gets its own bubble; no lists or walls in chat.
+- **No dashes.** No em dashes or en dashes in messages. Use a comma, a colon, a period, or a new bubble instead. (Firm owner preference, Mary 2026-09-28.) Trailing periods are fine; we do not adopt Zoen's no-trailing-period rule.
+- **Banned AI-slop phrases** — our own list: e.g. "great question," "happy to help," "absolutely," "as an AI," "I'd be happy to."
+- **Language mirroring** — match the owner's language; keep our own relaxed sentence-cased style regardless of how tersely they type.
 - **Pacing guidance** for multi-bubble sends via the sequence tool's pause support (keep beats human-sized; don't dump all at once).
 
 ### D4. Onboarding copy refinement (`ld-setup`)
@@ -97,6 +109,28 @@ A file the agent writes during onboarding capturing how *this* household texts (
 
 ---
 
+### D6. Onboarding restructure — separate the general assistant from the wall
+
+**Principle:** general onboarding sets up the *assistant*; sports and anything wall-specific belong to *wall setup*. Verified against the code: `calendar.sources` is already multi-calendar (one authenticated account, many calendar ids) and the wall's calendar strip (`calendar_feed.py`) reads *all* of them, so calendars serve both the triage skills and the wall — they stay in general onboarding. `sports.followed` is read only by `ld-sports` (the kiosk sports card) and is **not** in `ld_config_gate.py`; it is only wedged into onboarding as a completion key.
+
+**New general-onboarding shape:**
+1. Time zone (the city question — sets `weather.location` + `family.timezone`).
+2. Calendars — reworded to invite picking **several** calendars "to keep an eye on" (for the daily/weekly triage), not one. Mechanics of §5 unchanged.
+3. Close by **offering the Pi wall** (still `ld-wall-setup`'s job; onboarding just tees it up).
+
+**Completion gate: four keys → three.** New set: `family.owner.introduced`, `weather.location`, `calendar.sources`. Drop `sports.followed`.
+
+**Sports moves into `ld-wall-setup`:** the followed-teams question is asked while standing up the wall (the sports card lives there). `ld-sports` still reads `sports.followed`; with no wall/teams set it simply produces nothing.
+
+**Files touched by D6:**
+- `ld-setup/SKILL.md` — reword calendar step (several calendars); remove the teams step (§ teams); drop `sports.followed` from the completion-key logic and the front-matter description; make the close offer the Pi.
+- `runtime/persona.md` — update the onboarding-gate key list (drop `sports.followed`).
+- `ld-wall-setup/SKILL.md` — add the followed-teams question + write `sports.followed`.
+- `tests/test_onboarding_contract.py` (and any config-contract test) — update the expected key set from four to three.
+- `ld-shared/references/config.example.json` — no schema change needed (sports stays valid); confirm comments still accurate.
+
+**Risk:** this changes what "onboarding complete" means for every deployed agent. Existing installs already have all keys, so they read as complete regardless; new installs finish one question sooner. Must be proven on the test agent (see Testing).
+
 ## Open items to resolve during implementation
 
 1. **Tree-name read path.** Confirm exactly how "the platform's own line at the top of every prompt" delivers the tree/line name, so the identity rule references it correctly (and degrades to nameless when absent). *Verify before finalizing D2.*
@@ -105,16 +139,37 @@ A file the agent writes during onboarding capturing how *this* household texts (
 
 ## Testing & rollout
 
-1. Make edits on `feat/persona-and-voice`.
-2. **Dogfood on a second test agent** built from this branch (`PLOW_AGENT_REPO=…/life-assistant-hermes-agent.git#feat/persona-and-voice`), on a spare line/number. Live-text it: first contact, a morning-style exchange, a graceful failure, a group (should stay silent), a "what can you do."
-3. Watch for regressions in the guardrails (silence token, no verbatim quotes, onboarding gating).
-4. Only after it reads right on the test agent: merge to `main`. Every new agent's Deploy builds `main`; **re-deploy your own instance from `main`** to pick it up. Note crons re-register after a home rebuild.
+Two layers, and we do **both** before merge (Mary wants this proven thoroughly).
+
+**Layer 1 — automated contract tests (local, fast, run first):**
+- Update and run `tests/test_onboarding_contract.py` for the three-key gate; it must pass.
+- Run the full suite (`ld_config_gate`, config-contract, cron-spec, etc.) to confirm nothing else assumed the four-key set.
+- Green here is the gate for building the test agent.
+
+**Layer 2 — live dogfood on a second test agent** built from this branch (`PLOW_AGENT_REPO=…/life-assistant-hermes-agent.git#feat/persona-and-voice`), on a spare line/number. Text-test, from a *fresh* config so real first-run onboarding fires:
+- **Voice:** first contact, a morning-style exchange, a graceful failure (calendar unreachable), casual "thanks," a "what can you do." Reads as the brunch-friend voice; sentence case; no dashes; no banned filler.
+- **Onboarding restructure (the risky part):**
+  - Not-connected path: intro shows the combined app bubble + the single download CTA, then the city question.
+  - Connected path: no app talk at all, straight to the city question.
+  - No sports question anywhere in general onboarding.
+  - Calendar step invites picking **several** calendars, and multiple picks are recorded.
+  - Onboarding reports **complete** with just `introduced` + `weather.location` + `calendar.sources` (no sports).
+  - The close **offers the Pi**.
+  - Wall setup (`ld-wall-setup`) is where the **followed-teams** question now appears, and it writes `sports.followed`.
+- **Guardrail regressions:** silence token in a group, no verbatim private quotes, onboarding still owner-only/DM-only, resume mid-onboarding doesn't re-ask stored answers.
+
+**Merge & propagate — only after both layers pass:**
+- Merge `feat/persona-and-voice` to `main`. Every new agent's Deploy builds `main`.
+- **Re-deploy your own instance from `main`** to pick it up. Crons re-register after a home rebuild.
 
 ## Success criteria
 
 - persona.md opens with a character and a Voice section a stranger could read and recognize the agent's personality — not one word.
-- The banned-phrase list and punctuation rules are present and specific.
-- Onboarding's first bubble is unmistakably in-voice; mechanics unchanged; `ld-setup` tests still pass.
+- The banned-phrase list and punctuation rules (incl. no dashes) are present and specific.
+- Onboarding's first bubble is unmistakably in-voice; the send-sequence machinery is unchanged.
+- General onboarding no longer asks about sports; the completion gate is the three keys (`introduced`, `weather.location`, `calendar.sources`); the calendar step invites several picks; the close offers the Pi.
+- `ld-wall-setup` asks the followed-teams question and writes `sports.followed`.
+- `tests/test_onboarding_contract.py` (three-key) and the full suite pass.
 - Nothing references the weekly digest or the `[[BUBBLE]]` prototype.
 - No Zoen strings anywhere.
-- Verified live on the test agent before merge.
+- Verified live on the second test agent (both paths) before merge.
