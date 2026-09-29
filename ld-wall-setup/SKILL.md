@@ -103,6 +103,32 @@ cannot, and that refusal, not this note, is what decides when the owner gets
 asked.
 
 
+**Followed teams, for the sports card.** The wall has a sports card, so this is
+where the followed teams are asked — general onboarding never does. You keep
+their scores and game times ready for game day. Ask it warmly and leave the
+door open for "none" with no hint of a put-down: "The wall's got a sports card
+too. Which teams should I follow? I'll keep their scores and game times up
+there. Or just say none and I'll skip it."
+
+Interpret what they say with everything you know — "Kings" from someone in
+Mountain View is the Sacramento Kings — and turn it into ESPN's own terms.
+Stage the answer with your file tool at
+`/var/lib/hermes/ld/.wall-teams-<turn>.json` (a fresh `<turn>` from
+`openssl rand -hex 4`, per Phase 2's note), then patch it in:
+
+    python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --patch --input /var/lib/hermes/ld/.wall-teams-<turn>.json
+
+with a body shaped like:
+
+    {"sports": {"followed": [{"abbr": "sac", "sport": "basketball", "league": "nba"},
+                             {"abbr": "sf", "sport": "football", "league": "nfl"}]}}
+
+"None" is a real answer and writes `{"sports": {"followed": []}}`. Read the list
+back in their words, not the JSON. Lists replace, so send the whole set the
+owner wants each time, including any teams that are staying. This is not a
+gate key: the wall stands up whether or not any team is followed, and a sports
+tile with no game today just says so.
+
 ## Phase 2 — The wall's token
 
 Idempotent, so there is no dotenv to inspect by hand — always run it. Its
