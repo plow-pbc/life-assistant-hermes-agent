@@ -173,11 +173,12 @@ Here a copy-paste can cross an **account** boundary, not just an agent one.
 
 The agent writes its own `ld/config.json` from the owner's first DM:
 `runtime/persona.md` tells it that a config missing any of
-`family.owner.introduced`, `weather.location`, `sports.followed` or
-`calendar.sources` means onboarding is unfinished, and `ld-setup/SKILL.md` is
+`family.owner.introduced`, `weather.location` or `calendar.sources` means
+onboarding is unfinished, and `ld-setup/SKILL.md` is
 what it runs then — a conversation, not a form, drafting each answer through
 `write_config.py` as it lands and discovering the calendars from the Mac through
-Latch once it is connected. What to call the owner is not in that file: it lives
+Latch once it is connected. Sports teams are not part of onboarding; the
+followed-teams question lives in `ld-wall-setup`, where the sports card does. What to call the owner is not in that file: it lives
 on their Plow account. The chat plugin states their name and handle on every
 owner turn — solo DM, group and scheduled goal wake alike — and that plugin's
 `plow_name_contact` tool is what writes it back. A Hermes-cron turn gets no such
