@@ -217,7 +217,9 @@ def test_the_lookahead_defaults_match_the_template_they_come_from():
     """Two literals in prose that must equal the schema's own, or the wall
     starts with a nudge window nobody chose."""
     example = json.loads((ROOT / "ld-shared/references/config.example.json").read_text())
-    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    # The account, its identities and the nudge windows are the wall's now, not
+    # onboarding's -- onboarding records only the calendars.
+    section = WALL
     assert f'"lookahead_virtual_minutes": {example["calendar_nudge"]["lookahead_virtual_minutes"]}' in section
     assert f'"lookahead_in_person_minutes": {example["calendar_nudge"]["lookahead_in_person_minutes"]}' in section
 
@@ -553,8 +555,9 @@ def test_the_identities_are_the_union_not_the_account_alone():
     their addresses is absent from every event read through the other one --
     a nudge that works and never fires."""
     # Structural: every identities template carries more than the account, so
-    # the union cannot silently collapse back to one address.
-    section = ONBOARDING[ONBOARDING.index("### 5 ·"):]
+    # the union cannot silently collapse back to one address. The account and
+    # its identities are written in wall setup now, not onboarding.
+    section = WALL
     templates = re.findall(r'"owner_identities": \[(.*?)\]', section)
     assert templates, "no owner_identities template in the sheet"
     for template in templates:

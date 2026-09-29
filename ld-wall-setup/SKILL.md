@@ -80,22 +80,55 @@ landed is skipped and the run resumes where it stopped.
 | 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/var/lib/hermes/ld/pi-brought-up` exists |
 | 4 · crons + proof | the six schedules and one real card | `/var/lib/hermes/ld/setup-complete` exists |
 
-The wall needs a config the shared gate accepts, and onboarding alone cannot
-produce one — `calendar.account`, its sources and
-`calendar_nudge.owner_identities` come from the owner's calendar, which arrives
-through Latch. Check before starting:
+The wall needs a config the shared gate accepts. Onboarding records the
+calendars the owner wants tracked (`calendar.sources`), but the reader account,
+its owner-identities and the nudge windows are the wall's, because the screen
+and its morning update read one account. Check before starting:
 
     python3 /var/lib/hermes/skills/ld-shared/scripts/ld_config_gate.py /var/lib/hermes/ld/config.json
 
 No output is a pass; any text is the list of what is still missing (its exit
-code is always 0 and means nothing — read the output). If it names calendar
-keys, run `ld-setup` §5 — the calendars are discovered from the Mac, not
-typed. §5 reads a local snapshot a background service refreshes; it does not
-call Latch. If that snapshot has no usable choices yet, say the calendars are
-not ready and come back after the next background tick — do not report the Mac
-as unreachable, which is a different fault and not one this read can observe.
-Either way, never ask the owner for an address; the wall needs the Mac anyway,
-so there is nothing to gain by guessing one.
+code is always 0 and means nothing -- read the output).
+
+- **If it names `calendar.sources`** (absent or empty), the owner has not picked
+  calendars yet: run `ld-setup` §5, which shows the calendars from the
+  background snapshot and records their picks. §5 reads a local snapshot a
+  service refreshes; it does not call Latch. If that snapshot has no usable
+  choices yet, say the calendars are not ready and to come back after the next
+  background tick, not that the Mac is unreachable (this read cannot observe
+  that). Never ask the owner for a calendar address.
+
+- **If `calendar.sources` is set but the gate names `calendar.account`,
+  `calendar_nudge.owner_identities` or the `lookahead_` windows**, this is the
+  wall's to fill, and the one place the owner picks an account. The screen reads
+  one account, so this is where "one account" is chosen. Read the snapshot with
+  `read_file(path="/var/lib/hermes/ld/calendar-discovery.json")` and map each
+  `calendar.sources` id to the account whose `accounts` group holds it. If the
+  picked calendars are all one account's, that is the reader account. If they
+  span more than one, ask which account the screen should use, warmly and in a
+  sentence: "Your calendars are on a couple of accounts, which one should the
+  wall show?" Keep only that account's picked ids in `calendar.sources`, since
+  the screen reads one account. Then stage at
+  `/var/lib/hermes/ld/.wall-cal-<turn>.json` (a fresh `<turn>` from
+  `openssl rand -hex 4`) and `--patch`:
+
+      {"calendar": {"account": "<the chosen account>",
+      "sources": [{"calendar_id": "<a chosen id on that account>"}]},
+      "calendar_nudge": {"owner_identities": ["<the chosen account>", "<every candidate on that account>"],
+      "lookahead_virtual_minutes": 30,
+      "lookahead_in_person_minutes": 60}}
+
+      python3 /var/lib/hermes/skills/ld-setup/scripts/write_config.py --patch --input /var/lib/hermes/ld/.wall-cal-<turn>.json
+
+  `owner_identities` is the deduplicated union of the chosen account and every
+  `candidates` entry its group carries, which is how an owner with several
+  addresses is recognised in a meeting invited to any of them. The two
+  `lookahead_` numbers are the nudge's defaults from `config.example.json`.
+  Never invent an id or an identity: read them from the snapshot this turn, and
+  never a display `name` in the config.
+
+Never ask the owner for a calendar address; the calendars are discovered from
+the Mac, and the account is picked from the ones already connected.
 
 You also need `has_mac` for Phases 2 and 3 — ask for that alone. Do NOT ask
 for `pi_address` or `pi_user` here: Phase 2's script recovers both from the dotenv and refuses by name for whichever it
