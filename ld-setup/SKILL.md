@@ -761,15 +761,20 @@ link only if it has not already gone out or their message warrants the one
 later nudge. Never wait, poll, or fetch calendars in this turn.
 
 If instead the stored calendar selections are non-empty, there is nothing left
-to finish, so tell them you are all set and offer the wall as the optional extra
-it is, warmly and without pressure. The message is something like: "That's
-everything I need to start keeping an eye on things for you. One optional extra:
-I can put all this up on a screen in your kitchen. Is that something you're
-interested in?" If they want it, `ld-wall-setup` is what runs then, and that is
-where the Pi, its build (`https://github.com/plow-pbc/life-dashboard`) and the
-followed teams for the sports card are handled. Do not start it unless the owner
-takes the offer. Then stop: the wall offer was the last thing this conversation
-had for them.
+to finish. Tell them you are all set, then close on something they can use right
+away: offer to remember something for them. Warmly, something like: "That's
+everything I need to start keeping an eye on things for you. Anything you'd like
+me to remember or nudge you about?" If they name one, hand it to `ld-remind` --
+it schedules a single text back to them at the time, and asks if no time was
+given. It is the actionable first thing, and it works with or without a wall.
+
+Then the wall, as the optional extra it is: "And whenever you'd like, I can put
+all this up on a screen in your kitchen too." If they want it, `ld-wall-setup`
+runs then, and that is where the Pi, its build
+(`https://github.com/plow-pbc/life-dashboard`) and the followed teams for the
+sports card are handled. Do not start it unless the owner takes the offer. Once
+both offers are made, stop: they were the last thing this conversation had for
+them.
 
 Nothing here writes `/var/lib/hermes/ld/setup-complete`. That belongs to
 `ld-wall-setup` and lands only after its proof card. An owner with no wall finishes here
