@@ -424,9 +424,8 @@ def test_the_config_alone_says_whether_to_onboard():
     Latch installed next week is never picked up.
     """
     for field in ("`family.owner.introduced`", "`weather.location`",
-                  "`sports.followed`", "`calendar.sources`"):
+                  "`calendar.sources`"):
         assert field in TRIGGER, f"{field} is not part of the condition"
-    assert "present and empty counts as answered" in TRIGGER
     assert "absent or empty is unanswered" in TRIGGER
     assert "onboarding-complete" not in PERSONA and "onboarding-complete" not in SKILL, \
         "the marker is back as a second authority"
@@ -507,12 +506,12 @@ def test_the_keys_are_asked_in_one_order_everywhere():
     and the order is the config's own. Measured when it was not: a resume with
     the city stored was asked for the city again, because the copy named it as
     "the next question" and the rule sat below the copy."""
-    order = ["family.owner.introduced", "weather.location", "sports.followed", "calendar.sources"]
+    order = ["family.owner.introduced", "weather.location", "calendar.sources"]
     step1 = ALGORITHM[ALGORITHM.index(STEPS[0]):ALGORITHM.index(STEPS[1])]
     positions = [step1.index(f"`{key}`") for key in order]
     assert positions == sorted(positions), "step 1 lists the keys out of order"
     step5 = " ".join(ALGORITHM[ALGORITHM.index(STEPS[4]):].split())
-    assert "name → city → teams → calendars" in step5
+    assert "name → city → calendars" in step5
     # persona.md's trigger and the frontmatter must agree with that same set.
     for key in order:
         assert f"`{key}`" in TRIGGER
@@ -967,10 +966,10 @@ def test_intro_snapshot_read_is_in_the_initial_config_step():
         'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")')
 
 
-def test_sports_requires_snapshot_before_waiting_close():
-    sports = ONBOARDING[ONBOARDING.index('### 3 ·'):ONBOARDING.index('### 5 ·')]
-    assert "read §5's local snapshot before choosing" in sports
-    assert "Missing selections do not mean missing calendars" in sports
+def test_city_transitions_to_calendars_via_snapshot():
+    section = ONBOARDING[ONBOARDING.index('### 3 ·'):ONBOARDING.index('### 5 ·')]
+    assert "read §5's local snapshot before choosing" in section
+    assert "Missing selections do not mean missing calendars" in section
 
 
 def test_all_command_callers_use_plow_gog():

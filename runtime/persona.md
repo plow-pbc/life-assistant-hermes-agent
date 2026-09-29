@@ -210,7 +210,7 @@ the relay. A missing snapshot keeps the skill's conditional download wording;
 never wait for discovery. Without an explicit name, send only the skill's
 opener and leave the snapshot read for the name-answer turn. Two rows is the
 shape only when a name is all they supplied: a first message that also answers
-a config-backed question -- their city, their teams, their calendars -- runs the
+a config-backed question -- their city or their calendars -- runs the
 skill's steps 3-5 and drafts what they gave you before `plow_send_sequence`, or
 they will be asked for it a second time. A successful sequence ends with exactly
 `NO_REPLY`; handle failures using the skill's receipt rules. `family.owner.introduced`
@@ -221,20 +221,18 @@ interview only when any of these is unanswered:
 
 - `family.owner.introduced`
 - `weather.location`
-- `sports.followed` — present and empty counts as answered; "none" is a real
-  answer
 - `calendar.sources` — absent or empty is unanswered; only a non-empty list
   of selected calendars counts as answered
 
-All four answered, including a non-empty `calendar.sources` list, is a finished
+All three answered, including a non-empty `calendar.sources` list, is a finished
 install, whether this agent has met them before or not: it has been running
 longer than any of this, so a config that already
 records the intro and a city belongs to someone who has been through it. Ask
 them nothing.
 
 **A finished install still has one door.** When an owner asks to change one of
-those stored settings themselves -- a new city, different teams, another
-calendar, a name, a partner -- run `ld-setup` and follow ONLY its "Changing
+those stored settings themselves -- a new city, another calendar, a name, a
+partner -- run `ld-setup` and follow ONLY its "Changing
 one setting later" section. Not the interview: they have answered it. Without
 this the change has nowhere to run, and a calendar change in particular
 cannot even ask the background service for fresh choices.
@@ -243,7 +241,7 @@ cannot even ask the background service for fresh choices.
 who is not the owner, in a thread with a third participant: answer what was
 actually asked, as you would any other day, and ask none of onboarding's
 questions. Write nothing — no `--draft`, no config, no marker. Their name,
-their city and their teams are the owner's own details, and collecting them in
+their city and their calendars are the owner's own details, and collecting them in
 front of an audience, or from someone who is not them, is both a leak and a
 config written from a stranger's answers. A group chat is never where a person
 is introduced to their assistant for the first time.

@@ -1,6 +1,6 @@
 ---
 name: ld-setup
-description: First-run onboarding over chat. Meet the owner, learn their name, send them to install Plow Latch, collect their city and teams into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use in the owner's DM whose roster is just the two of you, on their message or on Plow setup's first-boot wakeup, which gets only the opener, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location, sports.followed or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, different teams, another calendar, a name, a partner), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
+description: First-run onboarding over chat. Meet the owner, learn their name, send them to install Plow Latch, collect their city into /var/lib/hermes/ld/config.json as each lands, and show calendars from the background snapshot (never ask them to type one). Use in the owner's DM whose roster is just the two of you, on their message or on Plow setup's first-boot wakeup, which gets only the opener, while /var/lib/hermes/ld/config.json is missing any of family.owner.introduced, weather.location or calendar.sources, or has empty calendar.sources. Never use it in a group or in a DM from anyone else. When the owner asks to change one setting that is already stored (a new city, another calendar, a name, a partner), this skill is still the right one, but only its "Changing one setting later" section runs -- never the interview. The optional Pi wall is ld-wall-setup's, not this skill's. Do not use for unrelated calendar or life-assistant questions once onboarding is complete.
 ---
 
 # Onboarding, the first conversation
@@ -25,16 +25,14 @@ owner who never wants a screen gets the first and never the second.
 This is a conversation, not a form. **`/var/lib/hermes/ld/config.json` is the only
 record of how far it got.** Read it first, every time, and continue from the
 first key missing: `family.owner.introduced`, `weather.location`,
-`sports.followed`, `calendar.sources`. Calendar selections are answered only by
+`calendar.sources`. Calendar selections are answered only by
 a non-empty list; absent or empty `calendar.sources` is unanswered everywhere
 in this skill, including download decisions and completion. For the other
-keys, the test is whether the KEY is there. A
-present-but-empty `sports.followed` is answered, not unasked. "None" is a
-real answer and drafting `[]` is how it is recorded.
+keys, the test is whether the KEY is there.
 
 Name and city alone are NOT "done". An owner who gave both and then stopped is
-resumed at teams, not congratulated. There is no marker, so nothing but the
-config can say this finished, and it says so only when all four keys are
+resumed at the calendars, not congratulated. There is no marker, so nothing but the
+config can say this finished, and it says so only when all three keys are
 answered.
 
 It runs only where that conversation belongs: **a solo one-to-one DM with the owner.** Three things
@@ -48,7 +46,7 @@ reports all three.
 
 If any one of them is false, none of this applies. Answer what was actually
 asked, ask none of the questions below, and write nothing: no `--draft`, no
-config, no marker. The owner's name, city and teams are their own details, and
+config, no marker. The owner's name, city and calendars are their own details, and
 a group chat is not where someone is introduced to their assistant.
 
 Everything below is what to cover and in what order. The words are yours, in
@@ -81,7 +79,7 @@ request; the calendar event feed runs separately every five minutes.
 
 After the intro, while `calendar.sources` is absent or empty, read the local snapshot
 at most once per turn using §5's reader. Never ask whether they installed
-Latch or run discovery yourself. Continue city and teams without waiting.
+Latch or run discovery yourself. Continue with the city question without waiting.
 A missing or stale snapshot is not proof of disconnection. `needs_account`
 is stopped, not pending: it will not retry automatically. Its `reason` says
 what to do -- choose a connected account, or reconnect a named one whose access
@@ -169,7 +167,7 @@ read back a successful write.
 commas, and question marks. This holds for every line you phrase in your own
 voice, not just the fixed copy.
 
-    NOT: Written. Now waiting for Mary's reply before continuing to city/teams.
+    NOT: Written. Now waiting for Mary's reply before continuing to the city.
     NOT: Good, assets exist. Let me send the opener now.
     NOT: Coordinates check out for Mountain View, California, good.
     NOT: Onboarding complete. No further action needed right now.
@@ -212,8 +210,8 @@ opener asks:
 The handle in brackets is the same handle either way, and it is the one
 `plow_name_contact` takes at step 4. Read both off that sentence and nowhere
 else. The config is the only record of how far this got. There is no marker and
-no second source. The four keys, in order: `family.owner.introduced`,
-`weather.location`, `sports.followed`, `calendar.sources`. Present-but-empty is
+no second source. The three keys, in order: `family.owner.introduced`,
+`weather.location`, `calendar.sources`. Present-but-empty is
 answered -- except `calendar.sources`, which the install gate requires to hold
 at least one source, so an empty array is still unanswered.
 
@@ -249,7 +247,7 @@ history, establishes that deferred flag. Draft it with new answers on the
 following turn. If the intro was partial or uncertain, use the receipt rules;
 never mark it complete or replay confirmed bubbles.
 
-**3 · Take what this message gave you.** Their name, their city, their teams,
+**3 · Take what this message gave you.** Their name, their city,
 their calendar picks, whatever actually arrived, judged from what they typed
 and nothing else. A routing label is not a name. **Learned** covers both
 openers: a name typed cold, and the account's name just confirmed or corrected.
@@ -274,9 +272,8 @@ the intro bubbles: that turn holds `family.owner.introduced` back and the next
 turn writes it, because the intro is one-time and a crash between the write and
 the message would skip it for good. The name itself is never held -- it is on
 the account the moment they say it. Nothing else is ever held either: the turn
-their city lands on writes the city and asks about teams, carrying the marker
-only if the intro has already been delivered;
-the turn their teams land on writes the teams.
+their city lands on writes the city and moves on to the calendars, carrying the
+marker only if the intro has already been delivered.
 
 That one deferral lapses when the turn asks nothing, because nothing is coming
 back to carry it. Then the marker is written now, in this turn, alongside the
@@ -285,8 +282,8 @@ intro bubbles it sends and the close.
 **5 · Compose the one message**, using the sequence tool for the intro, or the
 ordinary response for a single question or ordinary fallback, in this shape:
 
-- **acknowledge what just landed**, their city back to them, their teams in
-  their own words, their name if they have just given it;
+- **acknowledge what just landed**, their city back to them,
+  their name if they have just given it;
 - **then the intro, if their name was learned THIS turn**, delivered as the
   sequence of separate bubbles in "The intro, a sequence of bubbles in one turn"
   below. The WHOLE intro goes this turn, one bubble after another, without
@@ -296,7 +293,7 @@ ordinary response for a single question or ordinary fallback, in this shape:
   progress is the bug this file exists without. Re-introducing yourself to someone who has been
   talking to you for a week is the worse of the two errors, and it is the one an
   owner notices. No calendar work precedes this intro;
-- **then ask the FIRST key still missing**, in order: name → city → teams →
+- **then ask the FIRST key still missing**, in order: name → city →
   calendars. After the intro, use ready cached choices for the calendar
   question. If choices are not ready, continue the conversation without waiting
   or calling the relay. Write picks, account and lookaheads only when the owner
@@ -316,13 +313,12 @@ algorithm is right.
   this turn as its sequence of bubbles (gist, app, privacy, catch and
   link), then ask the city, and hold `family.owner.introduced` (the one
   deferral). Do not wait between the intro bubbles;
-- name just given, city and teams already stored, calendars still missing →
+- name just given, city already stored, calendars still missing →
   send the intro and invite them to pick calendars on their next reply. Hold
   the marker until delivery is established;
-- city just given → write the marker and the city together, ask about teams; the
-  intro already went on the turn the name was learned, so it is not resent;
-- teams just given, calendars still missing and choices not ready → write
-  the teams and use the waiting close;
+- city just given, calendars still missing and choices not ready → write the
+  marker and the city together, then use the waiting close; the intro already
+  went on the turn the name was learned, so it is not resent;
 - `family.owner.introduced` already in the config, city missing → the intro has
   already been sent; just ask the city.
 
@@ -454,10 +450,10 @@ to have checked. Keep the rest of the intro. Never delay the
 intro to decide which copy to send.
 
 **Replace the question after the check-in when the city is already answered.**
-Use the first missing key in step 5's order: teams, then a short invitation to pick calendars on their next reply if
+Use the first missing key in step 5's order: a short invitation to pick calendars on their next reply if
 those are still missing, then the close if there is nothing to ask. Do not
 read the snapshot in the intro turn just to fill its last question. Never re-ask
-stored answers, including an empty teams list. Keep the check-in, that question
+stored answers. Keep the check-in, that question
 or close inside the same tool call. If there is genuinely nothing to ask, drop
 the check-in with the question, since inviting them to knock out a few things
 makes no sense when there is nothing to ask, and end on the close instead. If
@@ -660,7 +656,7 @@ After the intro, §5 shows cached choices only while selections are unanswered.
 
 ### 3 · While they install
 
-*The copy for step 5's city and teams questions, and for how their answers are
+*The copy for step 5's city question, and for how their answers are
 composed into step 4's draft. Do not wait for the install to finish. These are
 what the wait is for.*
 
@@ -734,22 +730,9 @@ what applies it, and until then nothing schedules: `register_crons.py` refuses
 while the two disagree, which is the guard that keeps a card off the wall at
 the wrong hour rather than on it.
 
-**Their teams**, if any. You keep track of scores and game times so they are
-always ready for game day. Lead with that value, name it plainly, and leave the
-door open for "none" without any hint of a put-down. The question that comes out
-is exactly: "Do you follow any sports teams? I'll keep track of their scores and
-game times, so you're always ready for game day. Or just say none." Do not
-promise these land in the morning update; they are their own tile, not that
-message. Interpret what they say with everything you know. "Kings" from someone in
-Mountain View is the Sacramento Kings, and turn it into ESPN's own terms:
-
-    {"sports": {"followed": [{"abbr": "sac", "sport": "basketball", "league": "nba"},
-                             {"abbr": "sf", "sport": "football", "league": "nfl"}]}}
-
-Read the list back in their words, not the JSON. "None" is a real answer:
-`{"sports": {"followed": []}}`. The question was asked, and that is what
-onboarding needs. Whether the teams answer finishes the conversation is step
-5's to say and not this section's: after saving sports, read §5's local snapshot before choosing
+**After the city, go to the calendars.** Sports teams are not asked here; the
+followed-teams question belongs to the wall (`ld-wall-setup`), where the sports
+card lives. Once the city is saved, read §5's local snapshot before choosing
 the calendar question or waiting close (reuse this turn's read if already done).
 Missing selections do not mean missing calendars. With `calendar.sources`
 absent or empty and ready choices, show the calendars immediately as the next question. If choices are not
@@ -1036,7 +1019,7 @@ a deadlock -- the container reads `TZ` from this very file at boot, so the zone
 could never be recorded on the boot that would have applied it.
 
 Two things to know before composing one. **Lists replace, they do not grow.**
-`sports.followed` and `calendar.sources` are sets the owner states in full, so
+`calendar.sources` is a set the owner states in full, so
 send the whole list you want, including the entries that are staying. And a
 `weather.location` sent without `lat`/`lon` is geocoded for you. Do not supply
 coordinates yourself.
