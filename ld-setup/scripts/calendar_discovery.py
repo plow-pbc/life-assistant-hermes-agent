@@ -152,32 +152,6 @@ def _offer(groups, degraded):
     return "\n".join(lines)
 
 
-def _account_offers(groups):
-    """Each account's calendars as its own block to send verbatim.
-
-    Numbered with the SAME across-the-whole-offer ordinals as `_offer`, so a
-    turn can show just the account the owner picked -- without transcribing the
-    rest, and without changing what a number resolves to. When more than one
-    account is connected, the sheet asks which account first and then sends that
-    account's block from here; with one account there is nothing to ask and the
-    full `offer` is the block.
-    """
-    offers = []
-    ordinal = 0
-    for group in groups:
-        count = len(group["calendars"])
-        lines = [f"{group['account']} -- {count} "
-                 f"calendar{'' if count == 1 else 's'}:"]
-        if not group["calendars"]:
-            lines.append("- (no calendars on this account)")
-        for calendar in group["calendars"]:
-            ordinal += 1
-            lines.append(f"{ordinal}. {_flat(calendar['display'])} "
-                         f"({calendar['accessRole']})")
-        offers.append({"account": group["account"], "offer": "\n".join(lines)})
-    return offers
-
-
 def _discover(credentials):
     # The accounts verb is structured data, not a subprocess stdout envelope.
     payload = _command(credentials, ["plow-gog", "accounts"])
@@ -229,7 +203,6 @@ def _discover(credentials):
                   "to retry it."}
             for name, is_reauth in problems]
     snapshot["offer"] = _offer(groups, snapshot.get("degraded", []))
-    snapshot["account_offers"] = _account_offers(groups)
     return snapshot
 
 
