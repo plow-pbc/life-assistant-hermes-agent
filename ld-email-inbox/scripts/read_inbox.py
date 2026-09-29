@@ -5,11 +5,8 @@ The owner asks "did you see my email?" in chat and this answers it. There is
 no poller and no stored copy: the question is the trigger, and Gmail stays the
 only place the mail lives.
 
-Which mailbox needs no configuring. `GET /v1/lines` returns the email line
-this credential can reach and no other -- the API matches the caller's
-assistant persona against the mailbox's, so each assistant is handed its own and
-nothing else. A second one in that list would mean the server's rule changed
-under us, so this refuses rather than guessing which is ours.
+Which mailbox needs no configuring. `GET /v1/agents/me` identifies this
+assistant's mailbox from its persona. A missing mailbox is an error.
 
 What comes back is only mail the owner sent or was copied on; the server
 applies that, not this script.
@@ -27,14 +24,10 @@ from bearer_http import get_json, require  # noqa: E402
 
 
 def resolve_mailbox(base, token):
-    lines = get_json(base, "/v1/lines", token, "GET /v1/lines")["data"]
-    mailboxes = [line for line in lines if line.get("provider_type") == "email"]
-    if len(mailboxes) != 1:
-        sys.exit(
-            f"error: expected exactly one reachable email line, got {len(mailboxes)}; "
-            "the server's persona rule changed and this script must not guess"
-        )
-    return mailboxes[0]
+    mailbox = get_json(base, "/v1/agents/me", token, "GET /v1/agents/me")["mailbox"]
+    if mailbox is None:
+        sys.exit("error: this agent has no mailbox")
+    return mailbox
 
 
 OPEN = "<<<UNTRUSTED_EMAIL>>>"
