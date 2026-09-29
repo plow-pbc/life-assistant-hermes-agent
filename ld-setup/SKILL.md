@@ -761,20 +761,27 @@ link only if it has not already gone out or their message warrants the one
 later nudge. Never wait, poll, or fetch calendars in this turn.
 
 If instead the stored calendar selections are non-empty, there is nothing left
-to finish. Tell them you are all set, then close on something they can use right
-away: offer to remember something for them. Warmly, something like: "That's
-everything I need to start keeping an eye on things for you. Anything you'd like
-me to remember or nudge you about?" If they name one, hand it to `ld-remind` --
-it schedules a single text back to them at the time, and asks if no time was
-given. It is the actionable first thing, and it works with or without a wall.
+to finish. Tell them you are all set, then make two offers, in this order: the
+wall first, and if they pass, get them started with a reminder.
 
-Then the wall, as the optional extra it is: "And whenever you'd like, I can put
-all this up on a screen in your kitchen too." If they want it, `ld-wall-setup`
-runs then, and that is where the Pi, its build
-(`https://github.com/plow-pbc/life-dashboard`) and the followed teams for the
-sports card are handled. Do not start it unless the owner takes the offer. Once
-both offers are made, stop: they were the last thing this conversation had for
-them.
+**First, the wall, as the aspirational extra it is.** Something like: "That's
+everything I need to start keeping an eye on things for you. Some people take
+this further and have me on a screen in their kitchen: a tablet on a little Pi
+showing the family calendar, the weather, and a daily heads-up at a glance.
+Want me to help you set that up?" If they take it, `ld-wall-setup` runs, and
+that is where the Pi, its build (`https://github.com/plow-pbc/life-dashboard`)
+and the followed teams for the sports card are handled. Do not start it unless
+they take the offer.
+
+**If they pass, get them started with a reminder** -- the one thing that works
+right away, with or without a wall. Tease what it does, then end on one clear
+action. Something like: "No rush, we can do that whenever. For now, the thing
+most people start with is reminders. Text me anything you don't want to forget,
+snap a photo of it, or send a voice note, and I'll text you back right here when
+it's time. No time given? I'll ask. Set as many as you like, and move or cancel
+any just by telling me. Want to try one? Anything coming up this week?" If they
+name one, hand it to `ld-remind`. Once both offers are made, stop: they were the
+last thing this conversation had for them.
 
 Nothing here writes `/var/lib/hermes/ld/setup-complete`. That belongs to
 `ld-wall-setup` and lands only after its proof card. An owner with no wall finishes here

@@ -1,6 +1,6 @@
 ---
 name: ld-remind
-description: A one-shot reminder that comes back to the owner as a text at the time they set. Use when the owner asks to be reminded of something at, or by, a time -- "remind me to move the car at 6", "in 20 minutes tell me to take the cake out", "nudge me about the passports Friday morning", a thing plus any expression of time. Also when they move, cancel, or ask about one already set -- "push the dentist one to tomorrow", "never mind the car", "what have I got set?". NOT the household to-do list: an untimed "add this to the list" or "remind me to X" with no time is ld-priorities. NOT recurring routines ("every morning") and NOT calendar events (the nudge handles those). One thing, one moment, delivered once.
+description: A one-shot reminder that comes back to the owner as a text at the time they set. The thing can be typed, a photo (a flyer, a receipt, an appointment card), or a voice note. Use when the owner asks to be reminded of something at, or by, a time -- "remind me to move the car at 6", "in 20 minutes tell me to take the cake out", "nudge me about the passports Friday morning", a thing plus any expression of time. Also when they move, cancel, or ask about one already set -- "push the dentist one to tomorrow", "never mind the car", "what have I got set?". NOT the household to-do list: an untimed "add this to the list" or "remind me to X" with no time is ld-priorities. NOT recurring routines ("every morning") and NOT calendar events (the nudge handles those). One thing, one moment, delivered once.
 ---
 
 # Remind me — a single timed nudge, delivered back to the owner
@@ -17,9 +17,15 @@ list too, add it there as well.
 
 ## The four steps. Steps 1–3 are silent; the owner hears only step 4.
 
-**1 · Take the thing, in their own words.** What must not be forgotten, exactly
-as they said it. If the thing itself is unclear, ask about the thing, not the
-time.
+**1 · Take the thing, in their own words, whatever form it arrived in.** What
+must not be forgotten, exactly as they said it. It can come three ways:
+- **Typed** -- take their words.
+- **A photo** (a flyer, a receipt, an appointment card): you can see it, so read
+  what it holds and take the thing from it.
+- **A voice note**: its words are transcribed into the turn for you -- take the
+  thing from those words, and if the turn is only an audio attachment with no
+  text, say you could not make it out rather than guessing.
+If the thing itself is unclear in any form, ask about the thing, not the time.
 
 **2 · Work out the time.** Run the resolver, which reads the household timezone
 from the config so a wall-clock time lands where they live, not on the server:
@@ -89,8 +95,11 @@ action name.
 
 ## Bounds
 
-- **One moment per reminder.** No repeats ("every morning") and no lists — a
-  routine is a different shape, a list is `ld-priorities`.
+- **One moment per reminder, but several reminders in one message are fine.** No
+  repeats ("every morning") and no lists — a routine is a different shape, a
+  list is `ld-priorities`. If the owner gives more than one thing-and-time in a
+  message ("one tonight, one Friday"), resolve and schedule each as its own
+  one-shot, then confirm them together in a single message.
 - **Never a calendar event.** Meetings with other people are the calendar
   nudge's; this is for things the owner asks you to hold for them.
 - **Never invent a time.** Step 2's exit 2 is asked, never filled in.
