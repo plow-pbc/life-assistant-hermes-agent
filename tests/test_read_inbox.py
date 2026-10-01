@@ -16,8 +16,6 @@ ri = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ri)
 
 ELM = {"uid": "ln_e_1", "provider_type": "email", "provider_key": "elm@plow.co", "display_name": "Elm"}
-PHONE = {"uid": "ln_p4", "provider_type": "imessage", "provider_key": "+1650", "display_name": "Elm"}
-WILLOW = {"uid": "ln_e_2", "provider_type": "email", "provider_key": "willow@plow.co", "display_name": "Willow"}
 
 
 @pytest.fixture
@@ -31,24 +29,17 @@ def api(monkeypatch):
     return responses
 
 
-@pytest.mark.parametrize("lines, expected", [
-    # The API hands this credential its own mailbox and no other, so one is the
-    # only answer that means anything; the phone line alongside is normal.
-    pytest.param([PHONE, ELM], "ln_e_1", id="the-one-mailbox"),
-    # Two means the server's persona rule changed under us -- picking either
-    # would answer the owner from a mailbox that is not theirs.
-    pytest.param([PHONE, ELM, WILLOW], SystemExit, id="two-refuses-rather-than-guessing"),
-    pytest.param([PHONE], SystemExit, id="none-refuses"),
-])
-def test_which_mailbox(api, lines, expected):
-    responses = api
-    responses["/v1/lines"] = {"data": lines}
-    if expected is SystemExit:
-        with pytest.raises(SystemExit) as excinfo:
-            ri.resolve_mailbox("https://api.test", "tok")  # pragma: allowlist secret
-        assert "exactly one" in str(excinfo.value)
-    else:
-        assert ri.resolve_mailbox("https://api.test", "tok")["uid"] == expected  # pragma: allowlist secret
+def test_which_mailbox(api):
+    api["/v1/agents/me"] = {"mailbox": ELM}
+    mailbox = ri.resolve_mailbox("https://api.test", "tok")  # pragma: allowlist secret
+    assert mailbox["uid"] == ELM["uid"]
+
+
+def test_no_mailbox_refuses(api):
+    api["/v1/agents/me"] = {"mailbox": None}
+    with pytest.raises(SystemExit) as excinfo:
+        ri.resolve_mailbox("https://api.test", "tok")  # pragma: allowlist secret
+    assert "no mailbox" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("name", ["PLOW_API_BASE", "PLOW_AGENT_TOKEN"])
@@ -64,7 +55,7 @@ def test_an_empty_window_says_so_in_words(api, capsys):
     """'Nothing arrived' and 'the call failed' must not read the same to the
     model that is about to answer the owner."""
     responses = api
-    responses["/v1/lines"] = {"data": [PHONE, ELM]}
+    responses["/v1/agents/me"] = {"mailbox": ELM}
     responses["/v1/email-lines/ln_e_1/threads"] = {"data": []}
 
     ri.main([])

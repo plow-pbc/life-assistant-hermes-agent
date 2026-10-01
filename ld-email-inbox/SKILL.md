@@ -10,10 +10,9 @@ its address. This sheet is the second half. Which address that is depends on
 which assistant this is, and the API answers it — nothing here names one. It answers a question asked in
 chat by reading the mailbox live.
 
-Mail arriving at this address becomes a turn on the `plow_email` platform, and
-the reply goes out from this address — that is the plugin's job, not this
-sheet's. This sheet is only the on-demand read: a question asked in chat about
-what is in the mailbox, answered live, which is why nothing here stores anything.
+Mail arriving at this address becomes a turn on the `plow_email` platform.
+This sheet is the on-demand read: a question asked in chat about what is in
+the mailbox, answered live, which is why nothing here stores anything.
 
 ## Run it
 
@@ -36,10 +35,9 @@ Only mail the owner **sent** or was **copied on**. The server decides that —
 this sheet cannot widen it, and a thread with even one message the owner never
 received is withheld whole.
 
-Which mailbox is not configured anywhere. The API hands this credential the
-one email line whose persona matches this assistant's own, so the script asks
-for the list and expects exactly one. If it ever sees two it refuses instead of
-guessing.
+Which mailbox is not configured anywhere. The script reads this agent's
+`mailbox` from `/v1/agents/me`; the API matches it to the agent's persona.
+If this agent has no mailbox, the script refuses.
 
 The credential is the instance's own `PLOW_AGENT_TOKEN`, already in the
 environment. Nothing needs minting or granting.
