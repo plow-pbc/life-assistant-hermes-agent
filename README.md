@@ -64,27 +64,10 @@ Examples:
 
 ## Usage reporting
 
-This image carries a reporter that publishes this agent's token usage to the
-[Agent Index](https://aiworthusing.com/agent-index) every 5 minutes: day x model
-counts and nothing else — no prompts, no task titles, no file paths, no costs.
-
-**There is no switch.** The reporter is in the image because somebody built it
-in, and that is the decision: an agent whose owner does not want their usage
-published is built without this service. A flag would only re-ask a question the
-Dockerfile has already answered, somewhere that can disagree with it.
-
-The pinned client uses `PLOW_AGENT_TOKEN` once to exchange for a report-only
-`aik_` key — the service sends that exchange to `PLOW_API_BASE`, so on a hosted
-VM the proxy there supplies the real bearer — and every report afterwards
-authenticates with the stored key. It needs
-`AGENT_ID` — which agent this is —
-in the container's environment; without it the service says so and stands down,
-because guessing a name files this container's usage under somebody else's
-agent.
-
-The client itself is fetched at build from the commit `vendor/client.pin` names
-and checked against the hash beside it. Bumping that pin is an edit somebody
-reviews.
+The base image's own reporter publishes this agent's token usage to the
+[Agent Index](https://aiworthusing.com/agent-index): day x model counts and
+nothing else. This repo ships no copy of it; a `FROM` bump brings the base's
+current one.
 
 ## Run locally
 
