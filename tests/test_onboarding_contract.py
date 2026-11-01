@@ -607,41 +607,6 @@ def test_the_scripts_print_relay_tools_qualified_too():
                     f"{rel} prints an unqualified relay tool: {literal.strip()!r}")
 
 
-@pytest.mark.parametrize(("env", "expected"), [
-    ({"PLOW_MCP_URL": "https://api.plow.co/v1/relay/devices/dev1/mcp"}, "configured"),
-    ({}, "unconfigured"),
-    ({"PLOW_MCP_URL": ""}, "unconfigured"),
-    ({"PLOW_MCP_URL": "   "}, "unconfigured"),
-], ids=["relay", "none", "empty", "blank"])
-def test_the_status_probe_answers_from_what_first_boot_published(env, expected, capsys):
-    """The script is what makes the branch decidable, so it has to answer on a
-    box with no relay at all rather than raising -- that is the whole case.
-
-    `PLOW_MCP_URL` is published by first boot for a tenant whose relay is
-    switched on, and is the same value that sets `mcp_servers.plow.enabled` in
-    the config. Blank is nobody's answer and reads as unconfigured: that costs
-    an install link the owner has already followed, where the other direction
-    costs a tool call that cannot land.
-    """
-    ls = load("latch_status", "ld-setup/scripts/latch_status.py")
-    capsys.readouterr()
-    assert ls.main(env=env) == 0
-    assert capsys.readouterr().out.strip() == expected
-
-
-def test_the_status_probe_needs_only_the_standard_library():
-    """The sheet runs it as plain `python3`, and PyYAML lives in Hermes' own
-    venv rather than the system interpreter in at least one build we ship -- an
-    `import yaml` under /usr/bin/python3 once took down every container start.
-    A probe that raises is worse than no probe: the turn improvises, which is
-    the thing this script exists to prevent."""
-    source = (ROOT / "ld-setup/scripts/latch_status.py").read_text()
-    body = source.split('"""', 2)[2]
-    assert not re.search(r"^\s*(import|from)\s+(?!__future__|os|sys)", body, re.MULTILINE), (
-        "the probe imports something outside the standard library's core")
-    assert not re.search(r"yaml\.(safe_)?load", body), "PyYAML is being called"
-
-
 def test_no_display_name_is_persisted_or_shelled():
     """A calendar's display name is written by whoever owns it.
 
@@ -844,8 +809,8 @@ def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     commands = re.findall(r"^    python3 (.+)$", ONBOARDING, re.MULTILINE)
     # Not even the discovery script: its snapshot is read as a file now, so no
     # onboarding turn spends a command -- or an approval prompt -- on a read.
-    assert not any("calendar_discovery.py" in command or "latch_status.py" in command
-                   or "calendar_list.py" in command for command in commands)
+    assert not any("calendar_discovery.py" in command or "calendar_list.py" in command
+                   for command in commands)
     # Nor anywhere before §5: the intro's read was the one that was lost.
     assert "calendar_discovery.py" not in ONBOARDING.split("### 5 ·")[0]
     # The one surviving mention says the script is the operator's, not this
