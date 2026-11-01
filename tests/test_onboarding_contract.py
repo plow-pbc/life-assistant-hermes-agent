@@ -35,11 +35,6 @@ ONBOARDING = SKILL[SKILL.index("## Onboarding"):]
 TRIGGER = " ".join(PERSONA[PERSONA.index("# First run"):PERSONA.index("# The wall")].split())
 
 WALL_MARKER = "/var/lib/hermes/ld/setup-complete"
-# The tool as the image REGISTERS it. An MCP tool carries its server's key as a
-# prefix, so a sheet naming the bare suffix names a tool that is not there: one
-# calendar turn spent twenty-one API calls on tool_search and answered the owner
-# with nothing.
-RELAY_TOOL = "mcp__plow__plow_run_command"
 
 
 def load(name, rel):
@@ -573,38 +568,25 @@ def test_step_four_names_exactly_one_deferral():
     assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
 
 
-def test_the_wall_names_its_relay_tools_as_the_image_registers_them():
-    """The last bare ones in the repo, and the same defect: an MCP tool carries
-    its server's key as a prefix, so `plow_run_command` names a tool the build
-    does not register and a turn that cannot find it hunts through tool_search
-    instead of calling it. Measured on the onboarding side at twenty-one API
-    calls and no reply to the owner."""
-    for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", WALL):
-        raise AssertionError(
-            f"the wall names a relay tool without its prefix: "
-            f"{WALL[hit.start():hit.start() + 30]!r}")
-    assert RELAY_TOOL in WALL, "the wall stopped naming the relay at all"
-
-
-def test_the_scripts_print_relay_tools_qualified_too():
-    """A script's OUTPUT is agent-facing when the model is told to read it.
-
-    post_to_kiosk's Latch block and mint_wall_token's ship-them line are
-    instructions the turn acts on, so a bare tool name there is the same defect
-    as a bare one in a sheet: a name the build does not register, and a turn
-    that goes hunting through tool_search instead of calling it.
-
-    The relay's own wire protocol still uses the unprefixed name -- that is what
-    the MCP server exposes -- so this covers printed instructions only.
-    """
-    for rel in ("ld-shared/scripts/post_to_kiosk.py",
-                "ld-wall-setup/scripts/mint_wall_token.py"):
-        source = (ROOT / rel).read_text()
-        printed = re.findall(r'"[^"\n]*\bplow_[a-z_]+[^"\n]*"', source)
-        for literal in printed:
-            for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", literal):
-                raise AssertionError(
-                    f"{rel} prints an unqualified relay tool: {literal.strip()!r}")
+def test_every_latch_call_a_sheet_makes_names_its_host_and_chat():
+    """The owner has more than one host, so a call with no --host is a usage
+    error, and the gatekeeper judges each call against what the owner asked in
+    the chat --plow-chat names. Every latch command a sheet or the delivery
+    reference spells out carries both (`latch status` takes neither). The
+    printed delivery block is checked where it is built."""
+    sheets = sorted(ROOT.glob("ld-*/SKILL.md")) + [
+        ROOT / "ld-shared/references/latch-delivery.md"]
+    calls = [(sheet.relative_to(ROOT), call) for sheet in sheets
+             for call in re.findall(r"^ {4,}(?:\d\. )?(latch (?:google|messages|contacts|exec|file)\b.*)$",
+                                    sheet.read_text(), re.MULTILINE)]
+    source = (ROOT / "ld-shared/scripts/post_to_kiosk.py").read_text()
+    block = source[source.index("LATCH_BLOCK = ("):]
+    block = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', block[:block.index("\n)\n")]))
+    calls += [("post_to_kiosk.LATCH_BLOCK", line) for line in
+              block.split("\\n") if ". latch " in line]
+    assert len(calls) > 10, "the sheets stopped spelling out their latch calls"
+    for where, call in calls:
+        assert "--host <" in call and "--plow-chat <chat>" in call, (where, call)
 
 
 def test_no_display_name_is_persisted_or_shelled():
