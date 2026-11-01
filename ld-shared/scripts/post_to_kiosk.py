@@ -56,7 +56,7 @@ via argv:
 
   delivery — DASHBOARD_DELIVERY in the dotenv:
     - `latch`: no POST. The wire body is written to OUTBOX_DIR/card-<n>.json
-      (mode 600) and LATCH_BLOCK is printed: the two Latch calls that ship it
+      (mode 600) and LATCH_BLOCK is printed: the two latch calls that ship it
       from the owner's Mac, which is on the Pi's LAN when this container is
       not. The token is not read in this mode.
     - anything else: the direct POST above.
@@ -126,22 +126,20 @@ DOTENV_ENDPOINT_RE = re.compile(r"http://[A-Za-z0-9.-]+:5174/api/message")
 
 # Latch delivery. When the dotenv says DASHBOARD_DELIVERY=latch the Pi is
 # reachable only from the owner's Mac, so the wire body goes to this outbox
-# and the agent ships it with two Latch calls (ld-shared/references/
+# and the agent ships it with two latch calls (ld-shared/references/
 # latch-delivery.md). The token is never read in that mode: the Mac holds it
-# in ~/Plow/ld/dashboard.hdr, written once by ld-setup.
+# in ~/Plow/ld/dashboard.hdr, written once by ld-wall-setup.
 DELIVERY_KEY = "DASHBOARD_DELIVERY"
 OUTBOX_DIR = "/var/lib/hermes/ld/outbox"
-# The tool names are qualified because this block is read BY THE MODEL: an MCP
-# tool carries its server's key as a prefix, and a bare name is one the build
-# does not register -- which sends the turn hunting through tool_search instead
-# of calling it. Measured elsewhere at twenty-one API calls and no reply.
+# Read BY THE MODEL, which fills in <mac> and <chat> (latch-delivery.md) and
+# runs each line in its own shell. The curl is single-quoted so that shell
+# hands `$HOME` through to the Mac's `sh` rather than expanding it here.
 LATCH_BLOCK = (
-    "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
-    "1. mcp__plow__plow_write_file  path=~/Plow/ld/card-{card}.json  content=<the JSON below>\n"
-    "2. mcp__plow__plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
-    "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-{card}.json "
-    "{url}\"] network=true\n"
-    "{json}"
+    "NOT DELIVERED — ship it through latch, then paste both outputs:\n"
+    "1. latch file put --host <mac> --plow-chat <chat> {path} '~/Plow/ld/card-{card}.json'\n"
+    "2. latch exec --host <mac> --plow-chat <chat> --network -- sh -c "
+    "'curl -fsS -H @$HOME/Plow/ld/dashboard.hdr -H \"Content-Type: application/json\" "
+    "--data-binary @$HOME/Plow/ld/card-{card}.json {url}'"
 )
 
 
@@ -246,7 +244,7 @@ def post_bearer_json(url, token, body, label):
 
 def hand_off_to_latch(url, body):
     """Latch delivery: the exact wire body to the outbox, mode 600, plus the
-    two Latch calls the agent makes with it. No request leaves here -- the
+    two latch calls the agent ships it with. No request leaves here -- the
     Mac, on the Pi's LAN, makes it -- and the agent's run is not done until
     that curl returned 2xx (the reference sheet holds it to that)."""
     os.makedirs(OUTBOX_DIR, mode=0o700, exist_ok=True)
@@ -256,7 +254,7 @@ def hand_off_to_latch(url, body):
     os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(wire)
-    print(LATCH_BLOCK.format(card=CARD, url=url, json=wire))
+    print(LATCH_BLOCK.format(card=CARD, url=url, path=path))
 
 
 def main(argv=None):

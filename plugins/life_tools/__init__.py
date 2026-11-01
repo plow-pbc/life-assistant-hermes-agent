@@ -89,7 +89,7 @@ HOUSEHOLD_TODO = Tool(
         "out, looks anything up, or sends anything to anyone. Apple Reminders only when "
         "the owner names that app or their iPhone. Actions: show, add, done, remove, "
         "rename, rank, rule_add, rule_remove, why, post. Every change refreshes the wall card by "
-        "itself; if the result's `wall` says NOT DELIVERED, run the two Latch calls it lists "
+        "itself; if the result's `wall` says NOT DELIVERED, run the two latch commands it lists "
         "before replying."
     ),
     parameters={
