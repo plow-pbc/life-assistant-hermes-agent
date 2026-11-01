@@ -43,13 +43,14 @@ answers offline, try another with `google`. Read `calendar.account` and
 sources' `calendar_id` values, then run this, substituting only the host,
 this chat's uid (as the latch section gives it; a scheduled turn has none, so there it is `$PLOW_HOME_CHANNEL`) and those config values:
 
-    latch google --host <host> --plow-chat <chat> --account=<calendar.account> -- calendar events --calendars=<comma-joined calendar_ids> --days=3 --sort=start --max=250
+    latch google --host <host> --plow-chat <chat> -- calendar events --account=<calendar.account> --calendars=<comma-joined calendar_ids> --days=3 --sort=start --max=250 --select=summary,start,end,status,visibility
 
 `--days=3` is today through two days out, in local time. `--max=250`
 matters: a small default page silently truncates events for a busy
 household with multiple connected sources across a multi-day lookahead.
-latch answers with a compact view of each event — its title, local start
-and end, and attendees — which is all the affirmation needs.
+`--select` names the fields: without it latch answers with a compact view
+that leaves out `visibility`, and a private event with an ordinary-looking
+title would then read as fair to mention.
 
 One call covers every source — the `--calendars` list is the merge, read
 under the one `calendar.account`. Each source is just a `calendar_id` (there
@@ -113,7 +114,9 @@ The kiosk is a shared display in the home; a child may read it.
 - **Never surface** anything sensitive: money, health, gifts or surprises —
   anything not meant for everyone in the room.
 - Calendar: a light reference to an event title is fine ("good luck at the
-  recital!"). Skip medical, private, or sensitive titles.
+  recital!"). Skip medical, private, or sensitive titles, and every event
+  whose `visibility` is `private` or `confidential` or whose `status` is
+  `cancelled`, whatever its title says.
 - The affirmation is *for the family*, never *about* one person's private
   business.
 
