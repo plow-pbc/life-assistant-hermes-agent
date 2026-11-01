@@ -51,10 +51,16 @@ def main() -> int:
     # Consume-first lives in ld-shared/scripts/gather_result.py (shared with
     # the calendar-nudge filter).
     try:
-        messages = read_answer(args.gather).get("messages")
+        answer = read_answer(args.gather)
     except GatherError as e:
         print(e, file=sys.stderr)
         return 2
+    # A window with more messages than one page holds older ones latch did not
+    # send, and an urgent ask among them would read as a quiet morning.
+    if answer.get("next"):
+        print("incomplete gather: the window has more messages than one page", file=sys.stderr)
+        return 2
+    messages = answer.get("messages")
     if not isinstance(messages, list):
         print("malformed gather: no message list", file=sys.stderr)
         return 2

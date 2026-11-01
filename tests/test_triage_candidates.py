@@ -83,13 +83,6 @@ def test_unaddressed_inbound_chat_survives(tmp_path):
                     "sent_at": 1000, "excerpt": "are you coming tonight?"}
 
 
-def test_replied_chat_is_dropped(tmp_path):
-    rows = answer(msg(7, 0, 1000, "are you coming?"),
-                  msg(7, 1, 1001, "yes!"))
-    r = run(rows, BASE_CONFIG, tmp_path)
-    assert json.loads(r.stdout) == []
-
-
 def test_excluded_handle_is_dropped(tmp_path):
     cfg = {"morning_triage": {"exclude": {"imessage_handles": ["+15550001111"]}}}
     r = run(answer(msg(7, 0, 1000, "spam")), cfg, tmp_path)
@@ -116,22 +109,25 @@ def test_only_inbound_after_the_last_reply_counts(tmp_path):
     assert cand["excerpt"] == "new ask"
 
 
-@pytest.mark.parametrize("text", ["", None], ids=["attachment-only", "unreadable"])
-def test_an_inbound_with_no_text_yields_no_candidate(tmp_path, text):
-    r = run(answer(msg(7, 0, 1000, text)), BASE_CONFIG, tmp_path)
-    assert json.loads(r.stdout) == []
-
-
-def test_an_attachment_only_reply_still_answers_the_chat(tmp_path):
-    rows = answer(msg(7, 0, 1000, "seen this?"), msg(7, 1, 1001, ""))
-    r = run(rows, BASE_CONFIG, tmp_path)
-    assert json.loads(r.stdout) == []
-
-
-def test_a_quiet_window_is_no_candidates(tmp_path):
-    r = run(answer(), BASE_CONFIG, tmp_path)
+@pytest.mark.parametrize("rows", [
+    pytest.param([msg(7, 0, 1000, "are you coming?"), msg(7, 1, 1001, "yes!")], id="text-reply"),
+    pytest.param([msg(7, 0, 1000, "seen this?"), msg(7, 1, 1001, "")], id="attachment-reply"),
+    pytest.param([msg(7, 0, 1000, "")], id="attachment-inbound"),
+    pytest.param([msg(7, 0, 1000, None)], id="unreadable-inbound"),
+    pytest.param([], id="quiet-window"),
+])
+def test_no_candidate_cases(tmp_path, rows):
+    r = run(answer(*rows), BASE_CONFIG, tmp_path)
     assert r.returncode == 0
     assert json.loads(r.stdout) == []
+
+
+def test_a_window_past_one_page_fails_rather_than_reads_quiet(tmp_path):
+    """500 newer messages with nothing unanswered must not hide an older ask."""
+    page = json.loads(answer(msg(7, 0, 1000, "yes")))
+    r = run(json.dumps({**page, "next": "cursor"}), BASE_CONFIG, tmp_path)
+    assert r.returncode == 2
+    assert r.stdout == ""
 
 
 def test_missing_config_key_fails_loudly(tmp_path):
