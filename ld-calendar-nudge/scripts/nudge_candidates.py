@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """nudge_candidates.py — filter + compose the calendar gather for ld-calendar-nudge.
 
-Reads the fixed all-account plow-gog `calendar events list --all` fan-out from
-its gather-file argument, deleting the file as it goes, applies the nudge
+Reads the all-account `latch google ... calendar events --all` fan-out the
+sheet redirected to GATHER_FILE, deleting the file as it goes, applies the nudge
 rules — privacy prepass, per-event filter, dedupe — and writes every
 composed ≤115-char reminder, earliest first, STRAIGHT to the one fixed
 handoff post_nudge.py consumes -- every reminder for chat, and the earliest
@@ -12,25 +12,21 @@ chain takes zero model-controlled content end to end (the plow#625 shape).
 Deterministic on purpose: the rules were 200 lines of sheet prose upstream;
 now they are code with a test per rule.
 
-The gather path is the one model-supplied argument, so it is validated
-BEFORE any open/unlink: only a runtime-persisted result (under
-/tmp/hermes-results/) or the fixed inline handoff
-(/var/lib/hermes/ld/calendar-nudge-gather) is accepted — anything else exits 2
-without touching the file, so an injected turn cannot aim the
-consume-on-read unlink at the config or the dotenv.
+The gather path is fixed, like every other path here: this script deletes
+its input as it reads it, so a path the model could name would hand an
+injected turn a delete over the config or the dotenv.
 
-Field spellings are pinned against a REAL gather through the live Latch door
-(camelCase: iCalUID, start.dateTime, hangoutLink, attendees[].responseStatus;
-`visibility` absent means default). Latch's injected safety flags wrap every
-free-text field (summary, location, description, ...) in
+Field spellings are gog's own, which latch answers with when the sheet names
+them with --select (camelCase: CalendarID, iCalUID, start.dateTime,
+hangoutLink, attendees[].responseStatus; `visibility` absent means default).
+Every free-text field (summary, location, description, ...) arrives wrapped in
 EXTERNAL_UNTRUSTED_CONTENT markers — stripped here so marker soup never
 reaches the kiosk.
 
 Exit 2 on malformed input rather than skipping rows: a half-parsed window is
 indistinguishable from a quiet one on both surfaces, so it must fail loudly.
-That includes a call that never completed (an unanswered approval card) and
-any account Latch could not read, and a failed gather must never read as a
-no-nudge run.
+That includes a call that failed (an empty gather) and any account latch
+could not read, and a failed gather must never read as a no-nudge run.
 """
 from __future__ import annotations
 
@@ -53,11 +49,7 @@ from external_content import strip_markers  # noqa: E402
 from gather_result import GatherError, read_fanout  # noqa: E402
 
 LIMIT = 115
-# The only gather locations the model may name (validated before any I/O):
-# the runtime's persisted-result directory, and the fixed file the sheet
-# writes an inline result to. Trailing slash on the root is load-bearing —
-# it is a prefix check, and "/tmp/hermes-results-evil" must not pass.
-PERSISTED_ROOT = "/tmp/hermes-results/"
+# Where the sheet redirects the latch call's stdout.
 GATHER_FILE = "/var/lib/hermes/ld/calendar-nudge-gather"
 # The one fixed handoff this helper writes and post_nudge.py consumes:
 # {"chat": [every reminder], "card": the kitchen wall's reminder or null}.
@@ -124,43 +116,18 @@ def compose(summary, local_time, minutes_until, where):
     return render((summary[:keep] + "…") if keep > 0 else "…", where)
 
 
-def gather_path_allowed(path):
-    """Whether a model-supplied gather path may be opened (and consumed).
-
-    Checked BEFORE any open/unlink: this script deletes its input as it
-    reads, so an unvalidated path hands an injected turn a deletion oracle
-    over anything the container user can write — the config and the dotenv
-    being the obvious targets."""
-    normalized = os.path.normpath(path)
-    # normpath collapses ../ traversal, and the trailing slash on
-    # PERSISTED_ROOT makes this a directory-prefix check, so neither
-    # "/tmp/hermes-results-evil" nor the bare directory itself passes.
-    return normalized == GATHER_FILE or normalized.startswith(PERSISTED_ROOT)
-
-
 def main(argv=None, now=None) -> int:
-    """CLI surface: the gather path, nothing else. `now` (unix seconds) is
+    """CLI surface: no arguments at all. `now` (unix seconds) is
     reachable only by an importer — as a flag it was a model-steerable clock
     an injected invite could use to publish an out-of-window title, and
     --config the same class of knob (a steered path to a model-written JSON
     could widen the windows or the identity set). Both are pinned."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("gather",
-                        help="gather file (the plow_run_command fan-out "
-                             "result, persisted or written inline)")
-    args = parser.parse_args(argv)
-
-    if not gather_path_allowed(args.gather):
-        print(f"refusing gather path {args.gather!r}: only a persisted "
-              f"result under {PERSISTED_ROOT} or the fixed {GATHER_FILE} is "
-              "accepted -- this script consumes its input, and an arbitrary "
-              "path would be an arbitrary delete", file=sys.stderr)
-        return 2
+    argparse.ArgumentParser().parse_args(argv)
 
     # Consume-first + the fan-out payload live in ld-shared/scripts/gather_result.py.
     try:
-        events, degraded = read_fanout(args.gather)
-    except GatherError as e:
+        events, failed = read_fanout(GATHER_FILE)
+    except (GatherError, OSError) as e:
         print(e, file=sys.stderr)
         return 2
 
@@ -199,19 +166,20 @@ def main(argv=None, now=None) -> int:
     now_dt = datetime.fromtimestamp(now, tz=timezone.utc)
 
     try:
-        # Any account Latch could not read fails the run: its private copies
+        # Any account latch could not read fails the run: its private copies
         # are missing from the prepass below, so a default-visibility sibling
         # read through a healthy account would post the title they withhold.
-        # Account and reason are Latch's text, never the calendar's.
-        if degraded:
-            names = ", ".join(f"{d['account']} ({d['reason']})" for d in degraded)
+        # Account and reason are latch's text, never the calendar's.
+        if failed:
+            names = ", ".join(f"{a['account']} ({a.get('reason', a['status'])})"
+                              for a in failed)
             print(f"not every account answered the gather: {names}",
                   file=sys.stderr)
             return 2
 
-        # Every account Latch read through is one the owner connected, so it
+        # Every account latch read through is one the owner connected, so it
         # is theirs: an invite to any of them is the owner's meeting, and one
-        # between two of them waits on nobody. The Mac writes the tag after
+        # between two of them waits on nobody. latch writes the tag after
         # the fetch, so event text cannot forge one; the config still carries
         # the addresses no account is connected as.
         identities |= {ev["account"].strip().lower() for ev in events}

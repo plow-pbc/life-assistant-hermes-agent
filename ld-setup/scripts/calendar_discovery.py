@@ -15,7 +15,7 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from calendar_list import GatherError, extract_array, normalize  # noqa: E402
+from calendar_list import GatherError, normalize  # noqa: E402
 from calendar_feed import CONFIG_FILE, FeedError  # noqa: E402
 from latch_cli import LatchError, google, host_with  # noqa: E402
 

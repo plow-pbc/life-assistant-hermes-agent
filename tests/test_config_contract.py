@@ -298,36 +298,17 @@ def test_the_nudge_filter_writes_exactly_what_the_coordinator_consumes():
     assert written == _handoff("ld-calendar-nudge", "post_nudge.py")
 
 
-def test_the_config_template_cannot_hide_a_placeholder_from_the_gate():
-    """The gate's placeholder check matches whole strings only, so the
-    template's new key must ship as the exact whole-string form the gate
-    can see — a mid-string embedding ("/Users/[USER]/...") would pass the
-    gate unfilled and reach the 07:05 gather. Template-wide embedded-
-    placeholder scanning was deliberately cut (review round 3); this pin
-    covers only the key this feature adds — the template's other
-    placeholders are unpinned by design."""
-    spec = importlib.util.spec_from_file_location(
-        "ld_config_gate", ROOT / "ld-shared" / "scripts" / "ld_config_gate.py")
-    gate = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(gate)
-
-    template = ROOT / "ld-shared" / "references" / "config.example.json"
-    parsed = json.loads(template.read_text())
-    assert "an unfilled [UPPER_SNAKE] placeholder remains" in gate.gate(parsed)
-    assert parsed["morning_triage"]["chat_db_path"] == "[CHAT_DB_PATH]"
-
-
 SETUP_COMPLETE_MARKER = "/var/lib/hermes/ld/setup-complete"
 
 
 def test_every_calendar_gather_names_the_configured_gog_account():
-    """plow-gog refuses --calendars without the account that owns those ids,
+    """--calendars needs the account that owns those ids named with it,
     and the nudge's all-account read must name neither: either one would
     narrow it back to a single account's chosen calendars."""
     sheet = (ROOT / "ld-morning-updates" / "SKILL.md").read_text()
     assert "--account=<calendar.account>" in sheet
     nudge = (ROOT / "ld-calendar-nudge" / "SKILL.md").read_text()
-    assert '"--all"' in nudge
+    assert " --all " in nudge
     assert "--account" not in nudge and "--calendars" not in nudge
 
 

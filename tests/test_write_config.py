@@ -62,8 +62,7 @@ def live_config():
                      "sources": [{"calendar_id": FULL["owner_email"], "name": "Personal"},
                                  {"calendar_id": FULL["extra_calendar_ids"][0],
                                   "name": FULL["extra_calendar_ids"][0]}]},
-        "morning_triage": {"chat_db_path": f"/Users/{FULL['mac_username']}/Library/Messages/chat.db",
-                           "ranking_instructions": "", "exclude": {"imessage_handles": []}},
+        "morning_triage": {"ranking_instructions": "", "exclude": {"imessage_handles": []}},
         "calendar_nudge": {"lookahead_virtual_minutes": 30, "lookahead_in_person_minutes": 60,
                            "owner_identities": [FULL["owner_email"]]},
         "weather": {"location": FULL["city"], "lat": 41.85, "lon": -87.65},
@@ -114,7 +113,6 @@ def test_a_patch_changes_one_setting_and_leaves_the_rest_alone():
     assert merged["morning_triage"]["ranking_instructions"] == "bank first"
     # Everything the owner did not restate: the sibling keys inside the object
     # that was patched, and every other section.
-    assert merged["morning_triage"]["chat_db_path"] == current["morning_triage"]["chat_db_path"]
     assert merged["morning_triage"]["exclude"] == current["morning_triage"]["exclude"]
     assert merged["calendar"] == current["calendar"]
     assert merged["weather"] == current["weather"]

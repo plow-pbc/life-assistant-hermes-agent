@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
-"""triage_candidates.py — decode + filter the iMessage gather for ld-morning-triage.
+"""triage_candidates.py — filter the iMessage gather for ld-morning-triage.
 
-Reads the fixed sqlite3 query's `-json` output from its gather-file
-argument, deleting the file as it goes (an array of
-`{chat_id, is_from_me, handle, sent_at, hexbody}` objects), decodes each body
-(typedstream via the NSString marker, else plain UTF-8), applies the
-unaddressed rule per chat — every inbound message after the chat's last
-outbound is a candidate; an outbound as the latest message means the chat was
-answered — drops excluded handles, and emits JSON candidates for the LLM to
-rank. Deterministic on purpose: the LLM only ranks; it never parses sqlite
-output or message framing.
+Reads the `latch messages search --since 36h` answer from its gather-file
+argument, deleting the file as it goes (`messages`: one object per message,
+newest first, each with its `chat`, its sender in `from` — `me` true on the
+owner's own — and its `text`), applies the unaddressed rule per chat — every
+inbound message after the chat's last outbound is a candidate; an outbound as
+the latest message means the chat was answered — drops excluded handles, and
+emits JSON candidates for the LLM to rank. Deterministic on purpose: the LLM
+only ranks; it never applies the rule by eye.
 
 The whole unanswered burst is emitted, not just the newest message: an urgent
 ask followed by a "you there?" nudge must not hide the ask behind the nudge.
 
+A capped answer (`next` set: more than one page in the window) keeps the
+newest messages, and the rule holds on them exactly: everything it drops is
+older than everything it keeps, so no kept inbound loses the reply that
+followed it.
+
 Exit 2 on malformed input rather than skipping rows: a half-parsed morning is
 indistinguishable from a quiet one on the kiosk, so it must fail loudly.
-Framing is what fails loudly — the JSON envelope, missing keys, is_from_me
-outside {0,1}, bad hex. An individual body that yields no text is data, not
-framing: attachment-only and sticker rows routinely carry an attributedBody
-with nothing decodable (and an attachment-only row's hexbody is the empty
-string — sqlite's hex() of NULL is '', never NULL), so one of them must not
-abort the whole morning — it just produces no candidate.
+Framing is what fails loudly — an empty gather (latch printed no answer),
+missing keys, a `me` that is not a boolean, a timestamp with no offset. A
+message with no text is data, not framing: an attachment-only row, or one
+latch could not read (`text: null`), produces no candidate.
 """
 from __future__ import annotations
 
@@ -29,82 +31,57 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
-from gather_result import GatherError, read_gather  # noqa: E402
+from gather_result import GatherError, read_answer  # noqa: E402
 
 EXCERPT_CAP = 500
-
-
-def decode_body(blob: bytes) -> str | None:
-    """Extract the message string from an attributedBody typedstream, or
-    fall back to plain UTF-8 (rows whose body came from `text`)."""
-    i = blob.find(b"NSString")
-    if i < 0:
-        try:
-            return blob.decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-    i += len(b"NSString") + 5  # class-end + version markers
-    if i >= len(blob):
-        return None
-    marker = blob[i]
-    if marker == 0x81:
-        length, i = int.from_bytes(blob[i + 1:i + 3], "little"), i + 3
-    elif marker == 0x82:
-        length, i = int.from_bytes(blob[i + 1:i + 5], "little"), i + 5
-    else:
-        length, i = marker, i + 1
-    try:
-        return blob[i:i + length].decode("utf-8")
-    except UnicodeDecodeError:
-        return None
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    parser.add_argument("gather",
-                        help="gather file (raw sqlite3 -json output, or the "
-                             "persisted plow_run_command result envelope)")
+    parser.add_argument("gather", help="gather file (latch's answer, redirected)")
     args = parser.parse_args()
 
-    # sqlite3 -json emits nothing at all (not "[]") for an empty result set.
-    # Consume-first + envelope sniff live in ld-shared/scripts/gather_result.py
-    # (shared with the calendar-nudge filter); the semantics are unchanged.
+    # Consume-first lives in ld-shared/scripts/gather_result.py (shared with
+    # the calendar-nudge filter).
     try:
-        raw = read_gather(args.gather)
+        messages = read_answer(args.gather).get("messages")
     except GatherError as e:
         print(e, file=sys.stderr)
+        return 2
+    if not isinstance(messages, list):
+        print("malformed gather: no message list", file=sys.stderr)
         return 2
 
     with open(args.config) as f:
         excluded = set(
             json.load(f)["morning_triage"]["exclude"]["imessage_handles"]
         )
-    try:
-        rows = json.loads(raw) if raw else []
-    except json.JSONDecodeError as e:
-        print(f"malformed sqlite json: {e}", file=sys.stderr)
-        return 2
 
     chats: dict[int, list[tuple[int, bool, str, str | None]]] = {}
-    for n, row in enumerate(rows, 1):
+    # Oldest first, as latch ordered them: the per-chat sort below is stable,
+    # so two messages in the same second keep latch's order.
+    for n, message in enumerate(reversed(messages), 1):
         try:
-            direction = row["is_from_me"]
-            if direction not in (0, 1):
-                raise ValueError(f"is_from_me={direction!r}")
-            hexbody = row["hexbody"]
-            body = decode_body(bytes.fromhex(hexbody)) if hexbody else None
-            chats.setdefault(row["chat_id"], []).append(
-                (row["sent_at"], direction == 0, row["handle"], body)
+            sender = message["from"]
+            if not isinstance(sender["me"], bool):
+                raise ValueError(f"from.me={sender['me']!r}")
+            at = datetime.fromisoformat(message["at"])
+            if at.utcoffset() is None:
+                raise ValueError("timestamp has no UTC offset")
+            chats.setdefault(message["chat"]["id"], []).append(
+                (int(at.timestamp()), not sender["me"], sender["handle"],
+                 message["text"])
             )
         except (KeyError, TypeError, ValueError) as e:
-            # Never echo the row itself: it may hold private message bytes.
-            print(f"malformed sqlite row {n}: {e}", file=sys.stderr)
+            # Never echo the message itself: it may hold private text.
+            print(f"malformed message {n}: {e}", file=sys.stderr)
             return 2
 
     candidates = []
