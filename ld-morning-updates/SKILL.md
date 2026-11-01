@@ -41,7 +41,7 @@ Pick the host from `latch status`: any online host with `google` enabled
 answers offline, try another with `google`. Read `calendar.account` and
 `calendar.sources` from `/var/lib/hermes/ld/config.json`, comma-join the
 sources' `calendar_id` values, then run this, substituting only the host,
-this chat's uid (as the latch section gives it) and those config values:
+this chat's uid (as the latch section gives it; a scheduled turn has none, so there it is `$PLOW_HOME_CHANNEL`) and those config values:
 
     latch google --host <host> --plow-chat <chat> --account=<calendar.account> -- calendar events --calendars=<comma-joined calendar_ids> --days=3 --sort=start --max=250
 

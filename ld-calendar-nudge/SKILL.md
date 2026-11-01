@@ -27,7 +27,7 @@ from this skill.
 Pick the host from `latch status`: any online host with `google` enabled
 (`cloud` usually has it, so this works with the Mac asleep); if that host
 answers offline, try another with `google`. Then run EXACTLY this, with the
-host and this chat's uid (as the latch section gives it) as the only
+host and this chat's uid (as the latch section gives it; a scheduled turn has none, so there it is `$PLOW_HOME_CHANNEL`) as the only
 substitutions — nothing read from config first:
 
     latch google --host <host> --plow-chat <chat> -- calendar events --all --from=now --days=2 --sort=start --max=50 --select=id,CalendarID,iCalUID,status,visibility,summary,location,start,end,attendees,organizer,hangoutLink > /var/lib/hermes/ld/calendar-nudge-gather

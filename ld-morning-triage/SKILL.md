@@ -54,7 +54,7 @@ Messages live on the owner's Mac only: in `latch status`, the online host
 with `messages` enabled. If it is offline, the iMessage side failed this run
 — say so in the final response (see below) and go on to the Gmail gather; do
 not try another host. Otherwise run EXACTLY this, with the Mac and this
-chat's uid (as the latch section gives it) as the only substitutions:
+chat's uid (as the latch section gives it; a scheduled turn has none, so there it is `$PLOW_HOME_CHANNEL`) as the only substitutions:
 
     latch messages search --host <mac> --plow-chat <chat> --since 36h --limit 500 > /var/lib/hermes/ld/morning-triage-gather
 

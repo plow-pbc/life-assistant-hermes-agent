@@ -14,7 +14,8 @@ POST. It writes the exact wire body to `/var/lib/hermes/ld/outbox/card-<n>.json`
 Run those two commands, in that order and nothing else, each exactly as
 printed with two substitutions: `<mac>` is the owner's Mac — in `latch
 status`, the online host with `messages` enabled — and `<chat>` is this
-chat's uid, as the latch section gives it. `--network` is required for the
+chat's uid, as the latch section gives it (a scheduled turn has none, so
+there it is `$PLOW_HOME_CHANNEL`). `--network` is required for the
 LAN request. The token never appears in the block and never should: it is in
 `~/Plow/ld/dashboard.hdr` on the Mac, written once by `ld-wall-setup`, and
 `-H @…` reads it there.
