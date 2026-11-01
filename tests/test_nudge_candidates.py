@@ -1,21 +1,20 @@
 """tests/test_nudge_candidates.py — behavior tests for the calendar-nudge filter.
 
-Feeds the script plow-gog's all-account `calendar events list --all` fan-out
-payload as a gather file and asserts on what post_nudge.py will see: the one
+Feeds the script latch's all-account `calendar events --all` fan-out answer
+as the gather file and asserts on what post_nudge.py will see: the one
 handoff (every qualifying reminder, earliest first) and the
 {"qualifying": N} count on stdout — the only thing the model routes on.
 The module is imported and its path constants rebound to a scratch
 directory — a seam reachable only by an importer, never by the CLI the
 sheet invokes — because the real handoff lives under /var/lib/hermes.
 
-Field spellings are pinned against a real gather captured through Latch:
-camelCase
-`iCalUID` / `start.dateTime` / `hangoutLink` / `attendees[].responseStatus`,
-`visibility` absent on default-visibility events, free-text fields wrapped in
-EXTERNAL_UNTRUSTED_CONTENT markers by Latch, and the fan-out's
-{status, items[+account], degraded} payload nested as a JSON string under
-`result`. Fixture VALUES are synthesized; only the key spellings and
-structural shapes are real.
+Field spellings are pinned against a real gather captured through latch
+with the sheet's --select: camelCase `CalendarID` / `iCalUID` /
+`start.dateTime` / `hangoutLink` / `attendees[].responseStatus`, `visibility`
+absent on default-visibility events, free-text fields wrapped in
+EXTERNAL_UNTRUSTED_CONTENT markers, and the fan-out's
+{items[+account], accounts[{account, status}]} answer. Fixture VALUES are
+synthesized; only the key spellings and structural shapes are real.
 """
 import importlib.util
 import json
@@ -56,32 +55,28 @@ WRAP_CLOSE = '\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>'
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch, capsys):
-    """Scratch persisted-result root + handoff paths, and a runner.
+    """Scratch gather + handoff paths, and a runner.
 
-    run() invokes main() the way the cron does (argv only), with the gather
-    under the allowed persisted root; the consumed-gather pin rides every
-    call. Returns (exit_code, parsed_count_or_None, stderr_text)."""
-    results = tmp_path / "results"
-    results.mkdir()
+    run() invokes main() the way the cron does (no arguments), with the
+    gather where the sheet redirects latch's answer; the consumed-gather pin
+    rides every call. Returns (exit_code, parsed_count_or_None, stderr_text)."""
+    gather_file = tmp_path / "calendar-nudge-gather"
     handoff = tmp_path / "calendar-nudge.json"
-    monkeypatch.setattr(nc, "PERSISTED_ROOT", str(results) + "/")
+    monkeypatch.setattr(nc, "GATHER_FILE", str(gather_file))
     monkeypatch.setattr(nc, "HANDOFF", str(handoff))
     cfg = tmp_path / "config.json"
     monkeypatch.setattr(nc, "CONFIG_FILE", str(cfg))
 
     def run(content, config=None, now=NOW):
         cfg.write_text(json.dumps(BASE_CONFIG if config is None else config))
-        gather_file = results / "call_test.txt"
         gather_file.write_text(content)
-        code = nc.main([str(gather_file)],
-                       now=None if now is None else int(now.timestamp()))
+        code = nc.main([], now=None if now is None else int(now.timestamp()))
         # The raw corpus must not outlive the run, success or failure.
         assert not gather_file.exists()
         out, err = capsys.readouterr()
         return code, (json.loads(out)["qualifying"] if out.strip() else None), err
 
-    return SimpleNamespace(run=run, handoff=handoff,
-                           results=results, tmp=tmp_path)
+    return SimpleNamespace(run=run, handoff=handoff, tmp=tmp_path)
 
 
 def lines(rig):
@@ -109,7 +104,7 @@ def event(minutes=20, *, summary="Standup", uid="uid-1@google.com",
           attendees=(attendee("owner@example.test"),
                      attendee("peer@example.test")),
           hangout=None, location=None, visibility=None, date_only=False):
-    """One event the way gog's --json --results-only frames it. Defaults are
+    """One event the way latch answers with the sheet's --select. Defaults are
     a qualifying virtual-less in-person meeting 20 minutes out, owner
     attending, one human counterparty."""
     ev = {
@@ -135,19 +130,14 @@ def event(minutes=20, *, summary="Standup", uid="uid-1@google.com",
     return ev
 
 
-def payload(*events, degraded=(), status="completed"):
-    """plow-gog's fan-out answer: every account's events merged, each tagged
-    with the account Latch read it through (the owner's own unless the event
-    already names one)."""
-    return {"status": status,
-            "items": [{"account": "owner@example.test", **ev} for ev in events],
-            "degraded": list(degraded)}
-
-
-def gather(*events, degraded=()):
-    """The plow_run_command result as the runtime persists it: the payload
-    nested as a JSON string (measured on a live fan-out, 2026-09-14)."""
-    return json.dumps({"result": json.dumps(payload(*events, degraded=degraded))})
+def gather(*events, failed=()):
+    """latch's fan-out answer, as the redirect writes it: every account's
+    events, each tagged with the account latch read it through (the owner's
+    own unless the event already names one), and an outcome per account."""
+    return json.dumps({
+        "items": [{"account": "owner@example.test", **ev} for ev in events],
+        "accounts": [{"account": "owner@example.test", "status": "ok"},
+                     *failed]})
 
 
 def test_a_qualifying_meeting_writes_the_handoff_and_the_count(rig):
@@ -155,18 +145,6 @@ def test_a_qualifying_meeting_writes_the_handoff_and_the_count(rig):
     assert (code, count) == (0, 1)
     line = 'Heads up: "Standup" at 12:20pm (20m) — Cafe Borrone.'
     assert lines(rig) == [line] and card(rig) == line
-
-
-def test_an_inline_result_written_bare_reads_the_same_as_the_persisted_one(rig):
-    """A quiet window comes back inline and the sheet writes it as returned;
-    with or without the runtime's `result` wrapper, it is the same run."""
-    ev = event(minutes=20, location="Cafe Borrone")
-    rig.run(gather(ev))
-    persisted = rig.handoff.read_text()
-    rig.handoff.unlink()
-    code, count, _ = rig.run("Result:\n" + json.dumps(payload(ev)))
-    assert (code, count) == (0, 1)
-    assert rig.handoff.read_text() == persisted
 
 
 def test_every_connected_account_is_the_owner(rig):
@@ -229,20 +207,19 @@ def test_a_watch_list_narrows_the_nudge_without_narrowing_the_privacy_prepass(ri
 
 
 @pytest.mark.parametrize("content", [
-    # An approval card nobody answered comes back pending, never as no rows.
-    json.dumps({"result": json.dumps({"status": "pending", "handle": "h"})}),
-    json.dumps({"result": json.dumps({"status": "completed", "degraded": []})}),
-    json.dumps({"result": "not json"}),
-    json.dumps({"result": json.dumps({"status": "completed", "items": None,
-                                      "degraded": []})}),
-    "Result: no payload at all",
-    '{"result": "{\\"status\\": ',
+    # latch prints nothing on stdout when the call failed: never "no rows".
+    "",
+    json.dumps({"accounts": []}),
+    json.dumps({"items": None, "accounts": []}),
+    json.dumps([]),
+    "not json",
+    '{"items": [',
     # An unread account's private copies are missing from the prepass, so a
     # healthy account's default-visibility sibling would leak their title.
-    gather(event(), degraded=[{"account": "old@example.test",
-                               "reason": "needs_reauth"}]),
-], ids=["not-completed", "missing-items", "unparseable-result",
-        "null-items", "no-object", "truncated-json", "an-account-unread"])
+    gather(event(), failed=[{"account": "old@example.test", "status": "failed",
+                             "reason": "google_needs_sign_in"}]),
+], ids=["latch-failed", "missing-items", "null-items", "not-an-object",
+        "unparseable", "truncated-json", "an-account-unread"])
 def test_a_broken_gather_fails_loudly_never_as_a_quiet_run(rig, content):
     # A failed gather read as "no meetings" would silently skip reminders
     # for as long as the failure persists — the exact quiet-day trap.
@@ -466,33 +443,15 @@ def test_an_empty_owner_identity_set_refuses_rather_than_never_nudging(rig):
     assert "owner_identities" in err
 
 
-@pytest.mark.parametrize("path", [
-    "/var/lib/hermes/ld/config.json",
-    "/var/lib/hermes/.env",
-    "/tmp/hermes-results",                      # the bare directory
-    "/tmp/hermes-results-evil/call_x.txt",      # prefix trick
-    "/tmp/hermes-results/../../var/lib/hermes/.env",  # traversal
-    "relative/call_x.txt",
-], ids=["config", "dotenv", "bare-dir", "prefix-trick", "traversal",
-        "relative"])
-def test_a_disallowed_gather_path_is_refused_before_any_io(path, tmp_path, capsys):
-    """The script consumes its input, so the model-supplied path is a
-    deletion oracle unless it is pinned to the two allowed locations — an
-    injected turn passing the config or dotenv must be refused with the
-    file untouched. Runs against the REAL default constants."""
+def test_the_cli_takes_no_path_and_reads_where_the_sheet_redirects(tmp_path):
+    """The script consumes its input, so a path the model could name would be
+    a delete over the config or the dotenv: the CLI refuses any argument with
+    the file untouched, and the one file it reads is the one the sheet's
+    latch command writes."""
     victim = tmp_path / "victim"
     victim.write_text("must survive")
-    assert not nc.gather_path_allowed(path)
-    code = nc.main([str(victim)])
-    assert code == 2
-    assert victim.exists(), "a refused path must never be opened or deleted"
-    assert "refusing gather path" in capsys.readouterr().err
-
-
-def test_the_allowed_gather_locations_are_the_documented_ones():
-    """Accept side of the pin, against the real constants: a persisted
-    result and the fixed inline handoff — nothing else."""
-    assert nc.PERSISTED_ROOT == "/tmp/hermes-results/"
-    assert nc.GATHER_FILE == "/var/lib/hermes/ld/calendar-nudge-gather"
-    assert nc.gather_path_allowed("/tmp/hermes-results/call_abc.txt")
-    assert nc.gather_path_allowed("/var/lib/hermes/ld/calendar-nudge-gather")
+    with pytest.raises(SystemExit):
+        nc.main([str(victim)])
+    assert victim.exists(), "an argument must never be opened or deleted"
+    sheet = (REPO / "ld-calendar-nudge" / "SKILL.md").read_text()
+    assert f"> {nc.GATHER_FILE}\n" in sheet

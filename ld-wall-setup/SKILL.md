@@ -1,6 +1,6 @@
 ---
 name: ld-wall-setup
-description: The optional Pi wall — mint its bearer token, bring the Pi up through Plow Latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when the owner asks to set up or re-set-up their wall, when its config is missing or refused, or when the wall has never shown a card; never in a group or in a DM from anyone else. Onboarding is ld-setup's and finishes without a wall — an owner who never wants a screen in their kitchen never runs this. Do not use for unrelated calendar or life-assistant questions.
+description: The optional Pi wall — mint its bearer token, bring the Pi up through latch on the owner's Mac (texting the owner the lines when there is no Mac), register the producer crons and prove a card. Use when the owner asks to set up or re-set-up their wall, when its config is missing or refused, or when the wall has never shown a card; never in a group or in a DM from anyone else. Onboarding is ld-setup's and finishes without a wall — an owner who never wants a screen in their kitchen never runs this. Do not use for unrelated calendar or life-assistant questions.
 ---
 
 # The wall — the Pi dashboard, if the owner wants one
@@ -27,31 +27,28 @@ offer.
 
 **How this reaches the Pi.** The Pi keeps its own dashboard server —
 `/api/message` behind a bearer, port 5174 — on the owner's home network,
-and you cannot reach that network. The owner's Mac can, and it runs Plow
-Latch, so every step that touches the Pi runs *from the Mac* through the
-Latch tools (`mcp__plow__plow_run_command`, `mcp__plow__plow_write_file`). Argv is shown to the
-owner on an approval card and kept in an audit record; there is no stdin and
-no env. So a secret never rides argv: the wall's token travels only inside
-files you ship whole with `mcp__plow__plow_write_file`, and every `curl` reads it from
-`~/Plow/ld/dashboard.hdr` with `-H @…`. `mcp__plow__plow_run_command` execs its argv
-directly rather than through a shell, so anything needing a redirect, a `&&`
-or a `~` is written as `["sh","-c","…"]`. Its `network` defaults to false
-and every call below that leaves the Mac passes `network=true`; its `timeout`
-is in milliseconds and defaults to 10000, and a call that exceeds it comes
-back as a job handle to poll with `mcp__plow__plow_get_output`. Two handles,
-two tools: any call that outruns the Mac's own 15-second budget first answers
-`{"status":"pending","handle":…}` — settle that with `mcp__plow__plow_get_result`
-until it is `ready`, and only the `result` inside may carry the job handle
-`mcp__plow__plow_get_output` reads. Paths under `~/Plow` auto-approve.
+and you cannot reach that network. The owner's Mac can, and latch reaches the
+Mac, so every step that touches the Pi runs *from the Mac*: `latch file put`
+and `latch exec`, both with `--host <mac>` — in `latch status`, the online
+host with `messages` enabled — and `--plow-chat <chat>`, this chat's uid as
+the latch section gives it. A secret never rides argv: the wall's token
+travels only inside files `latch file put` ships whole from their path, and
+every `curl` reads it from `~/Plow/ld/dashboard.hdr` with `-H @…`.
+`latch exec` runs its argv directly rather than through a shell, so anything
+needing a redirect, a `&&` or a `~` is written as `sh -c '…'`, single-quoted
+so your own shell passes it through untouched. Every call below that leaves
+the Mac passes `--network`. If latch refuses a call (exit 4), ask the owner
+here, naming exactly what you will run, and retry once they agree.
 
-Cards refresh only while that Mac is awake with Latch running — an accepted
-cost. If a Latch call here fails because the Mac is unreachable, say "Mac
-unreachable" in chat, stop, and resume when the owner says the Mac is back.
+Cards refresh only while that Mac is awake and reachable — an accepted
+cost. If a latch call here answers `host_offline`, or no online host has
+`messages` enabled, say "Mac unreachable" in chat, stop, and resume when the
+owner says the Mac is back.
 For the *scheduled* card runs after setup, the rule is the producers' own:
 `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md` § When the Mac is
-asleep or Latch is not running.
+asleep or latch cannot reach it.
 
-**Every script's and every Latch call's output is pasted verbatim with its
+**Every script's and every latch call's output is pasted verbatim with its
 exit status, and a phase is not done until you have.** The scripts signal
 every refusal through their output and a non-zero exit, and a chat turn does
 not propagate an exit code. Do not paraphrase, and do not call a phase done
@@ -61,12 +58,11 @@ on a non-zero exit.
 `/var/lib/hermes/ld/pi.env`, `/var/lib/hermes/ld/dashboard.hdr`, or any line
 containing `TOKEN` into chat.** `ld/.env` is the file you write during setup and
 it carries the wall's token; the scripts read it for you. Neither the agent's
-own Plow bearer nor its relay is in any of these — both are in this process's
-environment, put there by first boot — so do not echo those either. The two `ld/` files are read with your file tool for one
-purpose only — to become the `content` of a `mcp__plow__plow_write_file` call — and
-their content goes nowhere else: not into a chat message, not into argv. The
-single exception is the no-Mac fallback in Phase 3, which says exactly what
-may cross chat and once.
+own Plow bearer nor its latch credential is in any of these — both are this
+process's own, put there by first boot — so do not echo those either. You
+never read the two `ld/` files at all: `latch file put` ships each from its
+path. The single exception is the no-Mac fallback in Phase 3, which says
+exactly what may cross chat and once.
 
 ## The wall (optional) — Phases 2 to 4
 
@@ -77,7 +73,7 @@ landed is skipped and the run resumes where it stopped.
 | phase | what it produces | the artifact that skips it |
 |---|---|---|
 | 2 · wall token | the dotenv's `DASHBOARD_*` lines, `/var/lib/hermes/ld/pi.env`, `/var/lib/hermes/ld/dashboard.hdr` | `mint_wall_token.py` prints `already minted: DASHBOARD_ENDPOINT_URL=…` |
-| 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through Latch answers with JSON carrying `sha`; without one, `/var/lib/hermes/ld/pi-brought-up` exists |
+| 3 · Pi bring-up | a running viewer holding this token | with a Mac, `/api/version` through latch answers with JSON carrying `sha`; without one, `/var/lib/hermes/ld/pi-brought-up` exists |
 | 4 · crons + proof | the six schedules and one real card | `/var/lib/hermes/ld/setup-complete` exists |
 
 The wall needs a config the shared gate accepts, and onboarding alone cannot
@@ -159,12 +155,11 @@ bare lines, `pi_line_1=…` and `pi_line_2=…`, for Phase 3:
 - `/var/lib/hermes/ld/dashboard.hdr` — `Authorization: Bearer …`, the header every
   `curl` from the Mac reads. Ship it now, when the owner has a Mac:
 
-      mcp__plow__plow_write_file(path="~/Plow/ld/dashboard.hdr", content=<the content of /var/lib/hermes/ld/dashboard.hdr, read with your file tool>)
+      latch file put --host <mac> --plow-chat <chat> /var/lib/hermes/ld/dashboard.hdr '~/Plow/ld/dashboard.hdr'
 
-  That call is the one time you handle the token, and its content goes into
-  that call and nowhere else — not into chat, not into argv. Paste the
-  call's *result* (not its content) verbatim. Phase 2 is done when the
-  script exited 0 and, with a Mac, that write succeeded.
+  latch reads the file itself, so the token never passes through you. Paste
+  the call's result verbatim. Phase 2 is done when the script exited 0 and,
+  with a Mac, that put succeeded.
 
 Everything after this line that is written `<pi_address>` or `<pi_user>` is a
 placeholder bound from the `pi_target=<pi_user>@<pi_address>` line Phase 2's
@@ -172,22 +167,22 @@ script printed — the one authoritative, validated ssh target; never bind
 either half from memory or a guess. Substitute both before you make the
 call, and never send the literal angle brackets to the Mac.
 
-## Phase 3 — Bring the Pi up through Latch
+## Phase 3 — Bring the Pi up through latch
 
 **With a Mac:** when this returns JSON carrying a `sha`, the viewer is up
-and the token is the one it checks (a Latch call, so it belongs to this path
+and the token is the one it checks (a latch call, so it belongs to this path
 only; the no-Mac path has its own gate below) — skip the bring-up, EXCEPT
 the ship-and-restart step at the end of this path, which still runs whenever
 Phase 2 printed `re-pointed:`: the freshly rewritten `pi.env` has to reach
 the Pi or the new address never takes effect.
 
-    mcp__plow__plow_run_command(argv=["sh","-c","curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version"], network=true)
+    latch exec --host <mac> --plow-chat <chat> --network -- sh -c 'curl -fsS -H @$HOME/Plow/ld/dashboard.hdr http://<pi_address>:5174/api/version'
 
-**Read the failure before treating it as "viewer not up."** A `curl` exit 22
+**Read the failure before treating it as "viewer not up."** A curl `exit_code` 22
 (an HTTP 4xx) means something *answered* on 5174 — probe the always-open
 liveness path to tell the two states apart:
 
-    mcp__plow__plow_run_command(argv=["sh","-c","curl -fsS http://<pi_address>:5174/healthz"], network=true)
+    latch exec --host <mac> --plow-chat <chat> --network -- curl -fsS http://<pi_address>:5174/healthz
 
 `ok` here plus a 403/404 above = the viewer is alive and serving the wall
 but runs a build that predates the updater contract (no `/api/version`, or no
@@ -205,45 +200,41 @@ fails fast instead of hanging on a password prompt with no tty;
 `StrictHostKeyChecking=accept-new` because the first connection has no host
 key yet and there is no tty to answer the prompt on.
 
-    mcp__plow__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "<pi_user>@<pi_address>", "true"], network=true)
+    latch exec --host <mac> --plow-chat <chat> --network -- ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new <pi_user>@<pi_address> true
 
 If that fails, the **one hands-on moment**: tell the owner to run
 `ssh-copy-id <pi_user>@<pi_address>` in their own Mac terminal. That is not
-something you can do for them — Latch has no stdin and no env to hand a
-password through, and its argv goes on the approval card and into the audit
-record, so a password there would be a password written down. Once they
-confirm it ran, re-probe; do not proceed on a refused probe.
+something you can do for them — the Pi's password would have to cross chat to
+reach you, and nothing in this sheet lets one. Once they confirm it ran,
+re-probe; do not proceed on a refused probe.
 
-Once the probe succeeds, run each Pi line the same way with `network=true`
-and a `timeout` of `600000` (ten minutes — `apt-get` is slow on a Pi; a run
-this long comes back as a job handle, so poll it with `mcp__plow__plow_get_output`
-rather than waiting on the call — after settling the outer `pending` answer
-with `mcp__plow__plow_get_result`, as above). `<pi_line_1>` and `<pi_line_2>` are the two
-values Phase 2 printed, each dropped whole into one argv element:
+Once the probe succeeds, run each Pi line the same way, with `--timeout 600`
+(ten minutes, latch's ceiling — `apt-get` is slow on a Pi; the call just
+waits). `<pi_line_1>` and `<pi_line_2>` are the two values Phase 2 printed,
+each dropped whole between the single quotes:
 
-    mcp__plow__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_1>"], network=true, timeout=600000)
-    mcp__plow__plow_run_command(argv=["ssh", "-o", "BatchMode=yes", "<pi_user>@<pi_address>", "<pi_line_2>"], network=true, timeout=600000)
+    latch exec --host <mac> --plow-chat <chat> --network --timeout 600 -- ssh -o BatchMode=yes <pi_user>@<pi_address> '<pi_line_1>'
+    latch exec --host <mac> --plow-chat <chat> --network --timeout 600 -- ssh -o BatchMode=yes <pi_user>@<pi_address> '<pi_line_2>'
 
 Raspberry Pi OS grants the Imager's primary user passwordless sudo by
 default; if `pi_line_1` instead comes back asking for a sudo password, that
 assumption was wrong for this Pi — do not try to smuggle one through. Text
 `pi_line_1` to the owner and ask them to run it on the Pi themselves, then
-continue with `pi_line_2` over Latch as above.
+continue with `pi_line_2` through latch as above.
 
-Then ship the Pi's env file — read `/var/lib/hermes/ld/pi.env` with your file tool
-and make it the `content` (nowhere else), then copy it across and restart
-the viewer. The shell text here is static: the owner's two values ride the
+Then ship the Pi's env file to the Mac, copy it across and restart the
+viewer. The shell text here is static: the owner's two values ride the
 trailing argv positions (`$1`/`$2`), so nothing they answered is ever parsed
 as shell:
 
-    mcp__plow__plow_write_file(path="~/Plow/ld/pi.env", content=<the content of /var/lib/hermes/ld/pi.env>)
-    mcp__plow__plow_run_command(argv=["sh","-c","scp -o BatchMode=yes ~/Plow/ld/pi.env $1@$2:ld-data/.env && ssh -o BatchMode=yes $1@$2 'chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer'","sh","<pi_user>","<pi_address>"], network=true, timeout=30000)
+    latch file put --host <mac> --plow-chat <chat> /var/lib/hermes/ld/pi.env '~/Plow/ld/pi.env'
+    latch exec --host <mac> --plow-chat <chat> --network --timeout 30 -- sh -c 'scp -o BatchMode=yes ~/Plow/ld/pi.env "$1@$2:ld-data/.env" && ssh -o BatchMode=yes "$1@$2" "chmod 600 ld-data/.env && systemctl --user restart life-dashboard-viewer"' sh <pi_user> <pi_address>
 
 Finish with the skip check at the top of this phase: JSON with a `sha` means
 the viewer is up and the token is live. Paste it. Any other result — 401
 (the token on the Pi is not the one in the header: re-ship `pi.env` and
 restart the viewer), connection refused (the viewer is not up yet; wait a
-minute and retry, at most a few times), unreachable device (the Mac) — is
+minute and retry, at most a few times), `host_offline` (the Mac) — is
 reported verbatim, and this phase is not done.
 
 **No Mac (or no Latch):** skip this path when `/var/lib/hermes/ld/pi-brought-up`
@@ -290,8 +281,8 @@ so run it either way, and tell the owner plainly if their scheduled refreshes
 are not yet registered.
 
 **Without a Mac, registration is the whole phase** — everything from here to
-the owner question is Latch work a no-Mac install cannot do: every pushed
-card — weather, sports, messages — stays empty until a Mac with Latch
+the owner question is latch work a no-Mac install cannot do: every pushed
+card — weather, sports, messages — stays empty until a Mac latch reaches
 exists, because delivery always routes through the outbox and nothing ships
 it. Do not run a producer, do not try to read a card back, and do not ask the
 owner to look for one — the screen being up was already confirmed when
@@ -320,16 +311,15 @@ has a branch that posts no card, and setup overrides it, because a fresh wall
 has no earlier card to leave up: a quiet triage (both gathers empty) writes
 exactly `No alert today.` to its handoff file and posts it, so card 1 carries
 the quiet-day state. Each producer's helper ends
-with `NOT DELIVERED — ship it through Latch, then paste both outputs:` because
-the dotenv says `DASHBOARD_DELIVERY=latch`; make those two calls, in that
-order — polling `mcp__plow__plow_get_result` if either answers with a pending
-handle — per `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`.
+with `NOT DELIVERED — ship it through latch, then paste both outputs:` because
+the dotenv says `DASHBOARD_DELIVERY=latch`; run those two commands, in that
+order, per `/var/lib/hermes/skills/ld-shared/references/latch-delivery.md`.
 The triage rows also text the owner (their `--deliver` leg in
 `register_crons.py`); that is the chat leg working, not a mistake.
 
 Then read every card back in one call, the same way the producers write them:
 
-    mcp__plow__plow_run_command(argv=["sh","-c","for c in 1 2 3 5; do printf 'card %s: ' $c; curl -fsS -H @$HOME/Plow/ld/dashboard.hdr \"http://<pi_address>:5174/api/message?card=$c\" | python3 -c 'import json,sys; d=sys.stdin.read(); m=json.loads(d)[\"message\"] if d else None; print(m[\"type\"] if m else \"EMPTY\")'; done"], network=true)
+    latch exec --host <mac> --plow-chat <chat> --network -- sh -c 'for c in 1 2 3 5; do printf "card %s: " $c; curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "http://<pi_address>:5174/api/message?card=$c" | python3 -c "import json,sys; d=sys.stdin.read(); m=json.loads(d)[\"message\"] if d else None; print(m[\"type\"] if m else \"EMPTY\")"; done'
 
 Four lines reading `alert`, `affirmation`, `weather`, `sports`, in
 that order, is the gate. A failed fetch prints `EMPTY` too (curl's own error
@@ -340,9 +330,9 @@ Do not go on to the marker with an empty card, and do not describe a card as
 
 **Then run the calendar strip once.** The strip
 (`ld-shared/scripts/calendar_feed.py`) runs unattended with no model in it and
-ships through Latch like every card, but with argv Latch has never seen — and
-an unapproved argv on an unattended run stops at a card nobody is present to
-answer. Running it here, with the owner watching, is what approves those calls.
+ships through latch like every card. Running it here puts real events on the
+wall now rather than at the next tick, and a refusal surfaces while the owner
+is here to hear it.
 
 Its schedule is the `life-calendar-feed` service, supervised beside the gateway
 and ticking every five minutes from boot. Confirm it is there, then run the
@@ -352,11 +342,10 @@ producer once as the gateway user:
 
     /opt/hermes/.venv/bin/python3 /var/lib/hermes/skills/ld-shared/scripts/calendar_feed.py
 
-Approve the calls it makes; the argv it sends is the argv every later tick
-sends, so approving the real run is what makes the unattended ones silent.
 Paste its output. A line naming a count and `shipped through the Mac` is the
 pass. `calendar feed not configured: …` means an earlier phase did not finish
-— fix that first. The strip on the wall is real events from this household's
+— fix that first. `calendar feed failed: …` names latch's error code; a
+`gatekeeper_denied` is a refusal to take up with the owner, as above. The strip on the wall is real events from this household's
 own calendars, so it is also the proof, exactly as the weather card is.
 
 Then tell the owner: "your wall is live — all four cards should be showing;

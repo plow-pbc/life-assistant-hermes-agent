@@ -2,50 +2,39 @@
 """calendar_feed.py — publish the kiosk's calendar strip, with no model in it.
 
 The kiosk's cards are composed by producers a model drives. The calendar
-strip is not: it is a straight translation of what plow-gog returns into the
-viewer's `/api/calendar` contract, so there is nothing for a model to add and
-every turn it would cost is a turn that can go wrong on private calendar text.
-This script is the whole producer — gather, filter, normalize, POST.
+strip is not: it is a straight translation of the owner's Google calendar into
+the viewer's `/api/calendar` contract, so there is nothing for a model to add
+and every turn it would cost is a turn that can go wrong on private calendar
+text. This script is the whole producer — gather, filter, normalize, POST.
 
 Everything it reads is fixed; nothing arrives on argv:
 
   - `/var/lib/hermes/ld/config.json` for the account, the calendar ids and the
     household zone — the same `calendar.account` + `calendar.sources` shape
     every other calendar producer here reads;
-  - the agent's own relay, `PLOW_MCP_URL` and `PLOW_AGENT_TOKEN`, out of the
-    container environment. First boot resolves both from the credential the
-    host dropped in and publishes them where nothing the agent runs can write,
-    so the endpoint needs no literal origin to defend it: an injected base
-    cannot get in. Nothing here mints or holds a device credential -- an
-    instance whose owner has no relay switched on simply stands down;
+  - latch, logged in with the agent's own credential and acting for the home
+    chat (latch_cli.py), which the service reads from the root-owned container
+    environment;
   - the kiosk endpoint through post_to_kiosk's own constants, so a
     dotenv-sourced one is held to the Pi's own message API on the household
     network before anything is sent to it.
 
-ONE delivery path: the body is shipped from the owner's Mac, in the two fixed
-calls ld-shared/references/latch-delivery.md documents — write the file, then
-curl it. That is where every household is: mint_wall_token.py writes
-`DASHBOARD_DELIVERY=latch` unconditionally, because this container is not on
-the Pi's LAN. This producer makes those two calls ITSELF, over the same relay
-it gathers through; the card producers hand them to a model only because a
-model is already in their loop.
+The gather goes through any online host with Google on, `cloud` included, so
+it never waits on the owner's Mac. The delivery cannot: this container is not
+on the Pi's LAN, so the body is shipped from the owner's Mac, in the two calls
+ld-shared/references/latch-delivery.md documents — put the file, then curl it.
+That is where every household is: mint_wall_token.py writes
+`DASHBOARD_DELIVERY=latch` unconditionally.
 
 A consequence worth naming: the wall's bearer is never read here at all. It
 lives in ~/Plow/ld/dashboard.hdr on the Mac and `curl -H @` reads it there, so
-the token never crosses the relay and this script never holds it.
-
-The gather argv is one fixed seven-day shape, deliberately: Latch always-allow
-keys on the exact argv, README "Bring-up" has the owner approve each of the 2-,
-3- and 7-day shapes once, and a new shape would strand every unattended run on
-an approval card nobody answers (plow-pbc/latch#181). `--days=7` is already
-relative to the moment of the call, so there is nothing for a computed
-timestamp to add.
+the token never crosses latch and this script never holds it.
 
 Every failure is a one-line stand-down and exit 0. This runs unattended: a
 non-zero exit buys nothing because nobody is reading, while a traceback
-carrying calendar text is a leak. Three consecutive failures back off for an
-hour, so a dead Pi or a revoked relay token is not retried every five minutes
-forever.
+carrying calendar text is a leak. The Mac asleep is the common case, and the
+next tick re-gathers and re-delivers. A refusal from the Mac's gatekeeper
+stands down the same way, naming the refusal.
 
 Event text is UNTRUSTED. Private and confidential occurrences — and every
 sibling copy sharing their identity — are dropped first; then Latch's
@@ -61,8 +50,6 @@ import os
 import re
 import sys
 import time
-import urllib.error
-import urllib.request
 from datetime import date, datetime, timezone
 from datetime import time as datetime_time
 from pathlib import Path
@@ -72,8 +59,8 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import post_to_kiosk  # noqa: E402
-from bearer_http import open_no_redirect  # noqa: E402
 from external_content import strip_markers  # noqa: E402
+from latch_cli import LatchError, google, host_with, latch, mac, put, run  # noqa: E402
 from runtime_env import AGENT_DOTENV, agent_values  # noqa: E402
 
 CONFIG_FILE = "/var/lib/hermes/ld/config.json"
@@ -83,16 +70,13 @@ CONFIG_FILE = "/var/lib/hermes/ld/config.json"
 MESSAGE_SUFFIX = "/api/message"
 CALENDAR_SUFFIX = "/api/calendar"
 # The Mac-side staging path, a sibling of the cards' ~/Plow/ld/card-<n>.json.
-# Anything under ~/Plow auto-approves on the Mac; the curl argv below is one
-# more fixed shape the owner approves once, like each gather window.
 LATCH_BODY_PATH = "~/Plow/ld/calendar.json"
 WINDOW_DAYS = 7
 MAX_EVENTS = 250
-# Latch's own RETRY_AFTER_MS as a constant. No deadline of this script's own:
-# a handle Latch has not settled within its 15-minute HANDLE_TTL_MS answers
-# `expired`, and giving up sooner would let a delivery still running on the
-# Mac land after the next tick's.
-POLL_INTERVAL_S = 1
+# gog's own event fields, which is what latch answers with when the fields are
+# named: unnamed, it returns a compact scheduling view with no visibility,
+# iCalUID or status, which the privacy filter below cannot work without.
+EVENT_FIELDS = "id,iCalUID,status,visibility,summary,location,start,end"
 
 # Deliberately broad, the same trade nudge_candidates.py's redaction makes:
 # native join links use schemes other than http, and stripping an ordinary
@@ -106,7 +90,7 @@ class FeedError(Exception):
 
 
 def redact(value):
-    """Strip plow-gog's markers and every URI-shaped token; collapse whitespace.
+    """Strip gog's markers and every URI-shaped token; collapse whitespace.
 
     Newlines included: the strip is a one-row-per-event contract, so a title
     carrying a newline could otherwise spoof a row.
@@ -154,39 +138,6 @@ def visible_events(events):
         and not private(event)
         and event_key(event) not in private_keys
     ]
-
-
-def decode_events(raw):
-    """The JSON event array that follows Latch's optional preamble line."""
-    match = re.search(r"^\[", raw, re.MULTILINE)
-    if not match:
-        raise FeedError("no event array in gather output")
-    try:
-        events = json.loads(raw[match.start():])
-    except json.JSONDecodeError as exc:
-        raise FeedError("malformed plow-gog json") from exc
-    if not isinstance(events, list):
-        raise FeedError("gather payload is not an array")
-    return events
-
-
-def relay_config():
-    """The agent's own relay endpoint and bearer, or (None, the missing name).
-
-    Both come from the container environment, which first boot fills from the
-    credential the host dropped in -- the same relay the gateway itself uses,
-    reached with the same token. Not from a dotenv: the agent can write one of
-    those, and this endpoint is handed a bearer.
-
-    Returned rather than exited on. `PLOW_MCP_URL` is absent for a tenant whose
-    relay is not switched on, and that is a supported shape, not a fault.
-    """
-    url = (os.environ.get("PLOW_MCP_URL") or "").strip()
-    token = (os.environ.get("PLOW_AGENT_TOKEN") or "").strip()
-    for name, present in (("PLOW_MCP_URL", url), ("PLOW_AGENT_TOKEN", token)):
-        if not present:
-            return None, name
-    return (url, token), None
 
 
 def kiosk_config(dotenv):
@@ -240,19 +191,19 @@ def read_config():
     return account, calendar_ids, zone
 
 
-def command_argv(account, calendar_ids):
-    """The one fixed gather argv — see the module docstring on always-allow."""
+def command_args(account, calendar_ids):
+    """The gather: the next seven days of the chosen calendars, gog's fields."""
     return [
-        "plow-gog", "calendar", "events", "list",
+        "calendar", "events",
         f"--account={account}",
         f"--calendars={','.join(calendar_ids)}",
-        f"--days={WINDOW_DAYS}", "--json", "--results-only",
-        "--sort=start", f"--max={MAX_EVENTS}",
+        f"--days={WINDOW_DAYS}", "--sort=start", f"--max={MAX_EVENTS}",
+        f"--select={EVENT_FIELDS}",
     ]
 
 
 def normalize_events(events, zone):
-    """plow-gog's event shape as the viewer's contract, earliest first."""
+    """gog's event shape as the viewer's contract, earliest first."""
     try:
         local = ZoneInfo(zone)
         normalized = []
@@ -294,142 +245,12 @@ def normalize_events(events, zone):
     return [payload for _, payload in normalized]
 
 
-def _payload_of(result):
-    """The JSON object in a tool result's one text block, or FeedError.
-
-    An object, not any JSONValue: every caller reads it by key.
-    """
-    try:
-        text = next(block["text"] for block in result["content"]
-                    if block.get("type") == "text")
-        payload = json.loads(text)
-    except (KeyError, TypeError, ValueError, StopIteration) as exc:
-        raise FeedError("malformed relay response") from exc
-    if not isinstance(payload, dict):
-        raise FeedError("relay response is not a JSON object")
-    return payload
-
-
-def _decode_command_response(payload):
-    """The command's stdout out of a settled plow_run_command payload.
-
-    Every layer is checked by name — the payload status, a non-zero exit_code —
-    because each of those is a FAILED call that would otherwise read as
-    success: a failed gather decodes to zero events and publishes an empty
-    week, and a failed curl leaves a stale strip on the wall while the run
-    reports fine.
-    """
-    if payload.get("status") != "completed" or payload.get("exit_code") != 0:
-        raise FeedError("relay command did not complete")
-    output = payload.get("output")
-    if not isinstance(output, str):
-        raise FeedError("relay command returned no output")
-    return output
-
-
-def _post_json(url, token, body, label):
-    request = urllib.request.Request(
-        url=url, method="POST", data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {token}",
-                 "Content-Type": "application/json",
-                 "Accept": "application/json, text/event-stream"})
-    try:
-        with open_no_redirect(request, timeout=30) as response:
-            return response.read(), response.headers.get("Content-Type", "")
-    except urllib.error.HTTPError as exc:
-        # The code, never the body: an error body can echo the argv back.
-        raise FeedError(f"{label} returned HTTP {exc.code}") from exc
-    except urllib.error.URLError as exc:
-        raise FeedError(f"{label} request failed") from exc
-
-
-def envelope_from(body, content_type):
-    """The JSON-RPC envelope, in whichever framing the relay answered.
-
-    MCP's streamable transport lets a server answer one POST either as a plain
-    JSON body or as an event stream carrying that same envelope in a `data:`
-    line, and this endpoint answers with the stream: api.plow.co returns
-    `content-type: text/event-stream` for tools/call, measured 2026-09-03.
-    Reading that as plain JSON is why this producer stood down on every tick
-    from the day it was written -- `json.loads` on `event: message` raises, the
-    run prints one line to stderr and exits 0, and a supervised five-minute
-    service is indistinguishable from a household that has no wall.
-
-    Frames ahead of the response are skipped rather than read as it: the
-    transport may carry notifications, and only a message carrying `result` or
-    `error` answers the call. Taking the first frame would put that same silent
-    stand-down back, one layer down.
-    """
-    if "text/event-stream" not in content_type:
-        return json.loads(body)
-    for line in body.decode("utf-8", "replace").splitlines():
-        if not line.startswith("data:"):
-            continue
-        framed = json.loads(line[len("data:"):])
-        if "result" in framed or "error" in framed:
-            return framed
-    raise FeedError("relay stream carried no response frame")
-
-
-def _call(url, token, name, arguments):
-    """One MCP tools/call on the owner's Mac; returns the result object."""
-    body, content_type = _post_json(url, token, {
-        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-        "params": {"name": name, "arguments": arguments},
-    }, "relay")
-    try:
-        envelope = envelope_from(body, content_type)
-    except json.JSONDecodeError as exc:
-        raise FeedError("relay returned malformed JSON") from exc
-    if "error" in envelope:
-        # The Mac asleep or Latch not running lands here. One line, and the
-        # next tick re-gathers and re-delivers -- latch-delivery.md's own rule.
-        raise FeedError(f"relay returned an MCP error for {name}")
-    try:
-        result = envelope["result"]
-    except (KeyError, TypeError) as exc:
-        raise FeedError("malformed relay response") from exc
-    if result.get("isError") is True:
-        raise FeedError(f"relay {name} failed")
-    return result
-
-
-def relay(url, token, name, arguments):
-    """The call's own payload, polling a pending handle until it lands.
-
-    A call that outruns Latch's 15s CALL_BUDGET_MS answers with a pending
-    handle instead of its result and goes on running -- the adversarial review
-    ahead of exec spends that budget on its own, measured at 16s for the
-    delivery curl on 2026-09-04. Reading that envelope as a failed command
-    stood the strip down on a curl that then exited 0, and three stand-downs
-    trip the hour-long backoff. Polled HERE so every call is covered: a write
-    that deferred and was then denied would otherwise leave the curl shipping
-    yesterday's file. See packages/mcp-server/src/deferred.ts in plow-pbc/latch.
-    """
-    payload = _payload_of(_call(url, token, name, arguments))
-    # The FIRST envelope's, never re-read off an answer that may omit it.
-    handle = payload.get("handle")
-    while payload.get("status") == "pending":
-        time.sleep(POLL_INTERVAL_S)
-        payload = _payload_of(_call(url, token, "plow_get_result",
-                                    {"handle": handle}))
-        status = payload.get("status")
-        if status == "ready":
-            # Exactly what the original call would have returned -- and a ready
-            # answer without one is a stand-down, not an AttributeError two
-            # frames later on the module's one no-traceback contract.
-            if not isinstance(payload.get("result"), dict):
-                raise FeedError("relay command ready with no result")
-            return payload["result"]
-        if status != "pending":
-            # denied, failed, expired, unknown -- none of them become ready.
-            raise FeedError(f"relay command {status}")
-    return payload
-
-
-def gather(url, token, argv):
-    return decode_events(_decode_command_response(
-        relay(url, token, "plow_run_command", {"argv": argv})))
+def gather(host, args):
+    """The events latch answered with, each still naming its account."""
+    events = google(*args, host=host).get("items")
+    if not isinstance(events, list):
+        raise FeedError("gather answered with no event list")
+    return events
 
 
 def curl_argv(calendar_url):
@@ -445,25 +266,20 @@ def curl_argv(calendar_url):
             f"--data-binary @$HOME/Plow/ld/calendar.json {calendar_url}"]
 
 
-def deliver_via_latch(relay_url, relay_token, calendar_url, feed):
-    """Ship the body from the owner's Mac: write the file, then curl it.
+def deliver_via_latch(host, calendar_url, feed):
+    """Ship the body from the owner's Mac: put the file, then curl it.
 
     The two calls latch-delivery.md documents, in that order, made here rather
     than handed to a model -- there is no model in this run. The run is not
-    done until the curl returned 2xx, which is what _decode_command_response
-    holds the second call to.
+    done until the curl exited 0, which `-f` ties to a 2xx.
     """
-    relay(relay_url, relay_token, "plow_write_file",
-          {"path": LATCH_BODY_PATH, "content": json.dumps(feed)})
-    _decode_command_response(
-        relay(relay_url, relay_token, "plow_run_command",
-              {"argv": curl_argv(calendar_url), "network": True}))
+    put(host, LATCH_BODY_PATH, json.dumps(feed))
+    run(host, curl_argv(calendar_url), network=True)
 
 
 def main(*, now=None):
     now = int(time.time()) if now is None else now
-    # The agent's own file, for the wall's endpoint. The relay is not in it --
-    # that comes from the environment first boot published, below.
+    # The agent's own file, for the wall's endpoint.
     dotenv = agent_values(AGENT_DOTENV)
 
     try:
@@ -477,25 +293,19 @@ def main(*, now=None):
         print(f"calendar feed not configured: {reason}")
         return 0
 
-    # No dotenv: the relay is the agent's own, published by first boot.
-    relay, missing = relay_config()
-    if relay is None:
-        print(f"calendar feed not configured: {missing} missing")
-        return 0
-    relay_url, relay_token = relay
-
     try:
+        status = latch("status")
         events = normalize_events(
-            gather(relay_url, relay_token,
-                   command_argv(account, calendar_ids)), zone)
+            gather(host_with("google", status),
+                   command_args(account, calendar_ids)), zone)
         feed = {
             "generated_at": datetime.fromtimestamp(now, timezone.utc)
             .isoformat().replace("+00:00", "Z"),
             "window_days": WINDOW_DAYS,
             "events": events,
         }
-        deliver_via_latch(relay_url, relay_token, calendar_url, feed)
-    except FeedError as exc:
+        deliver_via_latch(mac(status), calendar_url, feed)
+    except (FeedError, LatchError) as exc:
         # The next tick is the retry; nothing is remembered between them. A
         # sleeping Mac is the common case and is not an error worth more.
         print(f"calendar feed failed: {exc}")

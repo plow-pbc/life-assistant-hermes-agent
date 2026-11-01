@@ -35,11 +35,6 @@ ONBOARDING = SKILL[SKILL.index("## Onboarding"):]
 TRIGGER = " ".join(PERSONA[PERSONA.index("# First run"):PERSONA.index("# The wall")].split())
 
 WALL_MARKER = "/var/lib/hermes/ld/setup-complete"
-# The tool as the image REGISTERS it. An MCP tool carries its server's key as a
-# prefix, so a sheet naming the bare suffix names a tool that is not there: one
-# calendar turn spent twenty-one API calls on tool_search and answered the owner
-# with nothing.
-RELAY_TOOL = "mcp__plow__plow_run_command"
 
 
 def load(name, rel):
@@ -547,7 +542,7 @@ def test_write_config_takes_the_staged_path(tmp_path):
 
 
 def test_the_identities_are_the_union_not_the_account_alone():
-    """calendar.account is the one identity plow-gog authenticates as; the nudge asks
+    """calendar.account is the one account the calendar reads name; the nudge asks
     whether the OWNER was in a meeting. An owner whose calendars carry two of
     their addresses is absent from every event read through the other one --
     a nudge that works and never fires."""
@@ -573,73 +568,20 @@ def test_step_four_names_exactly_one_deferral():
     assert step4.count("deferral") == 2, "one exception, stated and then lapsed"
 
 
-def test_the_wall_names_its_relay_tools_as_the_image_registers_them():
-    """The last bare ones in the repo, and the same defect: an MCP tool carries
-    its server's key as a prefix, so `plow_run_command` names a tool the build
-    does not register and a turn that cannot find it hunts through tool_search
-    instead of calling it. Measured on the onboarding side at twenty-one API
-    calls and no reply to the owner."""
-    for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", WALL):
-        raise AssertionError(
-            f"the wall names a relay tool without its prefix: "
-            f"{WALL[hit.start():hit.start() + 30]!r}")
-    assert RELAY_TOOL in WALL, "the wall stopped naming the relay at all"
-
-
-def test_the_scripts_print_relay_tools_qualified_too():
-    """A script's OUTPUT is agent-facing when the model is told to read it.
-
-    post_to_kiosk's Latch block and mint_wall_token's ship-them line are
-    instructions the turn acts on, so a bare tool name there is the same defect
-    as a bare one in a sheet: a name the build does not register, and a turn
-    that goes hunting through tool_search instead of calling it.
-
-    The relay's own wire protocol still uses the unprefixed name -- that is what
-    the MCP server exposes -- so this covers printed instructions only.
-    """
-    for rel in ("ld-shared/scripts/post_to_kiosk.py",
-                "ld-wall-setup/scripts/mint_wall_token.py"):
-        source = (ROOT / rel).read_text()
-        printed = re.findall(r'"[^"\n]*\bplow_[a-z_]+[^"\n]*"', source)
-        for literal in printed:
-            for hit in re.finditer(r"(?<!mcp__plow__)\bplow_[a-z_]+\b", literal):
-                raise AssertionError(
-                    f"{rel} prints an unqualified relay tool: {literal.strip()!r}")
-
-
-@pytest.mark.parametrize(("env", "expected"), [
-    ({"PLOW_MCP_URL": "https://api.plow.co/v1/relay/devices/dev1/mcp"}, "configured"),
-    ({}, "unconfigured"),
-    ({"PLOW_MCP_URL": ""}, "unconfigured"),
-    ({"PLOW_MCP_URL": "   "}, "unconfigured"),
-], ids=["relay", "none", "empty", "blank"])
-def test_the_status_probe_answers_from_what_first_boot_published(env, expected, capsys):
-    """The script is what makes the branch decidable, so it has to answer on a
-    box with no relay at all rather than raising -- that is the whole case.
-
-    `PLOW_MCP_URL` is published by first boot for a tenant whose relay is
-    switched on, and is the same value that sets `mcp_servers.plow.enabled` in
-    the config. Blank is nobody's answer and reads as unconfigured: that costs
-    an install link the owner has already followed, where the other direction
-    costs a tool call that cannot land.
-    """
-    ls = load("latch_status", "ld-setup/scripts/latch_status.py")
-    capsys.readouterr()
-    assert ls.main(env=env) == 0
-    assert capsys.readouterr().out.strip() == expected
-
-
-def test_the_status_probe_needs_only_the_standard_library():
-    """The sheet runs it as plain `python3`, and PyYAML lives in Hermes' own
-    venv rather than the system interpreter in at least one build we ship -- an
-    `import yaml` under /usr/bin/python3 once took down every container start.
-    A probe that raises is worse than no probe: the turn improvises, which is
-    the thing this script exists to prevent."""
-    source = (ROOT / "ld-setup/scripts/latch_status.py").read_text()
-    body = source.split('"""', 2)[2]
-    assert not re.search(r"^\s*(import|from)\s+(?!__future__|os|sys)", body, re.MULTILINE), (
-        "the probe imports something outside the standard library's core")
-    assert not re.search(r"yaml\.(safe_)?load", body), "PyYAML is being called"
+def test_every_latch_call_a_sheet_makes_names_its_host_and_chat():
+    """The owner has more than one host, so a call with no --host is a usage
+    error, and the gatekeeper judges each call against what the owner asked in
+    the chat --plow-chat names. Every latch command a sheet or the delivery
+    reference spells out carries both (`latch status` takes neither). The
+    printed delivery block is checked where it is built."""
+    sheets = sorted(ROOT.glob("ld-*/SKILL.md")) + [
+        ROOT / "ld-shared/references/latch-delivery.md"]
+    calls = [(sheet.relative_to(ROOT), call) for sheet in sheets
+             for call in re.findall(r"^ {4,}(?:\d\. )?(latch (?:google|messages|contacts|exec|file)\b.*)$",
+                                    sheet.read_text(), re.MULTILINE)]
+    assert len(calls) > 10, "the sheets stopped spelling out their latch calls"
+    for where, call in calls:
+        assert "--host <" in call and "--plow-chat <chat>" in call, (where, call)
 
 
 def test_no_display_name_is_persisted_or_shelled():
@@ -790,8 +732,7 @@ def test_persona_looks_a_bare_handle_up_before_asking() -> None:
     the Mac and recorded, and a second handle a person gives gets the same
     name; the owner is never asked to confirm who someone is."""
     assert "plow_send_message" in PERSONA
-    assert 'plow_read_skill(name="contacts")' in PERSONA
-    assert "plow contacts search" in PERSONA
+    assert "latch contacts lookup --host <mac> --plow-chat <chat> <handle>" in PERSONA
     assert "plow_name_contact" in PERSONA
     assert "same name" in PERSONA
     assert "never ask your owner to confirm" in PERSONA
@@ -833,19 +774,19 @@ def test_the_wall_token_handoff_is_dm_only():
 
 def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     """A preconnected Mac must not put listing/staging tools before hello."""
-    # The relay tools may be NAMED, but only to forbid them: the discovery
-    # snapshot lives on this server and the Latch prompt otherwise sends every
-    # path-shaped read to the Mac.
+    # latch may be NAMED, but only to forbid it: the discovery snapshot lives
+    # on this server and the latch prompt otherwise sends every path-shaped
+    # read to the Mac.
     for paragraph in ONBOARDING.split("\n\n"):
-        if "mcp__plow__" in paragraph or "plow_read_file" in paragraph:
+        if "latch file get" in paragraph:
             flowed = " ".join(paragraph.split())
             assert re.search(r"\b[Nn](ot|ever)\b", flowed), flowed
     assert "calendar-listing-<turn>" not in ONBOARDING
     commands = re.findall(r"^    python3 (.+)$", ONBOARDING, re.MULTILINE)
     # Not even the discovery script: its snapshot is read as a file now, so no
     # onboarding turn spends a command -- or an approval prompt -- on a read.
-    assert not any("calendar_discovery.py" in command or "latch_status.py" in command
-                   or "calendar_list.py" in command for command in commands)
+    assert not any("calendar_discovery.py" in command or "calendar_list.py" in command
+                   for command in commands)
     # Nor anywhere before §5: the intro's read was the one that was lost.
     assert "calendar_discovery.py" not in ONBOARDING.split("### 5 ·")[0]
     # The one surviving mention says the script is the operator's, not this
@@ -855,23 +796,22 @@ def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     assert "an operator's shell, never this turn" in script[:220]
 
 
-def test_the_snapshot_read_names_the_local_tool_and_bars_the_relay():
-    """The Latch prompt tells the model the owner's world is on the Mac.
+def test_the_snapshot_read_names_the_local_tool_and_bars_latch():
+    """The latch prompt tells the model the owner's world is on the Mac.
 
     That standing instruction is right everywhere except this path: the
     snapshot is written by a service on this server and does not exist on the
-    Mac. Observed: `mcp__plow__plow_read_file` answered not_found for it and
+    Mac. Observed under the relay: its file read answered not_found for it and
     the turn sent an install link to a connected owner. So the sheet has to
-    name the local tool and bar the relay ones by name, in both places that
-    read it.
+    name the local tool and bar latch's by name, in both places that read it.
     """
     for where in (ONBOARDING[:ONBOARDING.index("### 5 ·")],
                   ONBOARDING[ONBOARDING.index("### 5 ·"):]):
         flowed = " ".join(where.split())
         assert 'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")' in flowed
-        assert "never `plow_read_file`" in flowed or "Not `plow_read_file`" in flowed
+        assert "never `latch file get`" in flowed or "Not `latch file get`" in flowed
     choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "not any `plow_`/`mcp__plow__` tool" in choices
+    assert "not any latch call" in choices
     assert "not `execute_code`, not `terminal`, not the script" in choices
 
 

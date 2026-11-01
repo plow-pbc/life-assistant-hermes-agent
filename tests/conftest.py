@@ -40,3 +40,74 @@ def run_concurrently():
         return errors
 
     return run
+
+
+FAKE_LATCH = '''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+state = Path(os.environ["FAKE_LATCH_DIR"])
+argv = sys.argv[1:]
+call = {"argv": argv}
+if argv[:2] == ["file", "put"]:
+    call["content"] = Path(argv[-2]).read_text()
+with open(state / "calls.jsonl", "a") as log:
+    log.write(json.dumps(call) + "\\n")
+answers = json.loads((state / "answers.json").read_text())
+queue = answers.get(argv[0], [])
+answer = queue.pop(0) if len(queue) > 1 else (queue[0] if queue else {"stdout": {}})
+(state / "answers.json").write_text(json.dumps(answers))
+if "error" in answer:
+    print(json.dumps({"error": answer["error"]}), file=sys.stderr)
+    sys.exit(answer.get("exit", 1))
+print(json.dumps(answer["stdout"]))
+'''
+
+
+class FakeLatch:
+    """A `latch` on PATH that answers by subcommand from a queue and logs every
+    call, so a script's real latch calls -- argv, flags, the file it put -- are
+    what a test asserts on."""
+
+    def __init__(self, root):
+        self.root = root
+        self.answers = {}
+        self._write()
+
+    def _write(self):
+        import json
+        (self.root / "answers.json").write_text(json.dumps(self.answers))
+
+    def answer(self, command, *answers):
+        """Queue answers for `latch COMMAND`: a dict is stdout, an
+        ("error", code, exit) tuple is latch's error line."""
+        self.answers[command] = [
+            {"error": {"code": a[1], "message": a[1].replace("_", " ")}, "exit": a[2]}
+            if isinstance(a, tuple) else {"stdout": a} for a in answers]
+        self._write()
+
+    def hosts(self, *hosts):
+        """`latch status` with these (name, online, plugins...) hosts."""
+        self.answer("status", {"hosts": [
+            {"name": name, "online": online,
+             "plugins": [{"name": p, "state": "enabled"} for p in plugins]}
+            for name, online, *plugins in hosts]})
+
+    def calls(self, command=None):
+        import json
+        log = self.root / "calls.jsonl"
+        calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+        return [c for c in calls if command is None or c["argv"][0] == command]
+
+
+@pytest.fixture
+def fake_latch(tmp_path, monkeypatch):
+    import os
+    root = tmp_path / "fake-latch"
+    (root / "bin").mkdir(parents=True)
+    script = root / "bin" / "latch"
+    script.write_text(FAKE_LATCH)
+    script.chmod(0o755)
+    monkeypatch.setenv("FAKE_LATCH_DIR", str(root))
+    monkeypatch.setenv("PATH", f"{root / 'bin'}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("PLOW_HOME_CHANNEL", "cht_home")
+    return FakeLatch(root)

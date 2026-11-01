@@ -46,7 +46,7 @@ Not here:
 - Every turn's prompt framing, the Plow tools and the seed skills —
   [`hermes-plugin-plow`](https://github.com/plow-pbc/hermes-plugin-plow). A plugin
   change is a PR there plus a base pin bump, never a patch file carried here.
-- A client for the Plow API or the Latch relay — the plugin's seed skills and
+- A client for the Plow API or for latch — the plugin's seed skills and
   [`latch`](https://github.com/plow-pbc/latch), which already own those wires.
 - Fleet container lifecycle, the deploy hook and skill seeding —
   [`agent-mgr`](https://github.com/plow-pbc/agent-mgr). For local development,
@@ -149,10 +149,9 @@ tracked tree stay identical for everyone:
 Nothing is pre-staged for anyone. There is no credential to hand over before
 bring-up; the activation exchange mints it.
 
-Latch is bound the same way: the relay is the agent's own `PLOW_MCP_URL`,
-resolved by first boot from what the host handed it and published where nothing
-the agent runs can write. The image is shared;
-the Mac that relay resolves to is not.
+Latch is bound the same way: latch logs in with the agent's own credential, so
+the hosts it reaches are this owner's. The image is shared; the Mac latch
+reaches is not.
 
 ## What an agent cannot reach
 
@@ -165,9 +164,9 @@ Here a copy-paste can cross an **account** boundary, not just an agent one.
   property access facts, door and keypad codes among them. Not in this image.
 - **Hostex and Seam.** No PMS access, no lock control — those belong to the
   rentals agent and reach a different person's property.
-- **Anyone else's Mac.** `mcp_servers` is the base image's seed, not this
-  repo's, so there is no MCP block here for a sibling's to arrive in by
-  copy-paste.
+- **Anyone else's Mac.** latch reaches the hosts its login names, and its
+  login is this agent's own credential; nothing in this repo names a host for
+  a sibling's to arrive in by copy-paste.
 
 ## Bring-up
 
@@ -257,23 +256,24 @@ afterwards.
 
 The agent's own dotenv is a different file and a smaller one: `ld/.env` holds
 what the agent records during setup — the wall's endpoint and token, the Pi's
-login, the delivery mode — and no `PLOW_*` name appears in it. The relay is not
-in it either: that is the agent's own, out of the environment first boot
-published.
+login, the delivery mode — and no `PLOW_*` name appears in it. Nor is latch's
+state: that is `/var/lib/hermes/latch` (`LATCH_STATE_DIR`), logged in with the
+agent's own credential.
 
 ## No connectors, and what that costs
 
 `plow-connectors` — the skill that reached this owner's Gmail, Google Calendar
 and Slack with the gateway's own `PLOW_AGENT_TOKEN` — is not installed. Only
-Slack stays out of reach: Google Calendar and Gmail are read through Latch's
-vendored `plow-gog` on the owner's Mac instead.
+Slack stays out of reach: Google Calendar and Gmail are read through latch's
+`google` command instead, on any of the owner's hosts with Google on — `cloud`
+included, so they read with the Mac asleep.
 
 That is a deliberate trade. The two producers that need no account —
 `ld-weather` (NWS) and `ld-sports` (ESPN) — work immediately, as does
 the triage — `ld-morning-triage` at 07:05 and `ld-evening-triage` at 18:00,
 iMessage and Gmail read through Latch, texted to the owner — and the two
 calendar producers — `ld-morning-updates`, `ld-calendar-nudge` — whose calendar
-reads go through Latch's vendored `plow-gog`.
+reads go through latch.
 `ld-dashboard` carries all six schedules.
 
 ## Trusted group conversations
@@ -319,29 +319,11 @@ the old `family.owner.name`, set `family.owner.introduced` to `true`, then delet
 `family.owner.name` by editing the mode-600 file, since `--patch` merges and
 cannot remove a key.
 
-The morning skill adds that account to its exact plow-gog argv
-(the nudge reads every connected account and carries none); manually run and
-approve each new gather shape — the nudge's 2-day, the morning's 3-day, the
-strip's 7-day — and the triage's exact `plow-gog gmail search` argv from
-`ld-morning-triage/SKILL.md` — once through Latch before relying on the
-unattended crons. The calendar strip adds a fourth — its `/api/calendar` curl
-— for the same reason: it ticks with nobody there to answer an approval card.
-`ld-wall-setup` approves it by running
-the strip once with the owner present, and an agent already carrying
-`/var/lib/hermes/ld/setup-complete` skips that phase, so one set up before the
-strip landed needs the step once, by hand, with its owner at their Mac:
+The morning skill names that account on its calendar read (the nudge reads
+every connected account and names none).
 
-```sh
-s6-svstat /run/service/life-calendar-feed    # the schedule, supervised beside the gateway
-/opt/hermes/.venv/bin/python3 /var/lib/hermes/skills/ld-shared/scripts/calendar_feed.py
-```
-
-The image's own path rather than this checkout's, and run as `hermes`, so this
-cannot drift from what the service actually ticks — which is the whole point of
-approving it.
-
-The separate calendar discovery service enumerates `plow-gog accounts` and
-lists each account's calendars into `/var/lib/hermes/ld/calendar-discovery.json`,
+The separate calendar discovery service lists every connected account's
+calendars, in one latch call, into `/var/lib/hermes/ld/calendar-discovery.json`,
 which onboarding reads as a plain file. Its lifecycle -- when it refreshes,
 when it stops, what a degraded account means -- is stated once, in
 `ld-setup/SKILL.md` §5, and implemented in `ld-setup/scripts/calendar_discovery.py`.
@@ -371,7 +353,7 @@ runtime/        persona.md: this agent's half of the identity, and the setup
 image/          the s6 service definition for the calendar strip's schedule
 ld-weather/     the NWS producer; ld-sports/ is the ESPN one
 ld-morning-triage/  the triage producer: iMessage + Gmail through Latch, 07:05 and 18:00, texted
-ld-morning-updates/ the calendar affirmation producer, plow-gog through Latch
+ld-morning-updates/ the calendar affirmation producer, through latch
 ld-shared/      the POST helper, the ld-config gate, the wire protocol, and
                 calendar_feed.py -- the kiosk's calendar strip, no model in it
 ld-dashboard/   the six cron schedules, all registered
@@ -384,28 +366,24 @@ Dockerfile      this repo's content on the base image
 
 ## Latch — whose Mac an agent reaches
 
-`mcp_servers.plow` points at the Plow relay, which forwards to Plow Latch on the
-owner's Mac: `plow_read_file`, `plow_write_file`, `plow_run_command`,
-`plow_browser_*`, `plow_vault` and friends. The relay authorises the connection
-and tells the Mac who is asking; the Mac authorises each action, so the approval
-surface stays on that machine rather than here.
-
-The credential is the agent's own: first boot asks Plow who this agent is and
-publishes the relay it is told about as `PLOW_MCP_URL`, reached with whichever
-bearer this container has — the real `PLOW_AGENT_TOKEN` locally or on a
-pre-handoff VM, the placeholder the proxy replaces on a hosted one — and it is
-the same relay the gateway itself uses. Nothing here mints
-or holds a per-device pair, and an agent whose owner has no relay switched on
-simply has no `PLOW_MCP_URL` and stands down. The token travels in a header,
-never in the URL.
+The base image installs the `latch` CLI at every boot, and latch logs in with
+the agent's own credential — the real `PLOW_AGENT_TOKEN` locally or on a
+pre-handoff VM, the placeholder the proxy replaces on a hosted one — keeping
+its state in `/var/lib/hermes/latch` (`LATCH_STATE_DIR`). Each of the owner's
+hosts (their Mac, the `cloud` computer) runs `latch serve`, and its gatekeeper
+judges every call against what the owner asked in the chat the call names
+(`--plow-chat`), so the approval surface stays with the owner rather than here.
+The guide the model reads is the agent's `productivity/latch` skill, written at
+every boot from `latch skill`; the sheets here spell out only the commands they
+run.
 
 **The gateway's config is not in this repo.** Model, plugins and `mcp_servers`
 are the base image's seed, read from the copy in the agent's own home, and
 nothing here asserts or overrides them — changing any of them is a change to
 `plow-pbc/plow-hermes-agent`. The producers do not go through `mcp_servers` to
 reach the wall: they read the endpoint and token out of `ld/.env` themselves,
-and the unattended one gathers through the relay first boot published. Either
-way, nothing here needs an `mcp_servers` entry naming those variables.
+and the unattended ones call latch. Either way, nothing here needs an `mcp_servers`
+entry naming those variables.
 
 ## Building the image
 
@@ -437,8 +415,8 @@ image reference; logging out is not a guaranteed fix for every `403`.
 
 - **Connectors are gone, not unlinked.** This agent installs no
   `plow-connectors`, so Slack is unreachable however linked the
-  owner's Plow account is. Google Calendar and Gmail are back — through the
-  vendored `plow-gog` behind Latch rather than a connector skill; the
+  owner's Plow account is. Google Calendar and Gmail are back — through
+  latch's `google` command rather than a connector skill; the
   two calendar producers ride the first and the triage rides the second.
   See [No connectors, and what that costs](#no-connectors-and-what-that-costs).
 

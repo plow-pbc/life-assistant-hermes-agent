@@ -33,21 +33,16 @@ set -eu
 PATH=/command:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 export PATH
 
-# The agent's own relay, and ONLY those two names.
-#
-# Read here, as root, because s6 writes the container environment 0600 root and
-# this drops to uid 10000 below. Two explicit reads rather than the whole
-# directory: the producer needs the relay it gathers through and nothing else,
-# and an allowlist cannot grow by accident the way importing everything can.
-#
-# This is not the dotenv objection above. These values are s6's, written by
-# first boot from the credential the host dropped in, and the agent cannot
-# write either of them -- which is exactly why the producer may treat this
-# endpoint as trusted while it still holds anything out of ld/.env at arm's
-# length. Absent is fine: a tenant with no relay switched on stands down.
-PLOW_MCP_URL=$(cat /run/s6/container_environment/PLOW_MCP_URL 2>/dev/null || true)
-PLOW_AGENT_TOKEN=$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)
-export PLOW_MCP_URL PLOW_AGENT_TOKEN
+# ONLY these names, by an allowlist that cannot grow by accident. latch's settings, as the gateway's run sets them, and the root-owned values
+# latch logs in and acts with, read before dropping to the agent UID: the
+# agent's own Plow credential (or the proxy that adds it) and the home chat
+# every call acts for. Never source the agent-writable dotenv here.
+export HOME=/var/lib/hermes LATCH_STATE_DIR=/var/lib/hermes/latch LATCH_NO_UPDATE_CHECK=1
+for name in PLOW_AGENT_TOKEN PLOW_API_BASE PLOW_API_URL PLOW_HOME_CHANNEL; do
+  if [ -s "/run/s6/container_environment/$name" ]; then
+    export "$name=$(cat "/run/s6/container_environment/$name")"
+  fi
+done
 
 while :; do
   # Never fatal. The producer's contract is a one-line stand-down and exit 0,
@@ -56,7 +51,7 @@ while :; do
   # /opt/plow, never $HERMES_HOME/skills. Both hold this producer; only this
   # one is root-owned. The home copy belongs to uid 10000 in a running
   # container, so scheduling it would run whatever a turn last wrote there,
-  # unattended, with the relay credential and the household's calendar.
+  # unattended, with the agent's credential and the household's calendar.
   /command/s6-setuidgid hermes \
     /opt/hermes/.venv/bin/python3 \
     /opt/plow/ld-shared/scripts/calendar_feed.py \

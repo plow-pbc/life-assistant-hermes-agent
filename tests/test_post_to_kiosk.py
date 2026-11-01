@@ -271,7 +271,7 @@ def test_dotenv_endpoint_that_is_not_the_pi_is_refused():
 
 def test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_request():
     """DASHBOARD_DELIVERY=latch: the exact wire body lands in the outbox (mode
-    600), the fixed NOT DELIVERED block names both Latch calls, no request is
+    600), the fixed NOT DELIVERED block names both latch calls, no request is
     made, no token is read or printed, and the handoff is consumed because the
     outbox now holds the body."""
     server, base = _start_server()
@@ -297,14 +297,13 @@ def test_latch_delivery_writes_the_outbox_and_prints_the_hand_off_without_a_requ
     check("outbox file is mode 600", mode == "0o600")
     check("MESSAGE_FILE consumed once the outbox holds the body", file_gone)
     check(
-        "stdout is the fixed NOT DELIVERED block with both Latch calls and the JSON",
+        "stdout is the fixed NOT DELIVERED block: put the outbox file, then curl it",
         out == (
-            "NOT DELIVERED — ship it through Latch, then paste both outputs:\n"
-            "1. mcp__plow__plow_write_file  path=~/Plow/ld/card-3.json  content=<the JSON below>\n"
-            "2. mcp__plow__plow_run_command argv=[\"sh\",\"-c\",\"curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
-            "-H 'Content-Type: application/json' --data-binary @$HOME/Plow/ld/card-3.json "
-            f"{base}/api/message\"] network=true\n"
-            f"{wire}\n"
+            "NOT DELIVERED — ship it through latch, then paste both outputs:\n"
+            f"1. latch file put --host <mac> --plow-chat <chat> {outbox} '~/Plow/ld/card-3.json'\n"
+            "2. latch exec --host <mac> --plow-chat <chat> --network -- sh -c "
+            "'curl -fsS -H @$HOME/Plow/ld/dashboard.hdr -H \"Content-Type: application/json\" "
+            f"--data-binary @$HOME/Plow/ld/card-3.json {base}/api/message'\n"
         ),
     )
     check("no token on stdout (latch mode never reads one)", TOKEN not in out)

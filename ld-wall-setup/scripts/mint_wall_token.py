@@ -266,10 +266,8 @@ def main(stdin=None, dotenv_path=AGENT_DOTENV, ld_dir=LD_DIR, argv=None):
         os.makedirs(ld_dir, mode=0o700, exist_ok=True)
         write_private(os.path.join(ld_dir, "pi.env"), f"DASHBOARD_TOKEN={token}\n")
         write_private(os.path.join(ld_dir, "dashboard.hdr"), f"Authorization: Bearer {token}\n")
-        # Qualified: this line is read by the model, and a bare tool name is one
-        # the build does not register.
         print(f"wrote {ld_dir}/pi.env and {ld_dir}/dashboard.hdr (mode 600) -- "
-              "ship them with mcp__plow__plow_write_file; never paste them.")
+              "ship them with `latch file put`; never paste them.")
         # The one authoritative ssh target for Phase 3 -- both halves validated
         # above, so the skill binds its placeholders from this line rather than
         # re-deriving (or re-asking for) either half.

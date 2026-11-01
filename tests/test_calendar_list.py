@@ -1,13 +1,11 @@
 """The calendar listing, normalised deterministically instead of by eye.
 
-Every case here is a shape plow-gog actually returns, and each one has a silent
-wrong answer if a model parses it in prose: the preamble makes the output
-invalid JSON, a large result arrives as an envelope naming a file, and the
+Every case here is a shape a real listing carried, and each one has a silent
+wrong answer if a model parses it in prose: names arrive fenced, and the
 authenticated account must be supplied separately from calendar IDs and
 dataOwner, which vary across calendars shared into an account.
 """
 import importlib.util
-import json
 from pathlib import Path
 
 import pytest
@@ -28,42 +26,12 @@ cl = load("calendar_list", "ld-setup/scripts/calendar_list.py")
 # pytest.raises below would miss the exception it was written for.
 GatherError = cl.GatherError
 
-PREAMBLE = "Note: Using direct access token (expires in ~1 hour; no auto-refresh)\n"
 LISTING = [
     {"id": "mary@example.test", "summary": "mary@example.test", "primary": True,
      "accessRole": "owner", "dataOwner": "mary@example.test"},
     {"id": "fam@group.calendar.google.test", "summary": "Family",
      "summaryOverride": "Ours", "accessRole": "reader", "dataOwner": "someone@else.test"},
 ]
-
-
-def gather(tmp_path, text):
-    path = tmp_path / "gather.txt"
-    path.write_text(text)
-    return str(path)
-
-
-@pytest.mark.parametrize("label,payload", [
-    # The output is not JSON: a parse of the whole string fails on a WORKING
-    # call, and a turn that reads that as "no calendars" tells the owner the
-    # wrong thing.
-    ("inline, with plow-gog's preamble", PREAMBLE + json.dumps(LISTING)),
-    # A large result comes back wrapped, naming a file rather than the text.
-    ("a persisted envelope", json.dumps({"result": json.dumps(
-        {"exit_code": 0, "output": PREAMBLE + json.dumps(LISTING)})})),
-])
-def test_both_delivery_shapes_reach_the_same_answer(tmp_path, label, payload):
-    result = cl.normalize(cl.extract_array(cl.read_gather(gather(tmp_path, payload))), account="mary@example.test")
-    assert result["account"] == "mary@example.test"
-    assert [c["id"] for c in result["calendars"]] == [
-        "mary@example.test", "fam@group.calendar.google.test"]
-
-
-def test_a_nonzero_exit_refuses(tmp_path):
-    """An error envelope is not an empty listing."""
-    envelope = json.dumps({"result": json.dumps({"exit_code": 1, "output": ""})})
-    with pytest.raises(GatherError):
-        cl.read_gather(gather(tmp_path, envelope))
 
 
 def test_the_display_is_the_owners_rename():
@@ -114,16 +82,10 @@ def test_a_listing_that_cannot_be_used_refuses(label, entries):
         cl.normalize(entries)
 
 
-def test_a_listing_with_no_array_refuses():
-    with pytest.raises(GatherError, match="no JSON array"):
-        cl.extract_array("Note: something went sideways")
-
-
-
 # --- the runtime's untrusted-content fence ----------------------------------
 #
-# Real plow-gog output does not hand over a bare name. plow-gog fences what it fetched
-# from Google, so `summary` is a five-line block with the name inside. Every
+# A real listing does not hand over a bare name. What was fetched from Google
+# is fenced, so `summary` is a five-line block with the name inside. Every
 # case here is a shape one real listing actually carried (notes/runs,
 # REAL-LATCH): nine calendars, every summary fenced, `summaryOverride` bare
 # beside them. Malformed fences are not tested because none has been seen --

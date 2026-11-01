@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh calendar choices in the background; serve a local snapshot to chat.
 
-The reader never contacts the relay or waits for a refresh. A snapshot is
+The reader never calls latch or waits for a refresh. A snapshot is
 replaced atomically so a queued owner reply cannot observe a partial listing.
 Display names remain untrusted data, even after normalization.
 """
@@ -15,10 +15,9 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from calendar_list import GatherError, extract_array, normalize  # noqa: E402
-from calendar_feed import (  # noqa: E402
-    CONFIG_FILE, FeedError, _decode_command_response, relay, relay_config,
-)
+from calendar_list import GatherError, normalize  # noqa: E402
+from calendar_feed import CONFIG_FILE, FeedError  # noqa: E402
+from latch_cli import LatchError, google, host_with  # noqa: E402
 
 CACHE = Path("/var/lib/hermes/ld/calendar-discovery.json")
 # The sheet's only way to ask for choices out of band. An empty file is the
@@ -29,15 +28,14 @@ REQUEST = Path("/var/lib/hermes/ld/calendar-discovery.request")
 # not expire at all -- nothing on a timer replaces them -- so this governs the
 # pending and pre-upgrade cases only.
 MAX_AGE_SECONDS = 4200
-ARGV = ["plow-gog", "calendar", "calendars", "--json", "--results-only"]
-REFUSAL_REASON = "Choose a connected Google account before retrying discovery."
+REFUSAL_REASON = "Connect a Google account in Plow before retrying discovery."
 
 
 def _reconnect(names):
-    """Reconnect wording, never a relay error string: those can carry addresses
+    """Reconnect wording, never a latch error string: those can carry addresses
     the owner did not ask us to repeat back."""
     return ("Reconnect " + ", ".join(names)
-            + " in Latch; discovery will not retry that account until then.")
+            + " in Plow; discovery will not retry that account until then.")
 
 
 class NeedsAccount(Exception):
@@ -50,22 +48,6 @@ def _load(path):
         return value if isinstance(value, dict) else {}
     except (OSError, ValueError):
         return {}
-
-
-def _command(credentials, argv):
-    payload = relay(*credentials, "plow_run_command", {"argv": argv})
-    error = payload.get("error", "")
-    if isinstance(error, str) and error.startswith((
-        "this command runs on one account: pass --account <email>",
-        "that --account is not a connected account.",
-        # deviceAgent.ts's two sibling refusals: the multi-account form of the
-        # line above, and a named account Plow can no longer mint for. Both are
-        # the owner's to resolve, so neither is worth another timer attempt.
-        "an --account entry is not a connected account.",
-        "that account cannot be used right now:",
-    )):
-        raise NeedsAccount(REFUSAL_REASON)
-    return payload
 
 
 # Every boundary `str.splitlines()` recognises, which is the widest set any
@@ -152,35 +134,48 @@ def _offer(groups, degraded):
     return "\n".join(lines)
 
 
-def _discover(credentials):
-    # The accounts verb is structured data, not a subprocess stdout envelope.
-    payload = _command(credentials, ["plow-gog", "accounts"])
-    accounts = payload.get("accounts")
-    degraded = payload.get("degraded")
-    if (payload.get("status") != "completed" or not isinstance(accounts, list)
-            or not isinstance(degraded, list) or not (accounts or degraded)):
+def _discover(host):
+    """Every connected account's calendars, in one fan-out call on HOST.
+
+    latch runs `calendar calendars` once per connected account and answers
+    with every account's rows, each naming its account, plus one outcome per
+    account. A call that no account answered is an error instead: every
+    account needing a new sign-in, or none connected, is the owner's to fix.
+    """
+    try:
+        payload = google("calendar", "calendars", host=host)
+    except LatchError as exc:
+        if exc.code == "google_needs_sign_in":
+            names = [name for name in exc.details.get("accounts", [])
+                     if isinstance(name, str)]
+            raise NeedsAccount(_reconnect(sorted(names)) if names
+                               else REFUSAL_REASON) from None
+        if exc.code == "google_not_connected":
+            raise NeedsAccount(REFUSAL_REASON) from None
+        raise
+    outcomes, items = payload.get("accounts"), payload.get("items")
+    if not isinstance(outcomes, list) or not isinstance(items, list) or not outcomes:
         raise FeedError("accounts unavailable")
-    problems = [(entry.get("account"), entry.get("reason") == "needs_reauth")
-                for entry in degraded if isinstance(entry, dict)]
-    groups, seen = [], set()
-    for entry in accounts:
-        account = entry.get("account") if isinstance(entry, dict) else None
+    problems, groups, seen = [], [], set()
+    for outcome in outcomes:
+        account = outcome.get("account") if isinstance(outcome, dict) else None
         if not isinstance(account, str) or not account.strip() or account in seen:
-            # The accounts response itself is malformed, which is not one
-            # account's problem to be demoted into: nothing here is trustworthy.
+            # The listing itself is malformed, which is not one account's
+            # problem to be demoted into: nothing here is trustworthy.
             raise FeedError("invalid account listing")
         seen.add(account)
-        # One account's listing failing is that account's problem. Healthy
-        # groups already gathered are not thrown away for it -- the owner gets
-        # the calendars that answered, and the reason the rest did not.
-        try:
-            output = _decode_command_response(_command(
-                credentials, [*ARGV, "--account", account]))
-            calendars = normalize(extract_array(output), account=account)
-        except NeedsAccount:
-            problems.append((account, True))
+        # One account failing is that account's problem. Healthy groups are
+        # not thrown away for it -- the owner gets the calendars that
+        # answered, and the reason the rest did not.
+        if outcome.get("status") not in ("ok", "empty"):
+            problems.append((account, outcome.get("reason") == "google_needs_sign_in"))
             continue
-        except (FeedError, GatherError, ValueError):
+        try:
+            calendars = normalize(
+                [{k: v for k, v in item.items() if k != "account"} for item in items
+                 if isinstance(item, dict) and item.get("account") == account],
+                account=account)
+        except GatherError:
             problems.append((account, False))
             continue
         # No `is_default`: nothing consumed it, and a group flagged as the
@@ -189,8 +184,7 @@ def _discover(credentials):
     if not groups:
         # Nothing to offer: a revoked token is the owner's to fix and stops
         # discovery, while anything else can come back on its own.
-        reauth = sorted({name for name, is_reauth in problems
-                         if is_reauth and isinstance(name, str)})
+        reauth = sorted({name for name, is_reauth in problems if is_reauth})
         if reauth and len(reauth) == len(problems):
             raise NeedsAccount(_reconnect(reauth))
         raise FeedError("no usable accounts")
@@ -198,7 +192,7 @@ def _discover(credentials):
     if problems:
         snapshot["degraded"] = [
             {"account": name,
-             "reason": _reconnect([name]) if is_reauth and isinstance(name, str)
+             "reason": _reconnect([name]) if is_reauth
              else "Could not be listed this time; ask to see the list again "
                   "to retry it."}
             for name, is_reauth in problems]
@@ -259,7 +253,7 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     # remembering it separately is what both bugs here were.
     claim = _claim(request)
     requested = claim is not None
-    # An onboarded household costs no relay call and no audit entry: once the
+    # An onboarded household costs no latch call and no audit entry: once the
     # owner has chosen calendars there is nothing left to discover on a timer.
     # Changing them is the one thing that still needs fresh choices, and it
     # arrives as a request rather than as an hourly poll of every tenant.
@@ -281,14 +275,15 @@ def refresh(path=CACHE, *, now=None, request=REQUEST):
     retry_at = 0 if previous.get("status") == "ready" else previous.get("retry_at", 0)
     if isinstance(retry_at, (int, float)) and now < retry_at:
         return
-    credentials, _ = relay_config()
     try:
-        if not credentials:
-            raise FeedError("relay unavailable")
-        snapshot = _discover(credentials)
+        # Any online host with Google on will do, `cloud` included: discovery
+        # never waits on the owner's Mac.
+        snapshot = _discover(host_with("google"))
     except NeedsAccount as exc:
         snapshot = {"status": "needs_account", "reason": str(exc)}
-    except (FeedError, GatherError, OSError, ValueError):
+    except (FeedError, GatherError, LatchError, OSError, ValueError) as exc:
+        # The reason, for the service log: latch errors carry only their code.
+        print(f"calendar discovery: {exc}", file=sys.stderr)
         attempts = previous.get("attempts", 0)
         attempts = min(attempts, 4) + 1 if isinstance(attempts, int) and attempts >= 0 else 1
         snapshot = {"status": "pending", "attempts": attempts,

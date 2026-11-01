@@ -8,7 +8,7 @@
 # repo, plow-pbc/plow-hermes-agent. It is never moved: every tenant VM inherits
 # this exact filesystem while holding that owner's Plow credential, so a moving
 # tag would substitute code underneath them.
-FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-7422f99a12b15489408cacfbf884d745d4eccab5@sha256:efe3b0fdf97601c8a1b14b3faf31d0c919116c40687c5252cf501e5f6ff19898
+FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-f3aa45663580e19c7f5b736bd5bebaa6001c200d@sha256:ab8b502e3c3c644e46a6cd4971ba993cc7c2bc0c39d65e18c90b1b011aa6fe31
 
 # Identity: only what is specific to this agent. plow-init writes the home's
 # SOUL.md on every boot as the base persona followed by this file; nothing is
@@ -58,7 +58,7 @@ RUN find /opt/hermes/plugins/life_tools -type d -exec chmod 0755 {} + \
 # Everything under $HERMES_HOME/skills belongs to uid 10000 in a running
 # container -- the runtime chowns what it seeds on every boot -- so scheduling
 # the copy that lives there would turn one prompt-injected edit into code that
-# runs unattended, forever, holding the relay credential and the household's
+# runs unattended, forever, holding the latch login and the household's
 # calendar. This copy is root-owned and 0755/0644 in a root-owned directory:
 # the agent can read it and cannot change it.
 #
