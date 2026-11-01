@@ -539,8 +539,10 @@ def test_the_calendar_strip_is_a_supervised_service_that_waits_for_first_boot():
     assert (FEED_SERVICE / "run").stat().st_mode & 0o111
 
 
-def test_the_calendar_service_hands_the_producer_two_names_and_nothing_else():
-    """The service's whole environment boundary, in one place.
+@pytest.mark.parametrize("service", ["life-calendar-feed", "life-calendar-discovery"])
+def test_the_calendar_services_hand_the_producer_latchs_names_and_nothing_else(
+        tmp_path, service):
+    """The services' whole environment boundary, in one place.
 
     Nothing wholesale: no `with-contenv`, no dotenv sourced. calendar_feed.py
     reads the agent's own file itself and holds what it finds there to the
@@ -549,49 +551,51 @@ def test_the_calendar_service_hands_the_producer_two_names_and_nothing_else():
     process would launder every line of something the agent can write into
     something the script reads as trusted.
 
-    And exactly two by name: the producer reaches its relay only because the
-    run script reads `PLOW_MCP_URL` and `PLOW_AGENT_TOKEN` while it is still
-    root -- s6 writes that directory 0600 root, and the producer runs as uid
-    10000. Delete that bridge, or move the read under `s6-setuidgid`, and
-    nothing fails loudly: the producer finds no relay, prints `not configured`,
-    and stands down on every tick with the same line a household that has no
-    wall prints. Invisible in a boot log, and the exact shape of the bug this
-    branch exists to fix.
-
-    Two names and not the directory: importing it wholesale would hand the
-    producer the tenant's entire credential set, which is the same mistake as
-    `with-contenv` wearing different clothes.
+    And by name, read while still root: s6 writes the container environment
+    0600 root, and the producer runs as uid 10000. latch needs the agent's own
+    credential (or the proxy that adds it) and the home chat every call acts
+    for. Drop that bridge, or move the read under `s6-setuidgid`, and nothing
+    fails loudly: latch is not logged in, and the producer stands down on every
+    tick. Importing the directory wholesale would hand the producer the
+    tenant's entire credential set instead.
     """
-    lines = (FEED_SERVICE / "run").read_text().splitlines()
+    run = (ROOT / "image/s6-overlay/s6-rc.d" / service / "run").read_text()
+    lines = run.splitlines()
     assert lines[0] == "#!/bin/sh", (
         "the interpreter line is the whole mechanism: a #!/command/with-contenv "
         "shebang is how a service asks for the container environment")
     # Code only -- the script SAYS with-contenv in the comment explaining why it
     # has none, and a whole-file check would read that as the thing it forbids.
-    code = [l for l in lines[1:] if not l.lstrip().startswith("#")]
-    body = "\n".join(code)
+    body = "\n".join(l for l in lines[1:] if not l.lstrip().startswith("#"))
     assert "with-contenv" not in body
     for spelling in (". /var/lib/hermes/.env", "source /var/lib/hermes/.env", "set -a"):
         assert spelling not in body, f"the run script sources a dotenv ({spelling!r})"
     assert "ld/.env" not in body, "the supervisor must not touch the agent's file"
 
-    for name in ("PLOW_MCP_URL", "PLOW_AGENT_TOKEN"):
-        assert f"/run/s6/container_environment/{name}" in body, (
-            f"the run script no longer reads {name} from the container "
-            "environment -- the producer will stand down on every tick")
-    assert "export PLOW_MCP_URL PLOW_AGENT_TOKEN" in body, (
-        "the values are read but not exported, so the producer never sees them")
-
-    drop = next(i for i, l in enumerate(code) if "s6-setuidgid" in l)
-    for name in ("PLOW_MCP_URL", "PLOW_AGENT_TOKEN"):
-        read_at = next(i for i, l in enumerate(code)
-                       if f"/run/s6/container_environment/{name}" in l)
-        assert read_at < drop, (
-            f"{name} is read after the privilege drop, where the file is "
-            "unreadable -- uid 10000 cannot open a 0600 root file")
-
-    assert "container_environment/PLOW_HOME_CHANNEL" not in body
-    assert "for f in /run/s6/container_environment" not in body
+    contenv = tmp_path / "contenv"
+    contenv.mkdir()
+    for name in ("PLOW_AGENT_TOKEN", "PLOW_API_BASE", "PLOW_HOME_CHANNEL",
+                 "HERMES_CUSTOM_PLOW_API_KEY", "PLOW_MCP_URL"):
+        (contenv / name).write_text(f"value-of-{name}")
+    seen = tmp_path / "env"
+    runner = tmp_path / "runner"
+    # Stands in for the privilege drop: what the producer would start with.
+    runner.write_text(f'#!/bin/sh\nenv > "{seen}"\n')
+    runner.chmod(0o755)
+    script = (run.replace("/run/s6/container_environment", str(contenv))
+              .replace("/command/s6-setuidgid hermes", str(runner))
+              .replace("/bin/sleep 300", "break"))
+    result = subprocess.run(["sh"], input=script, text=True, env={},
+                            capture_output=True)
+    assert result.returncode == 0, result.stderr
+    env = dict(line.split("=", 1) for line in seen.read_text().splitlines() if "=" in line)
+    assert {k: v for k, v in env.items() if k.startswith(("PLOW_", "HERMES_"))} == {
+        "PLOW_AGENT_TOKEN": "value-of-PLOW_AGENT_TOKEN",
+        "PLOW_API_BASE": "value-of-PLOW_API_BASE",
+        "PLOW_HOME_CHANNEL": "value-of-PLOW_HOME_CHANNEL",
+    }, "only latch's own names cross; the relay and every other secret stay behind"
+    assert env["LATCH_STATE_DIR"] == "/var/lib/hermes/latch"
+    assert env["HOME"] == "/var/lib/hermes"
 
 
 def test_the_agent_owned_names_are_read_from_the_agents_own_file():

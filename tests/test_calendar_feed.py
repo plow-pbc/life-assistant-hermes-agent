@@ -1,26 +1,17 @@
-"""calendar_feed.py — the three behaviours whose failure is silent.
+"""calendar_feed.py — the behaviours whose failure is silent.
 
-Here rather than beside the script: every suite in this repo lives in tests/
-and is collected by pytest, which is what makes a failure a failure. The ones
-that used to sit beside their code counted rather than raised, and needed a
-shim to read the tally.
+One test per way this producer can be wrong without anyone noticing: a private
+title reaching a display the whole house reads, a strip whose rows are in the
+order two calendars happened to return them, a delivery that is not the two
+documented calls from the Mac, and a stand-down that is not one line.
 
-Three tests, one per way this producer can be wrong without anyone noticing —
-a private title reaching a display the whole house reads, the kiosk bearer
-following a redirect off the household network, and a strip whose rows are in
-the order two calendars happened to return them. Each was confirmed to go red
-with the corresponding line removed from the script.
-
-The seam is the module's fixed paths and credential sources, rebound to a
-tmp_path and a loopback server standing in for both the Plow relay and the Pi.
+The seam is the module's fixed paths and a fake `latch` on PATH (conftest),
+which answers by subcommand and records every call the script really made.
 """
 import importlib.util
 import json
 import sys
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import ClassVar
 
 import pytest
 
@@ -28,104 +19,13 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "ld-shared" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import post_to_kiosk  # noqa: E402
 
-
-class Handler(BaseHTTPRequestHandler):
-    relay_responses: ClassVar[list] = []
-    requests: ClassVar[list] = []
-    redirect_paths: ClassVar[set] = set()
-    # What api.plow.co answers a relay POST with: MCP's streamable transport,
-    # not a plain JSON body (measured 2026-09-03). This double answered JSON
-    # for the strip's whole life, so the suite pinned a framing the relay never
-    # sends and the producer's every real tick failed green.
-    relay_frames: ClassVar[list] = []
-    # A deferred call's two halves: the pending envelope the curl is handed
-    # first, and what plow_get_result then answers. See relay() on the why.
-    curl_responses: ClassVar[list] = []
-    poll_answers: ClassVar[list] = []
-
-    def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        type(self).requests.append({"path": self.path, "body": body,
-                                    "authorization": self.headers.get("Authorization")})
-        if self.path in type(self).redirect_paths:
-            self.send_response(302)
-            self.send_header("Location", "http://127.0.0.1:1/stolen")
-            self.end_headers()
-            return
-        if self.path.endswith("/mcp"):
-            encoded, content_type = type(self).frame(type(self).answer(body))
-        else:
-            encoded, content_type = json.dumps({"ok": True}).encode(), "application/json"
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
-
-    @classmethod
-    def frame(cls, response):
-        """The relay's own framing: `event:`/`data:` lines, one per frame.
-
-        `relay_frames` is the frames to send ahead of the response, or the
-        string "json" for the plain body the transport also permits. Leading
-        frames matter: a client that reads the first one as the answer is back
-        to standing down silently."""
-        if cls.relay_frames == "json":
-            return json.dumps(response).encode(), "application/json"
-        frames = [*cls.relay_frames, response]
-        stream = "".join(f"event: message\ndata: {json.dumps(f)}\n\n" for f in frames)
-        return stream.encode(), "text/event-stream"
-
-    @classmethod
-    def answer(cls, body):
-        """Stand in for the Mac, by tool and argv rather than by call order."""
-        params = body["params"]
-        arguments = params.get("arguments", {})
-        if params["name"] == "plow_get_result":
-            return cls.poll_answers.pop(0)
-        if params["name"] == "plow_write_file":
-            # Latch answers every tool with canonical JSON, never a bare word.
-            return ok_text(json.dumps({"path": arguments["path"],
-                                       "bytes": len(arguments["content"])}))
-        if arguments.get("argv", [""])[0] == "plow-gog":
-            return cls.relay_responses.pop(0)
-        if cls.curl_responses:
-            return cls.curl_responses.pop(0)
-        return completed('{"ok":true}')      # the Mac-side curl
-
-    def log_message(self, *_args):
-        pass
+KIOSK = "http://192.0.2.10:5174"
 
 
-def ok_text(text):
-    return {"jsonrpc": "2.0", "id": 1,
-            "result": {"content": [{"type": "text", "text": text}]}}
-
-
-def completed(output):
-    return ok_text(json.dumps(
-        {"status": "completed", "exit_code": 0, "output": output}))
-
-
-def relay_ok(events):
-    """A successful plow-gog gather, behind Latch's preamble line."""
-    return completed("Note: Using direct access token\n" + json.dumps(events))
-
-
-PENDING = ok_text(json.dumps({"status": "pending", "handle": "H1",
-                              "reason": "running", "retry_after_ms": 1000}))
-
-
-def ready(result):
-    """plow_get_result handing back exactly what the call would have returned."""
-    return ok_text(json.dumps(
-        {"status": "ready", "handle": "H1",
-         "result": json.loads(result["result"]["content"][0]["text"])}))
-
-
-# Every other terminal answer -- failed, expired and unknown are this shape too.
-DENIED = ok_text(json.dumps({"status": "denied", "handle": "H1"}))
-EXPIRED = ok_text(json.dumps({"status": "expired", "handle": "H1"}))
+def gathered(events):
+    """latch's fan-out answer for an events read: each event names its account."""
+    return {"items": [{**e, "account": "ada@example.com"} for e in events],
+            "accounts": [{"account": "ada@example.com", "status": "ok"}]}
 
 
 def event(uid, ical, start, end, **extra):
@@ -148,15 +48,8 @@ validated = []
 
 
 @pytest.fixture
-def feed(tmp_path, monkeypatch):
-    Handler.relay_responses, Handler.requests, Handler.redirect_paths = [], [], set()
-    Handler.relay_frames = []
-    Handler.curl_responses, Handler.poll_answers = [], []
+def feed(tmp_path, monkeypatch, fake_latch):
     validated.clear()
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    base = f"http://127.0.0.1:{server.server_address[1]}"
-
     sys.path.insert(0, str(SCRIPTS))
     try:
         spec = importlib.util.spec_from_file_location(
@@ -169,51 +62,39 @@ def feed(tmp_path, monkeypatch):
     (tmp_path / "config.json").write_text(json.dumps(CONFIG))
     # The wall's own values through the dotenv, nothing else: a kiosk endpoint
     # arriving as process env would skip the household-network check that
-    # guards a dotenv-sourced one. The relay is the exception and arrives the
-    # other way round -- it is the agent's own, published by first boot into
-    # the container environment, which the agent cannot write.
-    monkeypatch.setenv("PLOW_MCP_URL", f"{base}/v1/relay/devices/dev1/mcp")
-    monkeypatch.setenv("PLOW_AGENT_TOKEN", "relay-token")
+    # guards a dotenv-sourced one.
     (tmp_path / "dotenv").write_text(
-        f"DASHBOARD_ENDPOINT_URL={base}/api/message\n"
+        f"DASHBOARD_ENDPOINT_URL={KIOSK}/api/message\n"
         "DASHBOARD_TOKEN=kiosk-token\n"
-        # What mint_wall_token.py writes on every set-up instance, on both its
-        # paths. Testing the direct path instead would test the mode no real
-        # household is in.
+        # What mint_wall_token.py writes on every set-up instance.
         "DASHBOARD_DELIVERY=latch\n")
     monkeypatch.setattr(module, "CONFIG_FILE", str(tmp_path / "config.json"))
     monkeypatch.setattr(module, "AGENT_DOTENV", str(tmp_path / "dotenv"))
-    # post_to_kiosk's endpoint validator pins the Pi's exact `:5174/api/message`
-    # shape, which a loopback server on an ephemeral port cannot wear. Its rules
-    # are that module's contract and are tested there; what matters HERE is that
-    # a dotenv-sourced endpoint is routed THROUGH it rather than around it — so
-    # it is replaced by a recorder and the routing is asserted.
+    # post_to_kiosk's endpoint validator pins the Pi's exact address shape; its
+    # rules are that module's contract and are tested there. What matters HERE
+    # is that a dotenv-sourced endpoint is routed THROUGH it.
     monkeypatch.setattr(post_to_kiosk, "_validate_dotenv_endpoint", validated.append)
-    try:
-        yield module, base
-    finally:
-        server.shutdown()
-        server.server_close()
+    # The Mac asleep is not this suite's default: cloud has Google, mac has
+    # Messages, so the gather and the delivery land on different hosts.
+    fake_latch.hosts(("mba", False), ("cloud", True, "google"),
+                     ("mac", True, "google", "messages"))
+    fake_latch.answer("google", gathered(EVENTS))
+    fake_latch.answer("file", {"path": "/Users/ada/Plow/ld/calendar.json"})
+    fake_latch.answer("exec", {"exit_code": 0, "stdout": "{\"ok\":true}", "stderr": ""})
+    return module, fake_latch
 
 
-def relay_calls(name=None):
-    calls = [r["body"]["params"] for r in Handler.requests
-             if r["path"].endswith("/mcp")]
-    return [c for c in calls if name is None or c["name"] == name]
-
-
-def published():
-    """The feed body, read out of the file staged on the Mac."""
-    return [json.loads(c["arguments"]["content"])
-            for c in relay_calls("plow_write_file")]
+def published(latch):
+    """The feed bodies, as put on the Mac."""
+    return [json.loads(c["content"]) for c in latch.calls("file")]
 
 
 def test_a_private_occurrence_takes_its_siblings_off_the_wall(feed):
-    feed, _ = feed
     """One invite is on several calendars, all copies sharing an iCalUID. Drop
     only the private copy and a default-visibility sibling publishes the title
     to a display everyone in the house can read."""
-    Handler.relay_responses = [relay_ok([
+    module, latch = feed
+    latch.answer("google", gathered([
         event("p1", "ical-p", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00",
               visibility="private", summary="Therapy"),
         # Same occurrence seen through a second calendar, but the copy was
@@ -225,134 +106,99 @@ def test_a_private_occurrence_takes_its_siblings_off_the_wall(feed):
         event("c", "ical-c", "2026-09-02T11:00:00-07:00", "2026-09-02T12:00:00-07:00",
               status="cancelled"),
         event("ok", "ical-ok", "2026-09-02T13:00:00-07:00", "2026-09-02T14:00:00-07:00"),
-    ])]
+    ]))
 
-    assert feed.main(now=1_756_700_000) == 0
+    assert module.main(now=1_756_700_000) == 0
 
-    wire = published()[0]
+    wire = published(latch)[0]
     assert [e["uid"] for e in wire["events"]] == ["ok"]
     assert "Therapy" not in json.dumps(wire)
 
 
-def test_the_relay_bearer_is_never_forwarded_through_a_redirect(feed, capsys):
-    feed, _ = feed
-    """urllib follows 3xx AND re-sends Authorization to the new origin, so a
-    rewritten endpoint would walk the relay credential off the household
-    network. The request must fail instead."""
-    Handler.redirect_paths = {"/v1/relay/devices/dev1/mcp"}
-
-    assert feed.main(now=1_756_700_000) == 0
-
-    assert [r["path"] for r in Handler.requests] == ["/v1/relay/devices/dev1/mcp"]
-    assert capsys.readouterr().out.startswith(
-        "calendar feed failed: relay returned HTTP 302")
-
-
 def test_the_strip_is_ordered_by_when_things_start(feed):
-    feed, base = feed
-    """plow-gog sorts within one calendar; the merged result is in whatever order
+    """gog sorts within one calendar; the merged result is in whatever order
     the calendars came back. An unsorted strip is wrong in a way that reads as
     a rendering bug, so it survives on the wall."""
-    Handler.relay_responses = [relay_ok([
+    module, latch = feed
+    latch.answer("google", gathered([
         event("b", "ical-b", "2026-09-03T09:00:00-07:00", "2026-09-03T10:00:00-07:00"),
         {"id": "allday", "iCalUID": "ical-d", "status": "confirmed",
          "summary": "Holiday", "start": {"date": "2026-09-02"},
          "end": {"date": "2026-09-03"}},
         event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00"),
-    ])]
+    ]))
 
-    assert feed.main(now=1_756_700_000) == 0
+    assert module.main(now=1_756_700_000) == 0
 
-    wire = published()[0]
+    wire = published(latch)[0]
     # The all-day row sorts by local midnight, ahead of the same day's 9am.
     assert [e["uid"] for e in wire["events"]] == ["allday", "a", "b"]
     assert wire["window_days"] == 7
-    # The one fixed seven-day argv the owner approved at bring-up.
-    # A fourth shape strands every unattended run on a Latch approval card.
-    # The dotenv endpoint went through post_to_kiosk's validator, not around
-    # it. Loading it into the process env instead (an EnvironmentFile in the
-    # unit) is what used to skip this and hand the bearer to an injected host.
-    assert validated == [f"{base}/api/message"]
-    assert relay_calls("plow_run_command")[0]["arguments"]["argv"] == [
-        "plow-gog", "calendar", "events", "list",
-        "--account=ada@example.com", "--calendars=ada@example.com",
-        "--days=7", "--json", "--results-only", "--sort=start", "--max=250",
-    ]
+    # The dotenv endpoint went through post_to_kiosk's validator, not around it.
+    assert validated == [f"{KIOSK}/api/message"]
+    # The first online Google host, for the home chat, naming gog's fields: the
+    # privacy filter needs visibility and iCalUID, which latch's compact
+    # default leaves out.
+    assert [c["argv"] for c in latch.calls("google")] == [[
+        "google", "--host", "cloud", "--plow-chat", "cht_home", "--",
+        "calendar", "events", "--account=ada@example.com",
+        "--calendars=ada@example.com", "--days=7", "--sort=start", "--max=250",
+        "--select=id,iCalUID,status,visibility,summary,location,start,end",
+    ]]
 
 
-@pytest.mark.parametrize("frames", [
-    pytest.param([], id="stream"),
-    pytest.param([{"jsonrpc": "2.0", "method": "notifications/message",
-                   "params": {"level": "info"}}], id="notification-first"),
-    pytest.param("json", id="plain-json"),
-])
-def test_latch_delivery_makes_the_two_documented_calls_itself(feed, frames):
-    """Every set-up household is on DASHBOARD_DELIVERY=latch — mint_wall_token
-    writes it unconditionally — so this is the path that actually runs. The two
-    calls are latch-delivery.md's, in its order, made here because there is no
-    model in a feed run to make them.
-
-    Once per framing, because the framing is what this producer got wrong for
-    its whole life: it read the relay's event stream as a plain JSON body, and
-    this suite agreed because its double answered one. `stream` is what
-    api.plow.co actually sends; `notification-first` is the frame the transport
-    may put ahead of the response, which a client that takes frame one reads as
-    the answer and stands down on silently; `plain-json` is the body the
-    transport also permits, so the branch that reads one stays exercised. The
-    assertions below are framing-independent on purpose — what the relay wrapped
-    the envelope in must not reach anything downstream of it."""
-    module, base = feed
-    Handler.relay_frames = frames
-    Handler.relay_responses = [relay_ok([
-        event("a", "ical-a", "2026-09-02T09:00:00-07:00", "2026-09-02T10:00:00-07:00")])]
+def test_latch_delivery_makes_the_two_documented_calls_from_the_mac(feed, capsys):
+    """Every set-up household is on DASHBOARD_DELIVERY=latch, so this is the path
+    that actually runs: latch-delivery.md's two calls, in its order, on the Mac,
+    made here because there is no model in a feed run to make them."""
+    module, latch = feed
 
     assert module.main(now=1_756_700_000) == 0
 
-    names = [c["name"] for c in relay_calls()]
-    assert names == ["plow_run_command", "plow_write_file", "plow_run_command"]
-    curl = relay_calls("plow_run_command")[1]["arguments"]
-    assert curl["network"] is True
-    assert curl["argv"] == ["sh", "-c",
+    assert [c["argv"][0] for c in latch.calls()] == ["status", "google", "file", "exec"]
+    put = latch.calls("file")[0]["argv"]
+    assert put[:6] == ["file", "put", "--host", "mac", "--plow-chat", "cht_home"]
+    assert put[-1] == "~/Plow/ld/calendar.json"
+    assert latch.calls("exec")[0]["argv"] == [
+        "exec", "--host", "mac", "--plow-chat", "cht_home", "--network",
+        "--timeout", "600", "--", "sh", "-c",
         "curl -fsS -H @$HOME/Plow/ld/dashboard.hdr "
         "-H 'Content-Type: application/json' "
-        f"--data-binary @$HOME/Plow/ld/calendar.json {base}/api/calendar"]
-    # The wall's bearer stays on the Mac in dashboard.hdr; it is never read
-    # here and must not appear anywhere in what crosses the relay.
-    assert "kiosk-token" not in json.dumps(Handler.requests)
-    # Nothing was POSTed from this container -- it is not on the Pi's LAN.
-    assert [r["path"] for r in Handler.requests if r["path"] == "/api/calendar"] == []
+        f"--data-binary @$HOME/Plow/ld/calendar.json {KIOSK}/api/calendar"]
+    # The wall's bearer stays on the Mac in dashboard.hdr; it never crosses latch.
+    assert "kiosk-token" not in json.dumps(latch.calls())
+    assert capsys.readouterr().out == "calendar feed: 1 events; shipped through the Mac\n"
 
 
-@pytest.mark.parametrize("polls, printed", [
-    pytest.param([ready(relay_ok(EVENTS)), ready(completed('{"ok":true}'))],
-                 "calendar feed: 1 events; shipped through the Mac", id="ready"),
-    pytest.param([ready(relay_ok(EVENTS)), DENIED],
-                 "calendar feed failed: relay command denied", id="denied"),
-    pytest.param([ready(relay_ok(EVENTS)), PENDING, PENDING, EXPIRED],
-                 "calendar feed failed: relay command expired",
-                 id="never-ready-until-latch-expires-it"),
-    pytest.param([ok_text(json.dumps({"status": "ready", "handle": "H1"}))],
-                 "calendar feed failed: relay command ready with no result",
-                 id="ready-with-nothing"),
+@pytest.mark.parametrize("setup, printed", [
+    pytest.param(lambda latch: latch.hosts(("mba", False), ("cloud", True, "google")),
+                 "calendar feed failed: no online host has messages on", id="mac-asleep"),
+    pytest.param(lambda latch: latch.answer("exec", ("error", "gatekeeper_denied", 4)),
+                 "calendar feed failed: latch exec: gatekeeper_denied", id="gatekeeper-refused"),
+    pytest.param(lambda latch: latch.answer("exec", {"exit_code": 22, "stdout": "", "stderr": "PRIVATE"}),
+                 "calendar feed failed: sh on mac exited 22", id="curl-failed"),
+    pytest.param(lambda latch: latch.answer("google", ("error", "google_needs_sign_in", 1)),
+                 "calendar feed failed: latch google: google_needs_sign_in", id="needs-sign-in"),
+    pytest.param(lambda latch: latch.answer("google", {"accounts": []}),
+                 "calendar feed failed: gather answered with no event list", id="no-items"),
 ])
-def test_a_call_past_the_budget_is_polled_rather_than_stood_down(
-        feed, monkeypatch, capsys, polls, printed):
-    """What a deferred call is, and why standing down on one was wrong, is on
-    relay()'s own docstring. Both the gather and the delivery defer here.
-
-    Only the pause is faked: Latch's 15-minute handle TTL is the one clock,
-    and it is Latch that says `expired`.
-    """
-    module, _ = feed
-    monkeypatch.setattr(module.time, "sleep", lambda _s: None)
-    Handler.relay_responses = [PENDING]
-    Handler.curl_responses = [PENDING]
-    Handler.poll_answers = polls
+def test_every_failure_is_one_line_and_exit_zero(feed, capsys, setup, printed):
+    """Unattended: nobody reads a non-zero exit, and a traceback carrying
+    calendar text is a leak. The next tick is the retry."""
+    module, latch = feed
+    setup(latch)
 
     assert module.main(now=1_756_700_000) == 0
 
-    assert capsys.readouterr().out.startswith(printed)
-    # Every poll carried the handle the first envelope minted. The double
-    # answers by queue, so nothing else here would notice a `None` going out.
-    polled = [c["arguments"]["handle"] for c in relay_calls("plow_get_result")]
-    assert polled and set(polled) == {"H1"}
+    assert capsys.readouterr().out == printed + "\n"
+
+
+def test_no_home_chat_is_a_stand_down(feed, monkeypatch, capsys):
+    """Every call acts for the home chat; without one latch would ask which."""
+    module, latch = feed
+    monkeypatch.delenv("PLOW_HOME_CHANNEL")
+
+    assert module.main(now=1_756_700_000) == 0
+
+    assert capsys.readouterr().out == "calendar feed failed: PLOW_HOME_CHANNEL is not set\n"
+    assert latch.calls("google") == []
