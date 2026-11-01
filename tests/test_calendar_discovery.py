@@ -101,8 +101,8 @@ def test_only_nonempty_selections_stop_background_discovery(
 
 
 @pytest.mark.parametrize("result", [
-    Latch("latch google: host_offline PRIVATE", "host_offline"),
-    Latch("latch google: google_failed PRIVATE", "google_failed"),
+    Latch("latch google: host_offline", "host_offline", {"message": "PRIVATE"}),
+    Latch("latch google: google_failed", "google_failed", {"accounts": ["PRIVATE"]}),
     {"items": [], "accounts": []},
     {"error": "PRIVATE ERROR"},
     fanout(rows=[{"summary": "PRIVATE no id"}]),
@@ -121,7 +121,8 @@ def test_failed_refresh_invalidates_prior_choices_without_leaking_output(
         "status": "pending", "checked_at": 4600, "attempts": 1,
         "fresh_until": 4600 + discovery.MAX_AGE_SECONDS,
         "retry_at": 4900, "reason": "Calendar discovery is temporarily unavailable."}
-    assert "PRIVATE" not in cache.read_text()
+    printed = capsys.readouterr()
+    assert "PRIVATE" not in cache.read_text() + printed.out + printed.err
 
 
 def test_no_google_host_is_pending_without_a_google_call(tmp_path, monkeypatch, capsys):
