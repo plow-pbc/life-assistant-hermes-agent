@@ -58,7 +58,7 @@ RUN find /opt/hermes/plugins/life_tools -type d -exec chmod 0755 {} + \
 # Everything under $HERMES_HOME/skills belongs to uid 10000 in a running
 # container -- the runtime chowns what it seeds on every boot -- so scheduling
 # the copy that lives there would turn one prompt-injected edit into code that
-# runs unattended, forever, holding the relay credential and the household's
+# runs unattended, forever, holding the latch login and the household's
 # calendar. This copy is root-owned and 0755/0644 in a root-owned directory:
 # the agent can read it and cannot change it.
 #

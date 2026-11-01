@@ -434,8 +434,8 @@ CONTRACTS = [
     # send rules were, and its absence is pinned instead in
     # test_the_persona_leaves_sharing_and_sends_to_the_layers_that_own_them.
     # What is still pinned below are the two negatives no plugin states -- no
-    # plow-connectors is installed, Latch vendors only plow-gog, and the
-    # relay's tools/list carries no Slack tool. The assistant's own public
+    # plow-connectors is installed, and latch's Google commands are gog's
+    # calendar and mail ones, with no Slack. The assistant's own public
     # mailbox stays reachable by asking (ld-email-inbox); a prompt denying it
     # would make that unreachable.
     (PERSONA, "installs no `plow-connectors`"),
