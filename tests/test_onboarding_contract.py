@@ -737,8 +737,7 @@ def test_persona_looks_a_bare_handle_up_before_asking() -> None:
     the Mac and recorded, and a second handle a person gives gets the same
     name; the owner is never asked to confirm who someone is."""
     assert "plow_send_message" in PERSONA
-    assert 'plow_read_skill(name="contacts")' in PERSONA
-    assert "plow contacts search" in PERSONA
+    assert "latch messages thread --host <mac> --plow-chat <chat> --with <handle>" in PERSONA
     assert "plow_name_contact" in PERSONA
     assert "same name" in PERSONA
     assert "never ask your owner to confirm" in PERSONA
@@ -780,11 +779,11 @@ def test_the_wall_token_handoff_is_dm_only():
 
 def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     """A preconnected Mac must not put listing/staging tools before hello."""
-    # The relay tools may be NAMED, but only to forbid them: the discovery
-    # snapshot lives on this server and the Latch prompt otherwise sends every
-    # path-shaped read to the Mac.
+    # latch may be NAMED, but only to forbid it: the discovery snapshot lives
+    # on this server and the latch prompt otherwise sends every path-shaped
+    # read to the Mac.
     for paragraph in ONBOARDING.split("\n\n"):
-        if "mcp__plow__" in paragraph or "plow_read_file" in paragraph:
+        if "latch file get" in paragraph:
             flowed = " ".join(paragraph.split())
             assert re.search(r"\b[Nn](ot|ever)\b", flowed), flowed
     assert "calendar-listing-<turn>" not in ONBOARDING
@@ -802,23 +801,22 @@ def test_onboarding_has_no_foreground_calendar_transport_or_staging():
     assert "an operator's shell, never this turn" in script[:220]
 
 
-def test_the_snapshot_read_names_the_local_tool_and_bars_the_relay():
-    """The Latch prompt tells the model the owner's world is on the Mac.
+def test_the_snapshot_read_names_the_local_tool_and_bars_latch():
+    """The latch prompt tells the model the owner's world is on the Mac.
 
     That standing instruction is right everywhere except this path: the
     snapshot is written by a service on this server and does not exist on the
-    Mac. Observed: `mcp__plow__plow_read_file` answered not_found for it and
+    Mac. Observed under the relay: its file read answered not_found for it and
     the turn sent an install link to a connected owner. So the sheet has to
-    name the local tool and bar the relay ones by name, in both places that
-    read it.
+    name the local tool and bar latch's by name, in both places that read it.
     """
     for where in (ONBOARDING[:ONBOARDING.index("### 5 ·")],
                   ONBOARDING[ONBOARDING.index("### 5 ·"):]):
         flowed = " ".join(where.split())
         assert 'read_file(path="/var/lib/hermes/ld/calendar-discovery.json")' in flowed
-        assert "never `plow_read_file`" in flowed or "Not `plow_read_file`" in flowed
+        assert "never `latch file get`" in flowed or "Not `latch file get`" in flowed
     choices = " ".join(ONBOARDING[ONBOARDING.index("### 5 ·"):].split())
-    assert "not any `plow_`/`mcp__plow__` tool" in choices
+    assert "not any latch call" in choices
     assert "not `execute_code`, not `terminal`, not the script" in choices
 
 

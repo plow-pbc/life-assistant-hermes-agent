@@ -224,9 +224,9 @@ did. It decides one sentence in the opener, below.
 During the intro, read §5's local snapshot once immediately after this config
 and owner check, before drafting any copy or making account/config writes:
 `read_file(path="/var/lib/hermes/ld/calendar-discovery.json")`, the local tool,
-never `plow_read_file` and never a command. A fresh `ready` snapshot omits the
+never `latch file get` and never a command. A fresh `ready` snapshot omits the
 catch, install link and its pause; unknown or stale keeps conditional wording.
-Reuse this read throughout the turn. Never contact the relay or wait.
+Reuse this read throughout the turn. Never call latch or wait.
 
 **2 · Check what was delivered.** Use supplied history and the sequence
 receipt to check which beats already went out. Reuse step 1's intro snapshot;
@@ -299,7 +299,7 @@ ordinary response for a single question or ordinary fallback, in this shape:
 - **then ask the FIRST key still missing**, in order: name → city → teams →
   calendars. After the intro, use ready cached choices for the calendar
   question. If choices are not ready, continue the conversation without waiting
-  or calling the relay. Write picks, account and lookaheads only when the owner
+  or calling latch. Write picks, account and lookaheads only when the owner
   answers. **If no key is missing, ask nothing.** Say they are set and offer
   the wall.
 
@@ -658,7 +658,7 @@ alone so the phone renders its preview:
 Nothing shares that URL bubble. Follow it with the four-second pause, then
 the soft check-in and first unanswered question. If `calendar.sources` is a non-empty list, the snapshot is fresh and ready, or the owner said it is
 connected, omit this catch, link and pause. Use only the one local snapshot
-read during the intro; never a relay probe. `calendar.sources` is only ever
+read during the intro; never a latch probe. `calendar.sources` is only ever
 answered by picks from a real calendar snapshot, so a non-empty list is standing proof Latch
 is connected.
 
@@ -812,7 +812,7 @@ explicitly asks to change them), read the background snapshot with the
 
     read_file(path="/var/lib/hermes/ld/calendar-discovery.json")
 
-**`read_file`. Not `plow_read_file`, not any `plow_`/`mcp__plow__` tool, not
+**`read_file`. Not `latch file get`, not any latch call, not
 `execute_code`, not `terminal`, not the script.** The snapshot is on this server,
 not the Mac. The local read needs no approval and never waits for discovery.
 Running `calendar_discovery.py` belongs to an operator's shell, never this turn.

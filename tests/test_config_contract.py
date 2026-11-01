@@ -556,7 +556,7 @@ def test_the_calendar_services_hand_the_producer_latchs_names_and_nothing_else(
     contenv = tmp_path / "contenv"
     contenv.mkdir()
     for name in ("PLOW_AGENT_TOKEN", "PLOW_API_BASE", "PLOW_HOME_CHANNEL",
-                 "HERMES_CUSTOM_PLOW_API_KEY", "PLOW_MCP_URL"):
+                 "HERMES_CUSTOM_PLOW_API_KEY", "PLOW_SOME_OTHER_SECRET"):
         (contenv / name).write_text(f"value-of-{name}")
     seen = tmp_path / "env"
     runner = tmp_path / "runner"
@@ -574,7 +574,7 @@ def test_the_calendar_services_hand_the_producer_latchs_names_and_nothing_else(
         "PLOW_AGENT_TOKEN": "value-of-PLOW_AGENT_TOKEN",
         "PLOW_API_BASE": "value-of-PLOW_API_BASE",
         "PLOW_HOME_CHANNEL": "value-of-PLOW_HOME_CHANNEL",
-    }, "only latch's own names cross; the relay and every other secret stay behind"
+    }, "only latch's own names cross; every other secret stays behind"
     assert env["LATCH_STATE_DIR"] == "/var/lib/hermes/latch"
     assert env["HOME"] == "/var/lib/hermes"
 
@@ -600,8 +600,8 @@ def test_the_agent_owned_names_are_read_from_the_agents_own_file():
         assert "dotenv_values(DOTENV)" not in text, (
             f"{relative} reads an agent-owned name out of Hermes' own dotenv")
     # Two, and both halves of that number are deliberate. The calendar feed
-    # drops out of this scan because its relay is the agent's own, read from
-    # the container environment rather than from any file; ld-payments went
+    # drops out of this scan because its latch login is the agent's own, read
+    # from the container environment rather than from any file; ld-payments went
     # with the fleet. What is left is the pair that really does read
     # agent-owned names, and the floor exists so a scan that stops finding
     # them fails instead of passing on an empty list.
