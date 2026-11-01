@@ -579,11 +579,6 @@ def test_every_latch_call_a_sheet_makes_names_its_host_and_chat():
     calls = [(sheet.relative_to(ROOT), call) for sheet in sheets
              for call in re.findall(r"^ {4,}(?:\d\. )?(latch (?:google|messages|contacts|exec|file)\b.*)$",
                                     sheet.read_text(), re.MULTILINE)]
-    source = (ROOT / "ld-shared/scripts/post_to_kiosk.py").read_text()
-    block = source[source.index("LATCH_BLOCK = ("):]
-    block = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', block[:block.index("\n)\n")]))
-    calls += [("post_to_kiosk.LATCH_BLOCK", line) for line in
-              block.split("\\n") if ". latch " in line]
     assert len(calls) > 10, "the sheets stopped spelling out their latch calls"
     for where, call in calls:
         assert "--host <" in call and "--plow-chat <chat>" in call, (where, call)

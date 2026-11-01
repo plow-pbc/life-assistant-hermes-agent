@@ -44,7 +44,7 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "ld-shared", "scripts"),
 )
-from calendar_feed import event_key, visible_events  # noqa: E402
+from calendar_feed import event_key, redact, visible_events  # noqa: E402
 from external_content import strip_markers  # noqa: E402
 from gather_result import GatherError, read_fanout  # noqa: E402
 
@@ -58,16 +58,9 @@ HANDOFF = "/var/lib/hermes/ld/calendar-nudge.json"
 # builds the argv, and a steerable --config could point at a model-written
 # JSON whose identities/lookaheads make a non-qualifying event publish.
 CONFIG_FILE = "/var/lib/hermes/ld/config.json"
-# Two patterns for two opposite risk profiles.
-#
-# REDACTION (title stripping) uses the broad one: any URI, not just http(s)
-# — native join links carry the same bearer-style credentials, and no slash
-# is required after the colon. Letter-led prose tokens with a colon
-# ("note:parking", "Re:Budget") DO match and get stripped — over-stripping
-# fails SAFE on a shared display (a stripped word costs less than a leaked
-# credential); digit-led times ("3:10pm") stay untouched.
-_URL_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:\S+")
-# CLASSIFICATION (virtual vs in-person) must not over-match: flipping a
+# Titles are redacted with the calendar strip's own `redact` (any URI-shaped
+# token, failing safe on a shared display). CLASSIFICATION (virtual vs
+# in-person) must not over-match the same way: flipping a
 # prose-colon location ("Floor:3") to virtual would silently shrink its
 # window from 60 to 30 minutes and drop real reminders. It requires a slash
 # directly after the colon, which every real join link has — double
@@ -277,7 +270,7 @@ def main(argv=None, now=None) -> int:
         where = "online" if virtual else location
         # A URL in the TITLE is the same bearer risk the location rule
         # guards: strip it rather than post it to a shared surface.
-        summary = " ".join(_URL_TOKEN.sub("", unwrap(ev.get("summary"))).split())
+        summary = redact(ev.get("summary"))
         reminders.append(compose(summary or "(untitled meeting)", local_time,
                                  minutes_until, where))
         if card is None and (ev["CalendarID"] in wall or key in wall_keys):
