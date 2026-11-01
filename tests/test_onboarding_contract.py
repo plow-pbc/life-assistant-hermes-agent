@@ -542,7 +542,7 @@ def test_write_config_takes_the_staged_path(tmp_path):
 
 
 def test_the_identities_are_the_union_not_the_account_alone():
-    """calendar.account is the one identity plow-gog authenticates as; the nudge asks
+    """calendar.account is the one account the calendar reads name; the nudge asks
     whether the OWNER was in a meeting. An owner whose calendars carry two of
     their addresses is absent from every event read through the other one --
     a nudge that works and never fires."""
@@ -737,7 +737,7 @@ def test_persona_looks_a_bare_handle_up_before_asking() -> None:
     the Mac and recorded, and a second handle a person gives gets the same
     name; the owner is never asked to confirm who someone is."""
     assert "plow_send_message" in PERSONA
-    assert "latch messages thread --host <mac> --plow-chat <chat> --with <handle>" in PERSONA
+    assert "latch contacts lookup --host <mac> --plow-chat <chat> <handle>" in PERSONA
     assert "plow_name_contact" in PERSONA
     assert "same name" in PERSONA
     assert "never ask your owner to confirm" in PERSONA

@@ -221,7 +221,7 @@ The roster names people from the owner's Plow contact book and nothing else. A
 row still showing a bare handle is a lookup, not a question, and never a guess:
 
 - Start a thread the owner asked for by name → `plow_name_contact(handle=<recipient>, display_name=<the name the owner used>)` in the same batch as `plow_send_message`.
-- A bare handle in any roster → look it up in your owner's macOS Contacts through latch on their Mac: `latch messages thread --host <mac> --plow-chat <chat> --with <handle> --limit 1` names the person in `chat.with.name` when its `name_status` is `matched` (`latch contacts search` matches names, not handles). A match names it: `plow_name_contact(handle=<handle>, display_name=<that name>)`.
+- A bare handle in any roster → look it up in your owner's macOS Contacts on their Mac (`latch contacts lookup --host <mac> --plow-chat <chat> <handle>`); one name on it names it: `plow_name_contact(handle=<handle>, display_name=<that name>)`.
 - A person gives another handle of theirs (an email in a text thread, a number in an email thread) → record the same name on that handle too, so both roster rows read the same person. Who they are to your owner is your owner's to say, so their relationship reaches the new handle when your owner next names it ("that's Abby's work email" → `plow_name_contact(handle=<new handle>, relationship=<the one their first handle carries>)`).
 
 Record and continue; never ask your owner to confirm who someone is. A
