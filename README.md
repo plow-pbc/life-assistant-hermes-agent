@@ -51,7 +51,7 @@ Not here:
 - Fleet container lifecycle, the deploy hook and skill seeding —
   [`agent-mgr`](https://github.com/plow-pbc/agent-mgr). For local development,
   this repo owns `compose.yml` and Docker Compose manages the container;
-  [`plow-agents`](https://github.com/plow-pbc/plow-agents) manages credentials.
+  [`latch`](https://github.com/plow-pbc/latch-cli) manages credentials.
 
 Examples:
 
@@ -89,15 +89,16 @@ reviews.
 ## Run locally
 
 `compose.yml` here builds this checkout and runs it.
-[`plow-agents`](https://github.com/plow-pbc/plow-agents) mints the credential
-the container reads; Docker Compose manages its lifecycle.
+[`latch`](https://github.com/plow-pbc/latch-cli#install) registers the agent
+and writes the credential the container reads; Docker Compose manages its
+lifecycle.
 
 ```sh
-export PATH="/path/to/plow-agents/bin:$PATH"
 cd /path/to/life-assistant-hermes-agent
-plow-agents login             # once on this machine; text the printed activation phrase
-plow-agents lines
-plow-agents mint ln_xxx       # choose a free line from `lines`, before the first `up`
+latch login                   # once on this machine; text the printed activation phrase
+latch agents lines
+# choose a free line from `lines`, before the first `up`
+latch agents new --own --name life-assistant --line LINE --credential-file ./plow-credentials
 docker compose up --build -d
 ```
 
@@ -108,7 +109,7 @@ For base-image pull failures, see
 | --- | --- |
 | rebuild after skill edits and keep its memory | `docker compose up --build -d` |
 | reset local state — onboarding again | `docker compose down -v && docker compose up --build -d` |
-| finish | `plow-agents revoke && docker compose down -v` |
+| finish | `latch agents remove life-assistant && docker compose down -v` |
 
 On rebuild and restart, the base runtime reconciles bundled skills from
 `/opt/hermes/skills` into the home volume, updating skills the agent has not
@@ -233,7 +234,7 @@ come back from `POST /v1/auth/activate` when activation runs, so neither can be
 shared ahead of time: it is a two-person moment, not a step to hand off.
 
 The mechanics — running activation, what to do when a code expires — are in
-[`plow-agents`](https://github.com/plow-pbc/plow-agents), not here.
+[`latch`](https://github.com/plow-pbc/latch-cli#first-run), not here.
 
 ## What the operator can see
 

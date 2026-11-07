@@ -2,7 +2,7 @@ services:
   agent:
     # For base-image pull failures, see README.md: Building the image.
     build: .
-    # For a local run this loads what `plow-agents mint` wrote: where Plow is
+    # For a local run this loads what `latch agents new` wrote: where Plow is
     # and this agent's token. When Plow runs your image as a cloud agent it
     # sets the environment itself. `PLOW_CREDENTIALS` lets a smoke point at a
     # credential outside the checkout (e.g. ~/.config/plow-smoke/credentials),

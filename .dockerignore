@@ -8,6 +8,6 @@
 **/__pycache__
 **/*.py[co]
 **/.pytest_cache
-# The live agent token `plow-agents mint` writes beside compose.yml. The build
+# The live agent token `latch agents new` writes beside compose.yml. The build
 # context is this directory, so without this line it is reachable from a COPY.
 plow-credentials

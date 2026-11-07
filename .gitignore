@@ -6,5 +6,5 @@ docs/superpowers/plans/
 # knightwatch materializes declared review siblings here during a review.
 .siblings/
 
-# The agent credential `plow-agents mint` writes here. A live bearer token.
+# The agent credential `latch agents new --credential-file` writes here. A live bearer token.
 plow-credentials
